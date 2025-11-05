@@ -38,9 +38,11 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.gis",
-    "rest_framework",
+    "django_extensions",
+    # "rest_framework",
     
     "watersupply",
+    "common",
     "crispy_forms",
     "crispy_tailwind",
     
@@ -83,7 +85,7 @@ WSGI_APPLICATION = "DigitalTwin.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.contrib.gis.db.backends.postgis",
-        "NAME": "digitalTwin",
+        "NAME": "digitaltwin",
         "USER": "geodjango",
         "PASSWORD": "DTwin",
         "HOST": "localhost",

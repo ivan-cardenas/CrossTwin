@@ -1,3 +1,5 @@
+from django.conf.urls import include
+
 """
 URL configuration for DigitalTwin project.
 
@@ -20,4 +22,7 @@ from django.urls import path
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("watersupply/", include("watersupply.urls")),
+    path("common/", include("common.urls")),
+
 ]

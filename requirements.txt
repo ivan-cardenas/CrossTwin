@@ -4,3 +4,6 @@ crispy-tailwind==1.0.3
 django-crispy-forms==2.4
 psycopg==3.2.12
 typing-extensions==4.15.0
+django-extensions==4.1
+pydot==4.0.1
+pyparsing==3.2.5
