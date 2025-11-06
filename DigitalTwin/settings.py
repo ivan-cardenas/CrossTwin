@@ -40,12 +40,12 @@ INSTALLED_APPS = [
     "django.contrib.gis",
     "django_extensions",
     # "rest_framework",
-    
-    "watersupply",
-    "common",
     "crispy_forms",
     "crispy_tailwind",
+    "importer",
     
+    "common",
+    "watersupply",
     
 ]
 
@@ -123,6 +123,8 @@ TIME_ZONE = "UTC"
 USE_I18N = True
 
 USE_TZ = True
+
+COORDINATE_SYSTEM = 28892
 
 
 # Static files (CSS, JavaScript, Images)

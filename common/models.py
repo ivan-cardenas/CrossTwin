@@ -56,14 +56,15 @@ class City(models.Model):
         self.currentPopulation = total or 0
         
         if self.area_km2 and self.area_km2 > 0:
-            self.populationDensity = self.currentPopulation / float(self.area_km2)
+            self.populationDensity = float (self.currentPopulation / self.area_km2)
         else:
             self.populationDensity = None
+            
         self.last_updated = timezone.now()
         super.save(*args, **kwargs)
         
     def __str__(self):
-        return self.cityName
+        return f"{self.cityName} - {self.currentPopulation} inhabitants"
     
     class Meta:
         verbose_name = "City"

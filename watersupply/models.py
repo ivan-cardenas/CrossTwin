@@ -1,7 +1,8 @@
 from django.contrib.gis.db import models
 from django.utils import timezone
 from django.core.exceptions import ValidationError
-from common.models import Region, City, Neighborhood, CoordinateSystem
+from common.models import Region, City, Neighborhood
+from django.conf import COORDINATE_SYSTEM
 
 
 
@@ -14,11 +15,11 @@ class ConsumptionCapita(models.Model):
     total_consumption_m3_yr = models.FloatField()
     last_updated = models.DateTimeField(default=timezone.now)
 
-    def save(self):
+    def save(self, *args, **kwargs):
         if self.consumption_capita_L_d < 0:
             raise ValidationError("Consumption Capita cannot be negative")
-        self.total_consumption_m3_yr = self.consumption_capita_L_d * 365 * 1000 * City.currentPopulation
-        super().save()
+        self.total_consumption_m3_yr = (self.consumption_capita_L_d * 365 * 1000 * self.city.currentPopulation)
+        super().save(**args, **kwargs)
         
 
     def __str__(self):
@@ -34,6 +35,10 @@ class TotalWaterDemand(models.Model):
     def __str__(self):
         return f"{self.region} - {self.year}: {self.demandDay} Mm3/day"
     
+    def save(self, *args, **kwargs):
+        self.demandYR = self.demandDay * 365
+        super().save(**args, **kwargs)
+    
 class SupplySecurity(models.Model):
     city = models.ForeignKey(City, on_delete=models.CASCADE)
     year = models.IntegerField()
@@ -48,7 +53,7 @@ class SupplySecurity(models.Model):
 class PipeNetwork(models.Model):
     id = models.AutoField(primary_key=True)
     length_km = models.FloatField() # km
-    geom = models.MultiLineStringField(srid=CoordinateSystem)
+    geom = models.MultiLineStringField(srid=COORDINATE_SYSTEM)
     maitenanceCost_EUR_km = models.FloatField(null=True) # EUR/km
     last_updated = models.DateTimeField(default=timezone.now)
     
@@ -85,7 +90,7 @@ class MeteredResidential(models.Model):
 class AvailableFreshWater(models.Model):
     id=models.AutoField(primary_key=True)
     SourceName = models.CharField(max_length=100)
-    geom = models.MultiPolygonField(srid=CoordinateSystem)
+    geom = models.MultiPolygonField(srid=COORDINATE_SYSTEM)
     infiltrationRate_cm_h = models.FloatField()
     infiltrationDepth_cm = models.FloatField()
     totalQuantity_Mm3 = models.FloatField()
@@ -99,7 +104,7 @@ class ExtractionWater(models.Model):
     id=models.AutoField(primary_key=True)
     source = models.ForeignKey(AvailableFreshWater,
                                on_delete=models.DO_NOTHING)
-    geom = models.MultiPointField(srid=CoordinateSystem)
+    geom = models.MultiPointField(srid=COORDINATE_SYSTEM)
     stationName = models.CharField(max_length=100)
     pumpflow_m3_s = models.FloatField()
     pumpMaxFlow_m3_s = models.FloatField()
@@ -132,7 +137,7 @@ class WaterTreatment(models.Model):
     samplesWaterQualityTaken = models.IntegerField()
     EnergyConsumption_MW_day = models.FloatField()
     acceptanceRate = models.FloatField()
-    geom = models.MultiPointField(srid=CoordinateSystem)
+    geom = models.MultiPointField(srid=COORDINATE_SYSTEM)
     last_updated = models.DateTimeField(default=timezone.now)
     
     def __str__(self):
@@ -213,7 +218,7 @@ class AreaAffectedDrought(models.Model):
         VeryHigh = 5, 'Very High'
     
     id = models.AutoField(primary_key=True)
-    geom = models.MultiPolygonField(srid=CoordinateSystem)
+    geom = models.MultiPolygonField(srid=COORDINATE_SYSTEM)
     region = models.ForeignKey(Region, on_delete=models.DO_NOTHING)
     areaName = models.CharField(max_length=100)
     SensibilityLevel = models.IntegerField(

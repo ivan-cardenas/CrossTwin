@@ -24,5 +24,6 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("watersupply/", include("watersupply.urls")),
     path("common/", include("common.urls")),
+    path("import/", include("importer.urls")),
 
 ]
