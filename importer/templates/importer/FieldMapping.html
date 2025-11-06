@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h1>Field Mapping for {{ target_model }}</h1>
+
+<p><strong>Detected columns:</strong> {{ columns|join:", " }}</p>
+<p><strong>Sample (first 5 rows):</strong></p>
+<div style="max-width: 100%; overflow: auto;">{{ sample|safe }}</div>
+
+<form method="post">
+  {% csrf_token %}
+  <input type="hidden" name="stage" value="map">
+  {{ mapping_form.as_p }}
+  <button name="action" value="check" type="submit">Check mapping</button>
+  <button name="action" value="import" type="submit"
+          onclick="document.querySelector('input[name=dry_run]').checked=false;">
+    Import
+  </button>
+</form>
+
+<p><strong>Instructions:</strong></p>
+<ol>
+  <li>Use the dropdowns to map each <em>model field</em> to a <em>source column</em>.</li>
+  <li>For <code>City</code>, map <code>cityName</code> and <code>geom</code> (geometry column) at minimum.</li>
+  <li>For <code>ConsumptionCapita</code>, map <code>city</code> (name or id), <code>year</code>, and <code>consumption_capita_L_d</code>.</li>
+  <li>Click <em>Check mapping</em> for a dry run. Fix any errors.</li>
+  <li>When ready, click <em>Import</em> to commit to PostGIS.</li>
+</ol>
+
+{% endblock content %}
+

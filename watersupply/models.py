@@ -2,9 +2,9 @@ from django.contrib.gis.db import models
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 from common.models import Region, City, Neighborhood
-from django.conf import COORDINATE_SYSTEM
+from django.conf import settings
 
-
+COORDINATE_SYSTEM = settings.COORDINATE_SYSTEM
 
 # Create your models here.
 class ConsumptionCapita(models.Model):

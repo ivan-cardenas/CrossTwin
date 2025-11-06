@@ -1,0 +1,20 @@
+<h1>{{ dry_run|yesno:"Dry-run result,Import result" }}</h1>
+<ul>
+  <li>Target: {{ report.target }}</li>
+  <li>Total rows: {{ report.total_rows }}</li>
+  <li>Created: {{ report.created }}</li>
+  <li>Updated: {{ report.updated }}</li>
+  <li>Skipped: {{ report.skipped }}</li>
+  <li>Errors: {{ report.errors }}</li>
+</ul>
+
+{% if report.sample_errors %}
+<h3>Sample errors</h3>
+<ul>
+  {% for e in report.sample_errors %}
+    <li>{{ e }}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+<p><a href="{% url 'upload_geodata' %}">Upload another file</a></p>

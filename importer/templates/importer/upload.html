@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h1>Upload Geodata</h1>
+{% if messages %}
+  <ul>{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>
+{% endif %}
+<form method="post" enctype="multipart/form-data">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <!-- IMPORTANT: no 'stage' here, so the view treats this as Step 1 POST -->
+  <button type="submit">Continue</button>
+</form>
+
+{% endblock content %}
