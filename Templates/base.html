@@ -1,20 +1,63 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    {% load static %}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{% static '/css/theme.css' %}">
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <title>Digital Twin Cross Sector Planning</title>
 </head>
-<body>
-<div class="container mx-auto p-4">
-       <p class="text-black-400 transition hover:text-gray-500/75"> Welcome To the DIGITAL REALM</p>
-       
-</div>
-    <div class="container mx-auto p-4">
-    {% block content %}
-    
-    {% endblock content %}
+<body class="min-h-screen overflow-x-hidden">
+    <div class="gradient-orb orb-top-left"></div>
+    <div class="gradient-orb secondary orb-bottom-right"></div>
+
+    <div class="relative min-h-screen flex flex-col z-10">
+        <header class="glass sticky top-0 backdrop-blur-xl">
+            <div class="container mx-auto px-6 py-4 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="h-10 w-10 rounded-xl bg-gradient-to-br from-cyan-400 via-sky-500 to-indigo-600 shadow-lg shadow-cyan-900/30"></div>
+                    <div>
+                        <p class="text-[11px] uppercase tracking-[0.28em] text-cyan-200/80">Digital Realm</p>
+                        <h1 class="text-lg md:text-xl font-semibold text-slate-50">Cross Sector Planning</h1>
+                    </div>
+                </div>
+                <div class="hidden md:flex items-center gap-3 text-slate-300">
+                    <span class="px-3 py-1 text-sm rounded-full bg-white/5 border border-white/10">Live Prototype</span>
+                    <span class="text-xs text-slate-400">v0.1</span>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-1">
+            <section class="container mx-auto px-6 pt-12 pb-8 md:pb-12">
+                <div class="max-w-3xl space-y-3">
+                    <p class="text-[11px] uppercase tracking-[0.32em] text-cyan-100/75">Welcome to the Digital Realm</p>
+                    <p class="text-2xl md:text-3xl font-semibold text-slate-50 leading-tight">Orchestrate systems, simulate outcomes, and plan with confidence.</p>
+                    <p class="text-base text-slate-300">Build, iterate, and validate your digital twins inside a focused, atmospheric workspace.</p>
+                </div>
+            </section>
+
+            <section class="container mx-auto px-6 pb-16">
+                <div class="glass rounded-2xl p-6 md:p-8 fade-in">
+                    {% block content %}
+                    {% endblock content %}
+                </div>
+            </section>
+        </main>
+
+        <footer class="container mx-auto px-6 pb-10 text-sm text-slate-400 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <span class="h-px w-12 bg-white/10"></span>
+                <span>Built for collaborative scenario planning.</span>
+            </div>
+            <div class="flex items-center gap-4 text-slate-500">
+                <span>Need help? Share feedback.</span>
+            </div>
+        </footer>
     </div>
 </body>
 </html>
