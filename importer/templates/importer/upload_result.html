@@ -1,20 +1,176 @@
-<h1>{{ dry_run|yesno:"Dry-run result,Import result" }}</h1>
-<ul>
-  <li>Target: {{ report.target }}</li>
-  <li>Total rows: {{ report.total_rows }}</li>
-  <li>Created: {{ report.created }}</li>
-  <li>Updated: {{ report.updated }}</li>
-  <li>Skipped: {{ report.skipped }}</li>
-  <li>Errors: {{ report.errors }}</li>
-</ul>
+{% extends "base.html" %}
 
-{% if report.sample_errors %}
-<h3>Sample errors</h3>
-<ul>
-  {% for e in report.sample_errors %}
-    <li>{{ e }}</li>
-  {% endfor %}
-</ul>
-{% endif %}
+{% block content %}
+<div class="space-y-8">
+    <!-- Header Section -->
+    <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+        <div class="space-y-2">
+            <p class="text-[11px] uppercase tracking-[0.28em] text-cyan-100/80">Import Complete</p>
+            <h1 class="text-2xl md:text-3xl font-semibold text-slate-50">
+                {% if dry_run %}Dry Run Results{% else %}Import Results{% endif %}
+            </h1>
+            <p class="text-slate-300 max-w-2xl">
+                {% if dry_run %}
+                Validation completed. No data was saved to the database.
+                {% else %}
+                Data has been successfully imported to <code class="px-2 py-0.5 rounded bg-white/10 text-cyan-300 text-sm">{{ report.target }}</code>.
+                {% endif %}
+            </p>
+        </div>
+        <a href="{% url 'importer:upload_geodata' %}" class="btn-primary">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+            </svg>
+            <span>Import More Data</span>
+        </a>
+    </div>
 
-<p><a href="{% url 'upload_geodata' %}">Upload another file</a></p>
+    <!-- Status Banner -->
+    {% if dry_run %}
+    <div class="flex items-center gap-3 rounded-xl border border-amber-500/35 bg-amber-500/10 px-5 py-4">
+        <div class="flex-shrink-0 h-10 w-10 rounded-full bg-amber-500/20 flex items-center justify-center">
+            <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+            </svg>
+        </div>
+        <div>
+            <h3 class="font-semibold text-amber-200">Dry Run Mode</h3>
+            <p class="text-sm text-amber-300/80">This was a validation run. Run the import again with "Dry Run" unchecked to save data.</p>
+        </div>
+    </div>
+    {% else %}
+    <div class="flex items-center gap-3 rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-5 py-4">
+        <div class="flex-shrink-0 h-10 w-10 rounded-full bg-emerald-500/20 flex items-center justify-center">
+            <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+        </div>
+        <div>
+            <h3 class="font-semibold text-emerald-200">Import Successful</h3>
+            <p class="text-sm text-emerald-300/80">Data has been committed to the database.</p>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Statistics Cards -->
+    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <!-- Total Rows -->
+        <div class="glass rounded-xl p-5 space-y-2">
+            <div class="flex items-center justify-between">
+                <span class="text-sm text-slate-400">Total Rows</span>
+                <div class="h-8 w-8 rounded-lg bg-slate-500/20 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path>
+                    </svg>
+                </div>
+            </div>
+            <p class="text-3xl font-bold text-slate-100">{{ report.total_rows }}</p>
+        </div>
+
+        <!-- Created -->
+        <div class="glass rounded-xl p-5 space-y-2">
+            <div class="flex items-center justify-between">
+                <span class="text-sm text-slate-400">Created</span>
+                <div class="h-8 w-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                    </svg>
+                </div>
+            </div>
+            <p class="text-3xl font-bold text-emerald-400">{{ report.created }}</p>
+        </div>
+
+        <!-- Updated -->
+        <div class="glass rounded-xl p-5 space-y-2">
+            <div class="flex items-center justify-between">
+                <span class="text-sm text-slate-400">Updated</span>
+                <div class="h-8 w-8 rounded-lg bg-sky-500/20 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                </div>
+            </div>
+            <p class="text-3xl font-bold text-sky-400">{{ report.updated }}</p>
+        </div>
+
+        <!-- Skipped -->
+        <div class="glass rounded-xl p-5 space-y-2">
+            <div class="flex items-center justify-between">
+                <span class="text-sm text-slate-400">Skipped</span>
+                <div class="h-8 w-8 rounded-lg bg-slate-500/20 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path>
+                    </svg>
+                </div>
+            </div>
+            <p class="text-3xl font-bold text-slate-400">{{ report.skipped }}</p>
+        </div>
+    </div>
+
+    <!-- Errors Section -->
+    {% if report.errors > 0 %}
+    <div class="glass rounded-xl p-6 space-y-4 border border-red-500/30">
+        <div class="flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-red-300 flex items-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                Errors ({{ report.errors }})
+            </h3>
+        </div>
+        
+        {% if report.sample_errors %}
+        <div class="space-y-2">
+            <p class="text-sm text-slate-400">Showing first {{ report.sample_errors|length }} errors:</p>
+            <ul class="space-y-2">
+                {% for error in report.sample_errors %}
+                <li class="flex items-start gap-2 text-sm">
+                    <span class="flex-shrink-0 mt-1 h-1.5 w-1.5 rounded-full bg-red-400"></span>
+                    <code class="text-red-300/90 bg-red-500/10 px-2 py-1 rounded">{{ error }}</code>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Summary Details -->
+    <div class="glass rounded-xl p-6 space-y-4">
+        <h3 class="text-lg font-semibold text-slate-100 flex items-center gap-2">
+            <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+            Import Summary
+        </h3>
+        <div class="grid gap-4 sm:grid-cols-2">
+            <div class="space-y-1">
+                <span class="text-sm text-slate-400">Target Model</span>
+                <p class="text-slate-100 font-medium">{{ report.target }}</p>
+            </div>
+            <div class="space-y-1">
+                <span class="text-sm text-slate-400">Mode</span>
+                <p class="text-slate-100 font-medium">{% if dry_run %}Dry Run (Validation Only){% else %}Live Import{% endif %}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3 pt-4 border-t border-white/10">
+        {% if dry_run %}
+        <a href="javascript:history.back()" class="btn-secondary">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 17l-5-5m0 0l5-5m-5 5h12"></path>
+            </svg>
+            <span>Back to Mapping</span>
+        </a>
+        {% endif %}
+        <a href="{% url 'importer:upload_geodata' %}" class="btn-primary">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+            </svg>
+            <span>Import More Data</span>
+        </a>
+    </div>
+</div>
+{% endblock content %}

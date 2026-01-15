@@ -2,8 +2,8 @@ from pyexpat.errors import messages
 import tempfile, os
 
 from django.shortcuts import render, redirect
-
 from django.db import transaction
+from django.db.models import fields as django_fields  
 from django.urls import reverse
 from django.utils import timezone
 from django.conf import settings
@@ -14,8 +14,9 @@ import geopandas as gpd
 from .forms import GeoUploadForm, MappingForm
 from .utils import gpd_read_any
 
-from common import models 
-from watersupply import models
+# FIXED: Import models with aliases to avoid collision
+from common import models as common_models
+from watersupply import models as watersupply_models
 
 from django.db.models import Field, ForeignKey, OneToOneField, AutoField
 from django.contrib.gis.db.models import GeometryField, MultiPolygonField
@@ -25,22 +26,52 @@ COORDINATE_SYSTEM = settings.COORDINATE_SYSTEM
 
 # Helper: define which model fields are mappable and which are required
 MODEL_REGISTRY = {
-    'common.City': models.City,
-    'watersupply.ConsumptionCapita': models.ConsumptionCapita,
+    'common.City': common_models.City,
+    'common.Region': common_models.Region,
+    'common.Neighborhood': common_models.Neighborhood,
+    'watersupply.ConsumptionCapita': watersupply_models.ConsumptionCapita,
+    'watersupply.TotalWaterDemand': watersupply_models.TotalWaterDemand,
+    'watersupply.SupplySecurity': watersupply_models.SupplySecurity,
+    'watersupply.PipeNetwork': watersupply_models.PipeNetwork,
+    # Add more models as needed
 }
 
-# Optional, tiny per-model overrides (only what can’t be inferred)
+# Optional, tiny per-model overrides (only what can't be inferred)
 MODEL_OVERRIDES = {
-    'common_app.City': {
-        'upsert_keys': ['cityName'],          # otherwise we try unique/unique_together
-        'geometry_field': 'geom',             # which field stores geometry
+    'common.City': {
+        'upsert_keys': ['cityName'],           # otherwise we try unique/unique_together
+        'geometry_field': 'geom',              # which field stores geometry
         'target_srid_default': COORDINATE_SYSTEM,
     },
-    'watersupply_app.ConsumptionCapita': {
-        'upsert_keys': ['city', 'year'],      # logical business key
-        'target_srid_default': None,          # no geometry in this model
+    'common.Region': {
+        'upsert_keys': ['regionName'],
+        'geometry_field': 'geom',
+        'target_srid_default': COORDINATE_SYSTEM,
+    },
+    'common.Neighborhood': {
+        'upsert_keys': ['neighborhoodName'],
+        'geometry_field': 'geom',
+        'target_srid_default': COORDINATE_SYSTEM,
+    },
+    'watersupply.ConsumptionCapita': {
+        'upsert_keys': ['city', 'year'],       # logical business key
+        'target_srid_default': None,           # no geometry in this model
+    },
+    'watersupply.TotalWaterDemand': {
+        'upsert_keys': ['city', 'year'],
+        'target_srid_default': None,
+    },
+    'watersupply.SupplySecurity': {
+        'upsert_keys': ['city', 'year'],
+        'target_srid_default': None,
+    },
+    'watersupply.PipeNetwork': {
+        'upsert_keys': ['id'],
+        'geometry_field': 'geom',
+        'target_srid_default': COORDINATE_SYSTEM,
     },
 }
+
 
 def _get_model_spec(label):
     """
@@ -69,9 +100,8 @@ def _get_model_spec(label):
     for f in fields:
         if isinstance(f, AutoField) or f.primary_key:
             continue  # never map PK directly
-        
         # null=False and no default => likely required for create
-        is_required = (not f.null) and (f.default is models.fields.NOT_PROVIDED)
+        is_required = (not f.null) and (f.default is django_fields.NOT_PROVIDED)
         (required if is_required else optional).append(f.name)
 
     # geometry
@@ -94,7 +124,7 @@ def _get_model_spec(label):
         'unique_fields': unique_fields,      # list of field names
         'target_srid_default': None,
         'geometry_field': geom_fields[0] if geom_fields else None,
-        'upsert_keys': None,                 # will fill with override or infer
+        'upsert_keys': None,  # will fill with override or infer
     }
 
     # Apply per-model overrides (upsert keys, target SRID, geometry field)
@@ -116,11 +146,13 @@ def _get_model_spec(label):
 
     return spec
 
+
 def _build_mapping_form(target_model, columns, gdf_crs, data=None):
     """
     Replaces the old hard-coded spec with introspected spec.
     """
     from django import forms
+
     spec = _get_model_spec(target_model)
 
     class _F(MappingForm):
@@ -144,8 +176,17 @@ def _build_mapping_form(target_model, columns, gdf_crs, data=None):
             help_text=f'Target SRID to store geometry (e.g., {default_srid}).'
         ))
 
+    # Add source_crs field for specifying input CRS
+    setattr(_F, 'source_crs', forms.IntegerField(
+        required=False,
+        initial=gdf_crs.to_epsg() if gdf_crs else None,
+        help_text='Source CRS EPSG code (auto-detected if available).'
+    ))
+
     setattr(_F, 'dry_run', forms.BooleanField(required=False, initial=True, label="Check mapping only (dry-run)"))
+
     return _F(data=data)
+
 
 # ---------- Generic importer ----------
 
@@ -176,6 +217,7 @@ def _cast_value(value, field):
     except Exception:
         return value
 
+
 def _resolve_fk(model, field_name, raw, prefer_name=True):
     """
     Resolve FK by name (case-insensitive) or id. Works for City-like foreign keys.
@@ -204,6 +246,7 @@ def _resolve_fk(model, field_name, raw, prefer_name=True):
     except Exception:
         return None
 
+
 def _to_multipolygon(geos):
     if geos is None or geos.empty:
         return None
@@ -214,10 +257,9 @@ def _to_multipolygon(geos):
         return MultiPolygon([geos])
     return None  # skip non-area types
 
+
 @transaction.atomic
 def _generic_import(gdf, target_label, colmap, dry_run=True, target_srid=None):
-    
-    
     """
     One importer for all models in MODEL_REGISTRY.
     - Casts values according to Django field types
@@ -237,6 +279,7 @@ def _generic_import(gdf, target_label, colmap, dry_run=True, target_srid=None):
 
     # Prepare a field lookup for type casting
     field_by_name = {f.name: f for f in opts.get_fields() if isinstance(f, Field)}
+
     geom_field_name = spec['geometry_field'] if spec['has_geometry'] else None
     geom_field_obj = field_by_name.get(geom_field_name) if geom_field_name else None
 
@@ -250,7 +293,6 @@ def _generic_import(gdf, target_label, colmap, dry_run=True, target_srid=None):
                 if not src:
                     raise ValueError(f"Missing mapping for upsert key '{key}'")
                 raw = row[src]
-
                 f = field_by_name.get(key)
                 if isinstance(f, (ForeignKey, OneToOneField)):
                     val = _resolve_fk(model, key, raw)
@@ -319,7 +361,7 @@ def _generic_import(gdf, target_label, colmap, dry_run=True, target_srid=None):
         transaction.set_rollback(True)
 
     return {
-        'target': opts.label,  # e.g., common_app.City
+        'target': opts.label,  # e.g., common.City
         'total_rows': total,
         'created': created,
         'updated': updated,
@@ -327,15 +369,19 @@ def _generic_import(gdf, target_label, colmap, dry_run=True, target_srid=None):
         'errors': errors,
         'sample_errors': sample_errors,
     }
-    
+
+
 def upload_geodata(request):
     """
     Two-step wizard:
-      GET  -> render Step 1 (upload form)
+      GET              -> render Step 1 (upload form)
       POST (no 'stage') -> process Step 1, stash temp file, render Step 2 (mapping)
       POST (stage='map') -> process Step 2, dry-run or import, render Result
+
     Always returns a response; never silently falls through.
     """
+    from django.contrib import messages as django_messages
+
     # --- STEP 1 (GET) ---
     if request.method == 'GET':
         form = GeoUploadForm()
@@ -349,11 +395,17 @@ def upload_geodata(request):
             return render(request, 'importer/upload.html', {'form': form})
 
         target_model = form.cleaned_data['target_model']
-        source_crs = form.cleaned_data['source_crs']
+        source_crs = form.cleaned_data.get('source_crs')
+
+        # Check if target_model is in registry
+        if target_model not in MODEL_REGISTRY:
+            form.add_error('target_model', f'Model "{target_model}" is not configured for import. Available: {list(MODEL_REGISTRY.keys())}')
+            return render(request, 'importer/upload.html', {'form': form})
 
         # Read the uploaded file with GeoPandas
         try:
             gdf = gpd_read_any(request.FILES['file'])
+           
         except Exception as e:
             form.add_error('file', f'Could not read file with GeoPandas: {e}')
             return render(request, 'importer/upload.html', {'form': form})
@@ -367,20 +419,20 @@ def upload_geodata(request):
             return render(request, 'importer/upload.html', {'form': form})
 
         # --- Persist temp snapshot robustly ---
-        # Prefer Parquet, but gracefully fall back to GeoJSON if pyarrow/fastparquet missing.
+        
         tmp_path = None
         try:
-            tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.parquet')
-            gdf.to_parquet(tmp.name)  # requires pyarrow or fastparquet
-            tmp_path = tmp.name
-            storage_kind = 'parquet'
-        except Exception:
-            # Fallback: write a small GeoJSON snapshot (works everywhere)
             tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.geojson')
             # Keep size reasonable for very large inputs: write all rows (ok for most admin ops).
-            gdf.to_file(tmp.name, driver='GeoJSON')
             tmp_path = tmp.name
+            tmp.close()
+            
+            gdf.to_file(tmp.name, driver='GeoJSON')
+            
             storage_kind = 'geojson'
+        except Exception as e:
+            # Fallback: write a small GeoJSON snapshot (works everywhere)
+            return form.add_error('file', f'Could not save temporary snapshot: {e}')
 
         # Stash data in session
         request.session['uploader_tmp_path'] = tmp_path
@@ -392,6 +444,9 @@ def upload_geodata(request):
 
         # Build mapping form
         mapping_form = _build_mapping_form(target_model, gdf.columns, gdf.crs)
+        print("Mapping form fields:", mapping_form.fields.keys())
+
+        
         return render(
             request,
             'importer/FieldMapping.html',
@@ -399,6 +454,7 @@ def upload_geodata(request):
                 'mapping_form': mapping_form,
                 'columns': gdf.columns,
                 'sample': gdf.head(5).to_html(),
+                'crs': gdf.crs,
                 'target_model': target_model,
             },
         )
@@ -412,8 +468,8 @@ def upload_geodata(request):
         src_epsg = request.session.get('uploader_source_crs')
 
         if not all([target_model, tmp_path, storage_kind]):
-            messages.error(request, "Session expired or incomplete. Please upload again.")
-            return redirect(reverse('upload_geodata'))
+            django_messages.error(request, "Session expired or incomplete. Please upload again.")
+            return redirect(reverse('importer:upload_geodata'))
 
         # Rehydrate GeoDataFrame
         try:
@@ -428,8 +484,8 @@ def upload_geodata(request):
                 # GeoJSON fallback
                 gdf = gpd.read_file(tmp_path)
         except Exception as e:
-            messages.error(request, f"Could not reload the uploaded data: {e}")
-            return redirect(reverse('upload_geodata'))
+            django_messages.error(request, f"Could not reload the uploaded data: {e}")
+            return redirect(reverse('importer:upload_geodata'))
 
         # Build & validate mapping form
         mapping_form = _build_mapping_form(target_model, gdf.columns, gdf.crs, data=request.POST)
@@ -441,6 +497,7 @@ def upload_geodata(request):
                     'mapping_form': mapping_form,
                     'columns': gdf.columns,
                     'sample': gdf.head(5).to_html(),
+                    'crs': gdf.crs,
                     'target_model': target_model,
                 },
             )
@@ -455,6 +512,8 @@ def upload_geodata(request):
             key = f'map__{fld}'
             if key in mapping_form.cleaned_data:
                 colmap[fld] = mapping_form.cleaned_data[key] or None
+                
+        print("Mapping form fields:", mapping_form.fields.keys())
 
         # Validate required mappings
         missing = [f for f in spec['required'] if not colmap.get(f)]
@@ -466,7 +525,7 @@ def upload_geodata(request):
                 {
                     'mapping_form': mapping_form,
                     'columns': gdf.columns,
-                    'sample': gdf.head(5).to_html(),
+                    'sample': gdf.head(5).to_html(classes='dataframe'),
                     'target_model': target_model,
                 },
             )
@@ -483,7 +542,7 @@ def upload_geodata(request):
                     {
                         'mapping_form': mapping_form,
                         'columns': gdf.columns,
-                        'sample': gdf.head(5).to_html(),
+                        'sample': gdf.head(5).to_html(classes='dataframe'),
                         'target_model': target_model,
                     },
                 )
@@ -492,7 +551,7 @@ def upload_geodata(request):
         try:
             report = _generic_import(gdf, target_model, colmap, dry_run=dry_run, target_srid=target_srid)
         except Exception as e:
-            messages.error(request, f"Import failed: {e}")
+            django_messages.error(request, f"Import failed: {e}")
             return render(
                 request,
                 'importer/FieldMapping.html',
@@ -500,20 +559,22 @@ def upload_geodata(request):
                     'mapping_form': mapping_form,
                     'columns': gdf.columns,
                     'sample': gdf.head(5).to_html(),
+                    'crs': gdf.crs,
                     'target_model': target_model,
                 },
             )
 
         if dry_run:
-            messages.info(request, "Dry-run completed. Nothing was saved.")
+            django_messages.info(request, "Dry-run completed. Nothing was saved.")
         else:
-            messages.success(request, "Import completed successfully.")
+            django_messages.success(request, "Import completed successfully.")
 
         # Clean temp file (best-effort)
         try:
             os.unlink(tmp_path)
         except Exception:
             pass
+
         for k in ['uploader_tmp_path', 'uploader_storage_kind', 'uploader_target_model', 'uploader_source_crs', 'uploader_columns']:
             request.session.pop(k, None)
         request.session.modified = True
@@ -521,5 +582,5 @@ def upload_geodata(request):
         return render(request, 'importer/upload_result.html', {'report': report, 'dry_run': dry_run})
 
     # Any other method/state → return Step 1
-    messages.warning(request, "Unexpected state. Starting over.")
-    return redirect(reverse('upload_geodata'))
+    django_messages.warning(request, "Unexpected state. Starting over.")
+    return redirect(reverse('importer:upload_geodata'))
