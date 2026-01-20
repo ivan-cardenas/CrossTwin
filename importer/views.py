@@ -72,6 +72,26 @@ MODEL_OVERRIDES = {
     },
 }
 
+def _get_expected_geom_type(field):
+    """Return human-readable geometry type expected by the field."""
+    from django.contrib.gis.db.models import (
+        PointField, MultiPointField,
+        LineStringField, MultiLineStringField,
+        PolygonField, MultiPolygonField,
+        GeometryField
+    )
+    
+    type_map = {
+        PointField: 'Point',
+        MultiPointField: 'MultiPoint or Point',
+        LineStringField: 'LineString',
+        MultiLineStringField: 'MultiLineString or LineString',
+        PolygonField: 'Polygon',
+        MultiPolygonField: 'MultiPolygon or Polygon',
+        GeometryField: 'Any geometry type',
+    }
+    
+    return type_map.get(type(field), 'Unknown')
 
 def _get_model_spec(label):
     """
@@ -107,6 +127,17 @@ def _get_model_spec(label):
     # geometry
     geom_fields = [f.name for f in fields if isinstance(f, GeometryField)]
     has_geometry = len(geom_fields) > 0
+    
+    #Add geometry type information
+    geom_type_info = None
+    if geom_fields:
+        geom_field_obj = next((f for f in fields if f.name == geom_fields[0]), None)
+        if geom_field_obj:
+            geom_type_info = {
+                'field_name': geom_field_obj.name,
+                'field_class': geom_field_obj.__class__.__name__,  # e.g., 'MultiPolygonField', 'PointField'
+                'expected_type': _get_expected_geom_type(geom_field_obj),
+            }
 
     # uniques
     unique_together = list(getattr(opts, 'unique_together', [])) or []
@@ -123,6 +154,7 @@ def _get_model_spec(label):
         'unique_together': unique_together,  # list of tuples
         'unique_fields': unique_fields,      # list of field names
         'target_srid_default': None,
+        'geom_type_info': geom_type_info,
         'geometry_field': geom_fields[0] if geom_fields else None,
         'upsert_keys': None,  # will fill with override or infer
     }
@@ -148,44 +180,40 @@ def _get_model_spec(label):
 
 
 def _build_mapping_form(target_model, columns, gdf_crs, data=None):
-    """
-    Replaces the old hard-coded spec with introspected spec.
-    """
     from django import forms
 
     spec = _get_model_spec(target_model)
-
-    class _F(MappingForm):
-        pass
-
+    
+    # Build fields dict BEFORE class creation
+    fields = {}
     CHOICES = [('', '— none —')] + [(c, c) for c in columns]
 
-    # Add selectors for required + optional
-    # Tip: keep geometry field present even if not required (user might skip for non-geom import)
     for fld in (spec['required'] + [f for f in spec['optional'] if f not in spec['required']]):
-        setattr(_F, f'map__{fld}',
-                forms.ChoiceField(choices=CHOICES,
-                                  required=(fld in spec['required']),
-                                  label=fld))
+        fields[f'map__{fld}'] = forms.ChoiceField(
+            choices=CHOICES,
+            required=(fld in spec['required']),
+            label=fld
+        )
 
-    # Geometry target: let user pick target SRID
     if spec['has_geometry'] and spec['geometry_field']:
         default_srid = spec['target_srid_default'] or 4326
-        setattr(_F, 'target_srid', forms.IntegerField(
+        fields['target_srid'] = forms.IntegerField(
             required=True, initial=default_srid,
             help_text=f'Target SRID to store geometry (e.g., {default_srid}).'
-        ))
+        )
 
-    # Add source_crs field for specifying input CRS
-    setattr(_F, 'source_crs', forms.IntegerField(
+    fields['source_crs'] = forms.IntegerField(
         required=False,
         initial=gdf_crs.to_epsg() if gdf_crs else None,
         help_text='Source CRS EPSG code (auto-detected if available).'
-    ))
+    )
 
-    setattr(_F, 'dry_run', forms.BooleanField(required=False, initial=True, label="Check mapping only (dry-run)"))
+    fields['dry_run'] = forms.BooleanField(required=False, initial=True, label="Check mapping only (dry-run)")
 
-    return _F(data=data)
+    # Create class with fields already defined
+    _F = type('MappingForm', (MappingForm,), fields)
+
+    return _F(data=data), spec
 
 
 # ---------- Generic importer ----------
@@ -262,10 +290,6 @@ def _to_multipolygon(geos):
 def _generic_import(gdf, target_label, colmap, dry_run=True, target_srid=None):
     """
     One importer for all models in MODEL_REGISTRY.
-    - Casts values according to Django field types
-    - Resolves FKs
-    - Handles geometry (CRS + Polygon→MultiPolygon if target field is MultiPolygonField)
-    - Upserts based on upsert_keys (overrides or unique constraints)
     """
     from django.contrib.gis.geos import GEOSGeometry
 
@@ -283,16 +307,33 @@ def _generic_import(gdf, target_label, colmap, dry_run=True, target_srid=None):
     geom_field_name = spec['geometry_field'] if spec['has_geometry'] else None
     geom_field_obj = field_by_name.get(geom_field_name) if geom_field_name else None
 
-    # Geometry CRS adapt (GeoDataFrame already reprojected in the view if target_srid set)
+    print(f"=== IMPORT DEBUG ===")
+    print(f"Model: {target_label}")
+    print(f"Total rows: {total}")
+    print(f"Column mapping: {colmap}")
+    print(f"Upsert keys: {spec['upsert_keys']}")
+    print(f"Geometry field: {geom_field_name}")
+    print(f"Required fields: {spec['required']}")
+    
+    
+    print(f"GeoDataFrame geometry column: {gdf.geometry.name}")
+    print(f"First 3 geometries:")
+    for i, g in enumerate(gdf.geometry.head(3)):
+        print(f"  {i}: {type(g)} - empty={g.is_empty if g else 'None'} - {g}")
+
     for idx, row in gdf.iterrows():
         try:
+            print(f"\n--- Row {idx} ---")
+            
             # Build lookup for upsert
             lookup = {}
             for key in (spec['upsert_keys'] or []):
                 src = colmap.get(key)
+                print(f"  Upsert key '{key}' -> source column '{src}'")
                 if not src:
                     raise ValueError(f"Missing mapping for upsert key '{key}'")
                 raw = row[src]
+                print(f"  Raw value: {raw}")
                 f = field_by_name.get(key)
                 if isinstance(f, (ForeignKey, OneToOneField)):
                     val = _resolve_fk(model, key, raw)
@@ -301,6 +342,8 @@ def _generic_import(gdf, target_label, colmap, dry_run=True, target_srid=None):
                     lookup[key] = val
                 else:
                     lookup[key] = _cast_value(raw, f)
+            
+            print(f"  Lookup dict: {lookup}")
 
             # Defaults / updates
             defaults = {}
@@ -313,31 +356,35 @@ def _generic_import(gdf, target_label, colmap, dry_run=True, target_srid=None):
                 if isinstance(f, (ForeignKey, OneToOneField)):
                     defaults[fname] = _resolve_fk(model, fname, raw)
                 elif isinstance(f, GeometryField):
-                    # handled below
                     pass
                 else:
                     defaults[fname] = _cast_value(raw, f)
 
+            print(f"  Defaults dict: {defaults}")
+
             # Geometry handling (if any)
             if geom_field_name and hasattr(gdf, 'geometry'):
                 shp = row.geometry
+                print(f"  Geometry type: {shp.geom_type if shp else 'None'}, empty: {shp.is_empty if shp else 'N/A'}")
                 geos = GEOSGeometry(shp.wkt) if shp is not None and not shp.is_empty else None
 
-                # Coerce Polygon→MultiPolygon if target field is MultiPolygon
                 if geos and isinstance(geom_field_obj, MultiPolygonField):
                     geos = _to_multipolygon(geos)
+                    print(f"  Converted to MultiPolygon: {geos is not None}")
 
                 if geos is None:
-                    # If geometry required, skip; else allow null
                     if geom_field_name in spec['required']:
+                        print(f"  SKIPPING: geometry is None/empty but required")
                         skipped += 1
                         continue
                 else:
                     defaults[geom_field_name] = geos
 
             # get_or_create / update
+            print(f"  Calling get_or_create with lookup={lookup}")
             obj, was_created = model.objects.get_or_create(**lookup, defaults=defaults)
             if was_created:
+                print(f"  CREATED: {obj}")
                 created += 1
             else:
                 changed = False
@@ -347,12 +394,16 @@ def _generic_import(gdf, target_label, colmap, dry_run=True, target_srid=None):
                         changed = True
                 if changed:
                     obj.save()
+                    print(f"  UPDATED: {obj}")
                     updated += 1
                 else:
-                    # already identical
+                    print(f"  SKIPPED (no changes): {obj}")
                     skipped += 1
 
         except Exception as e:
+            print(f"  ERROR: {e}")
+            import traceback
+            traceback.print_exc()
             errors += 1
             if len(sample_errors) < 10:
                 sample_errors.append(f"Row {idx}: {e}")
@@ -361,7 +412,7 @@ def _generic_import(gdf, target_label, colmap, dry_run=True, target_srid=None):
         transaction.set_rollback(True)
 
     return {
-        'target': opts.label,  # e.g., common.City
+        'target': opts.label,
         'total_rows': total,
         'created': created,
         'updated': updated,
@@ -369,7 +420,6 @@ def _generic_import(gdf, target_label, colmap, dry_run=True, target_srid=None):
         'errors': errors,
         'sample_errors': sample_errors,
     }
-
 
 def upload_geodata(request):
     """
@@ -393,7 +443,10 @@ def upload_geodata(request):
         if not form.is_valid():
             # Validation errors -> re-render Step 1 with messages
             return render(request, 'importer/upload.html', {'form': form})
+        
+        
 
+        # Extract cleaned data
         target_model = form.cleaned_data['target_model']
         source_crs = form.cleaned_data.get('source_crs')
 
@@ -417,6 +470,14 @@ def upload_geodata(request):
         except Exception as e:
             form.add_error('source_crs', f'Could not apply CRS: {e}')
             return render(request, 'importer/upload.html', {'form': form})
+        
+        # Detect source geometry type
+        source_geom_type = None
+        if hasattr(gdf, 'geometry') and len(gdf) > 0:
+            first_geom = gdf.geometry.iloc[0]
+            if first_geom is not None:
+                source_geom_type = first_geom.geom_type
+        
 
         # --- Persist temp snapshot robustly ---
         
@@ -443,8 +504,9 @@ def upload_geodata(request):
         request.session.modified = True
 
         # Build mapping form
-        mapping_form = _build_mapping_form(target_model, gdf.columns, gdf.crs)
-        print("Mapping form fields:", mapping_form.fields.keys())
+        mapping_form, spec = _build_mapping_form(target_model, gdf.columns, gdf.crs)
+        
+        print("=== STEP 1 POST PROCESSED ===")
 
         
         return render(
@@ -456,21 +518,30 @@ def upload_geodata(request):
                 'sample': gdf.head(5).to_html(),
                 'crs': gdf.crs,
                 'target_model': target_model,
+                'geom_type_info': spec.get('geom_type_info'),
+                'source_geom_type': source_geom_type,
             },
         )
 
     # --- STEP 2 (POST, stage='map') ---
     if request.method == 'POST' and request.POST.get('stage') == 'map':
-        # Recover session state
+        print("=== STEP 2 POST RECEIVED ===")
+        print("Session keys:", list(request.session.keys()))
+        
         target_model = request.session.get('uploader_target_model')
         tmp_path = request.session.get('uploader_tmp_path')
         storage_kind = request.session.get('uploader_storage_kind')
         src_epsg = request.session.get('uploader_source_crs')
-
+        
+        print(f"target_model: {target_model}")
+        print(f"tmp_path: {tmp_path}")
+        print(f"storage_kind: {storage_kind}")
+        
         if not all([target_model, tmp_path, storage_kind]):
+            print("SESSION DATA MISSING - redirecting")
             django_messages.error(request, "Session expired or incomplete. Please upload again.")
             return redirect(reverse('importer:upload_geodata'))
-
+        
         # Rehydrate GeoDataFrame
         try:
             if storage_kind == 'parquet':
@@ -483,27 +554,31 @@ def upload_geodata(request):
             else:
                 # GeoJSON fallback
                 gdf = gpd.read_file(tmp_path)
+                print("Rehydrated GeoDataFrame from GeoJSON, CRS:", gdf.crs)
         except Exception as e:
             django_messages.error(request, f"Could not reload the uploaded data: {e}")
             return redirect(reverse('importer:upload_geodata'))
 
         # Build & validate mapping form
-        mapping_form = _build_mapping_form(target_model, gdf.columns, gdf.crs, data=request.POST)
+        mapping_form, spec = _build_mapping_form(target_model, gdf.columns, gdf.crs, data=request.POST)
+        print("Form built, validating...")
+        print("Form errors before is_valid:", mapping_form.errors)
+
         if not mapping_form.is_valid():
+            print("FORM INVALID!")
+            print("Form errors:", mapping_form.errors)
             return render(
                 request,
                 'importer/FieldMapping.html',
-                {
-                    'mapping_form': mapping_form,
-                    'columns': gdf.columns,
-                    'sample': gdf.head(5).to_html(),
-                    'crs': gdf.crs,
-                    'target_model': target_model,
-                },
+                # ...
             )
+
+        print("Form is valid!")
+        print("Cleaned data:", mapping_form.cleaned_data)
 
         dry_run = mapping_form.cleaned_data.get('dry_run')
         target_srid = mapping_form.cleaned_data.get('target_srid')
+        print(f"dry_run: {dry_run}, target_srid: {target_srid}")
 
         # Build column mapping dict from dynamic form fields
         spec = _get_model_spec(target_model)
@@ -512,11 +587,13 @@ def upload_geodata(request):
             key = f'map__{fld}'
             if key in mapping_form.cleaned_data:
                 colmap[fld] = mapping_form.cleaned_data[key] or None
-                
-        print("Mapping form fields:", mapping_form.fields.keys())
+
+        print("Column mapping:", colmap)
 
         # Validate required mappings
-        missing = [f for f in spec['required'] if not colmap.get(f)]
+        missing = [f for f in spec['required'] if not colmap.get(f) and f not in spec['geom_fields']]
+        print(f"Missing required fields: {missing}")
+
         if missing:
             mapping_form.add_error(None, f"Missing mappings for required fields: {', '.join(missing)}")
             return render(
@@ -529,12 +606,19 @@ def upload_geodata(request):
                     'target_model': target_model,
                 },
             )
+            
+        print("Passed missing fields check")
+
 
         # Reproject if geometry target
+        print(f"Checking geometry reproject: has_geometry={spec.get('has_geometry')}, geometry_field={spec.get('geometry_field')}, target_srid={target_srid}, gdf.crs={gdf.crs}")
+
         if spec.get('has_geometry') and spec.get('geometry_field') and target_srid and gdf.crs:
             try:
-                gdf = gdf.to_crs(epsg=int(target_srid))
+                gdf = gdf.to_crs(int(target_srid))
+                print("CRS transform successful")
             except Exception as e:
+                print(f"CRS transform FAILED: {e}")
                 mapping_form.add_error('target_srid', f'CRS transform failed: {e}')
                 return render(
                     request,
@@ -546,10 +630,12 @@ def upload_geodata(request):
                         'target_model': target_model,
                     },
                 )
-
+        print("About to start import...")
         # Import (or dry-run)
         try:
+            print("Starting import...")
             report = _generic_import(gdf, target_model, colmap, dry_run=dry_run, target_srid=target_srid)
+            print ("Import report:", report)
         except Exception as e:
             django_messages.error(request, f"Import failed: {e}")
             return render(

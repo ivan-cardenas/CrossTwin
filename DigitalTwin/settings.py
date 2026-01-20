@@ -124,7 +124,7 @@ USE_I18N = True
 
 USE_TZ = True
 
-COORDINATE_SYSTEM = 28892
+COORDINATE_SYSTEM = 28992  # Amersfoort / RD New
 
 
 # Static files (CSS, JavaScript, Images)

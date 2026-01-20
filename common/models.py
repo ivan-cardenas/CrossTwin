@@ -42,10 +42,10 @@ class City(models.Model):
     region = models.ForeignKey(Region, on_delete=models.CASCADE)
     cityName = models.CharField(max_length=100)
     currentPopulation = models.IntegerField() 
-    area_km2 = models.FloatField()
-    populationDensity = models.FloatField() # people/km2
-    popYR2020 = models.IntegerField()
-    popGrowthRate = models.FloatField() # %
+    area_km2 = models.FloatField(null=True)
+    populationDensity = models.FloatField(null=True) # people/km2
+    popYR2020 = models.IntegerField(null=True)
+    popGrowthRate = models.FloatField(null=True) # %
     geom = models.MultiPolygonField(srid=CoordinateSystem)
     last_updated = models.DateTimeField(default=timezone.now)
     
