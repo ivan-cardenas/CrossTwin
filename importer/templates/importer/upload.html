@@ -1,6 +1,8 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block content %}
+
 <div class="space-y-8">
     <!-- Header Section -->
     <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
@@ -50,21 +52,42 @@
                 {% endif %}
             </div>
 
-            <!-- Target Model Field -->
-            <div class="space-y-2">
-                <label class="text-sm font-medium text-slate-100">{{ form.target_model.label }}</label>
-                {{ form.target_model }}
-                {% if form.target_model.help_text %}
-                <span class="helptext">{{ form.target_model.help_text }}</span>
-                {% endif %}
-                {% if form.target_model.errors %}
-                <ul class="errorlist">
-                    {% for error in form.target_model.errors %}
-                    <li>{{ error }}</li>
-                    {% endfor %}
-                </ul>
-                {% endif %}
+            <!-- Target Model Selection - Cascading Dropdowns -->
+            <!-- App Selection -->
+            <div class="space-y-1.5">
+                <label class="text-sm font-medium text-slate-100">Sector</label>
+                <select id="app-select" class="w-full px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-slate-100 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500">
+                    <option value="">— Select Sector —</option>
+                </select>
             </div>
+
+            <!-- Target Model Selection -->
+            <div class="space-y-1.5">
+                <label class="text-sm font-medium text-slate-100">Target Model</label>
+                <select name="target_model" id="model-select" class="w-full px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-slate-100 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" disabled>
+                    <option value="">— Select Sector First —</option>
+                </select>
+            </div>
+
+            <!-- Load external JS -->
+            <script src="{% static 'js/model_selector.js' %}"></script>
+
+            <!-- Initialize with data from Django -->
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    const modelsByApp = {
+                        {% for app_name, models in grouped_models %}
+                        "{{ app_name }}": [
+                            {% for value, display_name in models %}
+                            { value: "{{ value }}", label: "{{ display_name }}" }{% if not forloop.last %},{% endif %}
+                            {% endfor %}
+                        ]{% if not forloop.last %},{% endif %}
+                        {% endfor %}
+                    };
+                    
+                    initModelSelector(modelsByApp);
+                });
+            </script>
         </div>
 
         <!-- Non-field errors -->

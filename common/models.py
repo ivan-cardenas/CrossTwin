@@ -9,25 +9,34 @@ CoordinateSystem = 28892
 class Region(models.Model):
     id = models.AutoField(primary_key=True)
     regionName = models.CharField(max_length=100)
-    currentPopulation = models.IntegerField()
-    populationDensity = models.FloatField()
-    area_km2 = models.FloatField()
+    currentPopulation = models.IntegerField(null=True)
+    populationDensity = models.FloatField(null=True) # people/km2
+    populationDate = models.DateField(null=True)
+    area_km2 = models.FloatField(null=True)
     geom = models.MultiPolygonField(srid=CoordinateSystem)
     last_updated = models.DateTimeField(default=timezone.now)
     
     
+    
     def save(self, *args, **kwargs):
-        total = City.objects.filter(city=self).aggregate(
-            total=Sum('currentPopulation')
-        )['total']
-        self.currentPopulation = total or 0
-        
+        if self.currentPopulation is None:
+            try:
+                total = City.objects.filter(Region=self.id).aggregate(
+                    total=Sum('currentPopulation')
+                )['total']
+                self.currentPopulation = total 
+            except:
+                self.currentPopulation = 0
+                
+
+        self.area_km2 = self.geom.area / 1e6  # Convert m2 to km2
+
         if self.area_km2 and self.area_km2 > 0:
             self.populationDensity = self.currentPopulation / float(self.area_km2)
         else:
             self.populationDensity = None
         self.last_updated = timezone.now()
-        super.save(*args, **kwargs)
+        super().save(*args, **kwargs)
         
 
     def __str__(self):
@@ -44,7 +53,7 @@ class City(models.Model):
     currentPopulation = models.IntegerField() 
     area_km2 = models.FloatField(null=True)
     populationDensity = models.FloatField(null=True) # people/km2
-    popYR2020 = models.IntegerField(null=True)
+    populationDate = models.DateField(null=True)
     popGrowthRate = models.FloatField(null=True) # %
     geom = models.MultiPolygonField(srid=CoordinateSystem)
     last_updated = models.DateTimeField(default=timezone.now)
@@ -75,9 +84,9 @@ class Neighborhood(models.Model):
     city = models.ForeignKey(City, on_delete=models.DO_NOTHING)
     neighborhoodName = models.CharField(max_length=100)
     currentPopulation = models.IntegerField() 
+    populationDate = models.DateField(null=True)
     area_km2 = models.FloatField()
     populationDensity = models.FloatField() # people/km2
-    popYR2020 = models.IntegerField()
     geom = models.MultiPolygonField(srid=CoordinateSystem)
     last_updated = models.DateTimeField(default=timezone.now)
     

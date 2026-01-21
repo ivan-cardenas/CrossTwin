@@ -4,26 +4,47 @@ from django.contrib.gis.geos import GEOSGeometry
 from django.contrib.gis.gdal import DataSource, SpatialReference
 
 
-# FIXED: Correct model references (app_label.ModelName format)
-TARGET_MODELS = (
-    ('common.City', 'City'),
-    ('common.Neighborhood', 'Neighborhood'),
-    ('common.Region', 'Region'),
-    ('watersupply.ConsumptionCapita', 'ConsumptionCapita'),
-    ('watersupply.TotalWaterDemand', 'TotalWaterDemand'),
-    ('watersupply.SupplySecurity', 'SupplySecurity'),
-    ('watersupply.UsersLocation', 'UsersLocation'),
-    ('watersupply.CoverageWaterSupply', 'CoverageWaterSupply'),
-    ('watersupply.MeteredResidential', 'MeteredResidential'),
-    ('watersupply.ExtractionWater', 'ExtractionWater'),
-    ('watersupply.ImportedWater', 'ImportedWater'),
-    ('watersupply.AvailableFreshWater', 'AvailableFreshWater'),
-    ('watersupply.WaterTreatment', 'WaterTreatment'),
-    ('watersupply.PipeNetwork', 'PipeNetwork'),
-    ('watersupply.OPEX', 'OPEX'),
-    ('watersupply.AreaAffectedDrought', 'AreaAffectedDrought'),
-)
+def build_model_registry():
+    """Build MODEL_REGISTRY dynamically from specified apps."""
+    allowed_apps = ['common', 'watersupply']
+    registry = {}
+    
+    for app_label in allowed_apps:
+        try:
+            app_models = apps.get_app_config(app_label).get_models()
+            for model in app_models:
+                label = f"{app_label}.{model.__name__}"
+                registry[label] = model
+        except LookupError:
+            continue
+    
+    
+    return registry
 
+
+TARGET_MODELS = build_model_registry()
+
+def get_target_model_choices():
+    """Get choices for target model field."""
+    groupped = {}
+    
+    for label, model in TARGET_MODELS.items():
+        app_label = label.split('.')[0]
+        display_name = model.__name__
+        
+        if app_label not in groupped:
+            groupped[app_label] = []
+        groupped[app_label].append((label, display_name))
+        
+        for app_label in groupped:
+            groupped[app_label].sort(key=lambda x: x[1])
+            
+        choices=[]
+        for app_label in sorted(groupped.keys()):
+            choices.append((app_label.capitalize(), groupped[app_label]))
+            
+    return choices
+            
 
 class GeoUploadForm(forms.Form):
     """Form for uploading geodata files (GeoJSON or Shapefile)."""
@@ -38,7 +59,7 @@ class GeoUploadForm(forms.Form):
     )
     
     target_model = forms.ChoiceField(
-        choices=TARGET_MODELS,
+        choices=[],
         label='Target Model',
         help_text="Select the database model to import data into",
         widget=forms.Select(attrs={
@@ -90,8 +111,12 @@ class GeoUploadForm(forms.Form):
                 )
         
         return crs
-
-
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Dynamically set choices for target_model field
+        self.fields['target_model'].choices = get_target_model_choices()
+        
 class MappingForm(forms.Form):
     """
     Dynamic form for field mapping.

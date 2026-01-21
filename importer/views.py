@@ -1,17 +1,19 @@
 from pyexpat.errors import messages
 import tempfile, os
+import uuid
 
 from django.shortcuts import render, redirect
-from django.db import transaction
+from django.db import transaction, connection
 from django.db.models import fields as django_fields  
 from django.urls import reverse
 from django.utils import timezone
 from django.conf import settings
+from django.apps import apps
 
 import pandas as pd
 import geopandas as gpd
 
-from .forms import GeoUploadForm, MappingForm
+from .forms import GeoUploadForm, MappingForm, TARGET_MODELS, get_target_model_choices
 from .utils import gpd_read_any
 
 # FIXED: Import models with aliases to avoid collision
@@ -24,17 +26,8 @@ from django.contrib.gis.db.models import GeometryField, MultiPolygonField
 
 COORDINATE_SYSTEM = settings.COORDINATE_SYSTEM
 
-# Helper: define which model fields are mappable and which are required
-MODEL_REGISTRY = {
-    'common.City': common_models.City,
-    'common.Region': common_models.Region,
-    'common.Neighborhood': common_models.Neighborhood,
-    'watersupply.ConsumptionCapita': watersupply_models.ConsumptionCapita,
-    'watersupply.TotalWaterDemand': watersupply_models.TotalWaterDemand,
-    'watersupply.SupplySecurity': watersupply_models.SupplySecurity,
-    'watersupply.PipeNetwork': watersupply_models.PipeNetwork,
-    # Add more models as needed
-}
+# Build MODEL_REGISTRY from TARGET_MODELS in forms.py
+MODEL_REGISTRY = TARGET_MODELS
 
 # Optional, tiny per-model overrides (only what can't be inferred)
 MODEL_OVERRIDES = {
@@ -120,6 +113,8 @@ def _get_model_spec(label):
     for f in fields:
         if isinstance(f, AutoField) or f.primary_key:
             continue  # never map PK directly
+        if f.name == 'area_km2' or f.name == 'populationDensity' or f.name == 'last_updated':
+            continue  # skip computed fields
         # null=False and no default => likely required for create
         is_required = (not f.null) and (f.default is django_fields.NOT_PROVIDED)
         (required if is_required else optional).append(f.name)
@@ -315,13 +310,9 @@ def _generic_import(gdf, target_label, colmap, dry_run=True, target_srid=None):
     print(f"Geometry field: {geom_field_name}")
     print(f"Required fields: {spec['required']}")
     
-    
-    print(f"GeoDataFrame geometry column: {gdf.geometry.name}")
-    print(f"First 3 geometries:")
-    for i, g in enumerate(gdf.geometry.head(3)):
-        print(f"  {i}: {type(g)} - empty={g.is_empty if g else 'None'} - {g}")
 
     for idx, row in gdf.iterrows():
+        sid=transaction.savepoint()
         try:
             print(f"\n--- Row {idx} ---")
             
@@ -360,7 +351,6 @@ def _generic_import(gdf, target_label, colmap, dry_run=True, target_srid=None):
                 else:
                     defaults[fname] = _cast_value(raw, f)
 
-            print(f"  Defaults dict: {defaults}")
 
             # Geometry handling (if any)
             if geom_field_name and hasattr(gdf, 'geometry'):
@@ -399,8 +389,10 @@ def _generic_import(gdf, target_label, colmap, dry_run=True, target_srid=None):
                 else:
                     print(f"  SKIPPED (no changes): {obj}")
                     skipped += 1
+            transaction.savepoint_commit(sid)
 
         except Exception as e:
+            transaction.savepoint_rollback(sid)
             print(f"  ERROR: {e}")
             import traceback
             traceback.print_exc()
@@ -435,7 +427,11 @@ def upload_geodata(request):
     # --- STEP 1 (GET) ---
     if request.method == 'GET':
         form = GeoUploadForm()
-        return render(request, 'importer/upload.html', {'form': form})
+        grouped_models = get_target_model_choices()
+        return render(request, 'importer/upload.html', {
+            'form': form,
+            'grouped_models': grouped_models,
+            })
 
     # --- STEP 1 (POST, no stage) ---
     if request.method == 'POST' and not request.POST.get('stage'):
@@ -443,8 +439,6 @@ def upload_geodata(request):
         if not form.is_valid():
             # Validation errors -> re-render Step 1 with messages
             return render(request, 'importer/upload.html', {'form': form})
-        
-        
 
         # Extract cleaned data
         target_model = form.cleaned_data['target_model']
@@ -483,18 +477,25 @@ def upload_geodata(request):
         
         tmp_path = None
         try:
-            tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.geojson')
-            # Keep size reasonable for very large inputs: write all rows (ok for most admin ops).
-            tmp_path = tmp.name
-            tmp.close()
+            # Create a unique filename in Django's temp/media directory
+            upload_dir = os.path.join(settings.BASE_DIR, 'temp_uploads')
+            os.makedirs(upload_dir, exist_ok=True)
             
-            gdf.to_file(tmp.name, driver='GeoJSON')
+            tmp_path = os.path.join(upload_dir, f'upload_{uuid.uuid4().hex}.geojson')
             
+            # Write using GeoPandas
+            gdf.to_file(tmp_path, driver='GeoJSON')
             storage_kind = 'geojson'
+            
         except Exception as e:
-            # Fallback: write a small GeoJSON snapshot (works everywhere)
-            return form.add_error('file', f'Could not save temporary snapshot: {e}')
-
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.unlink(tmp_path)
+                except:
+                    pass
+            form.add_error('file', f'Could not save temporary snapshot: {e}')
+            return render(request, 'importer/upload.html', {'form': form})
+        
         # Stash data in session
         request.session['uploader_tmp_path'] = tmp_path
         request.session['uploader_storage_kind'] = storage_kind
@@ -528,6 +529,15 @@ def upload_geodata(request):
         print("=== STEP 2 POST RECEIVED ===")
         print("Session keys:", list(request.session.keys()))
         
+        try:
+            connection.ensure_connection()
+            if connection.is_usable():
+                pass
+            else:
+                connection.close()
+        except:
+            connection.close()
+                
         target_model = request.session.get('uploader_target_model')
         tmp_path = request.session.get('uploader_tmp_path')
         storage_kind = request.session.get('uploader_storage_kind')
