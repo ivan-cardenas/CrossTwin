@@ -1,13 +1,22 @@
-# views.py
+from django.shortcuts import render, redirect
+
 import json
 from django.http import JsonResponse, Http404
 from django.core.serializers import serialize
 from django.contrib.gis.db import models as gis_models
 
+from django.conf import settings
+
 # Import your registry or define which models are available
 from importer.utils import build_model_registry  # or wherever yours is
 
 MODEL_REGISTRY = build_model_registry()
+
+def map_view(request):
+    """Display the map page."""
+    return render(request, 'map.html', {
+        'mapbox_access_token': getattr(settings, 'MAPBOX_ACCESS_TOKEN', ''),
+    })
 
 def model_geojson(request, app_label, model_name):
     """
