@@ -356,7 +356,20 @@ def _generic_import(gdf, target_label, colmap, dry_run=True, target_srid=None):
             if geom_field_name and hasattr(gdf, 'geometry'):
                 shp = row.geometry
                 print(f"  Geometry type: {shp.geom_type if shp else 'None'}, empty: {shp.is_empty if shp else 'N/A'}")
-                geos = GEOSGeometry(shp.wkt) if shp is not None and not shp.is_empty else None
+                
+                if shp is not None and not shp.is_empty:
+                    # Get source SRID from GeoDataFrame
+                    source_srid = gdf.crs.to_epsg() if gdf.crs else 4326
+                    
+                    # Create geometry WITH SRID
+                    geos = GEOSGeometry(shp.wkt, srid=source_srid)
+                    
+                    # Transform to target SRID if different
+                    if target_srid and source_srid != target_srid:
+                        geos.transform(target_srid)
+                else:
+                    geos = None
+                
 
                 if geos and isinstance(geom_field_obj, MultiPolygonField):
                     geos = _to_multipolygon(geos)
@@ -372,7 +385,7 @@ def _generic_import(gdf, target_label, colmap, dry_run=True, target_srid=None):
 
             # get_or_create / update
             print(f"  Calling get_or_create with lookup={lookup}")
-            obj, was_created = model.objects.get_or_create(**lookup, defaults=defaults)
+            obj, was_created = model.objects.update_or_create(**lookup, defaults=defaults)
             if was_created:
                 print(f"  CREATED: {obj}")
                 created += 1

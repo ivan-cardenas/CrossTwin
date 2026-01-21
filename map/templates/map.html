@@ -1,0 +1,496 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Map View{% endblock %}
+
+{% block extra_css %}
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet">
+<style>
+    #map-container {
+        position: relative;
+        width: 100%;
+        height: calc(100vh - 120px);
+        min-height: 500px;
+    }
+    
+    #map {
+        width: 100%;
+        height: 100%;
+        border-radius: 8px;
+    }
+    
+    .map-controls {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        z-index: 1;
+        background: rgba(255, 255, 255, 0.95);
+        padding: 15px;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        max-width: 280px;
+    }
+    
+    .map-controls h5 {
+        margin-bottom: 10px;
+        font-weight: 600;
+    }
+    
+    .layer-toggle {
+        display: flex;
+        align-items: center;
+        margin-bottom: 8px;
+        padding: 5px 0;
+    }
+    
+    .layer-toggle input[type="checkbox"] {
+        margin-right: 10px;
+        width: 18px;
+        height: 18px;
+    }
+    
+    .layer-toggle label {
+        cursor: pointer;
+        font-size: 14px;
+    }
+    
+    .layer-color {
+        width: 16px;
+        height: 16px;
+        border-radius: 3px;
+        margin-right: 8px;
+        display: inline-block;
+    }
+    
+    .feature-popup {
+        max-width: 300px;
+    }
+    
+    .feature-popup h6 {
+        margin: 0 0 10px 0;
+        font-weight: 600;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 5px;
+    }
+    
+    .feature-popup table {
+        width: 100%;
+        font-size: 12px;
+    }
+    
+    .feature-popup td {
+        padding: 3px 5px;
+    }
+    
+    .feature-popup td:first-child {
+        font-weight: 500;
+        color: #666;
+    }
+    
+    .map-loader {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 2;
+        background: rgba(255, 255, 255, 0.9);
+        padding: 20px 30px;
+        border-radius: 8px;
+        display: none;
+    }
+    
+    .basemap-selector {
+        margin-top: 15px;
+        padding-top: 15px;
+        border-top: 1px solid #eee;
+    }
+    
+    .basemap-selector select {
+        width: 100%;
+        padding: 8px;
+        border-radius: 4px;
+        border: 1px solid #ddd;
+    }
+    
+    .legend {
+        margin-top: 15px;
+        padding-top: 15px;
+        border-top: 1px solid #eee;
+    }
+    
+    .legend-item {
+        display: flex;
+        align-items: center;
+        margin-bottom: 5px;
+        font-size: 12px;
+    }
+    
+    .legend-symbol {
+        width: 20px;
+        height: 3px;
+        margin-right: 8px;
+    }
+    
+    .legend-symbol.polygon {
+        height: 14px;
+        width: 14px;
+        border: 2px solid;
+        opacity: 0.7;
+    }
+    
+    .legend-symbol.point {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="row mb-3">
+        <div class="col">
+            <h2>
+                <i class="bi bi-map"></i> Map View
+            </h2>
+            <p class="text-muted">Visualize geographic features from the database</p>
+        </div>
+    </div>
+    
+    <div id="map-container">
+        <div class="map-controls">
+            <h5><i class="bi bi-layers"></i> Layers</h5>
+            
+            <div id="layer-toggles">
+                <!-- Layer toggles will be populated dynamically -->
+                <p class="text-muted small">Loading layers...</p>
+            </div>
+            
+            <div class="basemap-selector">
+                <label for="basemap-select" class="form-label small fw-bold">Basemap</label>
+                <select id="basemap-select" class="form-select form-select-sm">
+                    <option value="mapbox://styles/mapbox/streets-v12">Streets</option>
+                    <option value="mapbox://styles/mapbox/satellite-streets-v12">Satellite</option>
+                    <option value="mapbox://styles/mapbox/outdoors-v12">Outdoors</option>
+                    <option value="mapbox://styles/mapbox/light-v11">Light</option>
+                    <option value="mapbox://styles/mapbox/dark-v11">Dark</option>
+                </select>
+            </div>
+            
+            <div class="legend" id="legend">
+                <!-- Legend will be populated dynamically -->
+            </div>
+        </div>
+        
+        <div class="map-loader" id="map-loader">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <span class="ms-2">Loading features...</span>
+        </div>
+        
+        <div id="map"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
+<script>
+    // Configuration - replace with your Mapbox access token
+    // In production, pass this from Django settings via template context
+    mapboxgl.accessToken = '{{ mapbox_access_token|default:"YOUR_MAPBOX_ACCESS_TOKEN" }}';
+    
+    // Layer configuration - customize colors and styles per layer
+    const layerConfig = {
+        {% for layer in layers %}
+        '{{ layer.name }}': {
+            url: '{{ layer.url }}',
+            color: '{{ layer.color|default:"#3388ff" }}',
+            fillOpacity: {{ layer.fill_opacity|default:0.3 }},
+            lineWidth: {{ layer.line_width|default:2 }},
+            visible: {{ layer.visible|yesno:"true,false" }},
+            type: '{{ layer.geometry_type|default:"polygon" }}'  // point, line, polygon
+        },
+        {% empty %}
+        // Default example layers - replace with your actual GeoJSON endpoints
+        'example_layer': {
+            url: '/api/features/geojson/',
+            color: '#3388ff',
+            fillOpacity: 0.3,
+            lineWidth: 2,
+            visible: true,
+            type: 'polygon'
+        }
+        {% endfor %}
+    };
+    
+    // Initialize map
+    const map = new mapboxgl.Map({
+        container: 'map',
+        style: 'mapbox://styles/mapbox/streets-v12',
+        center: [5.5, 52.2],  // Default center (Netherlands) - adjust as needed
+        zoom: 7
+    });
+    
+    // Add navigation controls
+    map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+    map.addControl(new mapboxgl.ScaleControl(), 'bottom-right');
+    map.addControl(new mapboxgl.FullscreenControl(), 'top-right');
+    
+    // Track loaded layers
+    const loadedLayers = {};
+    
+    // Show/hide loader
+    function showLoader(show) {
+        document.getElementById('map-loader').style.display = show ? 'block' : 'none';
+    }
+    
+    // Create popup for feature info
+    function createPopupContent(properties, layerName) {
+        let html = `<div class="feature-popup">
+            <h6>${layerName}</h6>
+            <table>`;
+        
+        for (const [key, value] of Object.entries(properties)) {
+            if (value !== null && value !== undefined && key !== 'id') {
+                html += `<tr>
+                    <td>${key}</td>
+                    <td>${value}</td>
+                </tr>`;
+            }
+        }
+        
+        html += '</table></div>';
+        return html;
+    }
+    
+    // Add a GeoJSON layer to the map
+    async function addLayer(name, config) {
+        try {
+            showLoader(true);
+            
+            const response = await fetch(config.url);
+            if (!response.ok) throw new Error(`Failed to load ${name}`);
+            
+            const geojson = await response.json();
+            
+            // Add source
+            map.addSource(name, {
+                type: 'geojson',
+                data: geojson
+            });
+            
+            // Add layer based on geometry type
+            if (config.type === 'point') {
+                map.addLayer({
+                    id: `${name}-points`,
+                    type: 'circle',
+                    source: name,
+                    paint: {
+                        'circle-radius': 6,
+                        'circle-color': config.color,
+                        'circle-stroke-width': 2,
+                        'circle-stroke-color': '#ffffff'
+                    }
+                });
+                loadedLayers[name] = [`${name}-points`];
+                
+            } else if (config.type === 'line') {
+                map.addLayer({
+                    id: `${name}-lines`,
+                    type: 'line',
+                    source: name,
+                    paint: {
+                        'line-color': config.color,
+                        'line-width': config.lineWidth
+                    }
+                });
+                loadedLayers[name] = [`${name}-lines`];
+                
+            } else {
+                // Polygon - add fill and outline
+                map.addLayer({
+                    id: `${name}-fill`,
+                    type: 'fill',
+                    source: name,
+                    paint: {
+                        'fill-color': config.color,
+                        'fill-opacity': config.fillOpacity
+                    }
+                });
+                
+                map.addLayer({
+                    id: `${name}-outline`,
+                    type: 'line',
+                    source: name,
+                    paint: {
+                        'line-color': config.color,
+                        'line-width': config.lineWidth
+                    }
+                });
+                loadedLayers[name] = [`${name}-fill`, `${name}-outline`];
+            }
+            
+            // Add click handler for popups
+            const clickLayerId = config.type === 'point' ? `${name}-points` : 
+                                 config.type === 'line' ? `${name}-lines` : `${name}-fill`;
+            
+            map.on('click', clickLayerId, (e) => {
+                const properties = e.features[0].properties;
+                new mapboxgl.Popup()
+                    .setLngLat(e.lngLat)
+                    .setHTML(createPopupContent(properties, name))
+                    .addTo(map);
+            });
+            
+            // Change cursor on hover
+            map.on('mouseenter', clickLayerId, () => {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+            
+            map.on('mouseleave', clickLayerId, () => {
+                map.getCanvas().style.cursor = '';
+            });
+            
+            // Fit bounds to layer if it has features
+            if (geojson.features && geojson.features.length > 0) {
+                const bounds = new mapboxgl.LngLatBounds();
+                geojson.features.forEach(feature => {
+                    if (feature.geometry) {
+                        const coords = feature.geometry.coordinates;
+                        addCoordinatesToBounds(coords, bounds, feature.geometry.type);
+                    }
+                });
+                
+                if (!bounds.isEmpty()) {
+                    map.fitBounds(bounds, { padding: 50 });
+                }
+            }
+            
+            console.log(`Layer "${name}" loaded successfully`);
+            
+        } catch (error) {
+            console.error(`Error loading layer "${name}":`, error);
+        } finally {
+            showLoader(false);
+        }
+    }
+    
+    // Helper to add coordinates to bounds
+    function addCoordinatesToBounds(coords, bounds, type) {
+        if (type === 'Point') {
+            bounds.extend(coords);
+        } else if (type === 'LineString') {
+            coords.forEach(coord => bounds.extend(coord));
+        } else if (type === 'Polygon') {
+            coords[0].forEach(coord => bounds.extend(coord));
+        } else if (type === 'MultiPolygon') {
+            coords.forEach(polygon => {
+                polygon[0].forEach(coord => bounds.extend(coord));
+            });
+        } else if (type === 'MultiLineString') {
+            coords.forEach(line => {
+                line.forEach(coord => bounds.extend(coord));
+            });
+        } else if (type === 'MultiPoint') {
+            coords.forEach(coord => bounds.extend(coord));
+        }
+    }
+    
+    // Toggle layer visibility
+    function toggleLayer(name, visible) {
+        if (loadedLayers[name]) {
+            loadedLayers[name].forEach(layerId => {
+                map.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none');
+            });
+        }
+    }
+    
+    // Create layer toggles in the control panel
+    function createLayerToggles() {
+        const container = document.getElementById('layer-toggles');
+        container.innerHTML = '';
+        
+        for (const [name, config] of Object.entries(layerConfig)) {
+            const div = document.createElement('div');
+            div.className = 'layer-toggle';
+            
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.id = `toggle-${name}`;
+            checkbox.checked = config.visible !== false;
+            checkbox.addEventListener('change', (e) => toggleLayer(name, e.target.checked));
+            
+            const colorBox = document.createElement('span');
+            colorBox.className = 'layer-color';
+            colorBox.style.backgroundColor = config.color;
+            
+            const label = document.createElement('label');
+            label.htmlFor = `toggle-${name}`;
+            label.appendChild(colorBox);
+            label.appendChild(document.createTextNode(name.replace(/_/g, ' ')));
+            
+            div.appendChild(checkbox);
+            div.appendChild(label);
+            container.appendChild(div);
+        }
+    }
+    
+    // Create legend
+    function createLegend() {
+        const container = document.getElementById('legend');
+        container.innerHTML = '<h6 class="small fw-bold mb-2">Legend</h6>';
+        
+        for (const [name, config] of Object.entries(layerConfig)) {
+            const div = document.createElement('div');
+            div.className = 'legend-item';
+            
+            const symbol = document.createElement('span');
+            symbol.className = 'legend-symbol';
+            
+            if (config.type === 'point') {
+                symbol.classList.add('point');
+                symbol.style.backgroundColor = config.color;
+            } else if (config.type === 'line') {
+                symbol.style.backgroundColor = config.color;
+            } else {
+                symbol.classList.add('polygon');
+                symbol.style.backgroundColor = config.color;
+                symbol.style.borderColor = config.color;
+            }
+            
+            div.appendChild(symbol);
+            div.appendChild(document.createTextNode(name.replace(/_/g, ' ')));
+            container.appendChild(div);
+        }
+    }
+    
+    // Handle basemap change
+    document.getElementById('basemap-select').addEventListener('change', (e) => {
+        map.setStyle(e.target.value);
+        
+        // Re-add layers after style change
+        map.once('style.load', () => {
+            for (const [name, config] of Object.entries(layerConfig)) {
+                if (config.visible !== false) {
+                    addLayer(name, config);
+                }
+            }
+        });
+    });
+    
+    // Initialize when map loads
+    map.on('load', () => {
+        createLayerToggles();
+        createLegend();
+        
+        // Load all visible layers
+        for (const [name, config] of Object.entries(layerConfig)) {
+            if (config.visible !== false) {
+                addLayer(name, config);
+            }
+        }
+    });
+</script>
+{% endblock %}

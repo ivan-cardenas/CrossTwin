@@ -2,9 +2,13 @@ from django.utils import timezone
 from django.contrib.gis.db import models
 from django.db.models import Sum
 
+from django.conf import settings
 
 
-CoordinateSystem = 28892
+
+
+CoordinateSystem = settings.COORDINATE_SYSTEM
+
 # Create your models here.
 class Region(models.Model):
     id = models.AutoField(primary_key=True)
