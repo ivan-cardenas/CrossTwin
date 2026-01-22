@@ -12,11 +12,13 @@
     --text-dim: #6b9b8a;
     --text-white: #fcfcfc;
     --text-black: #0a0a0a;
+    --text-dark: #0a2922;
     
     /* Background Colors */
     --bg-body-start: #041f1a;
     --bg-body-mid: #0a2922;
     --bg-body-end: #031a15;
+    --bg-body-light: #70cec6;
     --bg-dropdown: #1e293b;
     
     /* Surface Colors */

@@ -16,7 +16,10 @@ MODEL_REGISTRY = build_model_registry()
 
 def map_view(request):
     """Display the map page."""
-    return render(request, 'mainMap.html')
+    context = {
+        'mapbox_access_token': settings.MAPBOX_ACCESS_TOKEN,
+    }
+    return render(request, 'mainMap.html', context)
 
 def model_geojson(request, app_label, model_name):
     """
@@ -80,3 +83,97 @@ def model_geojson(request, app_label, model_name):
         result = cursor.fetchone()[0]
     
     return JsonResponse(result, safe=False)
+
+
+def available_layers(request):
+    """
+    Returns a list of all available layers (models with geometry fields).
+    URL: /api/layers/
+    """
+    layers = []
+    
+    # Color palette for automatic assignment
+    colors = [
+        '#3388ff', '#e74c3c', '#2ecc71', '#9b59b6', '#f39c12',
+        '#1abc9c', '#e91e63', '#00bcd4', '#ff5722', '#607d8b',
+        '#8bc34a', '#673ab7', '#ffeb3b', '#795548', '#009688',
+    ]
+    
+    color_index = 0
+    
+    for key, model in MODEL_REGISTRY.items():
+        # Find geometry field
+        geom_field = None
+        geom_type = None
+        
+        for field in model._meta.get_fields():
+            if isinstance(field, gis_models.GeometryField):
+                geom_field = field.name
+                # Determine geometry type
+                field_type = type(field).__name__
+                if 'Point' in field_type:
+                    geom_type = 'point'
+                elif 'Line' in field_type:
+                    geom_type = 'line'
+                else:
+                    geom_type = 'polygon'
+                break
+        
+        if geom_field:
+            app_label, model_name = key.split('.')
+            
+            # Get record count
+            try:
+                count = model.objects.count()
+            except Exception:
+                count = 0
+            
+            layers.append({
+                'key': key,
+                'app_label': app_label,
+                'model_name': model_name,
+                'display_name': model._meta.verbose_name_plural.title(),
+                'url': f'/map/api/{app_label}/{model_name}/geojson/',
+                'geometry_type': geom_type,
+                'geometry_field': geom_field,
+                'color': colors[color_index % len(colors)],
+                'count': count,
+            })
+            
+            color_index += 1
+    
+    return JsonResponse({'layers': layers})
+
+
+def layer_bounds(request, app_label, model_name):
+    """
+    Returns the bounding box extent of a layer.
+    URL: /api/<app_label>/<model_name>/bounds/
+    """
+    key = f"{app_label}.{model_name}"
+    
+    if key not in MODEL_REGISTRY:
+        raise Http404(f"Model '{key}' not found in registry")
+    
+    model = MODEL_REGISTRY[key]
+    
+    # Find the geometry field
+    geom_field = None
+    for field in model._meta.get_fields():
+        if isinstance(field, gis_models.GeometryField):
+            geom_field = field.name
+            break
+    
+    if not geom_field:
+        raise Http404(f"Model '{key}' has no geometry field")
+    
+    # Get extent
+    from django.contrib.gis.db.models import Extent
+    extent = model.objects.aggregate(extent=Extent(geom_field))['extent']
+    
+    if extent:
+        return JsonResponse({
+            'bounds': [[extent[0], extent[1]], [extent[2], extent[3]]]
+        })
+    else:
+        return JsonResponse({'bounds': None})

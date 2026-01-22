@@ -1,0 +1,218 @@
+@import url(theme.css);
+
+#menu-container {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    width: 100%;
+    height: auto;
+    min-height: 500px;
+}
+
+#map {
+    
+    height: calc(80vh - 120px);
+    min-height: 500px;
+    border-radius: 8px;
+}
+
+.map-controls {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 1;
+    background: var(--bg-body-light);
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    max-width: 300px;
+    max-height: calc(100vh - 180px);
+    overflow-y: auto;
+    
+}
+
+.map-controls h5 {
+    margin-bottom: 10px;
+    font-weight: 600;
+}
+
+.layer-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px;
+    margin-bottom: 5px;
+    background: var(--bg-body-mid);
+    border-radius: 6px;
+    transition: background 0.2s;
+}
+
+.layer-item:hover {
+    background: #e9ecef;
+}
+
+.layer-info {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    cursor: pointer;
+}
+
+.layer-item input[type="checkbox"] {
+    margin-right: 10px;
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+.layer-color {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    margin-right: 8px;
+    flex-shrink: 0;
+}
+
+.layer-name {
+    font-size: 13px;
+    flex: 1;
+}
+
+.layer-count {
+    font-size: 11px;
+    color: #6c757d;
+    margin-left: 5px;
+}
+
+.layer-actions {
+    display: flex;
+    gap: 5px;
+}
+
+.layer-actions button {
+    padding: 2px 6px;
+    font-size: 11px;
+    border: none;
+    background: #dee2e6;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.layer-actions button:hover {
+    background: #ced4da;
+}
+
+.feature-popup {
+    max-width: 300px;
+    color: var(--text-black);
+}
+
+.feature-popup h6 {
+    margin: 0 0 10px 0;
+    font-weight: 600;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 5px;
+}
+
+.feature-popup table {
+    width: 100%;
+    font-size: 12px;
+}
+
+.feature-popup td {
+    padding: 3px 5px;
+    word-break: break-word;
+}
+
+.feature-popup td:first-child {
+    font-weight: 500;
+    color: #666;
+    width: 40%;
+}
+
+.map-loader {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+    color: var(--text-dark);
+    background: rgba(255, 255, 255, 0.9);
+    padding: 20px 30px;
+    border-radius: 8px;
+    display: none;
+}
+
+.basemap-selector {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #eee;
+}
+
+.basemap-selector label {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 5px;
+    display: block;
+}
+
+.basemap-selector select {
+    width: 100%;
+    padding: 6px 10px;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    font-size: 13px;
+}
+
+.app-group {
+    margin-bottom: 15px;
+}
+
+.app-group-header {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #6c757d;
+    margin-bottom: 8px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid #eee;
+}
+
+.no-layers {
+    color: #6c757d;
+    font-size: 13px;
+    text-align: center;
+    padding: 20px;
+}
+
+.loading-layers {
+    text-align: center;
+    padding: 20px;
+}
+
+.loading-layers .spinner-border {
+    width: 1.5rem;
+    height: 1.5rem;
+}
+
+.controls-footer {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #eee;
+    display: flex;
+    gap: 10px;
+}
+
+.controls-footer button {
+    flex: 1;
+    padding: 6px 10px;
+    font-size: 12px;
+    border: 1px solid #ddd;
+    background: var(--bg-body-mid);
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.controls-footer button:hover {
+    background: #f8f9fa;
+}

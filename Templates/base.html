@@ -8,7 +8,14 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{% static '/css/theme.css' %}">
+
+    {% block extra_css %}{% endblock extra_css %}
+
+    {% block extra_js %}{% endblock extra_js %}
+
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+
     <title>Digital Twin Cross Sector Planning</title>
 </head>
 <body class="min-h-screen overflow-x-hidden">
