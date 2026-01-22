@@ -16,9 +16,6 @@ import geopandas as gpd
 from .forms import GeoUploadForm, MappingForm, TARGET_MODELS, get_target_model_choices
 from .utils import gpd_read_any
 
-# FIXED: Import models with aliases to avoid collision
-from common import models as common_models
-from watersupply import models as watersupply_models
 
 from django.db.models import Field, ForeignKey, OneToOneField, AutoField
 from django.contrib.gis.db.models import GeometryField, MultiPolygonField

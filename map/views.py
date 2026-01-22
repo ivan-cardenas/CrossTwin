@@ -4,6 +4,7 @@ import json
 from django.http import JsonResponse, Http404
 from django.core.serializers import serialize
 from django.contrib.gis.db import models as gis_models
+from django.apps import apps
 
 from django.conf import settings
 
@@ -14,9 +15,7 @@ MODEL_REGISTRY = build_model_registry()
 
 def map_view(request):
     """Display the map page."""
-    return render(request, 'map.html', {
-        'mapbox_access_token': getattr(settings, 'MAPBOX_ACCESS_TOKEN', ''),
-    })
+    return render(request, 'map.html')
 
 def model_geojson(request, app_label, model_name):
     """
