@@ -48,7 +48,7 @@ INSTALLED_APPS = [
     "common",
     "watersupply",
     
-    "map",
+    "mainMap",
     
 ]
 

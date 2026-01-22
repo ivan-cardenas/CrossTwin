@@ -25,6 +25,6 @@ urlpatterns = [
     path("watersupply/", include("watersupply.urls")),
     path("common/", include("common.urls")),
     path("importer/", include("importer.urls")),
-    path("map/", include("map.urls")),
+    path("map/", include("mainMap.urls")),
 
 ]

@@ -1,0 +1,665 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Map View{% endblock %}
+
+{% block extra_css %}
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet">
+<style>
+    #map-container {
+        position: relative;
+        width: 100%;
+        height: calc(100vh - 120px);
+        min-height: 500px;
+    }
+    
+    #map {
+        width: 100%;
+        height: 100%;
+        border-radius: 8px;
+    }
+    
+    .map-controls {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        z-index: 1;
+        background: rgba(255, 255, 255, 0.95);
+        padding: 15px;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        max-width: 300px;
+        max-height: calc(100vh - 180px);
+        overflow-y: auto;
+    }
+    
+    .map-controls h5 {
+        margin-bottom: 10px;
+        font-weight: 600;
+    }
+    
+    .layer-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px;
+        margin-bottom: 5px;
+        background: #f8f9fa;
+        border-radius: 6px;
+        transition: background 0.2s;
+    }
+    
+    .layer-item:hover {
+        background: #e9ecef;
+    }
+    
+    .layer-info {
+        display: flex;
+        align-items: center;
+        flex: 1;
+        cursor: pointer;
+    }
+    
+    .layer-item input[type="checkbox"] {
+        margin-right: 10px;
+        width: 16px;
+        height: 16px;
+        cursor: pointer;
+    }
+    
+    .layer-color {
+        width: 14px;
+        height: 14px;
+        border-radius: 3px;
+        margin-right: 8px;
+        flex-shrink: 0;
+    }
+    
+    .layer-name {
+        font-size: 13px;
+        flex: 1;
+    }
+    
+    .layer-count {
+        font-size: 11px;
+        color: #6c757d;
+        margin-left: 5px;
+    }
+    
+    .layer-actions {
+        display: flex;
+        gap: 5px;
+    }
+    
+    .layer-actions button {
+        padding: 2px 6px;
+        font-size: 11px;
+        border: none;
+        background: #dee2e6;
+        border-radius: 3px;
+        cursor: pointer;
+    }
+    
+    .layer-actions button:hover {
+        background: #ced4da;
+    }
+    
+    .feature-popup {
+        max-width: 300px;
+    }
+    
+    .feature-popup h6 {
+        margin: 0 0 10px 0;
+        font-weight: 600;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 5px;
+    }
+    
+    .feature-popup table {
+        width: 100%;
+        font-size: 12px;
+    }
+    
+    .feature-popup td {
+        padding: 3px 5px;
+        word-break: break-word;
+    }
+    
+    .feature-popup td:first-child {
+        font-weight: 500;
+        color: #666;
+        width: 40%;
+    }
+    
+    .map-loader {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 2;
+        background: rgba(255, 255, 255, 0.9);
+        padding: 20px 30px;
+        border-radius: 8px;
+        display: none;
+    }
+    
+    .basemap-selector {
+        margin-top: 15px;
+        padding-top: 15px;
+        border-top: 1px solid #eee;
+    }
+    
+    .basemap-selector label {
+        font-size: 12px;
+        font-weight: 600;
+        margin-bottom: 5px;
+        display: block;
+    }
+    
+    .basemap-selector select {
+        width: 100%;
+        padding: 6px 10px;
+        border-radius: 4px;
+        border: 1px solid #ddd;
+        font-size: 13px;
+    }
+    
+    .app-group {
+        margin-bottom: 15px;
+    }
+    
+    .app-group-header {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        color: #6c757d;
+        margin-bottom: 8px;
+        padding-bottom: 5px;
+        border-bottom: 1px solid #eee;
+    }
+    
+    .no-layers {
+        color: #6c757d;
+        font-size: 13px;
+        text-align: center;
+        padding: 20px;
+    }
+    
+    .loading-layers {
+        text-align: center;
+        padding: 20px;
+    }
+    
+    .loading-layers .spinner-border {
+        width: 1.5rem;
+        height: 1.5rem;
+    }
+    
+    .controls-footer {
+        margin-top: 15px;
+        padding-top: 15px;
+        border-top: 1px solid #eee;
+        display: flex;
+        gap: 10px;
+    }
+    
+    .controls-footer button {
+        flex: 1;
+        padding: 6px 10px;
+        font-size: 12px;
+        border: 1px solid #ddd;
+        background: #fff;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    
+    .controls-footer button:hover {
+        background: #f8f9fa;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="row mb-3">
+        <div class="col">
+            <h2>
+                <i class="bi bi-map"></i> Map View
+            </h2>
+            <p class="text-muted">Visualize geographic features from the database</p>
+        </div>
+    </div>
+    
+    <div id="map-container">
+        <div class="map-controls">
+            <h5><i class="bi bi-layers"></i> Layers</h5>
+            
+            <div id="layer-list">
+                <div class="loading-layers">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <p class="mt-2 mb-0 small">Loading layers...</p>
+                </div>
+            </div>
+            
+            <div class="basemap-selector">
+                <label for="basemap-select">Basemap</label>
+                <select id="basemap-select">
+                    <option value="mapbox://styles/mapbox/streets-v12">Streets</option>
+                    <option value="mapbox://styles/mapbox/satellite-streets-v12">Satellite</option>
+                    <option value="mapbox://styles/mapbox/outdoors-v12">Outdoors</option>
+                    <option value="mapbox://styles/mapbox/light-v11">Light</option>
+                    <option value="mapbox://styles/mapbox/dark-v11">Dark</option>
+                </select>
+            </div>
+            
+            <div class="controls-footer">
+                <button id="btn-select-all" title="Select All Layers">
+                    <i class="bi bi-check-all"></i> All
+                </button>
+                <button id="btn-select-none" title="Deselect All Layers">
+                    <i class="bi bi-x-lg"></i> None
+                </button>
+                <button id="btn-fit-all" title="Fit to All Visible">
+                    <i class="bi bi-arrows-fullscreen"></i> Fit
+                </button>
+            </div>
+        </div>
+        
+        <div class="map-loader" id="map-loader">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <span class="ms-2">Loading features...</span>
+        </div>
+        
+        <div id="map"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
+<script>
+    // Configuration
+    mapboxgl.accessToken = '{{ mapbox_access_token|default:"YOUR_MAPBOX_ACCESS_TOKEN" }}';
+    
+    // API endpoint for available layers
+    const LAYERS_API_URL = '/api/layers/';
+    
+    // Store layer configurations and states
+    let availableLayers = [];
+    const loadedLayers = {};
+    const layerVisibility = {};
+    
+    // Initialize map with default center (adjust for your region)
+    const map = new mapboxgl.Map({
+        container: 'map',
+        style: 'mapbox://styles/mapbox/streets-v12',
+        center: [5.5, 52.2],  // Default: Netherlands
+        zoom: 7
+    });
+    
+    // Add controls
+    map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+    map.addControl(new mapboxgl.ScaleControl(), 'bottom-right');
+    map.addControl(new mapboxgl.FullscreenControl(), 'top-right');
+    
+    // Show/hide loader
+    function showLoader(show) {
+        document.getElementById('map-loader').style.display = show ? 'flex' : 'none';
+    }
+    
+    // Create popup content from feature properties
+    function createPopupContent(properties, layerName) {
+        let html = `<div class="feature-popup">
+            <h6>${layerName}</h6>
+            <table>`;
+        
+        for (const [key, value] of Object.entries(properties)) {
+            if (value !== null && value !== undefined && key !== 'pk') {
+                // Format the value
+                let displayValue = value;
+                if (typeof value === 'number') {
+                    displayValue = Number.isInteger(value) ? value : value.toFixed(2);
+                }
+                html += `<tr>
+                    <td>${key.replace(/_/g, ' ')}</td>
+                    <td>${displayValue}</td>
+                </tr>`;
+            }
+        }
+        
+        html += '</table></div>';
+        return html;
+    }
+    
+    // Add coordinates to bounds helper
+    function addCoordinatesToBounds(coords, bounds, type) {
+        if (type === 'Point') {
+            bounds.extend(coords);
+        } else if (type === 'LineString') {
+            coords.forEach(coord => bounds.extend(coord));
+        } else if (type === 'Polygon') {
+            coords[0].forEach(coord => bounds.extend(coord));
+        } else if (type === 'MultiPolygon') {
+            coords.forEach(polygon => polygon[0].forEach(coord => bounds.extend(coord)));
+        } else if (type === 'MultiLineString') {
+            coords.forEach(line => line.forEach(coord => bounds.extend(coord)));
+        } else if (type === 'MultiPoint') {
+            coords.forEach(coord => bounds.extend(coord));
+        }
+    }
+    
+    // Load and add a layer to the map
+    async function addLayer(layerConfig) {
+        const { key, url, color, geometry_type, display_name } = layerConfig;
+        
+        // Skip if already loaded
+        if (loadedLayers[key]) {
+            return;
+        }
+        
+        try {
+            showLoader(true);
+            
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`Failed to load ${key}`);
+            
+            const geojson = await response.json();
+            
+            // Skip empty layers
+            if (!geojson.features || geojson.features.length === 0) {
+                console.log(`Layer "${key}" has no features`);
+                showLoader(false);
+                return;
+            }
+            
+            // Add source
+            map.addSource(key, {
+                type: 'geojson',
+                data: geojson
+            });
+            
+            // Add layer(s) based on geometry type
+            const layerIds = [];
+            
+            if (geometry_type === 'point') {
+                map.addLayer({
+                    id: `${key}-points`,
+                    type: 'circle',
+                    source: key,
+                    paint: {
+                        'circle-radius': 6,
+                        'circle-color': color,
+                        'circle-stroke-width': 2,
+                        'circle-stroke-color': '#ffffff'
+                    }
+                });
+                layerIds.push(`${key}-points`);
+                
+            } else if (geometry_type === 'line') {
+                map.addLayer({
+                    id: `${key}-lines`,
+                    type: 'line',
+                    source: key,
+                    paint: {
+                        'line-color': color,
+                        'line-width': 3
+                    }
+                });
+                layerIds.push(`${key}-lines`);
+                
+            } else {
+                // Polygon
+                map.addLayer({
+                    id: `${key}-fill`,
+                    type: 'fill',
+                    source: key,
+                    paint: {
+                        'fill-color': color,
+                        'fill-opacity': 0.3
+                    }
+                });
+                map.addLayer({
+                    id: `${key}-outline`,
+                    type: 'line',
+                    source: key,
+                    paint: {
+                        'line-color': color,
+                        'line-width': 2
+                    }
+                });
+                layerIds.push(`${key}-fill`, `${key}-outline`);
+            }
+            
+            loadedLayers[key] = { layerIds, geojson, config: layerConfig };
+            
+            // Add click handler
+            const clickLayerId = layerIds[0];
+            map.on('click', clickLayerId, (e) => {
+                const properties = e.features[0].properties;
+                new mapboxgl.Popup()
+                    .setLngLat(e.lngLat)
+                    .setHTML(createPopupContent(properties, display_name))
+                    .addTo(map);
+            });
+            
+            map.on('mouseenter', clickLayerId, () => {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+            
+            map.on('mouseleave', clickLayerId, () => {
+                map.getCanvas().style.cursor = '';
+            });
+            
+            console.log(`Layer "${key}" loaded with ${geojson.features.length} features`);
+            
+        } catch (error) {
+            console.error(`Error loading layer "${key}":`, error);
+        } finally {
+            showLoader(false);
+        }
+    }
+    
+    // Remove a layer from the map
+    function removeLayer(key) {
+        if (!loadedLayers[key]) return;
+        
+        const { layerIds } = loadedLayers[key];
+        
+        layerIds.forEach(id => {
+            if (map.getLayer(id)) map.removeLayer(id);
+        });
+        
+        if (map.getSource(key)) map.removeSource(key);
+        
+        delete loadedLayers[key];
+    }
+    
+    // Toggle layer visibility
+    function toggleLayerVisibility(key, visible) {
+        layerVisibility[key] = visible;
+        
+        if (visible && !loadedLayers[key]) {
+            // Load the layer
+            const config = availableLayers.find(l => l.key === key);
+            if (config) addLayer(config);
+        } else if (!visible && loadedLayers[key]) {
+            // Hide the layer
+            loadedLayers[key].layerIds.forEach(id => {
+                map.setLayoutProperty(id, 'visibility', 'none');
+            });
+        } else if (visible && loadedLayers[key]) {
+            // Show the layer
+            loadedLayers[key].layerIds.forEach(id => {
+                map.setLayoutProperty(id, 'visibility', 'visible');
+            });
+        }
+    }
+    
+    // Zoom to a specific layer
+    function zoomToLayer(key) {
+        if (!loadedLayers[key]) return;
+        
+        const { geojson } = loadedLayers[key];
+        const bounds = new mapboxgl.LngLatBounds();
+        
+        geojson.features.forEach(feature => {
+            if (feature.geometry) {
+                addCoordinatesToBounds(feature.geometry.coordinates, bounds, feature.geometry.type);
+            }
+        });
+        
+        if (!bounds.isEmpty()) {
+            map.fitBounds(bounds, { padding: 50 });
+        }
+    }
+    
+    // Zoom to all visible layers
+    function zoomToAllVisible() {
+        const bounds = new mapboxgl.LngLatBounds();
+        
+        for (const [key, data] of Object.entries(loadedLayers)) {
+            if (layerVisibility[key] !== false) {
+                data.geojson.features.forEach(feature => {
+                    if (feature.geometry) {
+                        addCoordinatesToBounds(feature.geometry.coordinates, bounds, feature.geometry.type);
+                    }
+                });
+            }
+        }
+        
+        if (!bounds.isEmpty()) {
+            map.fitBounds(bounds, { padding: 50 });
+        }
+    }
+    
+    // Render the layer list grouped by app
+    function renderLayerList() {
+        const container = document.getElementById('layer-list');
+        
+        if (availableLayers.length === 0) {
+            container.innerHTML = '<div class="no-layers">No layers available</div>';
+            return;
+        }
+        
+        // Group by app_label
+        const groups = {};
+        availableLayers.forEach(layer => {
+            if (!groups[layer.app_label]) {
+                groups[layer.app_label] = [];
+            }
+            groups[layer.app_label].push(layer);
+        });
+        
+        let html = '';
+        
+        for (const [appLabel, layers] of Object.entries(groups)) {
+            html += `<div class="app-group">
+                <div class="app-group-header">${appLabel}</div>`;
+            
+            layers.forEach(layer => {
+                const checked = layerVisibility[layer.key] !== false ? 'checked' : '';
+                html += `
+                <div class="layer-item">
+                    <div class="layer-info">
+                        <input type="checkbox" 
+                               id="toggle-${layer.key}" 
+                               ${checked}
+                               onchange="toggleLayerVisibility('${layer.key}', this.checked)">
+                        <span class="layer-color" style="background-color: ${layer.color}"></span>
+                        <span class="layer-name">${layer.display_name}</span>
+                        <span class="layer-count">(${layer.count})</span>
+                    </div>
+                    <div class="layer-actions">
+                        <button onclick="zoomToLayer('${layer.key}')" title="Zoom to layer">
+                            <i class="bi bi-zoom-in"></i>
+                        </button>
+                    </div>
+                </div>`;
+            });
+            
+            html += '</div>';
+        }
+        
+        container.innerHTML = html;
+    }
+    
+    // Fetch available layers from API
+    async function fetchAvailableLayers() {
+        try {
+            const response = await fetch(LAYERS_API_URL);
+            if (!response.ok) throw new Error('Failed to fetch layers');
+            
+            const data = await response.json();
+            availableLayers = data.layers;
+            
+            // Initialize visibility (all visible by default)
+            availableLayers.forEach(layer => {
+                layerVisibility[layer.key] = true;
+            });
+            
+            renderLayerList();
+            
+            // Load all layers
+            for (const layer of availableLayers) {
+                await addLayer(layer);
+            }
+            
+            // Fit to all features
+            zoomToAllVisible();
+            
+        } catch (error) {
+            console.error('Error fetching layers:', error);
+            document.getElementById('layer-list').innerHTML = 
+                '<div class="no-layers text-danger">Error loading layers</div>';
+        }
+    }
+    
+    // Select all layers
+    document.getElementById('btn-select-all').addEventListener('click', () => {
+        availableLayers.forEach(layer => {
+            toggleLayerVisibility(layer.key, true);
+            const checkbox = document.getElementById(`toggle-${layer.key}`);
+            if (checkbox) checkbox.checked = true;
+        });
+    });
+    
+    // Deselect all layers
+    document.getElementById('btn-select-none').addEventListener('click', () => {
+        availableLayers.forEach(layer => {
+            toggleLayerVisibility(layer.key, false);
+            const checkbox = document.getElementById(`toggle-${layer.key}`);
+            if (checkbox) checkbox.checked = false;
+        });
+    });
+    
+    // Fit to all visible
+    document.getElementById('btn-fit-all').addEventListener('click', zoomToAllVisible);
+    
+    // Handle basemap change
+    document.getElementById('basemap-select').addEventListener('change', (e) => {
+        const currentLayers = { ...loadedLayers };
+        const currentVisibility = { ...layerVisibility };
+        
+        map.setStyle(e.target.value);
+        
+        map.once('style.load', () => {
+            // Clear loaded layers tracking
+            for (const key of Object.keys(loadedLayers)) {
+                delete loadedLayers[key];
+            }
+            
+            // Reload visible layers
+            for (const layer of availableLayers) {
+                if (currentVisibility[layer.key]) {
+                    addLayer(layer);
+                }
+            }
+        });
+    });
+    
+    // Initialize when map loads
+    map.on('load', fetchAvailableLayers);
+</script>
+{% endblock %}
