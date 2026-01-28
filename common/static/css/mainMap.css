@@ -21,7 +21,7 @@
     top: 10px;
     left: 10px;
     z-index: 1;
-    background: var(--bg-body-light);
+    background: var(--bg-body-mid);
     padding: 15px;
     border-radius: 8px;
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
@@ -48,7 +48,7 @@
 }
 
 .layer-item:hover {
-    background: #e9ecef;
+    background: var(--bg-body-mid);
 }
 
 .layer-info {

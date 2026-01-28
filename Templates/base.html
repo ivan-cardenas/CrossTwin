@@ -7,6 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href=" https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css " rel="stylesheet">
     <link rel="stylesheet" href="{% static '/css/theme.css' %}">
 
     {% block extra_css %}{% endblock extra_css %}
@@ -14,6 +15,8 @@
     {% block extra_js %}{% endblock extra_js %}
 
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    
+
 
 
     <title>Digital Twin Cross Sector Planning</title>
@@ -41,14 +44,14 @@
 
         <main class="flex-1">
             <section class="container mx-auto px-6 pt-12 pb-8 md:pb-12">
-                <div class="max-w-3xl space-y-3">
+                <div class="max-w-8xl space-y-3">
                     <p class="text-[11px] uppercase tracking-[0.32em] text-cyan-100/75">Welcome to the Cross-Sector Digital Twin</p>
                     <p class="text-2xl md:text-3xl font-semibold text-slate-50 leading-tight">Simulate scenarios and make informed planning decisions</p>
                     <p class="text-base text-slate-300">Build, iterate, and validate your digital twins inside a focused, unified workspace.</p>
                 </div>
             </section>
 
-            <section class="container mx-auto px-6 pb-16">
+            <section class="max-w-8xl mx-auto px-6 pb-16">
                 <div class="glass rounded-2xl p-6 md:p-8 fade-in">
                     {% block content %}
                     

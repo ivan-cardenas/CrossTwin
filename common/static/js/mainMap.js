@@ -365,6 +365,8 @@ function renderLayerList() {
         
         layers.forEach(layer => {
             const checked = layerVisibility[layer.key] !== false ? 'checked' : '';
+            const legendIcon = getLayerLegendIcon(layer.geometry_type, layer.color);
+            
             html += `
             <div class="layer-item">
                 <div class="layer-info">
@@ -372,13 +374,13 @@ function renderLayerList() {
                            id="toggle-${layer.key}"
                            ${checked}
                            onchange="toggleLayerVisibility('${layer.key}', this.checked)">
-                    <span class="layer-color" style="background-color: ${layer.color}"></span>
+                    ${legendIcon}
                     <span class="layer-name">${layer.display_name}</span>
                     <span class="layer-count">(${layer.count})</span>
                 </div>
                 <div class="layer-actions">
                     <button onclick="zoomToLayer('${layer.key}')" title="Zoom to layer">
-                        <i class="bi bi-zoom-in"></i>
+                        <i class="bi bi-zoom-in text-blue-500"></i>
                     </button>
                 </div>
             </div>`;
@@ -388,6 +390,40 @@ function renderLayerList() {
     }
     
     container.innerHTML = html;
+}
+
+/**
+ * Generate an SVG legend icon based on geometry type
+ * @param {string} geometryType - 'point', 'line', or 'polygon'
+ * @param {string} color - Hex color for the icon
+ * @returns {string} SVG markup
+ */
+function getLayerLegendIcon(geometryType, color) {
+    const size = 18;
+    
+    switch (geometryType) {
+        case 'point':
+            return `
+                <svg width="${size}" height="${size}" class="layer-icon">
+                    <circle cx="${size/2}" cy="${size/2}" r="5" 
+                            fill="${color}" stroke="#fff" stroke-width="1.5"/>
+                </svg>`;
+        
+        case 'line':
+            return `
+                <svg width="${size}" height="${size}" class="layer-icon">
+                    <line x1="2" y1="${size-4}" x2="${size-2}" y2="4" 
+                          stroke="${color}" stroke-width="3" stroke-linecap="round"/>
+                </svg>`;
+        
+        default: // polygon
+            return `
+                <svg width="${size}" height="${size}" class="layer-icon">
+                    <rect x="2" y="2" width="${size-4}" height="${size-4}" 
+                          fill="${color}" fill-opacity="0.4" 
+                          stroke="${color}" stroke-width="1.5"/>
+                </svg>`;
+    }
 }
 
 /**
@@ -525,5 +561,9 @@ function initializeControls() {
     }
 }
 
+
+
 // Initialize controls when DOM is ready
 document.addEventListener('DOMContentLoaded', initializeControls);
+
+

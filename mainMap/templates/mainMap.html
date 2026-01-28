@@ -1,25 +1,20 @@
 {% extends 'base.html' %} 
 {% load static %} 
-
-{% block title %}Map View{% endblock%}
-
-{% block extra_css %}
+{% block title %}Map View{%endblock%}
+ {% block extra_css %}
 <link
   href="https://api.mapbox.com/mapbox-gl-js/v3.18.0/mapbox-gl.css"
   rel="stylesheet"
 />
 
-<link rel="stylesheet" href="{% static '/css/mainMap.css' %}">
-{% endblock %} 
+<link rel="stylesheet" href="{% static '/css/mainMap.css' %}" />
+{% endblock %}
 
 {% block extra_js %}
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.18.0/mapbox-gl.js"></script>
 <script src="{% static '/js/mainMap.js' %}"></script>
-
 {% endblock %} 
-
-{% block content %} 
-
+{% block content %}
 
 <div class="container-fluid py-3">
   <div class="row mb-3">
@@ -30,24 +25,34 @@
   </div>
 
   <div id="menu-container">
-    <div class="map-controls"> <!--TODO: Make collapsible-->
-      <h5><i class="bi bi-layers"></i> Layers</h5>
+    <div class="map-controls">
+      <h5
+        id="controls-header"
+        class="flex justify-between items-center cursor-pointer m-0"
+      >
+        <span><i class="bi bi-layers"></i> Layers</span>
+        <i id="toggle-icon" class="bi bi-three-dots-vertical transition-transform duration-200"></i>
+      </h5>
 
-      <div id="layer-list">
-        <div class="loading-layers">
-          <div class="spinner-border text-primary" role="status"></div>
-          <p class="mt-2 mb-0 small">Loading layers...</p>
+      <div
+        id="controls-content"
+        class="overflow-hidden transition-all duration-300 max-h-96 opacity-100"
+      >
+        <div id="layer-list">
+          <div class="loading-layers">
+            <div class="spinner-border text-primary" role="status"></div>
+            <span><svg class="mr-3 size-5 animate-spin ..." viewBox="0 0 24 24">
+            </svg></span><p class="mt-2 mb-0 small ">Loading layers...</p>
+          </div>
         </div>
       </div>
 
       <div class="basemap-selector">
         <label for="basemap-select">Basemap</label>
         <select id="basemap-select">
-            <option value="standard">Standard</option>
+          <option value="standard">Standard</option>
           <option value="streets">Streets</option>
-          <option value="satellite">
-            Satellite
-          </option>
+          <option value="satellite">Satellite</option>
           <option value="outdoors">Outdoors</option>
           <option value="light">Light</option>
           <option value="dark">Dark</option>
@@ -65,23 +70,48 @@
           <i class="bi bi-arrows-fullscreen"></i> Fit
         </button>
       </div>
-    </div>
 
-    <div class="map-loader" id="map-loader">
-      <div class="spinner-border text-primary" role="status">
-        <span class="visually-hidden">Loading...</span>
+      <div class="map-loader" id="map-loader">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Loading...</span>
+        </div>
+        <span class="ms-2">Loading features...</span>
       </div>
-      <span class="ms-2">Loading features...</span>
     </div>
 
     <div id="map"></div>
   </div>
-  
 </div>
-<script>
-    // Initialize map with token from Django
-    initializeMap('{{ mapbox_access_token }}');
-</script>
 
+<script>
+  // Initialize map with token from Django
+  initializeMap("{{ mapbox_access_token }}");
+
+  function initializeCollapsible() {
+
+  const header = document.getElementById('controls-header');
+  const content = document.getElementById('controls-content');
+  const icon = document.getElementById('toggle-icon');
+
+  console.log('Header:', header);  // Should NOT be null
+  console.log('Content:', content);
+  console.log('Icon:', icon);
+
+  if (!header) {
+    console.error('controls-header not found!');
+    return;
+  }
+
+  header.addEventListener('click', function() {
+    console.log('Header clicked!');  // Do you see this?
+    content.classList.toggle('max-h-0');
+    content.classList.toggle('max-h-96');
+    content.classList.toggle('opacity-0');
+    content.classList.toggle('opacity-100');
+    icon.classList.toggle('rotate-180');
+  });
+};
+  initializeCollapsible();
+</script>
 
 {% endblock content%}
