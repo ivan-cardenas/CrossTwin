@@ -114,6 +114,27 @@ function initializeUrbanTwinMap(config) {
   return map;
 }
 
+function safeFitBounds(bounds, options = {}) {
+  if (!map) return;
+
+  map.resize(); // 🔑 critical
+
+  const canvas = map.getCanvas();
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+
+  const p = options.padding || 0;
+  const padX = typeof p === 'number' ? p * 2 : (p.left || 0) + (p.right || 0);
+  const padY = typeof p === 'number' ? p * 2 : (p.top || 0) + (p.bottom || 0);
+
+  if (w <= padX + 40 || h <= padY + 40) {
+    console.warn('Skipping fitBounds: map too small', { w, h, p });
+    return;
+  }
+
+  map.fitBounds(bounds, options);
+}
+
 /**
  * Add 3D building extrusions
  */
@@ -408,7 +429,7 @@ function zoomToLayer(key) {
   });
 
   if (!bounds.isEmpty()) {
-    map.fitBounds(bounds, { padding: 50, duration: 800 });
+    safeFitBounds(bounds, { padding: 50, duration: 800 });
   }
 }
 
@@ -429,7 +450,7 @@ function zoomToAllVisible() {
   }
 
   if (!bounds.isEmpty()) {
-    map.fitBounds(bounds, { padding: 50, duration: 800 });
+    safeFitBounds(bounds, { padding: 50, duration: 800 });
   }
 }
 

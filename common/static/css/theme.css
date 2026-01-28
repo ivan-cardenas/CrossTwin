@@ -34,8 +34,8 @@
     --shadow-glow: 0 10px 40px rgba(14, 165, 233, 0.15);
     
     /* Accent Colors */
-    --accent-1: #34d399;  /* Emerald */
-    --accent-2: #14b8a6;  /* Teal */
+    --accent-1: #ff9b37;  /* Emerald */
+    --accent-2: #b86314;  /* Teal */
     --accent-3: #22d3ee;  /* Cyan */
     --accent-4: #6ee7b7;  /* Mint */
     
@@ -43,6 +43,7 @@
     --accent-1-rgb: 94, 234, 212;
     --accent-4-rgb: 56, 189, 248;
     --accent-glow-rgb: 14, 165, 233;
+    --accent-hover: #ffb366;
     
     /* Status Colors */
    --success: #4ade80;
