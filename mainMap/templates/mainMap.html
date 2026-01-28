@@ -1,117 +1,181 @@
-{% extends 'base.html' %} 
-{% load static %} 
-{% block title %}Map View{%endblock%}
- {% block extra_css %}
-<link
-  href="https://api.mapbox.com/mapbox-gl-js/v3.18.0/mapbox-gl.css"
-  rel="stylesheet"
-/>
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Urban Twin - Map View{% endblock %}
 
-<link rel="stylesheet" href="{% static '/css/mainMap.css' %}" />
+{% block extra_css %}
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.18.0/mapbox-gl.css" rel="stylesheet" />
+<link rel="stylesheet" href="{% static 'css/mainMap.css' %}" />
 {% endblock %}
 
 {% block extra_js %}
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.18.0/mapbox-gl.js"></script>
-<script src="{% static '/js/mainMap.js' %}"></script>
-{% endblock %} 
+<script src="{% static 'js/mainMap.js' %}"></script>
+{% endblock %}
+
 {% block content %}
+<div class="app-shell">
+  <div class="map-wrapper">
+    <div id="map"></div>
 
-<div class="container-fluid py-3">
-  <div class="row mb-3">
-    <div class="col">
-      <h2><i class="bi bi-map"></i> Map View</h2>
-      <p class="text-muted">Visualize geographic features from the database</p>
+    <!-- LEFT TOOLBAR -->
+    <div class="toolbar" id="toolbar">
+      <button class="tool-button active" data-tool="overview">
+        <span>🏠</span>
+        <div class="tool-tooltip">Overview</div>
+      </button>
+      <button class="tool-button" data-tool="layers">
+        <span>📑</span>
+        <div class="tool-tooltip">Layers</div>
+      </button>
+      <button class="tool-button" data-tool="temperature">
+        <span>🌡️</span>
+        <div class="tool-tooltip">Heat</div>
+      </button>
+      <button class="tool-button" data-tool="green">
+        <span>🌳</span>
+        <div class="tool-tooltip">Green</div>
+      </button>
+      <button class="tool-button" data-tool="water">
+        <span>💧</span>
+        <div class="tool-tooltip">Water</div>
+      </button>
+      <button class="tool-button" data-tool="groundwater">
+        <span>🚰</span>
+        <div class="tool-tooltip">Groundwater</div>
+      </button>
+      <button class="tool-button" data-tool="satellite">
+        <span>🛰️</span>
+        <div class="tool-tooltip">Satellite</div>
+      </button>
     </div>
-  </div>
 
-  <div id="menu-container">
-    <div class="map-controls">
-      <h5
-        id="controls-header"
-        class="flex justify-between items-center cursor-pointer m-0"
-      >
-        <span><i class="bi bi-layers"></i> Layers</span>
-        <i id="toggle-icon" class="bi bi-three-dots-vertical transition-transform duration-200"></i>
-      </h5>
+    <!-- ONBOARDING HINT -->
+    <div class="onboarding-hint" id="onboarding-hint">
+      <strong>Start here</strong>
+      <p>Use the icons on the left to explore thematic layers. Click 📑 to manage all database layers.</p>
+    </div>
 
-      <div
-        id="controls-content"
-        class="overflow-hidden transition-all duration-300 max-h-96 opacity-100"
-      >
-        <div id="layer-list">
-          <div class="loading-layers">
-            <div class="spinner-border text-primary" role="status"></div>
-            <span><svg class="mr-3 size-5 animate-spin ..." viewBox="0 0 24 24">
-            </svg></span><p class="mt-2 mb-0 small ">Loading layers...</p>
+    <!-- LAYERS PANEL -->
+    <div class="layers-panel" id="layers-panel">
+      <div class="layers-panel-header">
+        <div class="layers-panel-title">
+          <i class="bi bi-layers"></i> Database Layers
+        </div>
+        <button class="layers-panel-close" id="layers-panel-close">✕</button>
+      </div>
+      
+      <div class="layers-panel-body" id="layer-list">
+        <div class="loading-layers">
+          <div class="loading-spinner"></div>
+          <p>Loading layers...</p>
+        </div>
+      </div>
+      
+      <div class="basemap-selector">
+        <label for="basemap-select">Basemap</label>
+        <select id="basemap-select">
+          <option value="light" selected>Light</option>
+          <option value="dark">Dark</option>
+          <option value="streets">Streets</option>
+          <option value="satellite">Satellite</option>
+          <option value="outdoors">Outdoors</option>
+        </select>
+      </div>
+      
+      <div class="layers-panel-footer">
+        <button class="layers-action-btn" id="btn-select-all" title="Select All">
+          <i class="bi bi-check-all"></i> All
+        </button>
+        <button class="layers-action-btn" id="btn-select-none" title="Deselect All">
+          <i class="bi bi-x-lg"></i> None
+        </button>
+        <button class="layers-action-btn" id="btn-fit-all" title="Fit to Visible">
+          <i class="bi bi-arrows-fullscreen"></i> Fit
+        </button>
+      </div>
+    </div>
+
+    <!-- SIDE PANEL (Info/Dashboard) -->
+    <div class="side-panel" id="side-panel">
+      <div class="side-panel-header">
+        <div class="side-panel-title" id="panel-title">OVERVIEW</div>
+        <button class="side-panel-close" id="panel-close">✕</button>
+      </div>
+      <div class="side-panel-body" id="panel-body">
+        <p>Use the tool icons on the left to switch between thematic layers.</p>
+        <p>Click the 📑 Layers button to manage all database layers individually.</p>
+      </div>
+      <div class="side-panel-tagline">
+        CROSSTWIN · URBAN DIGITAL TWIN
+      </div>
+    </div>
+
+    <!-- GROUNDWATER LEGEND -->
+    <div id="legend-groundwater" class="map-legend" style="display: none;">
+      <div class="legend-title">Groundwater (GHG)</div>
+      <img id="legend-img"
+        src="https://service.pdok.nl/bzk/bro-grondwaterspiegeldiepte/wms/v2_0/legend/bro-grondwaterspiegeldieptemetingen-GHG/mediaan.png"
+        alt="GHG legend" />
+    </div>
+
+    <!-- MAP LOADER -->
+    <div class="map-loader" id="map-loader">
+      <div class="loading-spinner"></div>
+      <span>Loading features...</span>
+    </div>
+
+    <!-- BOTTOM BAR -->
+    <div class="bottom-bar">
+      <div class="bottom-left">
+        <div class="camera-tools">
+          <button class="camera-btn" id="btn-tilt" title="Toggle 3D Tilt">⤢</button>
+          <button class="camera-btn" id="btn-reset" title="Reset View">⟳</button>
+        </div>
+
+        <div class="indicator-pill" data-indicator="layers">
+          <div class="indicator-icon">📍</div>
+          <div class="indicator-meta">
+            <span class="indicator-label">Layers</span>
+            <span class="indicator-value" id="layers-count">0</span>
+          </div>
+        </div>
+
+        <div class="indicator-pill" data-indicator="features">
+          <div class="indicator-icon">🔷</div>
+          <div class="indicator-meta">
+            <span class="indicator-label">Features</span>
+            <span class="indicator-value" id="features-count">0</span>
+          </div>
+        </div>
+
+        <div class="indicator-pill" data-indicator="visible">
+          <div class="indicator-icon">👁️</div>
+          <div class="indicator-meta">
+            <span class="indicator-label">Visible</span>
+            <span class="indicator-value" id="visible-count">0</span>
           </div>
         </div>
       </div>
 
-      <div class="basemap-selector">
-        <label for="basemap-select">Basemap</label>
-        <select id="basemap-select">
-          <option value="standard">Standard</option>
-          <option value="streets">Streets</option>
-          <option value="satellite">Satellite</option>
-          <option value="outdoors">Outdoors</option>
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
-        </select>
-      </div>
+      <div class="city-name">{{ city_name|default:"Enschede" }}</div>
 
-      <div class="controls-footer">
-        <button id="btn-select-all" title="Select All Layers">
-          <i class="bi bi-check-all"></i> All
+      <div class="bottom-right">
+        <button class="mode-btn" id="btn-dashboard">
+          <span>📊</span> Dashboard
         </button>
-        <button id="btn-select-none" title="Deselect All Layers">
-          <i class="bi bi-x-lg"></i> None
+        <button class="mode-btn" id="btn-scenarios">
+          <span>🧩</span> Scenarios
         </button>
-        <button id="btn-fit-all" title="Fit to All Visible">
-          <i class="bi bi-arrows-fullscreen"></i> Fit
-        </button>
-      </div>
-
-      <div class="map-loader" id="map-loader">
-        <div class="spinner-border text-primary" role="status">
-          <span class="visually-hidden">Loading...</span>
-        </div>
-        <span class="ms-2">Loading features...</span>
       </div>
     </div>
-
-    <div id="map"></div>
   </div>
 </div>
 
 <script>
-  // Initialize map with token from Django
-  initializeMap("{{ mapbox_access_token }}");
-
-  function initializeCollapsible() {
-
-  const header = document.getElementById('controls-header');
-  const content = document.getElementById('controls-content');
-  const icon = document.getElementById('toggle-icon');
-
-  console.log('Header:', header);  // Should NOT be null
-  console.log('Content:', content);
-  console.log('Icon:', icon);
-
-  if (!header) {
-    console.error('controls-header not found!');
-    return;
-  }
-
-  header.addEventListener('click', function() {
-    console.log('Header clicked!');  // Do you see this?
-    content.classList.toggle('max-h-0');
-    content.classList.toggle('max-h-96');
-    content.classList.toggle('opacity-0');
-    content.classList.toggle('opacity-100');
-    icon.classList.toggle('rotate-180');
+  // Initialize with Django context
+  // Initialize the Urban Twin map
+  document.addEventListener('DOMContentLoaded', () => {
+    initializeUrbanTwinMap(CONFIG);
   });
-};
-  initializeCollapsible();
 </script>
-
-{% endblock content%}
+{% endblock content %}
