@@ -1,7 +1,7 @@
 from django.contrib.gis.db import models
 from django.utils import timezone
 from django.core.exceptions import ValidationError
-from common.models import Region, City, Neighborhood
+from common.models import Region, City, Neighborhood, ElectricityCost
 from django.conf import settings
 
 COORDINATE_SYSTEM = settings.COORDINATE_SYSTEM
@@ -85,6 +85,7 @@ class UsersLocation(models.Model):
     ResidentialUsers = models.IntegerField(null=True, help_text="Number of residential users")
     CommercialUsers = models.IntegerField(null=True, help_text="Number of commercial users")
     IndustrialUsers = models.IntegerField(null=True, help_text="Number of industrial users")
+    populationServed = models.IntegerField(null=True, help_text="Population served in the neighborhood")
     last_updated = models.DateTimeField(default=timezone.now)
     
     def __str__(self):
@@ -121,7 +122,7 @@ class AvailableFreshWater(models.Model):
 class ExtractionWater(models.Model):
     id=models.AutoField(primary_key=True)
     source = models.ForeignKey(AvailableFreshWater,
-                               on_delete=models.DO_NOTHING)
+                               on_delete=models.DO_NOTHING, help_text="AvailableFreshWater ID from watersupply.AvailableFreshWater")
     geom = models.MultiPointField(srid=COORDINATE_SYSTEM)
     stationName = models.CharField(max_length=100, help_text="Name of the extraction station")
     pumpflow_m3_s = models.FloatField(help_text="Pump flow in cubic meters per second")
@@ -130,11 +131,17 @@ class ExtractionWater(models.Model):
     depth_m = models.FloatField(help_text="Depth in meters")
     pumpEfficiency = models.FloatField(help_text="Pump efficiency in percent")
     pumpEnergyRate_kWh_h = models.FloatField(help_text="Pump energy rate in kilowatt-hours per hour")
-    pumpEmissionRate_kg_CO2_h = models.FloatField(help_text="Pump emission rate in kilograms of CO2 per hour") #TODO: This should be calculated from the energy rate and the electricity emission factor
+    pumpEmissionRate_kg_CO2_h = models.FloatField(null=True, help_text="Pump emission rate in kilograms of CO2 per hour") #TODO: This should be calculated from the energy rate and the electricity emission factor
+    pumpEmmissionFactor_kg_CO2_kWh = models.FloatField(null=True, help_text="Pump emission factor in kilograms of CO2 per kilowatt-hour")
+    pumpEmission_day_kg_CO2 = models.FloatField(null=True, help_text="Pump emissions in kilograms of CO2 per day")
+    pumpEmission_year_kg_CO2 = models.FloatField(null=True, help_text="Pump emissions in kilograms of CO2 per year")
     last_updated = models.DateTimeField(default=timezone.now)
     
     def __str__(self):
         return f"{self.source} - {self.stationName}"
+    
+    
+    #TODO: Add save method to calculate emissions based on energy rate and emission factor
     
 class ImportedWater(models.Model):
     id=models.AutoField(primary_key=True)
@@ -221,10 +228,14 @@ class OPEX(models.Model):
     year = models.IntegerField(help_text="Year of operation")
     UnitaryOPEX_EUR_m3 = models.FloatField(help_text="Unitary OPEX in EUR per cubic meter")
     totalOPEX_EUR = models.FloatField(help_text="Total OPEX in EUR")
-    
+    OPEX_recovered_EUR = models.FloatField(null=True, help_text="OPEX recovered in EUR")
+    OPEX_recovered_PCT = models.FloatField(null=True, help_text="OPEX recovered in percent")
+    last_updated = models.DateTimeField(default=timezone.now)
     
     def __str__(self):
         return f"{self.year}: {self.UnitaryOPEX_EUR_m3} EUR/m3"
+    
+    
 
 class AreaAffectedDrought(models.Model):
     class SensibilityChoices(models.IntegerChoices):
@@ -250,3 +261,60 @@ class AreaAffectedDrought(models.Model):
     
     def __str__(self):
         return f"{self.year}: {self.areaAffected_km2} km2"
+    
+class TotalWaterProduction(models.Model):
+    id = models.AutoField(primary_key=True)
+    source = models.ForeignKey(AvailableFreshWater,
+                               on_delete=models.DO_NOTHING, help_text="AvailableFreshWater ID from watersupply.AvailableFreshWater")
+    year = models.IntegerField()
+    productionDay = models.FloatField( help_text="in Million cubic meters per day") # Mm3/day
+    productionYR = models.FloatField(null=True, help_text="in Million cubic meters per year")  # Mm3/year
+    costDay = models.FloatField(null=True, help_text="in EUR per day")
+    costYR = models.FloatField(null=True, help_text="in EUR per year")  # EUR/year
+    last_updated = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return f"{self.source.SourceName} - {self.year}: {self.productionDay} Mm3/day"
+    
+    def save(self, *args, **kwargs):
+        
+        # Get all extraction wells that use THIS specific source
+        extraction_wells = ExtractionWater.objects.filter(
+        source=self.source
+    )
+        
+        # Calculate total production from all wells using this source
+        calculated_production = extraction_wells.aggregate(
+            total_production=models.Sum(
+                models.F('pumpflow_m3_s') * models.F('OperationTime_h_day') * 86400 / 1e6  # Convert to Mm3/day
+            )
+        )['total_production'] or 0.0
+        
+        self.productionDay = calculated_production
+        self.productionYR = self.productionDay * 365
+        
+        # Find wich region this source belongs to
+        try:
+            source_region = Region.objects.get(
+                geom__contains=self.source.geom.centroid
+            )
+        except Region.DoesNotExist:
+            source_region = None
+        
+        try:
+            elec_cost = ElectricityCost.objects.filter(
+                region=source_region,
+                year=self.year
+            ).cost_EUR_kWh
+        except ElectricityCost.DoesNotExist:
+            elec_cost = 0.15 #TODO : set a default value or handle missing cost appropriately
+            
+        calculated_cost_day = extraction_wells.aggregate(
+            total_cost=models.Sum(
+                models.F('pumpEnergyRate_kWh_h') * models.F('OperationTime_h_day') * elec_cost)
+        )['total_cost'] or 0.0
+        
+        self.costDay = calculated_cost_day
+        self.costYR = self.costDay * 365
+        
+        super().save(*args, **kwargs)
