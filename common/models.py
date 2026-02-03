@@ -4,19 +4,16 @@ from django.db.models import Sum
 
 from django.conf import settings
 
-
-
-
 CoordinateSystem = settings.COORDINATE_SYSTEM
 
 # Create your models here.
 class Region(models.Model):
     id = models.AutoField(primary_key=True)
     regionName = models.CharField(max_length=100)
-    currentPopulation = models.IntegerField(null=True)
-    populationDensity = models.FloatField(null=True) # people/km2
-    populationDate = models.DateField(null=True)
-    area_km2 = models.FloatField(null=True)
+    currentPopulation = models.IntegerField(null=True, help_text="Total current population in the region", verbose_name="Current Population")
+    populationDensity = models.FloatField(null=True, help_text="Population density in people per square kilometer", verbose_name="Population Density") # people/km2
+    populationDate = models.DateField(null=True, help_text="Date of the population data", verbose_name="Population Date")
+    area_km2 = models.FloatField(null=True, help_text="Area in square kilometers")
     geom = models.MultiPolygonField(srid=CoordinateSystem)
     last_updated = models.DateTimeField(default=timezone.now)
     
@@ -50,15 +47,17 @@ class Region(models.Model):
         verbose_name = "Region"
         verbose_name_plural = "Regions"
         
+        
+        
 class City(models.Model):
     id = models.AutoField(primary_key=True)
-    region = models.ForeignKey(Region, on_delete=models.CASCADE)
+    region = models.ForeignKey(Region, on_delete=models.CASCADE, help_text="Region code from common.Region")
     cityName = models.CharField(max_length=100)
-    currentPopulation = models.IntegerField() 
-    area_km2 = models.FloatField(null=True)
-    populationDensity = models.FloatField(null=True) # people/km2
+    currentPopulation = models.IntegerField(help_text="Total current population in the city") 
+    area_km2 = models.FloatField(null=True, help_text="Area in square kilometers")
+    populationDensity = models.FloatField(null=True, help_text="Population density in people per square kilometer") # people/km2
     populationDate = models.DateField(null=True)
-    popGrowthRate = models.FloatField(null=True) # %
+    popGrowthRate = models.FloatField(null=True , help_text="Growth rate in % per year") # %
     geom = models.MultiPolygonField(srid=CoordinateSystem)
     last_updated = models.DateTimeField(default=timezone.now)
     
@@ -85,12 +84,12 @@ class City(models.Model):
         
 class Neighborhood(models.Model):
     id = models.AutoField(primary_key=True)
-    city = models.ForeignKey(City, on_delete=models.DO_NOTHING)
-    neighborhoodName = models.CharField(max_length=100)
-    currentPopulation = models.IntegerField() 
+    city = models.ForeignKey(City, on_delete=models.DO_NOTHING, help_text="City code from common.City")
+    neighborhoodName = models.CharField(max_length=100, help_text="Name of the neighborhood")
+    currentPopulation = models.IntegerField(help_text="Current population in the neighborhood") 
     populationDate = models.DateField(null=True)
-    area_km2 = models.FloatField()
-    populationDensity = models.FloatField() # people/km2
+    area_km2 = models.FloatField(help_text="Area in square kilometers")
+    populationDensity = models.FloatField(help_text="Population density in people per square kilometer") # people/km2
     geom = models.MultiPolygonField(srid=CoordinateSystem)
     last_updated = models.DateTimeField(default=timezone.now)
     
@@ -105,9 +104,9 @@ class Neighborhood(models.Model):
 
 class ElectricityCost(models.Model):
     id = models.AutoField(primary_key=True)
-    region = models.ForeignKey(Region, on_delete=models.DO_NOTHING)
+    region = models.ForeignKey(Region, on_delete=models.DO_NOTHING, help_text="Region code from common.Region")
     year = models.IntegerField()
-    cost_EUR_kWh = models.FloatField()
+    cost_EUR_kWh = models.FloatField(help_text="Cost in EUR per kilowatt-hour")
     last_updated = models.DateTimeField(default=timezone.now)
     
     def __str__(self):

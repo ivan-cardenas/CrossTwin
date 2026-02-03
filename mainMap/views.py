@@ -101,7 +101,13 @@ def available_layers(request):
     
     color_index = 0
     
-    for key, model in MODEL_REGISTRY.items():
+    #Vector layers from registered models
+    
+    VECTOR_REGISTRY = MODEL_REGISTRY.copy().pop('wmslayer', {})
+    
+    WMS_REGISTRY = MODEL_REGISTRY.get('wmslayer')
+    
+    for key, model in VECTOR_REGISTRY.items():
         # Find geometry field
         geom_field = None
         geom_type = None
@@ -141,6 +147,21 @@ def available_layers(request):
             })
             
             color_index += 1
+    
+    for wms in WMS_REGISTRY.items():
+        layers.append({
+            'key': f'wms-{wms.name}',
+            'display_name': wms.display_name,
+            'app_label': wms.app_label,  # groups it under watersupply
+            'geometry_type': 'raster',
+            'color': wms.color,
+            'count': 'WMS',
+            'layer_type': 'wms',  # ← frontend uses this
+            'wms_url': wms.url,
+            'wms_layers': wms.layers_param,
+            'legend_url': wms.legend_url or '',
+            'opacity': wms.opacity,
+        })
     
     return JsonResponse({'layers': layers})
 

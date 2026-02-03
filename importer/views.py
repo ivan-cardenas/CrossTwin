@@ -45,15 +45,15 @@ MODEL_OVERRIDES = {
     },
     'watersupply.ConsumptionCapita': {
         'upsert_keys': ['city', 'year'],       # logical business key
-        'target_srid_default': None,           # no geometry in this model
+        'target_srid_default': COORDINATE_SYSTEM,           # no geometry in this model
     },
     'watersupply.TotalWaterDemand': {
         'upsert_keys': ['city', 'year'],
-        'target_srid_default': None,
+        'target_srid_default': COORDINATE_SYSTEM,
     },
     'watersupply.SupplySecurity': {
         'upsert_keys': ['city', 'year'],
-        'target_srid_default': None,
+        'target_srid_default': COORDINATE_SYSTEM,
     },
     'watersupply.PipeNetwork': {
         'upsert_keys': ['id'],
@@ -107,6 +107,7 @@ def _get_model_spec(label):
 
     # required/optional
     required, optional = [], []
+    field_help_texts = {}
     for f in fields:
         if isinstance(f, AutoField) or f.primary_key:
             continue  # never map PK directly
@@ -115,6 +116,11 @@ def _get_model_spec(label):
         # null=False and no default => likely required for create
         is_required = (not f.null) and (f.default is django_fields.NOT_PROVIDED)
         (required if is_required else optional).append(f.name)
+        
+        if f.help_text:
+            field_help_texts[f.name] = f.help_text
+            
+            
 
     # geometry
     geom_fields = [f.name for f in fields if isinstance(f, GeometryField)]
@@ -149,6 +155,7 @@ def _get_model_spec(label):
         'geom_type_info': geom_type_info,
         'geometry_field': geom_fields[0] if geom_fields else None,
         'upsert_keys': None,  # will fill with override or infer
+        'field_help_texts': field_help_texts
     }
 
     # Apply per-model overrides (upsert keys, target SRID, geometry field)
@@ -181,10 +188,13 @@ def _build_mapping_form(target_model, columns, gdf_crs, data=None):
     CHOICES = [('', '— none —')] + [(c, c) for c in columns]
 
     for fld in (spec['required'] + [f for f in spec['optional'] if f not in spec['required']]):
+        help_text = spec.get('field_help_texts', {}).get(fld, '')
+        
         fields[f'map__{fld}'] = forms.ChoiceField(
             choices=CHOICES,
             required=(fld in spec['required']),
-            label=fld
+            label=fld,
+            help_text=help_text
         )
 
     if spec['has_geometry'] and spec['geometry_field']:

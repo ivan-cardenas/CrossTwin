@@ -32,6 +32,19 @@ const BASEMAPS = {
   outdoors: 'mapbox://styles/mapbox/outdoors-v12'
 };
 
+const TOOL_CATEGORIES = {
+  overview:    null,          // null = show ALL layers
+  common:      ['common'],          // null = show ALL layers
+  temperature: ['temperature', 'heat'],
+  green:       ['green', 'vegetation', 'trees'],
+  water:       ['watersupply', ],
+  groundwater: ['groundwater'],
+  satellite:   null,
+};
+
+// Track current active tool
+let activeTool = 'overview';
+
 // Tool content for side panel
 const TOOL_CONTENT = {
   overview: {
@@ -77,6 +90,8 @@ const TOOL_CONTENT = {
  * Initialize the Urban Twin map
  * @param {object} config - Configuration from Django template
  */
+
+
 function initializeUrbanTwinMap(config) {
   CONFIG = { ...CONFIG, ...config };
   mapboxgl.accessToken = CONFIG.mapboxToken;
@@ -223,6 +238,116 @@ function showLoader(show) {
   }
 }
 
+function addWmsLayer(layerConfig) {
+  const { key, wms_url, wms_layers, opacity, display_name, color } = layerConfig;
+
+  if (map.getSource(key)) return;
+
+  const tileUrl = wms_url +
+    '?service=WMS&request=GetMap&version=1.3.0' +
+    `&layers=${wms_layers}` +
+    '&styles=' +
+    '&format=image/png' +
+    '&transparent=true' +
+    '&width=256&height=256' +
+    '&crs=EPSG:3857' +
+    '&bbox={bbox-epsg-3857}';
+
+  map.addSource(key, {
+    type: 'raster',
+    tiles: [tileUrl],
+    tileSize: 256
+  });
+
+  map.addLayer({
+    id: key,
+    type: 'raster',
+    source: key,
+    layout: { visibility: 'visible' },
+    paint: { 'raster-opacity': opacity || 0.7 }
+  });
+
+  // Store it so toggleLayerVisibility works
+  loadedLayers[key] = {
+    layerIds: [key],
+    geojson: { features: [] },  // empty, no features for WMS
+    config: layerConfig
+  };
+
+  // Add legend if available
+  if (layerConfig.legend_url) {
+    addWmsLegend(key, display_name, layerConfig.legend_url);
+  }
+
+  console.log(`WMS layer "${key}" added`);
+  updateIndicators();
+}
+
+/**
+ * Create a legend element for a WMS layer
+ */
+function addWmsLegend(key, title, legendUrl) {
+  // Remove existing legend if any
+  const existing = document.getElementById(`legend-${key}`);
+  if (existing) existing.remove();
+
+  const legend = document.createElement('div');
+  legend.id = `legend-${key}`;
+  legend.className = 'map-legend';
+  legend.innerHTML = `
+    <div class="legend-title">${title}</div>
+    <img src="${legendUrl}" alt="${title} legend" />
+  `;
+
+  document.querySelector('.map-wrapper').appendChild(legend);
+}
+
+
+function filterLayersByTool(toolId) {
+  activeTool = toolId;
+  const categories = TOOL_CATEGORIES[toolId] || [];
+
+  availableLayers.forEach(layer => {
+    const layerEl = document.getElementById(`layer-item-${layer.key}`);
+    
+    const matches = categories.includes(layer.app_label);
+    if (layerEl) layerEl.style.display = matches ? '' : 'none';
+  });
+
+  // Also hide empty app-group headers
+  document.querySelectorAll('.app-group').forEach(group => {
+    const visibleItems = group.querySelectorAll('.layer-item:not([style*="display: none"])');
+    group.style.display = visibleItems.length > 0 ? '' : 'none';
+  });
+
+
+const panelTitle = document.querySelector('.layers-panel-title');
+  if (panelTitle) {
+    const toolNames = {
+      overview: 'All Layers',
+      layers: 'All Layers',
+      temperature: 'Urban Heat Layers',
+      green: 'Green and Park Layers',
+      water: 'Water supply Layers',
+      groundwater: 'Groundwater Layers',
+    };
+    panelTitle.innerHTML = `<i class="bi bi-layers"></i> ${toolNames[toolId] || 'Layers'}`;
+  }
+}
+
+function activateToolLayers(toolId) {
+  const categories = TOOL_CATEGORIES[toolId];
+  if (!categories) return;
+
+  availableLayers.forEach(layer => {
+    const matches = categories.includes(layer.app_label);
+    toggleLayerVisibility(layer.key, matches);
+
+    const checkbox = document.getElementById(`toggle-${layer.key}`);
+    if (checkbox) checkbox.checked = matches;
+  });
+}
+
 /**
  * Fetch available layers from Django API
  */
@@ -267,6 +392,11 @@ async function addLayer(layerConfig) {
 
   if (loadedLayers[key]) return;
 
+  if (layer_type === 'wms') {
+    addWmsLayer(layerConfig);
+    return;
+  }
+
   console.log(`Loading layer "${key}"...`);
 
   try {
@@ -277,11 +407,11 @@ async function addLayer(layerConfig) {
 
     const geojson = await response.json();
 
-    if (!geojson.features || geojson.features.length === 0) {
-      console.log(`Layer "${key}" has no features`);
-      showLoader(false);
-      return;
-    }
+    // if (!geojson.features || geojson.features.length === 0) {
+    //   console.log(`Layer "${key}" has no features`);
+    //   showLoader(false);
+    //   return;
+    // }
 
     // Add source
     map.addSource(key, {
@@ -396,6 +526,12 @@ function createPopupContent(properties, layerName) {
  */
 function toggleLayerVisibility(key, visible) {
   layerVisibility[key] = visible;
+
+  const legendEl = document.getElementById(`legend-${key}`);
+  if (legendEl) {
+    legendEl.style.display = visible ? 'block' : 'none';
+  }
+
 
   if (visible && !loadedLayers[key]) {
     const config = availableLayers.find(l => l.key === key);
@@ -568,7 +704,7 @@ function renderLayerList() {
       const legendIcon = getLayerLegendIcon(layer.geometry_type, layer.color);
 
       html += `
-        <div class="layer-item">
+        <div class="layer-item " id="layer-item-${layer.key}">
           <div class="layer-info">
             <input type="checkbox"
                    id="toggle-${layer.key}"
@@ -661,50 +797,51 @@ function initializeUI() {
 
   // Tool button clicks
   toolbar?.addEventListener('click', (evt) => {
-    const btn = evt.target.closest('.tool-button');
-    if (!btn) return;
+  const btn = evt.target.closest('.tool-button');
+  if (!btn) return;
 
-    const tool = btn.dataset.tool;
+  const tool = btn.dataset.tool;
 
-    // Update active state
-    toolbar.querySelectorAll('.tool-button').forEach(b => 
-      b.classList.toggle('active', b === btn)
-    );
+  // Update active button state
+  toolbar.querySelectorAll('.tool-button').forEach(b =>
+    b.classList.toggle('active', b === btn)
+  );
 
-    // Remove onboarding hint
-    if (hint) hint.remove();
+  // Remove onboarding hint
+  if (hint) hint.remove();
 
-    // Handle tool actions
-    if (tool === 'layers') {
-      layersPanel?.classList.toggle('visible');
-      sidePanel?.classList.remove('visible');
-    } else if (tool === 'satellite') {
-      changeBasemap('satellite');
-      layersPanel?.classList.remove('visible');
-    } else if (tool === 'groundwater') {
-      toggleGroundwaterLayer();
-      const content = TOOL_CONTENT[tool];
-      if (content && panelTitle && panelBody) {
-        panelTitle.textContent = content.title;
-        panelBody.innerHTML = content.body;
-        sidePanel?.classList.add('visible');
-      }
-      layersPanel?.classList.remove('visible');
-    } else {
-      // Show tool content in side panel
-      if (tool !== 'satellite') {
-        changeBasemap('light');
-      }
-      
-      const content = TOOL_CONTENT[tool];
-      if (content && panelTitle && panelBody) {
-        panelTitle.textContent = content.title;
-        panelBody.innerHTML = content.body;
-        sidePanel?.classList.add('visible');
-      }
-      layersPanel?.classList.remove('visible');
-    }
-  });
+  // Handle satellite basemap
+  if (tool === 'satellite') {
+    changeBasemap('satellite');
+  } else {
+    changeBasemap('light');
+  }
+
+  // Handle groundwater WMS toggle
+  if (tool === 'groundwater') {
+    toggleGroundwaterLayer();
+  }
+
+  // ---- KEY CHANGE: Every tool opens layers panel filtered ----
+  // Filter layers panel for this tool
+  filterLayersByTool(tool);
+
+  // Toggle map layer visibility to match
+  if (tool !== 'overview' && tool !== 'layers' && tool !== 'satellite') {
+    activateToolLayers(tool);
+  }
+
+  // Always show layers panel
+  layersPanel?.classList.add('visible');
+
+  // Show tool info in side panel
+  const content = TOOL_CONTENT[tool];
+  if (content && panelTitle && panelBody) {
+    panelTitle.textContent = content.title;
+    panelBody.innerHTML = content.body;
+    sidePanel?.classList.add('visible');
+  }
+});
 
   // Panel close buttons
   document.getElementById('panel-close')?.addEventListener('click', () => {

@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Region, City, Neighborhood
+from .models import *
 
 class RegionAdmin(admin.ModelAdmin):
     model = Region
@@ -20,3 +20,4 @@ class NeighborhoodAdmin(admin.ModelAdmin):
 admin.site.register(Region, RegionAdmin)
 admin.site.register(City, CityAdmin)
 admin.site.register(Neighborhood, NeighborhoodAdmin)
+admin.site.register(ElectricityCost)
