@@ -80,20 +80,19 @@ class PipeNetwork(models.Model):
     
 class UsersLocation(models.Model):
     id = models.AutoField(primary_key=True)
-    neighborhood = models.ForeignKey(Neighborhood, on_delete=models.DO_NOTHING, help_text="Neighborhood code from common.Neighborhood")
+    neighborhood = models.ForeignKey(Neighborhood, on_delete=models.DO_NOTHING, help_text="Neighborhood code from common.Neighborhood") #TODO: Change to City or make per point?
     usersTotal = models.IntegerField(help_text="Total number of users in the neighborhood")
     ResidentialUsers = models.IntegerField(null=True, help_text="Number of residential users")
     CommercialUsers = models.IntegerField(null=True, help_text="Number of commercial users")
     IndustrialUsers = models.IntegerField(null=True, help_text="Number of industrial users")
     populationServed = models.IntegerField(null=True, help_text="Population served in the neighborhood")
     last_updated = models.DateTimeField(default=timezone.now)
-    
     def __str__(self):
         return f"{self.neighborhood} - {self.usersTotal} users"
     
 class MeteredResidential(models.Model):
     id = models.AutoField(primary_key=True)
-    user = models.ForeignKey(UsersLocation, on_delete=models.DO_NOTHING, help_text="UsersLocation ID from common.UsersLocation")
+    userLocation = models.ForeignKey(UsersLocation, on_delete=models.DO_NOTHING, help_text="UsersLocation ID from common.UsersLocation")
     installed_meters = models.IntegerField(help_text="Number of installed meters")
     functional_meters = models.IntegerField(help_text="Number of functional meters")
     collected_meters = models.IntegerField(help_text="Number of collected meters")
@@ -109,8 +108,9 @@ class MeteredResidential(models.Model):
 class AvailableFreshWater(models.Model):
     id=models.AutoField(primary_key=True)
     SourceName = models.CharField(max_length=100, help_text="Name of the water source")
+    region = models.ForeignKey(Region, on_delete=models.DO_NOTHING, null=True, help_text="Region code from common.Region. Get automatically assigned on save.")
     geom = models.MultiPolygonField(srid=COORDINATE_SYSTEM)
-    infiltrationRate_cm_h = models.FloatField(help_text="Infiltration rate in centimeters per hour")
+    infiltrationRate_cm_h = models.FloatField(help_text="Infiltration rate in centimeters per hour") #TODO: this should be calculated from land cover and soil type
     infiltrationDepth_cm = models.FloatField(help_text="Infiltration depth in centimeters")
     totalQuantity_Mm3 = models.FloatField(help_text="total quantity in million cubic meters")
     yield_Mm3_year = models.FloatField(help_text="Yield in million cubic meters per year")
@@ -119,10 +119,15 @@ class AvailableFreshWater(models.Model):
     def __str__(self):
         return f"{self.SourceName} - {self.totalQuantity_Mm3} Mm3"
     
+    def save(self, *args, **kwargs):
+        region = Region.objects.get(geom__contains=self.geom.centroid)
+        self.region = region
+        super().save(**args, **kwargs)
+    
 class ExtractionWater(models.Model):
     id=models.AutoField(primary_key=True)
     source = models.ForeignKey(AvailableFreshWater,
-                               on_delete=models.DO_NOTHING, help_text="AvailableFreshWater ID from watersupply.AvailableFreshWater")
+                               on_delete=models.DO_NOTHING, help_text="AvailableFreshWater ID from watersupply.AvailableFreshWater. Get automatically assigned on save.")
     geom = models.MultiPointField(srid=COORDINATE_SYSTEM)
     stationName = models.CharField(max_length=100, help_text="Name of the extraction station")
     pumpflow_m3_s = models.FloatField(help_text="Pump flow in cubic meters per second")
@@ -139,6 +144,23 @@ class ExtractionWater(models.Model):
     
     def __str__(self):
         return f"{self.source} - {self.stationName}"
+    
+    def save(self, *args, **kwargs):
+        # Assign source based on location
+        source = AvailableFreshWater.objects.get(geom__contains=self.geom.centroid)
+        self.source = source
+        
+        # Calculate emissions if factors are provided
+        if self.pumpEnergyRate_kWh_h is not None and self.pumpEmmissionFactor_kg_CO2_kWh is not None:
+            self.pumpEmissionRate_kg_CO2_h = self.pumpEnergyRate_kWh_h * self.pumpEmmissionFactor_kg_CO2_kWh
+            self.pumpEmission_day_kg_CO2 = self.pumpEmissionRate_kg_CO2_h * self.OperationTime_h_day
+            self.pumpEmission_year_kg_CO2 = self.pumpEmission_day_kg_CO2 * 365
+        else:
+            self.pumpEmissionRate_kg_CO2_h = None
+            self.pumpEmission_day_kg_CO2 = None
+            self.pumpEmission_year_kg_CO2 = None
+        
+        super().save(**args, **kwargs)
     
     
     #TODO: Add save method to calculate emissions based on energy rate and emission factor
@@ -171,14 +193,14 @@ class WaterTreatment(models.Model):
     
 class CoverageWaterSupply(models.Model):
     id = models.AutoField(primary_key=True)
-    Neighborhood = models.ForeignKey(Neighborhood, on_delete=models.DO_NOTHING)
+    city = models.ForeignKey(City, on_delete=models.DO_NOTHING)
     coveredArea_km2 = models.FloatField( help_text="Covered area in square kilometers")
     year = models.IntegerField()
     coveragePCT = models.FloatField(help_text="Coverage of users in percentage")
     last_updated = models.DateTimeField(default=timezone.now)
     
     def __str__(self):
-        return f"{self.Neighborhood} - covered area: {self.coveredArea_km2} km2. Coverage: {self.coveragePCT} %"
+        return f"{self.city} - covered area: {self.coveredArea_km2} km2. Coverage: {self.coveragePCT} %"
     
 
 class NonRevenueWater(models.Model):
@@ -265,7 +287,7 @@ class AreaAffectedDrought(models.Model):
 class TotalWaterProduction(models.Model):
     id = models.AutoField(primary_key=True)
     source = models.ForeignKey(AvailableFreshWater,
-                               on_delete=models.DO_NOTHING, help_text="AvailableFreshWater ID from watersupply.AvailableFreshWater")
+                               on_delete=models.DO_NOTHING, help_text="AvailableFreshWater ID from watersupply.AvailableFreshWater") #TODO: What if the source is imported or multiple sources?
     year = models.IntegerField()
     productionDay = models.FloatField( help_text="in Million cubic meters per day") # Mm3/day
     productionYR = models.FloatField(null=True, help_text="in Million cubic meters per year")  # Mm3/year

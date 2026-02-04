@@ -2,12 +2,11 @@ from django import forms
 from django.apps import apps
 from django.contrib.gis.geos import GEOSGeometry
 from django.contrib.gis.gdal import DataSource, SpatialReference
-from .utils import build_model_registry
+from common.geoFunctions import TARGET_MODELS
 
 
 
 
-TARGET_MODELS = build_model_registry()
 
 def get_target_model_choices():
     """Get choices for target model field."""
