@@ -58,6 +58,7 @@ class City(models.Model):
     populationDensity = models.FloatField(null=True, help_text="Population density in people per square kilometer") # people/km2
     populationDate = models.DateField(null=True)
     popGrowthRate = models.FloatField(null=True , help_text="Growth rate in % per year") # %
+    urbanizationRate = models.FloatField(null=True, help_text="Urbanization rate in % per year") # %
     geom = models.MultiPolygonField(srid=CoordinateSystem)
     last_updated = models.DateTimeField(default=timezone.now)
     
