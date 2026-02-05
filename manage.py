@@ -3,16 +3,7 @@
 import os
 import sys
 
-# Fix PROJ_LIB conflict with PostGIS
-print("Setting PROJ_LIB to %s" % os.environ.get('PROJ_LIB'))
-print("Setting GDAL_DATA to %s" % os.environ.get('GDAL_DATA'))
-try:
-    import pyproj
-    os.environ['PROJ_LIB'] = pyproj.datadir.get_data_dir()
-    os.environ['PROJ_DATA'] = pyproj.datadir.get_data_dir()
-except ImportError:
-    print("Failed to import pyproj") 
-    pass
+
 
 
 def main():

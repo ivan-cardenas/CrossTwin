@@ -94,10 +94,10 @@ pip install -r requirements.txt
 ### 4. Set Up PostgreSQL with PostGIS
 ```bash
 # Create database
-createdb crosstwin_db
+createdb digitaltwin
 
 # Enable PostGIS extension
-psql -d crosstwin_db -c "CREATE EXTENSION postgis;"
+psql -d digitaltwin  -c "CREATE EXTENSION postgis;"
 ```
 
 ### 5. Configure Environment Variables
@@ -111,6 +111,8 @@ DATABASE_PASSWORD=your_db_password
 DATABASE_HOST=localhost
 DATABASE_PORT=5432
 MAPBOX_ACCESS_TOKEN=your_mapbox_token
+
+COORDINATE_SYSTEM=28992 # EPSG code for Dutch RD New
 ```
 
 ### 6. Run Migrations
@@ -137,7 +139,7 @@ Visit `http://localhost:8000` to access the application.
 CrossTwin uses **EPSG:28992** (Dutch RD New) as the default coordinate system. This is configured in the spatial models and import system.
 
 To change the default SRID:
-1. Update `SRID` in spatial model fields
+1. Update `COORDINATE_SYSTEM` in the `.env` file
 2. Modify the importer's SRID configuration
 3. Update Mapbox projection settings if needed
 

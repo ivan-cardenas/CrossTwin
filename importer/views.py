@@ -15,7 +15,7 @@ import geopandas as gpd
 
 from .forms import GeoUploadForm, MappingForm, get_target_model_choices
 from .utils import gpd_read_any
-from common.geoFunctions import TARGET_MODELS
+from core.utils import TARGET_MODELS
 
 from django.db.models import Field, ForeignKey, OneToOneField, AutoField
 from django.contrib.gis.db.models import GeometryField, MultiPolygonField

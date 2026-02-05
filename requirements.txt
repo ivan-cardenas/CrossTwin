@@ -4,7 +4,6 @@ crispy-tailwind==1.0.3
 django==5.2.7
 django-crispy-forms==2.4
 django-extensions==4.1
-gdal @ https://github.com/cgohlke/geospatial-wheels/releases/download/v2025.10.25/gdal-3.11.4-cp311-cp311-win_amd64.whl
 geopandas==1.1.2
 numpy==2.3.4
 packaging==25.0
@@ -13,6 +12,7 @@ pillow==12.0.0
 psycopg==3.2.12
 pydot==4.0.1
 pyogrio==0.11.1
+psycopg2==2.9.11
 pyparsing==3.2.5
 pyproj==3.7.2
 python-dateutil==2.9.0.post0
@@ -22,3 +22,5 @@ six==1.17.0
 sqlparse==0.5.3
 typing-extensions==4.15.0
 tzdata==2025.2
+gdal==3.10.1
+scipy==1.17.0

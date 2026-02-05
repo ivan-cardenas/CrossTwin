@@ -2,7 +2,7 @@ from django import forms
 from django.apps import apps
 from django.contrib.gis.geos import GEOSGeometry
 from django.contrib.gis.gdal import DataSource, SpatialReference
-from common.geoFunctions import TARGET_MODELS
+from core.utils import TARGET_MODELS
 
 
 

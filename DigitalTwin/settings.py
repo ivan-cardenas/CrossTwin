@@ -11,21 +11,59 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+from dotenv import load_dotenv
+import os
+import sys
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# GDAL and PROJ_LIB settings for PostGIS
+# GDAL/GEOS Configuration for Windows
+if os.name == 'nt':
+    # Get the virtual environment path
+    venv_path = Path(sys.executable).parent.parent
+    osgeo_path = venv_path / 'Lib' / 'site-packages' / 'osgeo'
+    
+    if osgeo_path.exists():
+        # Add osgeo to PATH so DLLs can be found
+        osgeo_bin = str(osgeo_path)
+        if osgeo_bin not in os.environ.get('PATH', ''):
+            os.environ['PATH'] = osgeo_bin + os.pathsep + os.environ.get('PATH', '')
+        
+        # Set GDAL library path
+        gdal_dll = osgeo_path / 'gdal.dll'
+        if gdal_dll.exists():
+            GDAL_LIBRARY_PATH = str(gdal_dll)
+        
+        # Set GEOS library path
+        geos_dll = osgeo_path / 'geos_c.dll'
+        if geos_dll.exists():
+            GEOS_LIBRARY_PATH = str(geos_dll)
+        
+        # Set GDAL data paths
+        gdal_data = osgeo_path / 'data' / 'gdal'
+        if gdal_data.exists():
+            os.environ['GDAL_DATA'] = str(gdal_data)
+        
+        proj_lib = osgeo_path / 'data' / 'proj'
+        if proj_lib.exists():
+            os.environ['PROJ_LIB'] = str(proj_lib)
+
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-h()_4k2wd!f*$5c0(5#4bc5jow4_+qs!_6+zg%-8vhg3k-1e4e"
-MAPBOX_ACCESS_TOKEN = "pk.eyJ1IjoiY3lnbnVzMjYiLCJhIjoiY2s5Z2MzeWVvMGx3NTNtbzRnbGtsOXl6biJ9.8SLdJuFQzuN-s4OlHbwzLg"
+SECRET_KEY = os.environ.get("SECRET_KEY")
+MAPBOX_ACCESS_TOKEN = os.environ.get("MAPBOX_ACCESS_TOKEN")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
+DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
 ALLOWED_HOSTS = []
 
 
@@ -89,11 +127,11 @@ WSGI_APPLICATION = "DigitalTwin.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.contrib.gis.db.backends.postgis",
-        "NAME": "digitaltwin",
-        "USER": "geodjango",
-        "PASSWORD": "DTwin",
-        "HOST": "localhost",
-        "PORT": "5432",
+        "NAME": os.environ.get("DATABASE_NAME"),
+        "USER": os.environ.get("DATABASE_USER"),
+        "PASSWORD": os.environ.get("DATABASE_PASSWORD"),
+        "HOST": os.environ.get("DATABASE_HOST"),
+        "PORT": os.environ.get("DATABASE_PORT"),
     }
 }
 
@@ -128,7 +166,7 @@ USE_I18N = True
 
 USE_TZ = True
 
-COORDINATE_SYSTEM = 28992  # Amersfoort / RD New
+COORDINATE_SYSTEM = os.environ.get("COORDINATE_SYSTEM")  # Amersfoort / RD New
 
 
 # Static files (CSS, JavaScript, Images)

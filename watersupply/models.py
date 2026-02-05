@@ -193,7 +193,7 @@ class WaterTreatment(models.Model):
     
 class CoverageWaterSupply(models.Model):
     id = models.AutoField(primary_key=True)
-    city = models.ForeignKey(City, on_delete=models.DO_NOTHING)
+    city = models.ForeignKey(City, on_delete=models.DO_NOTHING, null=True, help_text="City code from common.City")
     coveredArea_km2 = models.FloatField( help_text="Covered area in square kilometers")
     year = models.IntegerField()
     coveragePCT = models.FloatField(help_text="Coverage of users in percentage")

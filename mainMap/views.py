@@ -10,7 +10,7 @@ from django.apps import apps
 from django.conf import settings
 
 
-from importer.utils import build_model_registry 
+from core.utils import build_model_registry 
 MODEL_REGISTRY = build_model_registry()
 
 
