@@ -84,6 +84,7 @@ INSTALLED_APPS = [
     "importer",
     
     "common",
+    "urbanHeat",
     "watersupply",
     "weather",
     
