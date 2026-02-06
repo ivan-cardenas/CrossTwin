@@ -2,7 +2,7 @@ from django.apps import apps
 
 def build_model_registry():
     """Build MODEL_REGISTRY dynamically from specified apps."""
-    allowed_apps = ['common', 'watersupply']
+    allowed_apps = ['common', 'urbanHeat', 'watersupply', 'weather']
     registry = {}
     
     for app_label in allowed_apps:

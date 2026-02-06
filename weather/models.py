@@ -42,7 +42,7 @@ class WeatherStation(models.Model):
         return self.name
 
 
-class WeatherMeasurement(models.Model):
+class Meteorology(models.Model):
     """Time-series weather measurements from stations"""
     station = models.ForeignKey(
         WeatherStation, 
@@ -199,7 +199,7 @@ class InterpolatedRasterBase(models.Model):
             f'{field_name}__isnull': False,
         }
         
-        return WeatherMeasurement.objects.filter(
+        return Meteorology.objects.filter(
             **filter_kwargs
         ).select_related('station')
     
@@ -432,3 +432,4 @@ class HumidityRaster(InterpolatedRasterBase):
     def _get_metadata_keys(self):
         return ('min_humidity_percent', 'max_humidity_percent', 
                 'mean_humidity_percent', '%')
+        
