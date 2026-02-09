@@ -15,7 +15,7 @@ import geopandas as gpd
 
 from .forms import GeoUploadForm, MappingForm, get_target_model_choices
 from .utils import gpd_read_any
-from core.utils import TARGET_MODELS
+from core.utils import MODEL_REGISTRY
 
 from django.db.models import Field, ForeignKey, OneToOneField, AutoField
 from django.contrib.gis.db.models import GeometryField, MultiPolygonField
@@ -23,8 +23,6 @@ from django.contrib.gis.db.models import GeometryField, MultiPolygonField
 
 COORDINATE_SYSTEM = settings.COORDINATE_SYSTEM
 
-# Build MODEL_REGISTRY from TARGET_MODELS in forms.py
-MODEL_REGISTRY = TARGET_MODELS
 
 # Optional, tiny per-model overrides (only what can't be inferred)
 MODEL_OVERRIDES = {

@@ -9,9 +9,8 @@ from django.apps import apps
 
 from django.conf import settings
 
+from core.utils import VECTOR_REGISTRY, WMS_REGISTRY, RASTER_REGISTRY, MODEL_REGISTRY
 
-from core.utils import build_model_registry 
-MODEL_REGISTRY = build_model_registry()
 
 
 def map_view(request):
@@ -29,10 +28,10 @@ def model_geojson(request, app_label, model_name):
     # Find the model in registry
     key = f"{app_label}.{model_name}"
     
-    if key not in MODEL_REGISTRY:
+    if key not in VECTOR_REGISTRY:
         raise Http404(f"Model {key} not found in registry")
     
-    model = MODEL_REGISTRY[key]
+    model = VECTOR_REGISTRY[key]
     
     # Find the geometry field automatically
     geom_field = None
@@ -100,13 +99,7 @@ def available_layers(request):
     ]
     
     color_index = 0
-    
-    #Vector layers from registered models
-    
-    VECTOR_REGISTRY = MODEL_REGISTRY.copy().pop('wmslayer', {})
-    
-    WMS_REGISTRY = MODEL_REGISTRY.get('wmslayer')
-    
+        
     for key, model in VECTOR_REGISTRY.items():
         # Find geometry field
         geom_field = None
@@ -148,20 +141,23 @@ def available_layers(request):
             
             color_index += 1
     
-    for wms in WMS_REGISTRY.items():
-        layers.append({
-            'key': f'wms-{wms.name}',
-            'display_name': wms.display_name,
-            'app_label': wms.app_label,  # groups it under watersupply
-            'geometry_type': 'raster',
-            'color': wms.color,
-            'count': 'WMS',
-            'layer_type': 'wms',  # ← frontend uses this
-            'wms_url': wms.url,
-            'wms_layers': wms.layers_param,
-            'legend_url': wms.legend_url or '',
-            'opacity': wms.opacity,
-        })
+    for key, model in WMS_REGISTRY.items() if WMS_REGISTRY else []:
+        wms_instances = model.objects.all()
+        
+        for wms in wms_instances:
+            layers.append({
+                'key': f'wms-{wms.name}',
+                'display_name': wms.display_name,
+                'app_label': wms.app_label,  # groups it under watersupply
+                'geometry_type': 'raster',
+                'color': wms.color,
+                'count': 'WMS',
+                'layer_type': 'wms',  # ← frontend uses this
+                'wms_url': wms.url,
+                'wms_layers': wms.layers_param,
+                'legend_url': wms.legend_url or '',
+                'opacity': wms.opacity,
+            })
     
     return JsonResponse({'layers': layers})
 

@@ -35,7 +35,7 @@ const BASEMAPS = {
 const TOOL_CATEGORIES = {
   overview:    null,          // null = show ALL layers
   common:      ['common'],          // null = show ALL layers
-  temperature: ['temperature', 'heat'],
+  temperature: ['temperature', 'heat', 'weather', 'urbanHeat,'],
   green:       ['green', 'vegetation', 'trees'],
   water:       ['watersupply', ],
   groundwater: ['groundwater'],
@@ -371,7 +371,7 @@ async function fetchAvailableLayers() {
     for (const layer of availableLayers) {
       await addLayer(layer);
     }
-
+ 
     // Fit to all features
     zoomToAllVisible();
 
@@ -388,7 +388,7 @@ async function fetchAvailableLayers() {
  * Add a layer to the map
  */
 async function addLayer(layerConfig) {
-  const { key, url, color, geometry_type, display_name } = layerConfig;
+  const { key, url, color, geometry_type, display_name, layer_type } = layerConfig;
 
   if (loadedLayers[key]) return;
 

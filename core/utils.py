@@ -1,8 +1,9 @@
 from django.apps import apps
+from django.contrib.gis.db import models as gis_models
 
 def build_model_registry():
     """Build MODEL_REGISTRY dynamically from specified apps."""
-    allowed_apps = ['common', 'urbanHeat', 'watersupply', 'weather']
+    allowed_apps = ['common', 'urbanHeat', 'watersupply', 'weather', 'builtup', 'Energy', 'Housing']
     registry = {}
     
     for app_label in allowed_apps:
@@ -17,4 +18,25 @@ def build_model_registry():
     
     return registry
 
-TARGET_MODELS = build_model_registry()
+MODEL_REGISTRY = build_model_registry()
+
+VECTOR_REGISTRY = {
+        key: value 
+        for key, value in MODEL_REGISTRY.items() 
+        if value._meta.get_fields() and any(isinstance(f, gis_models.GeometryField) for f in value._meta.get_fields()) and not any(isinstance(f, gis_models.RasterField) for f in value._meta.get_fields())
+    }
+
+print("VECTOR REGISTRY:", VECTOR_REGISTRY)
+
+    
+WMS_REGISTRY = {key: value 
+                    for key, value in MODEL_REGISTRY.items() 
+                    if 'WMS' in key}
+print("WMS REGISTRY:", WMS_REGISTRY)
+
+RASTER_REGISTRY = {
+    key: value 
+    for key, value in MODEL_REGISTRY.items() 
+    if value._meta.get_fields() and any(isinstance(f, gis_models.RasterField) for f in value._meta.get_fields())
+}    
+print("RASTER REGISTRY:", RASTER_REGISTRY)

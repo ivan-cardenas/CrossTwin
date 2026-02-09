@@ -1,7 +1,7 @@
 from django.contrib.gis.db import models
 from django.utils import timezone
 from django.core.exceptions import ValidationError
-from common.models import Region, City, Neighborhood, ElectricityCost
+from common.models import Region, City, Neighborhood
 from django.conf import settings
 
 COORDINATE_SYSTEM = settings.COORDINATE_SYSTEM
@@ -299,6 +299,7 @@ class TotalWaterProduction(models.Model):
         return f"{self.source.SourceName} - {self.year}: {self.productionDay} Mm3/day"
     
     def save(self, *args, **kwargs):
+        from Energy.models import ElectricityCost
         
         # Get all extraction wells that use THIS specific source
         extraction_wells = ExtractionWater.objects.filter(

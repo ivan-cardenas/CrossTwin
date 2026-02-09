@@ -2,7 +2,7 @@ from django import forms
 from django.apps import apps
 from django.contrib.gis.geos import GEOSGeometry
 from django.contrib.gis.gdal import DataSource, SpatialReference
-from core.utils import TARGET_MODELS
+from core.utils import MODEL_REGISTRY
 
 
 
@@ -12,7 +12,7 @@ def get_target_model_choices():
     """Get choices for target model field."""
     groupped = {}
     
-    for label, model in TARGET_MODELS.items():
+    for label, model in MODEL_REGISTRY.items():
         app_label = label.split('.')[0]
         display_name = model.__name__
         

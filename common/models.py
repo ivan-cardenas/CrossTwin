@@ -59,6 +59,7 @@ class City(models.Model):
     populationDate = models.DateField(null=True)
     popGrowthRate = models.FloatField(null=True , help_text="Growth rate in % per year") # %
     urbanizationRate = models.FloatField(null=True, help_text="Urbanization rate in % per year") # %
+    urban_area = models.FloatField(null=True, help_text="Urban area in square kilometers")
     geom = models.MultiPolygonField(srid=CoordinateSystem)
     last_updated = models.DateTimeField(default=timezone.now)
     
@@ -103,12 +104,135 @@ class Neighborhood(models.Model):
         verbose_name_plural = "Neighborhoods"
     
 
-class ElectricityCost(models.Model):
+
+    
+
+class LandCoverClasses(models.Model):
     id = models.AutoField(primary_key=True)
-    region = models.ForeignKey(Region, on_delete=models.DO_NOTHING, help_text="Region code from common.Region")
-    year = models.IntegerField()
-    cost_EUR_kWh = models.FloatField(help_text="Cost in EUR per kilowatt-hour")
+    class_name = models.CharField(max_length=100, help_text="Name of the land cover class (e.g., 'Urban', 'Forest', 'Agriculture', etc.)")
+    description = models.TextField(help_text="Detailed description of the land cover class")
     last_updated = models.DateTimeField(default=timezone.now)
     
     def __str__(self):
-        return f"{self.region} - {self.year}: {self.cost_EUR_kWh} EUR/kWh"
+        return self.class_name
+    
+class SurfaceMaterialProperties(models.Model):
+    id = models.AutoField(primary_key=True)
+    material_name = models.CharField(max_length=100, help_text="Name of the material (e.g., 'Concrete', 'Asphalt', 'Grass', etc.)")
+    albedo = models.FloatField(help_text="Albedo value (0-1) representing the reflectivity of the material")
+    thermal_conductivity = models.FloatField(help_text="Thermal conductivity in W/(m*K)")
+    specific_heat_capacity = models.FloatField(help_text="Specific heat capacity in J/(kg*K)")
+    density = models.FloatField(help_text="Density in kg/m3")
+    last_updated = models.DateTimeField(default=timezone.now)
+    
+    def __str__(self):
+        return self.material_name
+    
+class WallMaterialProperties(models.Model):
+    id = models.AutoField(primary_key=True)
+    material_name = models.CharField(max_length=100, help_text="Name of the wall material (e.g., 'Brick', 'Wood', 'Insulated Panel', etc.)")
+    thermal_conductivity = models.FloatField(help_text="Thermal conductivity in W/(m*K)")
+    specific_heat_capacity = models.FloatField(help_text="Specific heat capacity in J/(kg*K)")
+    density = models.FloatField(help_text="Density in kg/m3")
+    last_updated = models.DateTimeField(default=timezone.now)
+    
+    def __str__(self):
+        return self.material_name
+
+
+class LandCoverVector(models.Model):
+    id = models.AutoField(primary_key=True)
+    region = models.ForeignKey(Region, on_delete=models.DO_NOTHING, help_text="Region code from common.Region")
+    year = models.IntegerField()
+    land_cover_type = models.ForeignKey(LandCoverClasses, on_delete=models.DO_NOTHING, help_text="Type of land cover (e.g., 'Urban', 'Forest', 'Agriculture', etc.)")
+    land_use = models.CharField(max_length=100, help_text="Land use type (e.g., 'Residential', 'Commercial', 'Industrial', 'Park', etc.)")
+    geom = models.MultiPolygonField(srid=CoordinateSystem)
+    percentage = models.FloatField(help_text="Percentage of the region covered by this land cover type") #TODO: Calculate this percentage based on the area of the geom and the total area of the region. #TODO: Vegetation Coverage and Builtup Coverage as additional fields?
+    material = models.ForeignKey(SurfaceMaterialProperties, on_delete=models.DO_NOTHING, help_text="Material properties of the land cover type")
+    last_updated = models.DateTimeField(default=timezone.now)
+    
+    def __str__(self):
+        return f"{self.region} - {self.year}: {self.land_cover_type} ({self.percentage}%)"
+    
+class LandCoverRaster(models.Model):
+    id = models.AutoField(primary_key=True)
+    region = models.ForeignKey(Region, on_delete=models.DO_NOTHING, help_text="Region code from common.Region")
+    year = models.IntegerField()
+    raster = models.RasterField(srid=CoordinateSystem, null=True, blank=True, help_text="Raster file containing land cover classification values")
+    last_updated = models.DateTimeField(default=timezone.now)
+    
+    def __str__(self):
+        return f"{self.region} - {self.year}: Land Cover Raster"
+    
+class LandCoverWMS(models.Model):
+    name = models.CharField(max_length=200)
+    display_name = models.CharField(max_length=200)
+    url = models.URLField(max_length=500, help_text="Base WMS endpoint URL")
+    layers_param = models.CharField(max_length=200, help_text="WMS layers parameter")
+    color = models.CharField(max_length=7, default='#4a90d9')
+    legend_url = models.URLField(max_length=500, blank=True, null=True)
+    opacity = models.FloatField(default=0.7)
+    is_active = models.BooleanField(default=True)
+    
+    class Meta:
+        verbose_name = "Land Cover WMS Layer"
+        verbose_name_plural = "Land Cover WMS Layers"
+        
+    def __str__(self):
+        return self.display_name
+
+
+class DigitalElevationModel(models.Model):
+    id = models.AutoField(primary_key=True)
+    region = models.ForeignKey(Region, on_delete=models.DO_NOTHING, help_text="Region code from common.Region")
+    year = models.IntegerField()
+    dem_raster = models.RasterField(srid=CoordinateSystem, null=True, blank=True, help_text="Raster file containing elevation values")
+    last_updated = models.DateTimeField(default=timezone.now)
+    
+    def __str__(self):
+        return f"{self.region} - {self.year}: Digital Elevation Model"
+    
+class DigitalElevationModelWMS(models.Model):
+    name = models.CharField(max_length=200)
+    display_name = models.CharField(max_length=200)
+    url = models.URLField(max_length=500, help_text="Base WMS endpoint URL")
+    layers_param = models.CharField(max_length=200, help_text="WMS layers parameter")
+    color = models.CharField(max_length=7, default='#4a90d9')
+    legend_url = models.URLField(max_length=500, blank=True, null=True)
+    opacity = models.FloatField(default=0.7)
+    is_active = models.BooleanField(default=True)
+    
+    class Meta:
+        verbose_name = "Digital Elevation Model WMS Layer"
+        verbose_name_plural = "Digital Elevation Model WMS Layers"
+        
+    def __str__(self):
+        return self.display_name
+    
+class DigitalSurfaceModel(models.Model):
+    id = models.AutoField(primary_key=True)
+    region = models.ForeignKey(Region, on_delete=models.DO_NOTHING, help_text="Region code from common.Region")
+    year = models.IntegerField()
+    dsm_raster = models.RasterField(srid=CoordinateSystem, null=True, blank=True, help_text="Raster file containing surface elevation values")
+    last_updated = models.DateTimeField(default=timezone.now)
+    
+    def __str__(self):
+        return f"{self.region} - {self.year}: Digital Surface Model"
+    
+class DigitalSurfaceModelWMS(models.Model):
+    name = models.CharField(max_length=200)
+    display_name = models.CharField(max_length=200)
+    url = models.URLField(max_length=500, help_text="Base WMS endpoint URL")
+    layers_param = models.CharField(max_length=200, help_text="WMS layers parameter")
+    color = models.CharField(max_length=7, default='#4a90d9')
+    legend_url = models.URLField(max_length=500, blank=True, null=True)
+    opacity = models.FloatField(default=0.7)
+    is_active = models.BooleanField(default=True)
+    
+    class Meta:
+        verbose_name = "Digital Surface Model WMS Layer"
+        verbose_name_plural = "Digital Surface Model WMS Layers"
+        
+    def __str__(self):
+        return self.display_name
+    

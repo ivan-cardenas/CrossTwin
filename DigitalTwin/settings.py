@@ -87,6 +87,10 @@ INSTALLED_APPS = [
     "urbanHeat",
     "watersupply",
     "weather",
+    "Energy",
+    "Housing",
+    "builtup",
+    
     
     "mainMap",
     
@@ -167,7 +171,7 @@ USE_I18N = True
 
 USE_TZ = True
 
-COORDINATE_SYSTEM = os.environ.get("COORDINATE_SYSTEM")  # Amersfoort / RD New
+COORDINATE_SYSTEM = int(os.environ.get("COORDINATE_SYSTEM", 28992))  # Amersfoort / RD New
 
 
 # Static files (CSS, JavaScript, Images)

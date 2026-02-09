@@ -93,12 +93,35 @@ pip install -r requirements.txt
 
 ### 4. Set Up PostgreSQL with PostGIS
 ```bash
-# Create database
-createdb digitaltwin
+# Connect to PostgreSQL
+psql -U postgres
 
-# Enable PostGIS extension
-psql -d digitaltwin  -c "CREATE EXTENSION postgis;"
+# Run these commands:
+CREATE DATABASE digitaltwin;
+CREATE USER your_username WITH PASSWORD 'your_password';
+ALTER DATABASE digitaltwin OWNER TO your_username;
+GRANT ALL PRIVILEGES ON DATABASE digitaltwin TO your_username;
+
+# Connect to the database
+\c digitaltwin
+
+# Grant schema permissions
+GRANT ALL ON SCHEMA public TO your_username;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO your_username;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO your_username;
+
+# Create PostGIS extension
+CREATE EXTENSION postgis;
+CREATE EXTENSION postgis_topology;
+CREATE EXTENSION postgis_raster;
+CREATE EXTENSION postgis_sfcgal;
+CREATE EXTENSION pgrouting;
+# Exit
+\q
 ```
+
+
+> Note: Replace `digitaltwin` with the name of your database.
 
 ### 5. Configure Environment Variables
 Create a `.env` file in the project root:
