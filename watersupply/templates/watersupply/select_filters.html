@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Water Supply Indicators{% endblock %}
+
+{% block extra_css %}
+<style>
+    .indicators-page {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 2rem;
+    }
+
+    .control-card {
+        background: rgba(15, 23, 42, 0.7);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(148, 163, 184, 0.1);
+        border-radius: 1rem;
+        padding: 2rem;
+        margin-bottom: 2rem;
+    }
+
+    .control-card h2 {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #e2e8f0;
+        margin-bottom: 1.5rem;
+    }
+
+    .controls {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .form-group {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .form-group label {
+        font-size: 0.875rem;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 0.5rem;
+    }
+
+    .form-group select,
+    .form-group input {
+        background: rgba(30, 41, 59, 0.5);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 0.5rem;
+        padding: 0.75rem 1rem;
+        color: #e2e8f0;
+        font-size: 1rem;
+        transition: all 0.2s ease;
+    }
+
+    .form-group select:focus,
+    .form-group input:focus {
+        outline: none;
+        border-color: #3b82f6;
+        background: rgba(30, 41, 59, 0.7);
+    }
+
+    .form-group select option {
+        background: #1e293b;
+        color: #e2e8f0;
+    }
+
+    .btn-load {
+        background: linear-gradient(135deg, #3b82f6, #2563eb);
+        border: none;
+        border-radius: 0.5rem;
+        padding: 0.875rem 2rem;
+        color: white;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        width: 100%;
+    }
+
+    .btn-load:hover {
+        background: linear-gradient(135deg, #2563eb, #1d4ed8);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+    }
+
+    .btn-load:active {
+        transform: translateY(0);
+    }
+
+    #indicators-container {
+        min-height: 400px;
+    }
+
+    .loading {
+        text-align: center;
+        padding: 4rem 2rem;
+        color: #94a3b8;
+    }
+
+    .loading-spinner {
+        border: 3px solid rgba(148, 163, 184, 0.1);
+        border-top: 3px solid #3b82f6;
+        border-radius: 50%;
+        width: 48px;
+        height: 48px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 1rem;
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>
+{% endblock extra_css %}
+
+{% block extra_js %}
+<script>
+async function loadWaterIndicators(regionId, year) {
+    const container = document.getElementById('indicators-container');
+    
+    // Show loading state
+    container.innerHTML = `
+        <div class="loading">
+            <div class="loading-spinner"></div>
+            <p>Loading water supply indicators...</p>
+        </div>
+    `;
+    
+    try {
+        const url = `/watersupply/indicators/${regionId}/${year}/`;
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const html = await response.text();
+        container.innerHTML = html;
+        
+        // Smooth scroll to results
+        container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        
+    } catch (error) {
+        console.error('Error loading indicators:', error);
+        container.innerHTML = `
+            <div class="control-card" style="border-color: rgba(239, 68, 68, 0.3);">
+                <div style="color: #ef4444; text-align: center;">
+                    <i class="bi bi-exclamation-triangle" style="font-size: 3rem; margin-bottom: 1rem;"></i>
+                    <h3 style="margin-bottom: 0.5rem;">Error Loading Indicators</h3>
+                    <p style="color: #94a3b8;">Unable to load water supply data. Please try again.</p>
+                </div>
+            </div>
+        `;
+    }
+}
+
+function loadIndicators() {
+    const regionId = document.getElementById('region-select').value;
+    const year = document.getElementById('year-input').value;
+    
+    if (!regionId || !year) {
+        alert('Please select a region and year');
+        return;
+    }
+    
+    loadWaterIndicators(regionId, year);
+}
+
+// Load on page load with default values
+document.addEventListener('DOMContentLoaded', function() {
+    loadIndicators();
+});
+</script>
+{% endblock extra_js %}
+
+{% block content %}
+<div class="indicators-page">
+    <!-- Controls -->
+    <div class="control-card">
+        <h2>💧 Water Supply Analysis</h2>
+        
+        <div class="controls">
+            <div class="form-group">
+                <label for="region-select">
+                    <i class="bi bi-geo-alt-fill"></i> Region
+                </label>
+                <select id="region-select">
+                   {% for region in regions  %}
+                   <option value="{{ region.id }}">{{ region.name }}</option>
+                   {%empty%}
+                   <option value="">No regions found</option>
+                   
+                   {% endfor %}
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="year-input">
+                    <i class="bi bi-calendar-event"></i> Year
+                </label>
+                <input type="number" id="year-input" value="2024" min="2020" max="2030">
+            </div>
+        </div>
+        
+        <button class="btn-load" onclick="loadIndicators()">
+            <i class="bi bi-bar-chart-fill"></i> Load Indicators
+        </button>
+    </div>
+
+    <!-- Results Container -->
+    <div id="indicators-container">
+        <div class="loading">
+            <p style="color: #64748b;">Select a region and year to view water supply indicators</p>
+        </div>
+    </div>
+</div>
+{% endblock content %}

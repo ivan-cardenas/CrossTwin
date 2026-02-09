@@ -44,9 +44,19 @@ def model_geojson(request, app_label, model_name):
         raise Http404(f"Model {key} has no geometry field")
     
     # Get all non-geometry fields for properties (use db_column if available)
+    # EXCLUDE ManyToMany and reverse relations
     property_fields = []
     for f in model._meta.get_fields():
-        if hasattr(f, 'column') and not isinstance(f, gis_models.GeometryField):
+        # Skip if it's a geometry field
+        if isinstance(f, gis_models.GeometryField):
+            continue
+        
+        # Skip ManyToMany fields and reverse relations
+        if f.many_to_many or f.one_to_many:
+            continue
+        
+        # Only include fields that have actual database columns
+        if hasattr(f, 'column'):
             property_fields.append({
                 'name': f.name,
                 'column': f.column  # Actual database column name
@@ -158,6 +168,8 @@ def available_layers(request):
                 'legend_url': wms.legend_url or '',
                 'opacity': wms.opacity,
             })
+            
+    
     
     return JsonResponse({'layers': layers})
 

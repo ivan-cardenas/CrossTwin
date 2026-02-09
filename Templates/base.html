@@ -21,6 +21,8 @@ class LoadingManager {
     constructor() {
         this.overlay = document.getElementById('loadingOverlay');
         this.activeRequests = 0;
+        this.delayBeforeShow = 500; // Delay before showing spinner (ms)
+
         this.setupFetchInterceptor();
     }
 
@@ -90,9 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.loadingManager = new LoadingManager();
 });
 
-// Example usage for manual control:
-// window.loadingManager.forceShow('Importing data...');
-// window.loadingManager.forceHide();
+
 </script>
 
 
@@ -104,8 +104,9 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="spinner-ring"></div>
         <div class="spinner-ring"></div>
         <div class="spinner-ring"></div>
-        <div class="loading-text">Loading...</div>
+        
     </div>
+    <div class="loading-text">Loading...</div>
 </div>
 
     <div class="gradient-orb orb-top-left"></div>

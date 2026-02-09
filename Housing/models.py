@@ -23,6 +23,26 @@ class HousingSupplyDemand(models.Model):
         verbose_name = "Housing Supply and Demand"
         verbose_name_plural = "Housing Supply and Demand Records"
         
+        
+class HousingProject(models.Model):
+    id=models.AutoField(primary_key=True)
+    neighborhood = models.ForeignKey("common.Neighborhood", verbose_name="Neighborhood", on_delete=models.DO_NOTHING)
+    year = models.IntegerField(help_text="Year of the housing project data")
+    year_expected_completion = models.IntegerField(help_text="Year of expected completion of the housing project")
+    project_name = models.CharField(max_length=100, help_text="Name of the housing project")
+    project_description = models.TextField(help_text="Description of the housing project")
+    project_area = models.FloatField(help_text="Area of the housing project in square meters")
+    project_units = models.IntegerField(help_text="Number of housing units in the project")
+    geom = models.MultiPolygonField(srid=COORDINATE_SYSTEM)
+    last_updated = models.DateTimeField(default=timezone.now)
+    
+    def __str__(self):
+        return f"Housing Project {self.year} for {self.neighborhood}"
+    
+    class Meta:
+        verbose_name = "Housing Project"
+        verbose_name_plural = "Housing Projects"
+        
 class CentralBankPolicy(models.Model):
     id = models.AutoField(primary_key=True)
     region = models.ForeignKey("common.Region", verbose_name="Region", on_delete=models.DO_NOTHING)

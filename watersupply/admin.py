@@ -8,6 +8,7 @@ class WMSLayerAdmin(admin.ModelAdmin):
 
 
 
+
 admin.site.register(WMSLayer)
 admin.site.register(ConsumptionCapita)
 admin.site.register(TotalWaterDemand)

@@ -35,8 +35,11 @@ const BASEMAPS = {
 const TOOL_CATEGORIES = {
   overview:    null,          // null = show ALL layers
   common:      ['common'],          // null = show ALL layers
-  temperature: ['temperature', 'heat', 'weather', 'urbanHeat,'],
-  green:       ['green', 'vegetation', 'trees'],
+  temperature: ['temperature', 'heat', 'weather', 'urbanheat,'],
+  builtup : ["builtup"],
+  energy:      ['Energy'],
+  housing:     ['housing'],
+  green:       ['green', 'vegetation', 'trees', 'Park', 'LandCover'],
   water:       ['watersupply', ],
   groundwater: ['groundwater'],
   satellite:   null,
@@ -116,6 +119,13 @@ function initializeUrbanTwinMap(config) {
     add3DBuildings();
     addExternalLayers();
     fetchAvailableLayers();
+    updateCityName();
+    
+    // Listen for camera movements
+    map.on('moveend', function() {
+        clearTimeout(cityNameTimeout);
+        cityNameTimeout = setTimeout(updateCityName, 500);
+    });
   });
 
   // Error handling
@@ -777,6 +787,43 @@ function updateIndicators() {
     }
     visibleEl.textContent = visibleCount;
   }
+}
+
+
+// ============================================================
+// CITY NAME
+// ============================================================
+
+let cityNameTimeout;
+
+
+
+async function updateCityName() {
+    const center = map.getCenter();
+    const longitude = center.lng;
+    const latitude = center.lat;
+    
+    try {
+        const response = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?` +
+            `lat=${latitude}&lon=${longitude}&format=json&accept-language=en`,
+            { headers: { 'User-Agent': 'UTwente-DigitalTwin/1.0 (i.l.cardenasleon@utwente.nl)' } }
+        );
+        const data = await response.json();
+        
+        const cityName = data.address.city || 
+                        data.address.town || 
+                        data.address.village || 
+                        data.address.municipality ||
+                        data.address.county ||
+                        'Unknown Location';
+        
+        document.querySelector('.city-name').textContent = cityName;
+        console.log('City name:', cityName);
+    } catch (error) {
+        console.error('Error fetching city name:', error);
+        document.querySelector('.city-name').textContent = 'Unknown Location';
+    }
 }
 
 // ============================================================

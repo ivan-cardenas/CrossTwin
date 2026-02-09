@@ -337,8 +337,10 @@ class AreaAffectedDrought(models.Model):
     
 class TotalWaterProduction(models.Model):
     id = models.AutoField(primary_key=True)
-    source = models.ForeignKey(AvailableFreshWater,
-                               on_delete=models.DO_NOTHING, help_text="AvailableFreshWater ID from watersupply.AvailableFreshWater") #TODO: What if the source is imported or multiple sources?
+    source = models.ManyToManyField(AvailableFreshWater,
+                               help_text="AvailableFreshWater ID from watersupply.AvailableFreshWater") #TODO: What if the source is imported or multiple sources?
+    imported_boolean = models.BooleanField(default=False, help_text="Are there imported sources?")
+    source_imported = models.ManyToManyField(ImportedWater, blank=True, help_text="ImportedFreshWater ID from watersupply.ImportedFreshWater")
     year = models.IntegerField()
     productionDay = models.FloatField( help_text="in Million cubic meters per day") # Mm3/day
     productionYR = models.FloatField(null=True, help_text="in Million cubic meters per year")  # Mm3/year

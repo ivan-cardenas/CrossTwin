@@ -1,0 +1,50 @@
+
+{% block extra_js %}
+<script>
+async function loadWaterIndicators(regionId, year) {
+    try {
+        const url = `/watersupply/indicators/${regionId}/${year}/`;
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const html = await response.text();
+        document.getElementById('indicators-container').innerHTML = html;
+    } catch (error) {
+        console.error('Error loading indicators:', error);
+        document.getElementById('indicators-container').innerHTML = 
+            '<p class="text-red-500">Error loading indicators</p>';
+    }
+}
+</script>
+{% endblock extra_js %}
+
+
+
+
+{% block content %}
+<div class="controls">
+    <select id="region-select">
+        <option value="1">Region 1</option>
+        <option value="2">Region 2</option>
+    </select>
+    
+    <input type="number" id="year-input" value="2024" min="2020" max="2030">
+    
+    <button onclick="loadIndicators()">Load Indicators</button>
+</div>
+
+<div id="indicators-container">
+    <!-- Content loads here -->
+</div>
+
+<script>
+function loadIndicators() {
+    const regionId = document.getElementById('region-select').value;
+    const year = document.getElementById('year-input').value;
+    loadWaterIndicators(regionId, year);
+}
+</script>
+{% endblock content %}
