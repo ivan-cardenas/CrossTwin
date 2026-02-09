@@ -128,6 +128,10 @@ class SurfaceMaterialProperties(models.Model):
     def __str__(self):
         return self.material_name
     
+    class Meta:
+        verbose_name = "Surface Material Properties"
+        verbose_name_plural = "Surface Material Properties"
+    
 class WallMaterialProperties(models.Model):
     id = models.AutoField(primary_key=True)
     material_name = models.CharField(max_length=100, help_text="Name of the wall material (e.g., 'Brick', 'Wood', 'Insulated Panel', etc.)")
@@ -138,6 +142,10 @@ class WallMaterialProperties(models.Model):
     
     def __str__(self):
         return self.material_name
+    
+    class Meta:
+        verbose_name = "Wall Material Properties"
+        verbose_name_plural = "Wall Material Properties"
 
 
 class LandCoverVector(models.Model):

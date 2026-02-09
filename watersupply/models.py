@@ -43,6 +43,10 @@ class ConsumptionCapita(models.Model):
     def __str__(self):
         return f"{self.city} - {self.year}: {self.consumption_capita_L_d} L/person/day"
     
+    class Meta:
+        verbose_name = "Consumption Capita"
+        verbose_name_plural = "Consumption Capita"
+    
 class TotalWaterDemand(models.Model):
     city = models.ForeignKey(City, on_delete=models.CASCADE , help_text="City code from common.City")
     year = models.IntegerField()
@@ -56,6 +60,10 @@ class TotalWaterDemand(models.Model):
     def save(self, *args, **kwargs):
         self.demandYR = self.demandDay * 365
         super().save(**args, **kwargs)
+        
+    class Meta:
+        verbose_name = "Total Water Demand"
+        verbose_name_plural = "Total Water Demand Records"
     
 class SupplySecurity(models.Model):
     city = models.ForeignKey(City, on_delete=models.CASCADE, help_text="City code from common.City")
@@ -68,6 +76,10 @@ class SupplySecurity(models.Model):
     def __str__(self):
         return f"{self.region} - {self.year}: {self.supply_security}"
     
+    class Meta:
+        verbose_name = "Supply Security"
+        verbose_name_plural = "Supply Security Records"
+    
 class PipeNetwork(models.Model):
     id = models.AutoField(primary_key=True)
     length_km = models.FloatField(help_text="in kilometers") # km
@@ -77,6 +89,10 @@ class PipeNetwork(models.Model):
     
     def __str__(self):
         return f"{self.length_km} km"   
+    
+    class Meta:
+        verbose_name = "Pipe Network"
+        verbose_name_plural = "Pipe Networks"
     
 class UsersLocation(models.Model):
     id = models.AutoField(primary_key=True)
@@ -89,6 +105,10 @@ class UsersLocation(models.Model):
     last_updated = models.DateTimeField(default=timezone.now)
     def __str__(self):
         return f"{self.neighborhood} - {self.usersTotal} users"
+    
+    class Meta:
+        verbose_name = "Users Location"
+        verbose_name_plural = "Users Locations"
     
 class MeteredResidential(models.Model):
     id = models.AutoField(primary_key=True)
@@ -103,6 +123,10 @@ class MeteredResidential(models.Model):
     
     def __str__(self):
         return f"{self.user.neighborhood} - {self.installed_meters} installed meters. {self.Recovery_EUR} EUR recovered"
+    
+    class Meta:
+        verbose_name = "Metered Residential"
+        verbose_name_plural = "Metered Residential"
     
     
 class AvailableFreshWater(models.Model):
@@ -123,6 +147,10 @@ class AvailableFreshWater(models.Model):
         region = Region.objects.get(geom__contains=self.geom.centroid)
         self.region = region
         super().save(**args, **kwargs)
+        
+    class Meta:
+        verbose_name = "Available Fresh Water"
+        verbose_name_plural = "Available Fresh Water"
     
 class ExtractionWater(models.Model):
     id=models.AutoField(primary_key=True)
@@ -162,6 +190,10 @@ class ExtractionWater(models.Model):
         
         super().save(**args, **kwargs)
     
+    class Meta:
+        verbose_name = "Extraction Water"
+        verbose_name_plural = "Extraction Water"
+    
     
     #TODO: Add save method to calculate emissions based on energy rate and emission factor
     
@@ -174,6 +206,9 @@ class ImportedWater(models.Model):
     def __str__(self):
         return f"{self.sourceName} - {self.quantity_m3_d} m3/d"
 
+    class Meta:
+        verbose_name = "Imported Water"
+        verbose_name_plural = "Imported Water"
     
 class WaterTreatment(models.Model):
     id = models.AutoField(primary_key=True)
@@ -190,6 +225,9 @@ class WaterTreatment(models.Model):
     def __str__(self):
         return f"Treatement - {self.year}: Accepatance rate: {self.acceptanceRate} %"
     
+    class Meta:
+        verbose_name = "Water Treatment"
+        verbose_name_plural = "Water Treatment Records"
     
 class CoverageWaterSupply(models.Model):
     id = models.AutoField(primary_key=True)
@@ -201,7 +239,10 @@ class CoverageWaterSupply(models.Model):
     
     def __str__(self):
         return f"{self.city} - covered area: {self.coveredArea_km2} km2. Coverage: {self.coveragePCT} %"
-    
+
+    class Meta:
+        verbose_name = "Coverage Water Supply"
+        verbose_name_plural = "Coverage Water Supply Records"    
 
 class NonRevenueWater(models.Model):
     class LossesTypes(models.TextChoices):
@@ -245,6 +286,10 @@ class NonRevenueWater(models.Model):
         
         return f"{self.year}: Losses: {self.type} - {self.specificLoss} - {self.loss_Quantity_m3} m3"
 
+    class Meta:
+        verbose_name = "Non Revenue Water"
+        verbose_name_plural = "Non Revenue Water Records"
+    
 class OPEX(models.Model):
     id = models.AutoField(primary_key=True)
     year = models.IntegerField(help_text="Year of operation")
@@ -257,7 +302,9 @@ class OPEX(models.Model):
     def __str__(self):
         return f"{self.year}: {self.UnitaryOPEX_EUR_m3} EUR/m3"
     
-    
+    class Meta:
+        verbose_name = "OPEX"
+        verbose_name_plural = "OPEX Records"
 
 class AreaAffectedDrought(models.Model):
     class SensibilityChoices(models.IntegerChoices):
@@ -283,6 +330,10 @@ class AreaAffectedDrought(models.Model):
     
     def __str__(self):
         return f"{self.year}: {self.areaAffected_km2} km2"
+    
+    class Meta:
+        verbose_name = "Area Affected by Drought"
+        verbose_name_plural = "Area Affected by Drought Records"
     
 class TotalWaterProduction(models.Model):
     id = models.AutoField(primary_key=True)
@@ -341,3 +392,7 @@ class TotalWaterProduction(models.Model):
         self.costYR = self.costDay * 365
         
         super().save(*args, **kwargs)
+        
+    class Meta:
+        verbose_name = "Total Water Production"
+        verbose_name_plural = "Total Water Production Records"

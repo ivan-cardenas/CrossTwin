@@ -60,7 +60,7 @@ class MeanRadiantTemperature(models.Model):
     
     class Meta:
         verbose_name = "Mean Radiant Temperature"
-        verbose_name_plural = "Mean Radiant Temperatures"
+        verbose_name_plural = "Mean Radiant Temperature"
     
 class UTCI(models.Model):
     """Universal Thermal Climate Index (UTCI) measurements"""
@@ -121,7 +121,7 @@ class SurfaceUrbanHeatIslandIntensity(models.Model):
     
     class Meta:
         verbose_name = "Surface Urban Heat Island Intensity"
-        verbose_name_plural = "Surface Urban Heat Island Intensities"
+        verbose_name_plural = "Surface Urban Heat Island Intensity"
     
 
 class NatureBasedSolutionPolygon(models.Model):

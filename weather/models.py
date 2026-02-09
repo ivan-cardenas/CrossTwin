@@ -37,6 +37,8 @@ class WeatherStation(models.Model):
     
     class Meta:
         ordering = ['name']
+        verbose_name = "Weather Station"
+        verbose_name_plural = "Weather Stations"
     
     def __str__(self):
         return self.name
@@ -86,9 +88,13 @@ class Meteorology(models.Model):
         indexes = [
             models.Index(fields=['date_time', 'station']),
         ]
+        verbose_name = "Weather Measurement"
+        verbose_name_plural = "Weather Measurements"
     
     def __str__(self):
         return f"{self.station.name} - {self.date_time.strftime('%Y-%m-%d %H:%M')}"
+    
+
 
 class InterpolatedRasterBase(models.Model):
     name = models.CharField(

@@ -12,7 +12,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('Energy', '0001_initial'),
-        ('common', '0001_initial'),
+        ('common', '0001_initial'),  
     ]
 
     operations = [
@@ -57,7 +57,7 @@ class Migration(migrations.Migration):
                 ('geom', django.contrib.gis.db.models.fields.MultiPolygonField(srid=28992)),
                 ('energyLabel', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.DO_NOTHING, to='Energy.energyefficiencylabels', verbose_name='Energy Label')),
                 ('neighborhood', models.ForeignKey(on_delete=django.db.models.deletion.DO_NOTHING, to='common.neighborhood', verbose_name='Neighborhood')),
-                ('roofMaterial', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.DO_NOTHING, to='common.surfacematerialproperties', verbose_name='Roof Material')),
+                ('roofMaterial', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.DO_NOTHING, to='common.SurfaceMaterialProperties', verbose_name='Roof Material')),
                 ('wallMaterial', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.DO_NOTHING, to='common.wallmaterialproperties', verbose_name='Wall Material')),
             ],
             options={

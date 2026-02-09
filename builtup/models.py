@@ -97,6 +97,10 @@ class Facility(models.Model):
     def __str__(self):
         return self.name
     
+    class Meta:
+        verbose_name = "Facility"
+        verbose_name_plural = "Facilities"
+    
 class Property(models.Model):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=100, help_text="Name of the property")
@@ -115,4 +119,8 @@ class Property(models.Model):
     
     def __str__(self):
         return self.name
+    
+    class Meta:
+        verbose_name = "Property"
+        verbose_name_plural = "Properties"
     
