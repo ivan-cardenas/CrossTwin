@@ -29,6 +29,7 @@
   flex-direction: row;
   min-height: 0;
   flex: 1;
+  gap: 10px;
   align-items: stretch;
   justify-content: center;
   padding: 10px;
@@ -37,6 +38,190 @@
   color: var(--text-primary);
   overflow: hidden;
 }
+
+/* ============================================================
+   RIGHT ACTIONS PANEL
+   ============================================================ */
+
+.right-actions-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px 12px;
+  min-width: 180px;
+  max-width: 200px;
+  background: var(--bg-body-mid);
+  border-radius: 16px;
+  box-shadow: var(--shadow-panel);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px);
+  align-self: flex-start;
+}
+
+.actions-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-bottom: 12px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.actions-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.action-panel-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: linear-gradient(145deg, rgba(30, 30, 42, 0.9), rgba(20, 20, 30, 0.9));
+  color: var(--text-main);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.action-panel-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(145deg, rgba(255, 155, 55, 0.1), rgba(255, 155, 55, 0.05));
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.action-panel-btn:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(255, 155, 55, 0.2);
+}
+
+.action-panel-btn:hover::before {
+  opacity: 1;
+}
+
+.action-panel-btn:active {
+  transform: translateY(0);
+}
+
+.action-panel-btn span.bi {
+  font-size: 24px;
+  color: var(--accent);
+  z-index: 1;
+}
+
+.action-btn-text {
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+  letter-spacing: 0.02em;
+  z-index: 1;
+}
+
+.action-panel-btn.secondary {
+  background: linear-gradient(145deg, rgba(20, 20, 30, 0.7), rgba(15, 15, 22, 0.7));
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.action-panel-btn.secondary span.bi {
+  color: var(--text-muted);
+  font-size: 20px;
+}
+
+.action-panel-btn.secondary:hover span.bi {
+  color: var(--accent);
+}
+
+.action-panel-btn.active {
+  background: linear-gradient(145deg, rgba(255, 155, 55, 0.2), rgba(255, 155, 55, 0.1));
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(255, 155, 55, 0.3);
+}
+
+.actions-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  margin: 8px 0;
+}
+
+/* ============================================================
+   RESPONSIVE - RIGHT PANEL
+   ============================================================ */
+@media (max-width: 1200px) {
+  .right-actions-panel {
+    min-width: 160px;
+    max-width: 160px;
+    padding: 14px 10px;
+  }
+
+  .action-panel-btn {
+    padding: 12px 8px;
+  }
+
+  .action-panel-btn span.bi {
+    font-size: 20px;
+  }
+
+  .action-btn-text {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 768px) {
+  .app-shell {
+    flex-direction: column;
+  }
+
+  .right-actions-panel {
+    flex-direction: row;
+    max-width: none;
+    width: 100%;
+    padding: 10px;
+    gap: 6px;
+    order: -1; /* Move to top on mobile */
+  }
+
+  .actions-header {
+    display: none;
+  }
+
+  .actions-divider {
+    width: 1px;
+    height: auto;
+    margin: 0 4px;
+  }
+
+  .action-panel-btn {
+    flex: 1;
+    padding: 10px 8px;
+    gap: 4px;
+  }
+
+  .action-panel-btn span.bi {
+    font-size: 18px;
+  }
+
+  .action-btn-text {
+    font-size: 10px;
+  }
+}
+
+
+
+/* ============================================================
+   MAP WRAPPER
+   ============================================================ */
 
 .map-wrapper {
   display: flex;

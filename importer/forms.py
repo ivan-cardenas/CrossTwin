@@ -35,9 +35,9 @@ class GeoUploadForm(forms.Form):
     
     file = forms.FileField(
         label='GeoJSON or Shapefile',
-        help_text="GeoJSON (.geojson, .json) or Shapefile (.zip containing .shp, .dbf, .shx, .prj)",
+        help_text="GeoJSON (.geojson, .json) or Shapefile (.zip containing .shp, .dbf, .shx, .prj) or Raster file (.tif, .tiff)",
         widget=forms.FileInput(attrs={
-            'accept': '.geojson,.json,.zip,.shp',
+            'accept': '.geojson,.json,.zip,.shp, .tif, .tiff',
             'class': 'file-input',
         })
     )
@@ -67,14 +67,14 @@ class GeoUploadForm(forms.Form):
         name = file.name.lower()
         
         # FIXED: Correct validation logic (was inverted before)
-        valid_extensions = ('.geojson', '.json', '.zip', '.shp')
+        valid_extensions = ('.geojson', '.json', '.zip', '.shp', '.tif', '.tiff')
         if not name.endswith(valid_extensions):
             raise forms.ValidationError(
-                "Please upload a GeoJSON (.geojson, .json) or Shapefile (.zip or .shp)."
+                "Please upload a GeoJSON (.geojson, .json) or Shapefile (.zip or .shp). or Raster file (.tif, .tiff)"
             )
         
         # Additional validation for file size (optional, 100MB limit)
-        max_size = 100 * 1024 * 1024  # 100 MB
+        max_size = 1000 * 1024 * 1024  # 1000 MB
         if file.size > max_size:
             raise forms.ValidationError(
                 f"File size exceeds maximum allowed ({max_size // (1024*1024)} MB)."

@@ -29,6 +29,20 @@
     </div>
     {% endif %}
 
+    <!-- Form Errors -->
+    {% if form.errors %}
+    <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+        <strong>Please correct the following errors:</strong>
+        <ul class="list-disc list-inside mt-2">
+            {% for field, errors in form.errors.items %}
+                {% for error in errors %}
+                    <li>{{ field }}: {{ error }}</li>
+                {% endfor %}
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
     <!-- Upload Form -->
     <form method="post" enctype="multipart/form-data" class="upload-form space-y-6">
         {% csrf_token %}

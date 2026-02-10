@@ -24,3 +24,10 @@ typing-extensions==4.15.0
 tzdata==2025.2
 gdal==3.10.1
 scipy==1.17.0
+affine==2.4.0
+attrs==25.4.0
+click==8.3.1
+click-plugins==1.1.1.2
+cligj==0.7.2
+colorama==0.4.6
+rasterio==1.4.4

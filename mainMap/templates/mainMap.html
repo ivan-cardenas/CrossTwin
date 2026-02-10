@@ -1,18 +1,14 @@
-{% extends 'base.html' %}
-{% load static %}
-{% block title %}Urban Twin - Map View{% endblock %}
-
-{% block extra_css %}
-<link href="https://api.mapbox.com/mapbox-gl-js/v3.18.0/mapbox-gl.css" rel="stylesheet" />
+{% extends 'base.html' %} {% load static %} {% block title %}Urban Twin - Map
+View{% endblock %} {% block extra_css %}
+<link
+  href="https://api.mapbox.com/mapbox-gl-js/v3.18.0/mapbox-gl.css"
+  rel="stylesheet"
+/>
 <link rel="stylesheet" href="{% static 'css/mainMap.css' %}" />
-{% endblock %}
-
-{% block extra_js %}
+{% endblock %} {% block extra_js %}
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.18.0/mapbox-gl.js"></script>
 <script src="{% static 'js/mainMap.js' %}"></script>
-{% endblock %}
-
-{% block content %}
+{% endblock %} {% block content %}
 <div class="app-shell">
   <div class="map-wrapper">
     <div id="map"></div>
@@ -58,16 +54,21 @@
         <span>🚰</span>
         <div class="tool-tooltip">Groundwater</div>
       </button>
-      {% comment %} <button class="tool-button" data-tool="satellite">
+      {% comment %}
+      <button class="tool-button" data-tool="satellite">
         <span>🛰️</span>
         <div class="tool-tooltip">Satellite</div>
-      </button> {% endcomment %}
+      </button>
+      {% endcomment %}
     </div>
 
     <!-- ONBOARDING HINT -->
     <div class="onboarding-hint" id="onboarding-hint">
       <strong>Start here</strong>
-      <p>Use the icons on the left to explore thematic layers. Click 📑 to manage all database layers.</p>
+      <p>
+        Use the icons on the left to explore thematic layers. Click 📑 to manage
+        all database layers.
+      </p>
     </div>
 
     <!-- LAYERS PANEL -->
@@ -78,14 +79,14 @@
         </div>
         <button class="layers-panel-close" id="layers-panel-close">✕</button>
       </div>
-      
+
       <div class="layers-panel-body" id="layer-list">
         <div class="loading-layers">
           <div class="loading-spinner"></div>
           <p>Loading layers...</p>
         </div>
       </div>
-      
+
       <div class="basemap-selector">
         <label for="basemap-select">Basemap</label>
         <select id="basemap-select">
@@ -96,15 +97,27 @@
           <option value="outdoors">Outdoors</option>
         </select>
       </div>
-      
+
       <div class="layers-panel-footer">
-        <button class="layers-action-btn" id="btn-select-all" title="Select All">
+        <button
+          class="layers-action-btn"
+          id="btn-select-all"
+          title="Select All"
+        >
           <i class="bi bi-check-all"></i> All
         </button>
-        <button class="layers-action-btn" id="btn-select-none" title="Deselect All">
+        <button
+          class="layers-action-btn"
+          id="btn-select-none"
+          title="Deselect All"
+        >
           <i class="bi bi-x-lg"></i> None
         </button>
-        <button class="layers-action-btn" id="btn-fit-all" title="Fit to Visible">
+        <button
+          class="layers-action-btn"
+          id="btn-fit-all"
+          title="Fit to Visible"
+        >
           <i class="bi bi-arrows-fullscreen"></i> Fit
         </button>
       </div>
@@ -118,19 +131,21 @@
       </div>
       <div class="side-panel-body" id="panel-body">
         <p>Use the tool icons on the left to switch between thematic layers.</p>
-        <p>Click the 📑 Layers button to manage all database layers individually.</p>
+        <p>
+          Click the 📑 Layers button to manage all database layers individually.
+        </p>
       </div>
-      <div class="side-panel-tagline">
-        CROSSTWIN · URBAN DIGITAL TWIN
-      </div>
+      <div class="side-panel-tagline">CROSSTWIN · URBAN DIGITAL TWIN</div>
     </div>
 
     <!-- GROUNDWATER LEGEND -->
-    <div id="legend-groundwater" class="map-legend" style="display: none;">
+    <div id="legend-groundwater" class="map-legend" style="display: none">
       <div class="legend-title">Groundwater (GHG)</div>
-      <img id="legend-img"
+      <img
+        id="legend-img"
         src="https://service.pdok.nl/bzk/bro-grondwaterspiegeldiepte/wms/v2_0/legend/bro-grondwaterspiegeldieptemetingen-GHG/mediaan.png"
-        alt="GHG legend" />
+        alt="GHG legend"
+      />
     </div>
 
     <!-- MAP LOADER -->
@@ -143,8 +158,12 @@
     <div class="bottom-bar">
       <div class="bottom-left">
         <div class="camera-tools">
-          <button class="camera-btn" id="btn-tilt" title="Toggle 3D Tilt">⤢</button>
-          <button class="camera-btn" id="btn-reset" title="Reset View">⟳</button>
+          <button class="camera-btn" id="btn-tilt" title="Toggle 3D Tilt">
+            ⤢
+          </button>
+          <button class="camera-btn" id="btn-reset" title="Reset View">
+            ⟳
+          </button>
         </div>
 
         <div class="indicator-pill" data-indicator="layers">
@@ -182,8 +201,38 @@
           <span>🧩</span> Scenarios
         </button>
       </div>
-    </div>
+    </div>  
   </div>
+
+  <!-- RIGHT ACTIONS PANEL -->
+  <div class="right-actions-panel">
+    <div class="actions-header">
+      <span class="actions-title">ACTIONS</span>
+    </div>
+    
+    <button class="action-panel-btn" id="importDataBtn">
+      <span class="bi bi-cloud-upload"></span>
+      <span class="action-btn-text">Import Data</span>
+    </button>
+    
+    <button class="action-panel-btn" id="scenario1Btn">
+      <span class="bi bi-diagram-3"></span>
+      <span class="action-btn-text">Scenario 1</span>
+    </button>
+    
+    <button class="action-panel-btn" id="calculateBtn">
+      <span class="bi bi-calculator"></span>
+      <span class="action-btn-text">Calculate Results</span>
+    </button>
+
+    <div class="actions-divider"></div>
+
+    <button class="action-panel-btn secondary" id="settingsBtn">
+      <span class="bi bi-gear"></span>
+      <span class="action-btn-text">Settings</span>
+    </button>
+  </div>
+
 </div>
 
 <script>
@@ -191,15 +240,38 @@
   window.CONFIG = {
     mapboxToken: "{{ mapbox_access_token }}",
     layersApiUrl: "/map/api/layers/",
-    initialCenter: [6.895, 52.219],  // Enschede
+    initialCenter: [6.895, 52.219], // Enschede
     initialZoom: 13,
     initialPitch: 60,
-    initialBearing: -35
+    initialBearing: -35,
   };
-  
+
   // Initialize the Urban Twin map
-  document.addEventListener('DOMContentLoaded', () => {
+  document.addEventListener("DOMContentLoaded", () => {
     initializeUrbanTwinMap(window.CONFIG);
   });
+
+
+  // Right panel button handlers
+document.getElementById('importDataBtn')?.addEventListener('click', () => {
+  console.log('Import Data clicked');
+  // Redirect to import page or open modal
+  window.location.href = '/importer/';
+});
+
+document.getElementById('scenario1Btn')?.addEventListener('click', () => {
+  console.log('Scenario 1 clicked');
+  // Toggle scenario 1
+});
+
+document.getElementById('calculateBtn')?.addEventListener('click', () => {
+  console.log('Calculate Results clicked');
+  // Trigger calculation
+});
+
+document.getElementById('settingsBtn')?.addEventListener('click', () => {
+  console.log('Settings clicked');
+  // Open settings panel
+});
 </script>
 {% endblock content %}

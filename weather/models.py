@@ -52,7 +52,7 @@ class Meteorology(models.Model):
         related_name='measurements',
         help_text="Weather station that recorded this measurement"
     )
-    date_time = models.DateTimeField(
+    date = models.DateTimeField(
         help_text="Date and time of the weather data",
         db_index=True
     )
@@ -83,16 +83,16 @@ class Meteorology(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     
     class Meta:
-        ordering = ['-date_time']
-        unique_together = ['station', 'date_time']
+        ordering = ['-date']
+        unique_together = ['station', 'date']
         indexes = [
-            models.Index(fields=['date_time', 'station']),
+            models.Index(fields=['date', 'station']),
         ]
         verbose_name = "Weather Measurement"
         verbose_name_plural = "Weather Measurements"
     
     def __str__(self):
-        return f"{self.station.name} - {self.date_time.strftime('%Y-%m-%d %H:%M')}"
+        return f"{self.station.name} - {self.date.strftime('%Y-%m-%d %H:%M')}"
     
 
 
@@ -101,8 +101,9 @@ class InterpolatedRasterBase(models.Model):
             max_length=200,
             help_text="Descriptive name for this layer"
         )
-    date_time = models.DateTimeField(
-        help_text="Date and time of the weather data",
+    date = models.DateField(
+        null=True,
+        help_text="Date of the weather data",
         db_index=True
     )
     raster = models.RasterField(
@@ -153,7 +154,7 @@ class InterpolatedRasterBase(models.Model):
     
     class Meta:
         abstract = True
-        ordering = ['-date_time']
+        ordering = ['-date']
     
     def _get_interpolation_bounds(self, bounds_geom=None):
         """Determine bounds for interpolation"""
@@ -199,8 +200,8 @@ class InterpolatedRasterBase(models.Model):
         
         # Build filter dynamically to exclude null values for the specific field
         filter_kwargs = {
-            'date_time__gte': measurement_datetime - time_window,
-            'date_time__lte': measurement_datetime + time_window,
+            'date__gte': measurement_datetime - time_window,
+            'date__lte': measurement_datetime + time_window,
             'station__is_active': True,
             f'{field_name}__isnull': False,
         }
@@ -261,7 +262,7 @@ class InterpolatedRasterBase(models.Model):
         """
         raster = cls.objects.create(
             name=f"{cls._meta.verbose_name} - {region.name}",
-            date_time=datetime,
+            date=datetime,
             region=region
         )
         raster.generate_from_measurements(
@@ -295,7 +296,7 @@ class InterpolatedRasterBase(models.Model):
         import os
         
         if measurement_datetime is None:
-            measurement_datetime = self.date_time
+            measurement_datetime = self.date
         
         # Get the field name from child class
         field_name = self._get_field_name()
@@ -370,10 +371,10 @@ class PrecipitationRaster(InterpolatedRasterBase):
     class Meta:
         verbose_name = "Precipitation Raster"
         verbose_name_plural = "Precipitation Rasters"
-        indexes = [models.Index(fields=['date_time'])]
+        indexes = [models.Index(fields=['date'])]
     
     def __str__(self):
-        return f"Precipitation - {self.date_time.strftime('%Y-%m-%d %H:%M')}"
+        return f"Precipitation - {self.date.strftime('%Y-%m-%d')}"
     
     def _get_field_name(self):
         return 'precipitation_mm'
@@ -389,10 +390,10 @@ class TemperatureRaster(InterpolatedRasterBase):
     class Meta:
         verbose_name = "Temperature Raster"
         verbose_name_plural = "Temperature Rasters"
-        indexes = [models.Index(fields=['date_time'])]
+        indexes = [models.Index(fields=['date'])]
     
     def __str__(self):
-        return f"Temperature - {self.date_time.strftime('%Y-%m-%d %H:%M')}"
+        return f"Temperature - {self.date.strftime('%Y-%m-%d')}"
     
     def _get_field_name(self):
         return 'temperature_C'
@@ -408,10 +409,10 @@ class WindSpeedRaster(InterpolatedRasterBase):
     class Meta:
         verbose_name = "Wind Speed Raster"
         verbose_name_plural = "Wind Speed Rasters"
-        indexes = [models.Index(fields=['date_time'])]
+        indexes = [models.Index(fields=['date'])]
     
     def __str__(self):
-        return f"Wind Speed - {self.date_time.strftime('%Y-%m-%d %H:%M')}"
+        return f"Wind Speed - {self.date.strftime('%Y-%m-%d')}"
     
     def _get_field_name(self):
         return 'wind_speed_m_s'
@@ -427,10 +428,10 @@ class HumidityRaster(InterpolatedRasterBase):
     class Meta:
         verbose_name = "Humidity Raster"
         verbose_name_plural = "Humidity Rasters"
-        indexes = [models.Index(fields=['date_time'])]
+        indexes = [models.Index(fields=['date'])]
     
     def __str__(self):
-        return f"Humidity - {self.date_time.strftime('%Y-%m-%d %H:%M')}"
+        return f"Humidity - {self.date.strftime('%Y-%m-%d')}"
     
     def _get_field_name(self):
         return 'humidity_percent'

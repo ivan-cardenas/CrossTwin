@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto p-6">
+    <h2 class="text-2xl font-bold mb-4">Raster Import - Step 2: Configure</h2>
+    
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="stage" value="map">
+        
+        <div class="mb-4">
+            <h3 class="text-lg font-semibold mb-2">Raster Information</h3>
+            <ul class="space-y-1">
+                <li>CRS: EPSG:{{ crs|default:"Unknown" }}</li>
+                <li>Dimensions: {{ raster_info.width }} × {{ raster_info.height }}</li>
+                <li>Bounds: {{ raster_info.bounds }}</li>
+                <li>Resolution: {{ raster_info.resolution }} m</li>
+            </ul>
+        </div>
+        
+        <div class="mb-4">
+            <label class="block mb-2">Target SRID:</label>
+            <input type="number" name="target_srid" value="{{ crs|default:'28992' }}" 
+                   class="border p-2 rounded w-full">
+        </div>
+
+       <!-- Date field -->
+        <div class="mb-4">
+            <label class="block mb-2 font-semibold">Raster Date:</label>
+            <input type="date" name="raster_date" 
+                   value="{{ raster_info.date_time|default:'' }}" 
+                   class="border p-2 rounded w-full"
+                   required>
+            <p class="text-sm text-white-600 mt-1">Date when this raster data was acquired or created</p>
+        </div>
+        
+        <div class="mb-4">
+            <label class="block mb-2">Raster Field Name:</label>
+            <input type="text" name="raster_field" value="raster" 
+                   class="border p-2 rounded w-full">
+        </div>
+        
+        <div class="mb-4">
+            <label class="flex items-center">
+                <input type="checkbox" name="dry_run" checked class="mr-2" value="on">
+                Dry Run (preview without saving)
+            </label>
+        </div>
+        
+        <div class="flex gap-4">
+            <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700">
+                Import Raster
+            </button>
+            <a href="{% url 'importer:upload_geodata' %}" class="bg-gray-600 text-white px-6 py-2 rounded hover:bg-gray-700">
+                Cancel
+            </a>
+        </div>
+    </form>
+</div>
+{% endblock %}
