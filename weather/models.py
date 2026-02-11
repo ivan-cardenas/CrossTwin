@@ -155,6 +155,23 @@ class InterpolatedRasterBase(models.Model):
     class Meta:
         abstract = True
         ordering = ['-date']
+        
+    def _calculate_bounds_from_raster(self):
+        """Calculate bounds polygon from the raster's extent"""
+        if not self.raster:
+            return None
+        
+        from django.contrib.gis.geos import Polygon
+        
+        # Get the raster's extent
+        extent = self.raster.extent
+        min_x, min_y, max_x, max_y = extent
+        
+        # Create polygon from bounding box
+        bounds_polygon = Polygon.from_bbox((min_x, min_y, max_x, max_y))
+        bounds_polygon.srid = COORDINATE_SYSTEM
+        
+        return bounds_polygon
     
     def _get_interpolation_bounds(self, bounds_geom=None):
         """Determine bounds for interpolation"""
@@ -364,6 +381,14 @@ class InterpolatedRasterBase(models.Model):
                 os.remove(raster_path)
         
         return self
+    
+    def save(self, *args, **kwargs):
+        # Auto-calculate bounds from raster if not already set
+        if self.raster and not self.bounds:
+            self.bounds = self._calculate_bounds_from_raster()
+        
+        self.full_clean()  # Ensure validation is called before saving
+        super().save(*args, **kwargs)
     
 class PrecipitationRaster(InterpolatedRasterBase):
     """Interpolated precipitation raster layer"""

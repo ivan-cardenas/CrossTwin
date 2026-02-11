@@ -273,5 +273,10 @@ document.getElementById('settingsBtn')?.addEventListener('click', () => {
   console.log('Settings clicked');
   // Open settings panel
 });
+
+document.querySelector('[data-layer="heatmap"]').addEventListener('click', () => {
+    addRasterLayer('heatraster', 'Heat Map');
+});
+
 </script>
 {% endblock content %}

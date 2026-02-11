@@ -35,9 +35,10 @@
         </div>
         
         <div class="mb-4">
-            <label class="block mb-2">Raster Field Name:</label>
-            <input type="text" name="raster_field" value="raster" 
+            <label class="block mb-2">Raster Name:</label>
+            <input type="text" name="raster_name" value="{{ raster_info.name|default:'Raster Unknown' }}" 
                    class="border p-2 rounded w-full">
+            <p class="text-sm text-white-600 mt-1">Name of the raster. Example: Precipitation 2025</p>
         </div>
         
         <div class="mb-4">

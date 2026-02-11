@@ -676,7 +676,7 @@ def _raster_import(raster_path, target_label, field_name, metadata_map, dry_run=
         for model_field, value in metadata_map.items():
             instance_data[model_field] = value
         
-        print(f"Instance metadata: {instance_data}")
+        
         
         # Check for upsert keys
         lookup = {}
@@ -704,17 +704,19 @@ def _raster_import(raster_path, target_label, field_name, metadata_map, dry_run=
                 
             except model.DoesNotExist:
                 # Create new object
-                instance_data[field_name] = gdal_raster
+                instance_data['raster'] = gdal_raster
                 obj = model.objects.create(**instance_data)
                 created = True
                 print(f"Created new object: {obj}")
         else:
             # Create new object without upsert
-            instance_data[field_name] = gdal_raster
+            instance_data['raster'] = gdal_raster
             obj = model.objects.create(**instance_data)
             created = True
             print(f"Created new object: {obj}")
-        
+            
+            
+        print (f"Instance data: {instance_data}")
         print(f"Object {'created' if created else 'updated'}: {obj}")
         
         if dry_run:
@@ -1018,10 +1020,9 @@ def upload_geodata(request):
             # Get form data specific to raster
             target_srid = request.POST.get('target_srid')
             dry_run = request.POST.get('dry_run') == 'on'
-            raster_field = request.POST.get('raster_field', 'raster')
             raster_date = request.POST.get('raster_date')
+            raster_name = request.POST.get('raster_name')
             
-            print(f"Raster import params: target_srid={target_srid}, dry_run={dry_run}, field={raster_field}")
             
             # Collect metadata mappings (if your form has any)
             metadata_map = {}
@@ -1033,6 +1034,8 @@ def upload_geodata(request):
                     date_obj = datetime.strptime(raster_date, '%Y-%m-%d').date()
                     metadata_map['date'] = date_obj  # Assuming your model has a 'date' field
                     print(f"Parsed date: {date_obj}")
+                    
+                    metadata_map['name'] = raster_name
                 except ValueError as e:
                     print(f"Could not parse date '{raster_date}': {e}")
                     django_messages.error(request, f"Invalid date format: {raster_date}")
@@ -1051,7 +1054,7 @@ def upload_geodata(request):
                 report = _raster_import(
                     tmp_path, 
                     target_model, 
-                    raster_field,
+                    'raster',
                     metadata_map,
                     dry_run=dry_run,
                     target_srid=int(target_srid) if target_srid else None

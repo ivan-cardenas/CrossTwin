@@ -313,6 +313,33 @@ function addWmsLegend(key, title, legendUrl) {
 }
 
 
+function addRasterLayer(layerName, displayName) {
+    const sourceId = `${layerName}-tiles`;
+    const layerId = `${layerName}-layer`;
+    
+    // Add raster tile source
+    map.addSource(sourceId, {
+        type: 'raster',
+        tiles: [`/tiles/${layerName}/{z}/{x}/{y}.png`],
+        tileSize: 256,
+        minzoom: 0,
+        maxzoom: 18
+    });
+    
+    // Add raster layer
+    map.addLayer({
+        id: layerId,
+        type: 'raster',
+        source: sourceId,
+        paint: {
+            'raster-opacity': 0.7,
+            'raster-fade-duration': 300
+        }
+    });
+    
+    console.log(`Added raster layer: ${displayName}`);
+}
+
 function filterLayersByTool(toolId) {
   activeTool = toolId;
   const categories = TOOL_CATEGORIES[toolId] || [];
