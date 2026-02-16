@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Digital Twin — Full Raster Architecture</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #06080f;
+    min-height: 100vh;
+    font-family: 'Outfit', sans-serif;
+    overflow-x: hidden;
+    padding: 30px;
+    display: flex;
+    justify-content: center;
+  }
+
+  .canvas {
+    position: relative;
+    width: 1360px;
+    min-height: 1340px;
+  }
+
+  .canvas::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(56, 189, 248, 0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(56, 189, 248, 0.025) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+  }
+
+  .canvas::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse at 30% 15%, rgba(99, 102, 241, 0.06) 0%, transparent 50%),
+      radial-gradient(ellipse at 70% 45%, rgba(168, 85, 247, 0.05) 0%, transparent 45%),
+      radial-gradient(ellipse at 20% 75%, rgba(34, 197, 94, 0.04) 0%, transparent 40%),
+      radial-gradient(ellipse at 80% 85%, rgba(56, 189, 248, 0.04) 0%, transparent 40%);
+    pointer-events: none;
+  }
+
+  /* ── SECTION DIVIDERS ── */
+  .section-zone {
+    position: absolute;
+    border-radius: 20px;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  .zone-import {
+    top: 75px; left: 0; right: 0; height: 260px;
+    border: 1px dashed rgba(251, 191, 36, 0.12);
+    background: rgba(251, 191, 36, 0.01);
+  }
+  .zone-db {
+    top: 350px; left: 0; right: 0; height: 320px;
+    border: 1px dashed rgba(129, 140, 248, 0.12);
+    background: rgba(99, 102, 241, 0.01);
+  }
+  .zone-processing {
+    top: 690px; left: 0; right: 0; height: 250px;
+    border: 1px dashed rgba(74, 222, 128, 0.12);
+    background: rgba(34, 197, 94, 0.01);
+  }
+  .zone-serving {
+    top: 960px; left: 0; right: 0; height: 280px;
+    border: 1px dashed rgba(56, 189, 248, 0.12);
+    background: rgba(14, 165, 233, 0.01);
+  }
+
+  .zone-label {
+    position: absolute;
+    font-family: 'Outfit', sans-serif;
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    z-index: 2;
+    padding: 4px 14px;
+    border-radius: 8px;
+  }
+  .zone-label-import { top: 82px; right: 20px; color: rgba(251, 191, 36, 0.4); background: rgba(251, 191, 36, 0.05); }
+  .zone-label-db { top: 357px; right: 20px; color: rgba(129, 140, 248, 0.4); background: rgba(99, 102, 241, 0.05); }
+  .zone-label-processing { top: 697px; right: 20px; color: rgba(74, 222, 128, 0.4); background: rgba(34, 197, 94, 0.05); }
+  .zone-label-serving { top: 967px; right: 20px; color: rgba(56, 189, 248, 0.4); background: rgba(14, 165, 233, 0.05); }
+
+  /* ── TITLE ── */
+  .title-block {
+    position: absolute;
+    top: 18px; left: 30px;
+    z-index: 10;
+    animation: fadeSlideDown 0.8s ease-out;
+  }
+  .title-block h1 {
+    font-weight: 800;
+    font-size: 28px;
+    letter-spacing: -0.5px;
+    background: linear-gradient(135deg, #e2e8f0, #94a3b8);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .title-block .subtitle {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: #475569;
+    margin-top: 4px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  /* ── COMMON NODE ── */
+  .node {
+    position: absolute;
+    border-radius: 14px;
+    z-index: 5;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+  }
+  .node:hover { transform: translateY(-2px); }
+
+  .node-inner {
+    padding: 16px 20px;
+    border-radius: 14px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .node-icon { font-size: 24px; margin-bottom: 6px; display: block; }
+  .node-title { font-weight: 700; font-size: 15px; margin-bottom: 3px; letter-spacing: -0.3px; }
+  .node-desc { font-family: 'JetBrains Mono', monospace; font-size: 9.5px; line-height: 1.5; opacity: 0.7; }
+  .node-tag {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px; font-weight: 600;
+    padding: 2px 7px; border-radius: 5px;
+    margin-top: 6px; letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+
+  /* ── CODE BLOCK (for Django models) ── */
+  .code-block {
+    position: absolute;
+    border-radius: 14px;
+    z-index: 5;
+    transition: transform 0.3s ease;
+  }
+  .code-block:hover { transform: translateY(-2px); }
+
+  .code-inner {
+    border-radius: 14px;
+    overflow: hidden;
+  }
+
+  .code-header {
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .code-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+  }
+  .code-filename {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+    margin-left: 4px;
+  }
+
+  .code-body {
+    padding: 10px 16px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9.5px;
+    line-height: 1.65;
+    white-space: pre;
+    overflow: hidden;
+  }
+
+  .kw { opacity: 0.5; }
+  .cls { font-weight: 700; }
+  .field { opacity: 0.85; }
+  .comment { opacity: 0.35; font-style: italic; }
+
+  /* ── COLOR THEMES ── */
+
+  /* Import sources — amber */
+  .theme-amber .node-inner {
+    background: linear-gradient(135deg, #2a1a0a, #3b2510);
+    border: 1px solid rgba(251, 191, 36, 0.2);
+    box-shadow: 0 0 30px rgba(245, 158, 11, 0.06);
+  }
+  .theme-amber .node-title { color: #fcd34d; }
+  .theme-amber .node-desc { color: #fbbf24; }
+  .theme-amber .node-tag { background: rgba(245, 158, 11, 0.15); color: #fcd34d; }
+
+  /* Upload / API — orange */
+  .theme-orange .node-inner {
+    background: linear-gradient(135deg, #2d1a0a, #3d2010);
+    border: 1px solid rgba(251, 146, 60, 0.2);
+    box-shadow: 0 0 30px rgba(249, 115, 22, 0.06);
+  }
+  .theme-orange .node-title { color: #fdba74; }
+  .theme-orange .node-desc { color: #fb923c; }
+  .theme-orange .node-tag { background: rgba(249, 115, 22, 0.15); color: #fdba74; }
+
+  /* Django / management cmd — teal */
+  .theme-teal .node-inner {
+    background: linear-gradient(135deg, #0a2a2a, #0f3d3a);
+    border: 1px solid rgba(45, 212, 191, 0.2);
+    box-shadow: 0 0 30px rgba(20, 184, 166, 0.06);
+  }
+  .theme-teal .node-title { color: #5eead4; }
+  .theme-teal .node-desc { color: #2dd4bf; }
+  .theme-teal .node-tag { background: rgba(20, 184, 166, 0.15); color: #5eead4; }
+
+  /* PostGIS — indigo */
+  .theme-indigo .node-inner {
+    background: linear-gradient(135deg, #1e1b4b, #312e81);
+    border: 1px solid rgba(129, 140, 248, 0.2);
+    box-shadow: 0 0 30px rgba(99, 102, 241, 0.08);
+  }
+  .theme-indigo .node-title { color: #a5b4fc; }
+  .theme-indigo .node-desc { color: #818cf8; }
+  .theme-indigo .node-tag { background: rgba(99, 102, 241, 0.15); color: #a5b4fc; }
+
+  /* Python — green */
+  .theme-green .node-inner {
+    background: linear-gradient(135deg, #1a2e05, #1a3a0a);
+    border: 1px solid rgba(74, 222, 128, 0.2);
+    box-shadow: 0 0 30px rgba(34, 197, 94, 0.06);
+  }
+  .theme-green .node-title { color: #86efac; }
+  .theme-green .node-desc { color: #4ade80; }
+  .theme-green .node-tag { background: rgba(34, 197, 94, 0.15); color: #86efac; }
+
+  /* TiTiler — purple */
+  .theme-purple .node-inner {
+    background: linear-gradient(135deg, #1a0a2e, #2d1065);
+    border: 1px solid rgba(192, 132, 252, 0.25);
+    box-shadow: 0 0 40px rgba(168, 85, 247, 0.1);
+  }
+  .theme-purple .node-title { color: #d8b4fe; }
+  .theme-purple .node-desc { color: #c084fc; }
+  .theme-purple .node-tag { background: rgba(168, 85, 247, 0.15); color: #d8b4fe; }
+
+  /* COG — yellow-amber */
+  .theme-gold .node-inner {
+    background: linear-gradient(135deg, #2a2005, #3b2d0a);
+    border: 1px solid rgba(234, 179, 8, 0.2);
+    box-shadow: 0 0 30px rgba(234, 179, 8, 0.06);
+  }
+  .theme-gold .node-title { color: #fde047; }
+  .theme-gold .node-desc { color: #eab308; }
+  .theme-gold .node-tag { background: rgba(234, 179, 8, 0.15); color: #fde047; }
+
+  /* Mapbox — sky */
+  .theme-sky .node-inner {
+    background: linear-gradient(135deg, #0a1e3b, #0c2d5a);
+    border: 1px solid rgba(56, 189, 248, 0.25);
+    box-shadow: 0 0 40px rgba(14, 165, 233, 0.1);
+  }
+  .theme-sky .node-title { color: #7dd3fc; }
+  .theme-sky .node-desc { color: #38bdf8; }
+  .theme-sky .node-tag { background: rgba(14, 165, 233, 0.15); color: #7dd3fc; }
+
+  /* React — blue */
+  .theme-blue .node-inner {
+    background: linear-gradient(135deg, #1a2a3e, #1e3a5f);
+    border: 1px solid rgba(96, 165, 250, 0.2);
+    box-shadow: 0 0 30px rgba(59, 130, 246, 0.06);
+  }
+  .theme-blue .node-title { color: #93c5fd; }
+  .theme-blue .node-desc { color: #60a5fa; }
+  .theme-blue .node-tag { background: rgba(59, 130, 246, 0.15); color: #93c5fd; }
+
+  /* Emerald — Django API */
+  .theme-emerald .node-inner {
+    background: linear-gradient(135deg, #1a2e1a, #0f3d2e);
+    border: 1px solid rgba(52, 211, 153, 0.2);
+    box-shadow: 0 0 30px rgba(16, 185, 129, 0.06);
+  }
+  .theme-emerald .node-title { color: #6ee7b7; }
+  .theme-emerald .node-desc { color: #34d399; }
+  .theme-emerald .node-tag { background: rgba(16, 185, 129, 0.15); color: #6ee7b7; }
+
+  /* Rose — user */
+  .theme-rose .node-inner {
+    background: linear-gradient(135deg, #2d1a1a, #3d1f1f);
+    border: 1px solid rgba(251, 113, 133, 0.2);
+    box-shadow: 0 0 30px rgba(244, 63, 94, 0.06);
+  }
+  .theme-rose .node-title { color: #fda4af; }
+  .theme-rose .node-desc { color: #fb7185; }
+  .theme-rose .node-tag { background: rgba(244, 63, 94, 0.15); color: #fda4af; }
+
+  /* ── CODE BLOCK THEMES ── */
+  .code-indigo .code-inner {
+    background: #111133;
+    border: 1px solid rgba(129, 140, 248, 0.15);
+  }
+  .code-indigo .code-header { background: rgba(129, 140, 248, 0.08); }
+  .code-indigo .code-dot:nth-child(1) { background: #818cf8; }
+  .code-indigo .code-dot:nth-child(2) { background: #6366f1; }
+  .code-indigo .code-dot:nth-child(3) { background: #4f46e5; }
+  .code-indigo .code-filename { color: #a5b4fc; }
+  .code-indigo .code-body { color: #c7d2fe; }
+  .code-indigo .kw { color: #818cf8; }
+  .code-indigo .cls { color: #a5b4fc; }
+  .code-indigo .field { color: #e0e7ff; }
+  .code-indigo .comment { color: #6366f1; }
+
+  .code-emerald .code-inner {
+    background: #0a1f1a;
+    border: 1px solid rgba(52, 211, 153, 0.15);
+  }
+  .code-emerald .code-header { background: rgba(52, 211, 153, 0.08); }
+  .code-emerald .code-dot:nth-child(1) { background: #34d399; }
+  .code-emerald .code-dot:nth-child(2) { background: #10b981; }
+  .code-emerald .code-dot:nth-child(3) { background: #059669; }
+  .code-emerald .code-filename { color: #6ee7b7; }
+  .code-emerald .code-body { color: #a7f3d0; }
+  .code-emerald .kw { color: #34d399; }
+  .code-emerald .cls { color: #6ee7b7; }
+  .code-emerald .field { color: #d1fae5; }
+  .code-emerald .comment { color: #059669; }
+
+  .code-amber .code-inner {
+    background: #1a1505;
+    border: 1px solid rgba(245, 158, 11, 0.15);
+  }
+  .code-amber .code-header { background: rgba(245, 158, 11, 0.08); }
+  .code-amber .code-dot:nth-child(1) { background: #f59e0b; }
+  .code-amber .code-dot:nth-child(2) { background: #d97706; }
+  .code-amber .code-dot:nth-child(3) { background: #b45309; }
+  .code-amber .code-filename { color: #fcd34d; }
+  .code-amber .code-body { color: #fef3c7; }
+  .code-amber .kw { color: #f59e0b; }
+  .code-amber .cls { color: #fcd34d; }
+  .code-amber .field { color: #fef9c3; }
+  .code-amber .comment { color: #b45309; }
+
+  /* ── SVG LAYER ── */
+  svg.arrows {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 3;
+    pointer-events: none;
+  }
+
+  .flow-line {
+    fill: none;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    opacity: 0;
+    animation: drawLine 0.8s ease-out forwards;
+  }
+  .flow-line.dashed { stroke-dasharray: 6 4; }
+
+  .flow-dot { opacity: 0.85; }
+
+  /* ── FLOW LABELS ── */
+  .flow-label {
+    position: absolute;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8.5px;
+    font-weight: 500;
+    padding: 2px 7px;
+    border-radius: 4px;
+    z-index: 8;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+    opacity: 0;
+    animation: fadeIn 0.5s ease-out forwards;
+  }
+
+  /* ── DECISION PANEL ── */
+  .panel {
+    position: absolute;
+    border-radius: 14px;
+    z-index: 5;
+  }
+  .panel-inner {
+    border-radius: 14px;
+    padding: 16px 20px;
+  }
+  .panel-title {
+    font-weight: 700;
+    font-size: 12px;
+    margin-bottom: 10px;
+    letter-spacing: -0.2px;
+  }
+  .decision-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 5px;
+  }
+  .decision-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px; font-weight: 600;
+    padding: 2px 7px; border-radius: 4px;
+    min-width: 55px; text-align: center;
+    letter-spacing: 0.3px;
+  }
+  .badge-postgis { background: rgba(99, 102, 241, 0.2); color: #a5b4fc; }
+  .badge-python { background: rgba(34, 197, 94, 0.2); color: #86efac; }
+  .badge-django { background: rgba(52, 211, 153, 0.2); color: #6ee7b7; }
+  .decision-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8.5px;
+    color: #64748b;
+    line-height: 1.4;
+  }
+
+  /* ── LEGEND ── */
+  .legend {
+    position: absolute;
+    bottom: 20px; left: 30px;
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    z-index: 10;
+    animation: fadeIn 0.6s ease-out 2.5s both;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .legend-line {
+    width: 20px; height: 2px;
+    border-radius: 1px;
+  }
+  .legend-line.dashed {
+    background: none !important;
+    border-top-width: 2px;
+    border-top-style: dashed;
+  }
+  .legend-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8.5px;
+    color: #475569;
+    letter-spacing: 0.3px;
+  }
+
+  /* ── ANIMATIONS ── */
+  @keyframes fadeSlideRight { from { opacity: 0; transform: translateX(-25px); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes fadeSlideLeft { from { opacity: 0; transform: translateX(25px); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes fadeSlideUp { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes fadeSlideDown { from { opacity: 0; transform: translateY(-18px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes drawLine { from { opacity: 0; } to { opacity: 1; } }
+</style>
+</head>
+<body>
+<div class="canvas">
+
+  <!-- ══════ TITLE ══════ -->
+  <div class="title-block">
+    <h1>Digital Twin — Full Raster Architecture</h1>
+    <div class="subtitle">Data Import · Django ORM · PostGIS · Processing · TiTiler · Mapbox GL JS</div>
+  </div>
+
+  <!-- ══════ ZONE BACKGROUNDS ══════ -->
+  <div class="section-zone zone-import"></div>
+  <div class="section-zone zone-db"></div>
+  <div class="section-zone zone-processing"></div>
+  <div class="section-zone zone-serving"></div>
+
+  <div class="zone-label zone-label-import">① Data Import</div>
+  <div class="zone-label zone-label-db">② Database · Django Models</div>
+  <div class="zone-label zone-label-processing">③ Processing & Export</div>
+  <div class="zone-label zone-label-serving">④ Tile Serving & Frontend</div>
+
+  <!-- ════════════════════════════════ -->
+  <!-- ZONE 1: DATA IMPORT SOURCES     -->
+  <!-- ════════════════════════════════ -->
+
+  <!-- External GeoTIFF files -->
+  <div class="node theme-amber" style="top:110px; left:30px; width:200px; animation: fadeSlideRight 0.6s ease-out 0.2s both;">
+    <div class="node-inner">
+      <span class="node-icon">🌍</span>
+      <div class="node-title">GeoTIFF Files</div>
+      <div class="node-desc">Satellite imagery · DEM<br>Land use · Temperature<br>.tif / .tiff</div>
+      <span class="node-tag">File Upload</span>
+    </div>
+  </div>
+
+  <!-- Shapefiles / Vector -->
+  <div class="node theme-amber" style="top:110px; left:260px; width:200px; animation: fadeSlideRight 0.6s ease-out 0.25s both;">
+    <div class="node-inner">
+      <span class="node-icon">📐</span>
+      <div class="node-title">Vector Data</div>
+      <div class="node-desc">Shapefiles · GeoJSON<br>GeoPackage · WFS<br>Boundaries · networks</div>
+      <span class="node-tag">File / API</span>
+    </div>
+  </div>
+
+  <!-- WCS / External APIs -->
+  <div class="node theme-orange" style="top:110px; left:490px; width:200px; animation: fadeSlideUp 0.6s ease-out 0.3s both;">
+    <div class="node-inner">
+      <span class="node-icon">🔗</span>
+      <div class="node-title">External APIs</div>
+      <div class="node-desc">WCS · WMS · PDOK<br>CBS Open Data · AHN<br>Satellite providers</div>
+      <span class="node-tag">OGC / REST</span>
+    </div>
+  </div>
+
+  <!-- CSV / Tabular -->
+  <div class="node theme-orange" style="top:110px; left:720px; width:200px; animation: fadeSlideUp 0.6s ease-out 0.35s both;">
+    <div class="node-inner">
+      <span class="node-icon">📊</span>
+      <div class="node-title">Tabular Data</div>
+      <div class="node-desc">CSV · Excel · JSON<br>Sensor readings<br>Attribute tables</div>
+      <span class="node-tag">Upload / API</span>
+    </div>
+  </div>
+
+  <!-- Django Import Pipeline -->
+  <div class="node theme-teal" style="top:110px; left:960px; width:220px; animation: fadeSlideLeft 0.6s ease-out 0.4s both;">
+    <div class="node-inner">
+      <span class="node-icon">⚙️</span>
+      <div class="node-title">Import Pipeline</div>
+      <div class="node-desc">manage.py import_raster<br>GDAL · rasterio · Fiona<br>raster2pgsql · ogr2ogr<br>Celery async tasks</div>
+      <span class="node-tag">Django Mgmt Commands</span>
+    </div>
+  </div>
+
+  <!-- Import management command code -->
+  <div class="code-block code-amber" style="top:232px; left:30px; width:430px; animation: fadeSlideUp 0.6s ease-out 0.5s both;">
+    <div class="code-inner">
+      <div class="code-header">
+        <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+        <span class="code-filename">management/commands/import_raster.py</span>
+      </div>
+      <div class="code-body"><span class="comment"># Django management command for raster import</span>
+<span class="kw">class</span> <span class="cls">Command</span>(BaseCommand):
+  <span class="kw">def</span> handle(self, *args, **options):
+    <span class="field">ds = RasterDataset.objects.create(name=..., crs=...)</span>
+    <span class="comment"># Option A: raster2pgsql → PostGIS raster</span>
+    <span class="field">subprocess.run(["raster2pgsql", "-s", srid, f, tbl])</span>
+    <span class="comment"># Option B: rasterio → COG + metadata in Django</span>
+    <span class="field">rio_cogeo.cog_translate(src, dst, profile)</span>
+    <span class="field">ds.cog_path = dst; ds.save()</span></div>
+    </div>
+  </div>
+
+  <!-- Upload via React code -->
+  <div class="code-block code-amber" style="top:232px; left:490px; width:410px; animation: fadeSlideUp 0.6s ease-out 0.55s both;">
+    <div class="code-inner">
+      <div class="code-header">
+        <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+        <span class="code-filename">views.py — Upload API endpoint</span>
+      </div>
+      <div class="code-body"><span class="kw">class</span> <span class="cls">RasterUploadView</span>(APIView):
+  <span class="kw">def</span> post(self, request):
+    <span class="field">file = request.FILES['raster']</span>
+    <span class="comment"># Validate with rasterio, extract metadata</span>
+    <span class="field">meta = extract_raster_meta(file)</span>
+    <span class="field">ds = RasterDataset.objects.create(**meta)</span>
+    <span class="comment"># Dispatch async COG conversion</span>
+    <span class="field">convert_to_cog.delay(ds.id, file.path)</span></div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════ -->
+  <!-- ZONE 2: DATABASE & DJANGO MODELS -->
+  <!-- ════════════════════════════════ -->
+
+  <!-- Django Models — RasterDataset -->
+  <div class="code-block code-indigo" style="top:378px; left:30px; width:320px; animation: fadeSlideRight 0.6s ease-out 0.6s both;">
+    <div class="code-inner">
+      <div class="code-header">
+        <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+        <span class="code-filename">models.py — RasterDataset</span>
+      </div>
+      <div class="code-body"><span class="kw">class</span> <span class="cls">RasterDataset</span>(models.Model):
+  <span class="field">name       = CharField(max_length=255)</span>
+  <span class="field">slug       = SlugField(unique=True)</span>
+  <span class="field">crs        = IntegerField(default=28992)</span>
+  <span class="field">bbox       = PolygonField(srid=4326)</span>
+  <span class="field">resolution = FloatField()</span>
+  <span class="field">bands      = IntegerField(default=1)</span>
+  <span class="field">nodata     = FloatField(null=True)</span>
+  <span class="field">dtype      = CharField()  <span class="comment"># float32, uint8</span></span>
+  <span class="field">source     = CharField()  <span class="comment"># upload, wcs, pdok</span></span>
+  <span class="field">category   = ForeignKey(DataCategory)</span>
+  <span class="field">created_at = DateTimeField(auto_now_add=True)</span>
+  <span class="field">is_active  = BooleanField(default=True)</span></div>
+    </div>
+  </div>
+
+  <!-- Django Models — RasterStorage -->
+  <div class="code-block code-indigo" style="top:378px; left:380px; width:310px; animation: fadeSlideUp 0.6s ease-out 0.65s both;">
+    <div class="code-inner">
+      <div class="code-header">
+        <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+        <span class="code-filename">models.py — Storage & Layer</span>
+      </div>
+      <div class="code-body"><span class="kw">class</span> <span class="cls">RasterStorage</span>(models.Model):
+  <span class="field">dataset  = FK(RasterDataset)</span>
+  <span class="field">cog_path = FilePathField()  <span class="comment"># /cogs/</span></span>
+  <span class="field">pg_table = CharField()  <span class="comment"># PostGIS tbl</span></span>
+  <span class="field">size_mb  = FloatField()</span>
+  <span class="field">storage  = CharField()  <span class="comment"># cog,postgis,both</span></span>
+
+<span class="kw">class</span> <span class="cls">MapLayer</span>(models.Model):
+  <span class="field">dataset   = FK(RasterDataset)</span>
+  <span class="field">colormap  = CharField(default='viridis')</span>
+  <span class="field">rescale   = CharField()  <span class="comment"># "0,40"</span></span>
+  <span class="field">opacity   = FloatField(default=0.7)</span>
+  <span class="field">z_index   = IntegerField()</span>
+  <span class="field">visible   = BooleanField(default=True)</span></div>
+    </div>
+  </div>
+
+  <!-- Django Models — Operations -->
+  <div class="code-block code-emerald" style="top:378px; left:720px; width:310px; animation: fadeSlideUp 0.6s ease-out 0.7s both;">
+    <div class="code-inner">
+      <div class="code-header">
+        <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+        <span class="code-filename">models.py — Operations</span>
+      </div>
+      <div class="code-body"><span class="kw">class</span> <span class="cls">RasterOperation</span>(models.Model):
+  <span class="field">name       = CharField()</span>
+  <span class="field">inputs     = M2M(RasterDataset)</span>
+  <span class="field">output     = FK(RasterDataset, null=True)</span>
+  <span class="field">op_type    = CharField()  <span class="comment"># ndvi,hsi,diff</span></span>
+  <span class="field">engine     = CharField()  <span class="comment"># postgis,python</span></span>
+  <span class="field">params     = JSONField(default=dict)</span>
+  <span class="field">status     = CharField()  <span class="comment"># pending,done,err</span></span>
+  <span class="field">created_at = DateTimeField(auto_now_add=True)</span>
+  <span class="field">duration   = DurationField(null=True)</span>
+
+<span class="kw">class</span> <span class="cls">DataCategory</span>(models.Model):
+  <span class="field">name = CharField()  <span class="comment"># heat, water, housing</span></span>
+  <span class="field">icon = CharField()</span>
+  <span class="field">color = CharField()  <span class="comment"># hex for UI</span></span></div>
+    </div>
+  </div>
+
+  <!-- PostGIS node -->
+  <div class="node theme-indigo" style="top:378px; left:1060px; width:250px; animation: fadeSlideLeft 0.6s ease-out 0.75s both;">
+    <div class="node-inner">
+      <span class="node-icon">🗄️</span>
+      <div class="node-title">PostGIS Database</div>
+      <div class="node-desc">Raster tables (raster2pgsql)<br>Vector geometry columns<br>Spatial indexes · GIST<br>ST_MapAlgebra · ST_Clip<br>ST_SummaryStats · ST_Value</div>
+      <span class="node-tag">PostgreSQL + PostGIS</span>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════ -->
+  <!-- ZONE 3: PROCESSING & EXPORT     -->
+  <!-- ════════════════════════════════ -->
+
+  <!-- Python Processing -->
+  <div class="node theme-green" style="top:720px; left:30px; width:220px; animation: fadeSlideRight 0.6s ease-out 0.8s both;">
+    <div class="node-inner">
+      <span class="node-icon">🐍</span>
+      <div class="node-title">Python / rasterio</div>
+      <div class="node-desc">Complex raster algebra<br>numpy · scipy · sklearn<br>Multi-step pipelines<br>Band math · resampling</div>
+      <span class="node-tag">Processing Engine</span>
+    </div>
+  </div>
+
+  <!-- PostGIS Operations -->
+  <div class="node theme-indigo" style="top:720px; left:280px; width:220px; animation: fadeSlideUp 0.6s ease-out 0.85s both;">
+    <div class="node-inner">
+      <span class="node-icon">⚡</span>
+      <div class="node-title">PostGIS Map Algebra</div>
+      <div class="node-desc">ST_MapAlgebra expressions<br>Zonal stats · clip · union<br>Spatial joins with vectors<br>In-database processing</div>
+      <span class="node-tag">SQL Operations</span>
+    </div>
+  </div>
+
+  <!-- Django Orchestrator -->
+  <div class="node theme-emerald" style="top:720px; left:530px; width:220px; animation: fadeSlideUp 0.6s ease-out 0.9s both;">
+    <div class="node-inner">
+      <span class="node-icon">🎯</span>
+      <div class="node-title">Django Orchestrator</div>
+      <div class="node-desc">Celery task queue<br>Picks engine (PG vs Py)<br>Creates RasterOperation<br>Updates status & output</div>
+      <span class="node-tag">API + Task Runner</span>
+    </div>
+  </div>
+
+  <!-- COG Output -->
+  <div class="node theme-gold" style="top:720px; left:780px; width:200px; animation: fadeSlideUp 0.6s ease-out 0.95s both;">
+    <div class="node-inner">
+      <span class="node-icon">📦</span>
+      <div class="node-title">COG Storage</div>
+      <div class="node-desc">Cloud Optimized GeoTIFF<br>Tiled · deflate compress<br>/media/cogs/ directory<br>Range-request ready</div>
+      <span class="node-tag">File System</span>
+    </div>
+  </div>
+
+  <!-- Decision panel -->
+  <div class="panel" style="top:720px; left:1010px; width:310px; animation: fadeSlideLeft 0.6s ease-out 1s both;">
+    <div class="panel-inner" style="background: linear-gradient(135deg, #111120, #161630); border: 1px solid rgba(148,163,184,0.1);">
+      <div class="panel-title" style="color: #94a3b8;">⚡ Engine Selection Logic</div>
+      <div class="decision-row">
+        <span class="decision-badge badge-postgis">PostGIS</span>
+        <span class="decision-text">Per-pixel ops, spatial joins, zonal</span>
+      </div>
+      <div class="decision-row">
+        <span class="decision-badge badge-python">Python</span>
+        <span class="decision-text">ML, multi-step, complex algebra</span>
+      </div>
+      <div class="decision-row">
+        <span class="decision-badge badge-postgis">PostGIS</span>
+        <span class="decision-text">Clip to polygon, intersect queries</span>
+      </div>
+      <div class="decision-row">
+        <span class="decision-badge badge-python">Python</span>
+        <span class="decision-text">Custom TiTiler algorithms</span>
+      </div>
+      <div class="decision-row">
+        <span class="decision-badge badge-django">Django</span>
+        <span class="decision-text">Orchestrate, queue, track status</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════ -->
+  <!-- ZONE 4: TILE SERVING & FRONTEND -->
+  <!-- ════════════════════════════════ -->
+
+  <!-- TiTiler -->
+  <div class="node theme-purple" style="top:990px; left:30px; width:230px; animation: fadeSlideRight 0.6s ease-out 1.05s both;">
+    <div class="node-inner">
+      <span class="node-icon">🔲</span>
+      <div class="node-title">TiTiler</div>
+      <div class="node-desc">Dynamic XYZ tile server<br>Reads COGs on the fly<br>Colormaps · rescale · algo<br>/cog/tiles/{z}/{x}/{y}.png</div>
+      <span class="node-tag">FastAPI · Docker</span>
+    </div>
+  </div>
+
+  <!-- Django REST API -->
+  <div class="node theme-emerald" style="top:990px; left:290px; width:230px; animation: fadeSlideUp 0.6s ease-out 1.1s both;">
+    <div class="node-inner">
+      <span class="node-icon">🌐</span>
+      <div class="node-title">Django REST API</div>
+      <div class="node-desc">/api/layers/ → tile URLs<br>/api/operations/run/<br>/api/datasets/upload/<br>/api/point/{lng},{lat}/</div>
+      <span class="node-tag">DRF Endpoints</span>
+    </div>
+  </div>
+
+  <!-- Mapbox GL JS -->
+  <div class="node theme-sky" style="top:990px; left:550px; width:230px; animation: fadeSlideUp 0.6s ease-out 1.15s both;">
+    <div class="node-inner">
+      <span class="node-icon">🗺️</span>
+      <div class="node-title">Mapbox GL JS</div>
+      <div class="node-desc">addSource('raster', tiles)<br>Raster layers · opacity<br>Click → point query<br>Layer toggle controls</div>
+      <span class="node-tag">Map Renderer</span>
+    </div>
+  </div>
+
+  <!-- React Frontend -->
+  <div class="node theme-blue" style="top:990px; left:810px; width:220px; animation: fadeSlideLeft 0.6s ease-out 1.2s both;">
+    <div class="node-inner">
+      <span class="node-icon">⚛️</span>
+      <div class="node-title">React Frontend</div>
+      <div class="node-desc">Layer sidebar · upload UI<br>Operation triggers<br>Colormap picker<br>Analysis dashboard</div>
+      <span class="node-tag">Client App</span>
+    </div>
+  </div>
+
+  <!-- User -->
+  <div class="node theme-rose" style="top:990px; left:1060px; width:210px; animation: fadeSlideLeft 0.6s ease-out 1.25s both;">
+    <div class="node-inner">
+      <span class="node-icon">👤</span>
+      <div class="node-title">User / Citizen</div>
+      <div class="node-desc">Upload rasters · view<br>Toggle layers · query<br>Run operations<br>Participatory input</div>
+      <span class="node-tag">End User</span>
+    </div>
+  </div>
+
+  <!-- API response code snippet -->
+  <div class="code-block code-emerald" style="top:1130px; left:30px; width:440px; animation: fadeSlideUp 0.6s ease-out 1.3s both;">
+    <div class="code-inner">
+      <div class="code-header">
+        <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+        <span class="code-filename">GET /api/layers/ → JSON response</span>
+      </div>
+      <div class="code-body"><span class="comment">// Django serializes MapLayer → tile URL for React</span>
+{ <span class="field">"id"</span>: 3, <span class="field">"name"</span>: <span class="cls">"Urban Heat Stress"</span>,
+  <span class="field">"category"</span>: <span class="cls">"heat"</span>,
+  <span class="field">"tile_url"</span>: <span class="cls">"titiler/cog/tiles/{z}/{x}/{y}.png</span>
+    <span class="cls">?url=/cogs/hsi_2024.tif&colormap=hot&rescale=0,40"</span>,
+  <span class="field">"opacity"</span>: 0.7, <span class="field">"visible"</span>: true,
+  <span class="field">"bounds"</span>: [6.82, 52.17, 6.95, 52.25] }</div>
+    </div>
+  </div>
+
+  <!-- Mapbox integration code -->
+  <div class="code-block code-emerald" style="top:1130px; left:500px; width:440px; animation: fadeSlideUp 0.6s ease-out 1.35s both;">
+    <div class="code-inner">
+      <div class="code-header">
+        <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+        <span class="code-filename">React — addRasterLayer.js</span>
+      </div>
+      <div class="code-body"><span class="comment">// Fetch layers from Django, add to Mapbox</span>
+<span class="kw">const</span> { data: layers } = useFetch(<span class="cls">'/api/layers/'</span>);
+layers.forEach(lyr => {
+  map.addSource(lyr.slug, {
+    <span class="field">type</span>: <span class="cls">'raster'</span>,
+    <span class="field">tiles</span>: [lyr.tile_url],
+    <span class="field">tileSize</span>: 256, <span class="field">bounds</span>: lyr.bounds });
+  map.addLayer({ <span class="field">id</span>: lyr.slug, <span class="field">type</span>: <span class="cls">'raster'</span>,
+    <span class="field">source</span>: lyr.slug,
+    <span class="field">paint</span>: { <span class="cls">'raster-opacity'</span>: lyr.opacity }});
+});</div>
+    </div>
+  </div>
+
+  <!-- ══════ SVG ARROWS ══════ -->
+  <svg class="arrows" viewBox="0 0 1360 1340">
+    <defs>
+      <marker id="a-amber" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="rgba(245,158,11,0.6)"/></marker>
+      <marker id="a-indigo" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="rgba(129,140,248,0.6)"/></marker>
+      <marker id="a-green" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="rgba(74,222,128,0.6)"/></marker>
+      <marker id="a-emerald" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="rgba(52,211,153,0.6)"/></marker>
+      <marker id="a-purple" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="rgba(168,85,247,0.6)"/></marker>
+      <marker id="a-sky" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="rgba(56,189,248,0.6)"/></marker>
+      <marker id="a-blue" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="rgba(96,165,250,0.6)"/></marker>
+      <marker id="a-rose" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="rgba(251,113,133,0.6)"/></marker>
+      <marker id="a-gold" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="rgba(234,179,8,0.6)"/></marker>
+    </defs>
+
+    <!-- ── ZONE 1 → ZONE 2: Import flows ── -->
+
+    <!-- Sources → Import Pipeline (horizontal arrows) -->
+    <path class="flow-line" stroke="rgba(245,158,11,0.35)" d="M230,165 C400,160 700,150 960,165" marker-end="url(#a-amber)" style="animation-delay:1.2s;"/>
+    <path class="flow-line" stroke="rgba(249,115,22,0.35)" d="M690,165 C800,162 880,160 960,165" marker-end="url(#a-amber)" style="animation-delay:1.25s;"/>
+
+    <!-- Import Pipeline → PostGIS (down-right) -->
+    <path class="flow-line" stroke="rgba(129,140,248,0.4)" d="M1070,246 L1070,260 C1070,310 1130,340 1170,378" marker-end="url(#a-indigo)" style="animation-delay:1.35s;"/>
+
+    <!-- Import Pipeline → Django Models (down) -->
+    <path class="flow-line dashed" stroke="rgba(52,211,153,0.35)" d="M1020,246 L1020,260 C1020,300 700,340 540,378" marker-end="url(#a-emerald)" style="animation-delay:1.4s;"/>
+
+    <!-- Django Models → PostGIS (ORM) -->
+    <path class="flow-line" stroke="rgba(129,140,248,0.35)" d="M700,460 C850,460 950,440 1060,440" marker-end="url(#a-indigo)" style="animation-delay:1.5s;"/>
+
+    <!-- ── ZONE 2 → ZONE 3: DB to Processing ── -->
+
+    <!-- PostGIS → PostGIS MapAlgebra -->
+    <path class="flow-line" stroke="rgba(129,140,248,0.35)" d="M1160,530 C1160,620 600,670 400,720" marker-end="url(#a-indigo)" style="animation-delay:1.6s;"/>
+
+    <!-- PostGIS → Python processing -->
+    <path class="flow-line dashed" stroke="rgba(129,140,248,0.35)" d="M1100,530 C1000,620 300,660 150,720" marker-end="url(#a-indigo)" style="animation-delay:1.65s;"/>
+
+    <!-- Django Orchestrator → Python -->
+    <path class="flow-line" stroke="rgba(52,211,153,0.35)" d="M530,770 C400,770 300,760 250,760" marker-end="url(#a-emerald)" style="animation-delay:1.7s;"/>
+
+    <!-- Django Orchestrator → PostGIS ops -->
+    <path class="flow-line" stroke="rgba(52,211,153,0.35)" d="M530,790 C480,790 450,790 500,790" marker-end="url(#a-emerald)" style="animation-delay:1.72s;"/>
+
+    <!-- Python → COG export -->
+    <path class="flow-line" stroke="rgba(234,179,8,0.4)" d="M250,800 C400,830 600,830 780,790" marker-end="url(#a-gold)" style="animation-delay:1.75s;"/>
+
+    <!-- PostGIS ops → COG export -->
+    <path class="flow-line" stroke="rgba(234,179,8,0.4)" d="M500,800 C600,820 680,810 780,790" marker-end="url(#a-gold)" style="animation-delay:1.78s;"/>
+
+    <!-- Django Orchestrator → COG (manages output path) -->
+    <path class="flow-line dashed" stroke="rgba(52,211,153,0.3)" d="M750,770 L780,770" marker-end="url(#a-emerald)" style="animation-delay:1.8s;"/>
+
+    <!-- ── ZONE 3 → ZONE 4: Serving ── -->
+
+    <!-- COG → TiTiler -->
+    <path class="flow-line" stroke="rgba(168,85,247,0.45)" d="M870,870 C870,920 300,950 150,990" marker-end="url(#a-purple)" style="animation-delay:1.85s;"/>
+
+    <!-- TiTiler → Mapbox -->
+    <path class="flow-line" stroke="rgba(56,189,248,0.45)" d="M260,1040 C350,1040 450,1040 550,1040" marker-end="url(#a-sky)" style="animation-delay:1.9s;"/>
+
+    <!-- Django API → React -->
+    <path class="flow-line" stroke="rgba(52,211,153,0.4)" d="M520,1040 C600,1040 700,1040 810,1040" marker-end="url(#a-emerald)" style="animation-delay:1.92s;"/>
+
+    <!-- React → Mapbox (controls) -->
+    <path class="flow-line" stroke="rgba(96,165,250,0.35)" d="M810,1020 C780,1020 770,1015 780,1010" marker-end="url(#a-blue)" style="animation-delay:1.95s;"/>
+
+    <!-- User → React -->
+    <path class="flow-line" stroke="rgba(251,113,133,0.4)" d="M1060,1050 C1020,1050 1000,1050 1030,1050" marker-end="url(#a-rose)" style="animation-delay:2s;"/>
+
+    <!-- User upload loop back to Django API -->
+    <path class="flow-line dashed" stroke="rgba(251,113,133,0.3)" d="M1160,990 C1160,960 1160,950 1160,940 C1160,920 500,920 400,990" marker-end="url(#a-rose)" style="animation-delay:2.05s;"/>
+
+    <!-- ── ANIMATED DOTS ── -->
+    <!-- Import flow -->
+    <circle r="3" fill="#f59e0b" opacity="0.8">
+      <animateMotion dur="4s" repeatCount="indefinite" path="M230,165 C400,160 700,150 960,165"/>
+    </circle>
+    <!-- ORM to PostGIS -->
+    <circle r="3" fill="#818cf8" opacity="0.8">
+      <animateMotion dur="3s" repeatCount="indefinite" path="M700,460 C850,460 950,440 1060,440"/>
+    </circle>
+    <!-- PostGIS → Python processing -->
+    <circle r="3" fill="#818cf8" opacity="0.7">
+      <animateMotion dur="3.5s" repeatCount="indefinite" path="M1100,530 C1000,620 300,660 150,720"/>
+    </circle>
+    <!-- Python → COG -->
+    <circle r="3" fill="#eab308" opacity="0.8">
+      <animateMotion dur="3s" repeatCount="indefinite" path="M250,800 C400,830 600,830 780,790"/>
+    </circle>
+    <!-- COG → TiTiler -->
+    <circle r="3" fill="#c084fc" opacity="0.8">
+      <animateMotion dur="3s" repeatCount="indefinite" path="M870,870 C870,920 300,950 150,990"/>
+    </circle>
+    <!-- TiTiler → Mapbox -->
+    <circle r="3" fill="#38bdf8" opacity="0.8">
+      <animateMotion dur="2.5s" repeatCount="indefinite" path="M260,1040 C350,1040 450,1040 550,1040"/>
+    </circle>
+    <!-- Django API → React -->
+    <circle r="3" fill="#34d399" opacity="0.8">
+      <animateMotion dur="2.5s" repeatCount="indefinite" path="M520,1040 C600,1040 700,1040 810,1040"/>
+    </circle>
+  </svg>
+
+  <!-- ══════ FLOW LABELS ══════ -->
+  <div class="flow-label" style="top:145px; left:550px; color:#fbbf24; background:rgba(245,158,11,0.08); animation-delay:2.1s;">GeoTIFF · Shapefile · WCS → Import Pipeline</div>
+  <div class="flow-label" style="top:295px; left:1080px; color:#a5b4fc; background:rgba(99,102,241,0.08); animation-delay:2.15s;">raster2pgsql · ogr2ogr</div>
+  <div class="flow-label" style="top:295px; left:740px; color:#34d399; background:rgba(16,185,129,0.08); animation-delay:2.2s;">objects.create(**meta)</div>
+  <div class="flow-label" style="top:448px; left:760px; color:#a5b4fc; background:rgba(99,102,241,0.08); animation-delay:2.25s;">Django ORM ↔ PostGIS</div>
+  <div class="flow-label" style="top:630px; left:500px; color:#818cf8; background:rgba(99,102,241,0.08); animation-delay:2.3s;">psycopg2 · raw SQL</div>
+  <div class="flow-label" style="top:830px; left:440px; color:#eab308; background:rgba(234,179,8,0.08); animation-delay:2.35s;">rio_cogeo.translate → COG</div>
+  <div class="flow-label" style="top:945px; left:500px; color:#c084fc; background:rgba(168,85,247,0.08); animation-delay:2.4s;">reads COG via HTTP range</div>
+  <div class="flow-label" style="top:1060px; left:340px; color:#38bdf8; background:rgba(14,165,233,0.08); animation-delay:2.45s;">XYZ tiles/{z}/{x}/{y}.png</div>
+  <div class="flow-label" style="top:1060px; left:620px; color:#34d399; background:rgba(16,185,129,0.08); animation-delay:2.5s;">JSON tile URLs</div>
+  <div class="flow-label" style="top:925px; left:600px; color:#fb7185; background:rgba(244,63,94,0.08); animation-delay:2.55s;">Upload raster → Django API</div>
+
+  <!-- ══════ LEGEND ══════ -->
+  <div class="legend">
+    <div class="legend-item">
+      <div class="legend-line solid" style="background: #f59e0b;"></div>
+      <span class="legend-text">Data Import</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-line solid" style="background: #818cf8;"></div>
+      <span class="legend-text">DB Read / Write</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-line dashed" style="border-color: #34d399;"></div>
+      <span class="legend-text">Django ORM / API</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-line solid" style="background: #eab308;"></div>
+      <span class="legend-text">COG Export</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-line solid" style="background: #c084fc;"></div>
+      <span class="legend-text">Tile Read</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-line solid" style="background: #38bdf8;"></div>
+      <span class="legend-text">XYZ Tiles</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-line dashed" style="border-color: #fb7185;"></div>
+      <span class="legend-text">User Action</span>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

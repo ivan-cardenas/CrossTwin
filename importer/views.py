@@ -21,11 +21,6 @@ from django.db.models import Field, ForeignKey, OneToOneField, AutoField
 from django.contrib.gis.db.models import GeometryField, RasterField, MultiPolygonField
 
 
-import rasterio
-from rasterio.warp import calculate_default_transform, reproject, Resampling
-import numpy as np
-
-
 COORDINATE_SYSTEM = settings.COORDINATE_SYSTEM
 
 
