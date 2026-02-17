@@ -169,8 +169,32 @@ def available_layers(request):
                 'opacity': wms.opacity,
             })
             
-    
-    
+    # Raster Registry
+    for key, model in RASTER_REGISTRY.items():
+        app_label, model_name = key.split('.')
+        raster_instances = model.objects.all()
+        
+        for raster in raster_instances:
+            if not raster.cog_path:
+                continue
+                
+            layers.append({
+                'key': f'raster-{app_label}-{model_name}-{raster.id}',
+                'display_name': getattr(raster, 'name', None) or f'{model._meta.verbose_name} {raster.id}',
+                'app_label': app_label,
+                'model_name': model_name,
+                'layer_type': 'raster',
+                'raster_id': raster.id,
+                'geometry_type': 'raster',
+                'color': '#ff6b6b',
+                'count': 1,
+                # ✅ Point to your existing endpoint
+                'tile_url_template': f'/api/raster/{app_label}/{model_name}/tiles/?id={raster.id}',
+                'opacity': getattr(raster, 'opacity', 0.7),
+                'colormap': getattr(raster, 'colormap', 'viridis'),
+                'rescale': getattr(raster, 'rescale', '0,40'),
+            })
+            
     return JsonResponse({'layers': layers})
 
 

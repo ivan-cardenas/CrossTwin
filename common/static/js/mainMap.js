@@ -399,7 +399,7 @@ async function fetchAvailableLayers() {
  * Add a layer to the map
  */
 async function addLayer(layerConfig) {
-  const { key, url, color, geometry_type, display_name, layer_type } = layerConfig;
+  const {  key, url, color, geometry_type, display_name, layer_type, app_label, model_name, raster_id  } = layerConfig;
 
   if (loadedLayers[key]) return;
 
@@ -408,8 +408,29 @@ async function addLayer(layerConfig) {
     return;
   }
 
+  // Handle raster layers
+  if (layer_type === 'raster') {
+    try {
+      await addRasterLayer(map, app_label, model_name, raster_id, layerConfig.opacity);
+      
+      // Store in loadedLayers for visibility management
+      loadedLayers[key] = {
+        layerIds: [`raster-layer-${model_name}-${raster_id}`],
+        geojson: { features: [] },  // Empty for raster
+        config: layerConfig
+      };
+      
+      console.log(`Raster layer "${key}" added`);
+      updateIndicators();
+    } catch (error) {
+      console.error(`Failed to add raster layer ${key}:`, error);
+    }
+    return;
+  }
+
   console.log(`Loading layer "${key}"...`);
 
+  // Load Vector layers
   try {
     showLoader(true);
 
@@ -512,27 +533,57 @@ async function addLayer(layerConfig) {
   }
 }
 
-async function addRasterLayer(map, appLabel, layerName, rasterID) {
+async function addRasterLayer(map, appLabel, modelName, rasterID, opacity=0.7) {
+  // Use your existing core/views.py endpoint
   const url = rasterID 
-    ? `/api/${appLabel}/${layerName}/tiles/?id=${rasterID}`
-    : `/api/${appLabel}/${layerName}/tiles/`;
+    ? `/api/rasters/${appLabel}/${modelName}/tiles/?id=${rasterID}`
+    : `/api/rasters/${appLabel}/${modelName}/tiles/`;
+  
+  // const url = `/api/${appLabel}/${layerName}/tiles/?id=${rasterID}`;
 
-  const response = await fetch(url);
-  const data = await response.json();
+  console.log(`Loading raster layer from: ${url}`);
 
-  map.addSource(`raster-${layerName}-${rasterID}`, {
-    type: 'raster',
-    tiles: [data.tile_url],
-    tileSize: 256,
-  });
-
-  map.addLayer({
-    id: `raster-layer-${layerName}-${rasterID}`,
-    source: `raster-${layerName}-${rasterID}`,
-    type: 'raster',
-    paint: { 'raster-opacity': 0.7 },
-  });
+  try {
+    showLoader(true);
+    
+    const response = await fetch(url);
+    if (!response.ok) { 
+      throw new Error(`Failed to load raster layer: ${response.statusText}`);
+    } 
+    
+    const data = await response.json();
+    
+    // Create unique IDs for this raster instance
+    const sourceId = `raster-source-${modelName}-${rasterID}`;
+    const layerId = `raster-layer-${modelName}-${rasterID}`;
+    
+    // Add source with TiTiler tile URL
+    map.addSource(sourceId, {
+      type: 'raster',
+      tiles: [data.tile_url],
+      tileSize: 256,
+    });
+    
+    // Add layer
+    map.addLayer({
+      id: layerId,
+      source: sourceId,
+      type: 'raster',
+      paint: { 
+        'raster-opacity': opacity  // You can get this from layerConfig if needed
+      },
+    });
+    
+    console.log(`✅ Raster layer "${data.name}" loaded from TiTiler`);
+    
+  } catch (error) {
+    console.error(`❌ Error loading raster layer "${appLabel}.${modelName}":`, error);
+    throw error;
+  } finally {
+    showLoader(false);
+  }
 }
+
 /**
  * Create popup HTML content
  */
