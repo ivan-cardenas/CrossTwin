@@ -5,8 +5,33 @@ from django.contrib.gis.gdal import GDALRaster, SpatialReference
 from django.contrib.gis.geos import Point
 from django.conf import settings
 
+import os
+import tempfile
+import rasterio
+from rasterio.io import MemoryFile
+from rio_cogeo.cogeo import cog_translate
+from rio_cogeo.profiles import cog_profiles
+from django.contrib.gis.db import models as gis_models
+from django.db import connection
+
+
 import tempfile
 import os
+
+
+# Where COG files will be stored
+COG_DIRECTORY = os.path.join(settings.BASE_DIR, 'cogs')
+# Make sure the directory exists
+os.makedirs(COG_DIRECTORY, exist_ok=True)
+
+
+def get_raster_field_name(model):
+    """Find the name of the RasterField on a model."""
+    for field in model._meta.get_fields():
+        if isinstance(field, gis_models.RasterField):
+            return field.name
+    raise ValueError(f"No RasterField found on {model.__name__}")
+
 
 def interpolate_raster(input_points, values, bounds, resolution, method='linear'):
     """
@@ -77,3 +102,76 @@ def interpolate_raster(input_points, values, bounds, resolution, method='linear'
     
     return temp_path, driver
 
+
+def export_raster_to_cog(instance, model_key):
+    """
+    Export any model instance with a RasterField to a COG.
+    
+    instance:  the model instance (e.g. a LandSurfaceTemp object)
+    model_key: registry key like "urbanHeat.LandSurfaceTemp"
+    """
+    model = instance.__class__
+    table_name = model._meta.db_table
+    raster_field = get_raster_field_name(model)
+
+    # --- Read raster bytes from PostGIS ---
+    with connection.cursor() as cursor:
+        cursor.execute(f"""
+            SELECT ST_AsGDALRaster({raster_field}, 'GTiff')
+            FROM {table_name}
+            WHERE id = %s;
+        """, [instance.id])
+        
+        row = cursor.fetchone()
+        if row is None or row[0] is None:
+            raise ValueError(f"No raster data for {model_key} id={instance.id}")
+        
+        raw_tiff_bytes = bytes(row[0])
+
+    # --- Write temp file ---
+    temp_tiff = tempfile.NamedTemporaryFile(suffix='.tif', delete=False)
+    temp_tiff.write(raw_tiff_bytes)
+    temp_tiff.close()
+
+    # --- Convert to COG ---
+    # Organize by model: cogs/urbanHeat/LandSurfaceTemp/id_3.tif
+    app_label, model_name = model_key.split('.')
+    cog_subdir = os.path.join(COG_DIRECTORY, app_label, model_name)
+    os.makedirs(cog_subdir, exist_ok=True)
+    
+    cog_path = os.path.join(cog_subdir, f"id_{instance.name}.tif")
+    
+    output_profile = cog_profiles.get("deflate")
+    
+    cog_translate(
+        input=temp_tiff.name,
+        output=cog_path,
+        profile=output_profile,
+        overview_level=6,
+        overview_resampling="nearest",
+        use_cog_driver=True,
+    )
+
+    # --- Cleanup ---
+    os.unlink(temp_tiff.name)
+    
+    print(f"✓ {model_key} id={instance.id} → {cog_path}")
+    return cog_path
+
+def export_all_rasters():
+    """Export all rasters that don't have a COG yet."""
+    from core.utils import RASTER_REGISTRY as RasterLayer
+    
+    # Only export rasters that haven't been converted yet
+    print(f"Checking for rasters to export...")
+    print(f"{RasterLayer}")
+    pending = RasterLayer.objects.filter(cog_path__isnull=True)
+    
+    print(f"Found {pending.count()} rasters to export\n")
+    
+    for raster_layer in pending:
+        try:
+            path = export_raster_to_cog(raster_layer)
+            print(f"  ✓ Done: {raster_layer.name} → {path}\n")
+        except Exception as e:
+            print(f"  ✗ Failed: {raster_layer.name} → {e}\n")

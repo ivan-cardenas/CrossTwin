@@ -120,6 +120,7 @@ function initializeUrbanTwinMap(config) {
     addExternalLayers();
     fetchAvailableLayers();
     updateCityName();
+    addRasterLayer(map, 1);
     
     // Listen for camera movements
     map.on('moveend', function() {
@@ -511,6 +512,23 @@ async function addLayer(layerConfig) {
   }
 }
 
+async function addRasterLayer(map, rasterID) {
+  const response = await fetch('/api/raster/${rasterID}/tiles/');
+  const data = await response.json();
+
+  map.addSource('raster-${rasterID}', {
+    type: 'raster',
+    tiles: [data.tile_url],
+    tileSize: 256
+  });
+
+  map.addLayer({
+    id: `raster-${rasterID}`,
+    source: `raster-${rasterID}`,
+    type: 'raster',
+    paint: { 'raster-opacity': 0.7 }
+  });
+}
 /**
  * Create popup HTML content
  */

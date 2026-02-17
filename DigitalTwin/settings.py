@@ -61,6 +61,7 @@ if os.name == 'nt':
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get("SECRET_KEY")
 MAPBOX_ACCESS_TOKEN = os.environ.get("MAPBOX_ACCESS_TOKEN")
+TITILER_BASE_URL = os.environ.get("TITILER_BASE_URL")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
@@ -81,7 +82,10 @@ INSTALLED_APPS = [
     # "rest_framework",
     "crispy_forms",
     "crispy_tailwind",
+    "core",
+    
     "importer",
+    
     
     "common",
     "urbanHeat",
