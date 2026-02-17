@@ -82,7 +82,8 @@ INSTALLED_APPS = [
     # "rest_framework",
     "crispy_forms",
     "crispy_tailwind",
-    "core",
+    
+    'core.apps.CoreConfig',
     
     "importer",
     

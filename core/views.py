@@ -1,31 +1,48 @@
-# common/views.py
-from django.http import HttpResponse, JsonResponse
-from django.contrib.gis.gdal import GDALRaster
-from .utils import MODEL_REGISTRY, RASTER_REGISTRY
+from django.http import JsonResponse
+from .utils import RASTER_REGISTRY
 from django.conf import settings
 from urllib.parse import quote
 
-def get_raster_tiles(request, raster_id):
-    """Return TiTiler title URL for a given RasterLayer"""
+
+def get_raster_tiles(request, app_label, layer_name):
+    """Return TiTiler tile URL for a given raster layer."""
     
-    raster = RASTER_REGISTRY.get(raster_id)
-    if not raster.cog_path:
-        return JsonResponse({"error: COG not generated yet"}, status=404)
+    # Step 1: Get the model CLASS from registry
+    registry_key = f"{app_label}.{layer_name}"
+    model_class = RASTER_REGISTRY.get(registry_key)
     
-    cog_url = f'file://{raster.cog_path}'
-    uncoded_url = quote(cog_url, safe='/:')
+    if not model_class:
+        return JsonResponse({"error": f"'{registry_key}' not found in raster registry"}, status=404)
     
+
+    # Get specific instance by ID, or fall back to first
+    raster_id = request.GET.get('id')
+    
+    if raster_id:
+        instance = model_class.objects.filter(id=raster_id).first()
+    else:
+        instance = model_class.objects.first()
+    
+    if not instance:
+        return JsonResponse({"error": f"No data found for '{registry_key}'"}, status=404)
+    
+    if not instance.cog_path:
+        return JsonResponse({"error": "COG not generated yet"}, status=404)
+    
+    # Step 3: Build the TiTiler tile URL
+    cog_url = f"file://{instance.cog_path}"
+    encoded_url = quote(cog_url, safe="/:") 
     
     tile_url = (
-        f'{settings.TILER_URL}/cog/tiles/{{z}}/{{x}}/{{y}}.png'
-        f'?url={uncoded_url}'
-        f'&colormap={raster.colormap}'
-        f'&rescale={raster.rescale}'
+        f"{settings.TITILER_BASE_URL}/cog/tiles/{{z}}/{{x}}/{{y}}.png"
+        f"?url={encoded_url}"
+        f"&colormap_name={getattr(instance, 'colormap', 'viridis')}"
+        f"&rescale={getattr(instance, 'rescale', '0,40')}"
     )
     
     return JsonResponse({
-        'name': raster.name,
-        'tile_url': tile_url
+        "name": registry_key,
+        "tile_url": tile_url,
     })
 
 

@@ -39,3 +39,4 @@ RASTER_REGISTRY = {
     for key, value in MODEL_REGISTRY.items() 
     if value._meta.get_fields() and any(isinstance(f, gis_models.RasterField) for f in value._meta.get_fields())
 }    
+

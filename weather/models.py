@@ -19,6 +19,8 @@ class WMSLayer(models.Model):
     opacity = models.FloatField(default=0.7)
     is_active = models.BooleanField(default=True)
     
+    
+    
     class Meta:
         verbose_name = "WMS Layer"
         verbose_name_plural = "WMS Layers"
@@ -144,6 +146,9 @@ class InterpolatedRasterBase(models.Model):
         blank=True,
         help_text="Weather stations used for interpolation"
     )
+    
+    cog_path = models.CharField(max_length=500, blank=True, null=True)
+    
     metadata = models.JSONField(
         default=dict,
         blank=True,

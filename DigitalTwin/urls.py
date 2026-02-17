@@ -26,5 +26,5 @@ urlpatterns = [
     path("common/", include("common.urls")),
     path("importer/", include("importer.urls")),
     path("map/", include("mainMap.urls")),
-
+    path("", include('core.urls')),
 ]

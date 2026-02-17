@@ -103,7 +103,7 @@ def interpolate_raster(input_points, values, bounds, resolution, method='linear'
     return temp_path, driver
 
 
-def export_raster_to_cog(instance, model_key):
+def export_raster_to_cog(instance):
     """
     Export any model instance with a RasterField to a COG.
     
@@ -124,7 +124,7 @@ def export_raster_to_cog(instance, model_key):
         
         row = cursor.fetchone()
         if row is None or row[0] is None:
-            raise ValueError(f"No raster data for {model_key} id={instance.id}")
+            raise ValueError(f"No raster data for {instance.__class__.__name__} id={instance.id}")
         
         raw_tiff_bytes = bytes(row[0])
 
@@ -135,27 +135,32 @@ def export_raster_to_cog(instance, model_key):
 
     # --- Convert to COG ---
     # Organize by model: cogs/urbanHeat/LandSurfaceTemp/id_3.tif
-    app_label, model_name = model_key.split('.')
+    app_label, model_name = instance.__class__.__module__.split('.')
     cog_subdir = os.path.join(COG_DIRECTORY, app_label, model_name)
     os.makedirs(cog_subdir, exist_ok=True)
     
-    cog_path = os.path.join(cog_subdir, f"id_{instance.name}.tif")
+    cog_path = os.path.join(cog_subdir, f"{instance.__class__.__name__}_{instance.id}_{instance.date}.tif")
     
-    output_profile = cog_profiles.get("deflate")
+    output_profile = cog_profiles.get("DEFLATE")
     
     cog_translate(
-        input=temp_tiff.name,
-        output=cog_path,
-        profile=output_profile,
+        source=temp_tiff.name,
+        dst_path=cog_path,
+        dst_kwargs=output_profile,
         overview_level=6,
         overview_resampling="nearest",
         use_cog_driver=True,
     )
 
+
     # --- Cleanup ---
     os.unlink(temp_tiff.name)
     
-    print(f"✓ {model_key} id={instance.id} → {cog_path}")
+    # --- Save COG path to the database ---
+    instance.cog_path = cog_path
+    instance.save(update_fields=['cog_path'])
+    
+    print(f"✓ {instance.__class__.__name__} id={instance.id} → {cog_path}")
     return cog_path
 
 def export_all_rasters():

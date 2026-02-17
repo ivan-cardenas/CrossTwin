@@ -512,21 +512,25 @@ async function addLayer(layerConfig) {
   }
 }
 
-async function addRasterLayer(map, rasterID) {
-  const response = await fetch('/api/raster/${rasterID}/tiles/');
+async function addRasterLayer(map, appLabel, layerName, rasterID) {
+  const url = rasterID 
+    ? `/api/${appLabel}/${layerName}/tiles/?id=${rasterID}`
+    : `/api/${appLabel}/${layerName}/tiles/`;
+
+  const response = await fetch(url);
   const data = await response.json();
 
-  map.addSource('raster-${rasterID}', {
+  map.addSource(`raster-${layerName}-${rasterID}`, {
     type: 'raster',
     tiles: [data.tile_url],
-    tileSize: 256
+    tileSize: 256,
   });
 
   map.addLayer({
-    id: `raster-${rasterID}`,
-    source: `raster-${rasterID}`,
+    id: `raster-layer-${layerName}-${rasterID}`,
+    source: `raster-${layerName}-${rasterID}`,
     type: 'raster',
-    paint: { 'raster-opacity': 0.7 }
+    paint: { 'raster-opacity': 0.7 },
   });
 }
 /**
