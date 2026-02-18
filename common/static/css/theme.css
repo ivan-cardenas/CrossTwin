@@ -534,6 +534,7 @@ code {
 
 .loading-text {
     position: absolute;
+    text-align: center;
     bottom: -30px;
     color: white;
     font-size: 14px;

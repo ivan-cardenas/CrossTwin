@@ -18,4 +18,4 @@ def auto_export_cog(sender, instance, created, **kwargs):
 # Connect the signal to EVERY raster model in the registry
 for label, model_class in RASTER_REGISTRY.items():
     post_save.connect(auto_export_cog, sender=model_class)
-    print(f"📡 Signal registered for: {label}")
+

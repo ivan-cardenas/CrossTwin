@@ -34,7 +34,7 @@ class GeoUploadForm(forms.Form):
     """Form for uploading geodata files (GeoJSON or Shapefile)."""
     
     file = forms.FileField(
-        label='GeoJSON or Shapefile',
+        label='GeoJSON, Shapefile or Raster File',
         help_text="GeoJSON (.geojson, .json) or Shapefile (.zip containing .shp, .dbf, .shx, .prj) or Raster file (.tif, .tiff)",
         widget=forms.FileInput(attrs={
             'accept': '.geojson,.json,.zip,.shp, .tif, .tiff',

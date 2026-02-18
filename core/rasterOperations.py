@@ -13,7 +13,9 @@ from rio_cogeo.cogeo import cog_translate
 from rio_cogeo.profiles import cog_profiles
 from django.contrib.gis.db import models as gis_models
 from django.db import connection
-
+import rasterio
+from rasterio.warp import calculate_default_transform, reproject, Resampling
+from rasterio.io import MemoryFile
 
 import tempfile
 import os
@@ -132,11 +134,51 @@ def export_raster_to_cog(instance):
     temp_tiff = tempfile.NamedTemporaryFile(suffix='.tif', delete=False)
     temp_tiff.write(raw_tiff_bytes)
     temp_tiff.close()
+    
+    #Transform to ESPG:3857
+    temp_4326 = tempfile.NamedTemporaryFile(suffix='_3857.tif', delete=False)
+    temp_4326.close()
+    
+    with rasterio.open(temp_tiff.name) as src:
+        # Calculate transform and dimensions for Web Mercator
+        transform, width, height = calculate_default_transform(
+            src.crs,
+            'EPSG:4326',
+            src.width,
+            src.height,
+            *src.bounds
+        )
+        
+        # Update metadata for the reprojected raster
+        kwargs = src.meta.copy()
+        kwargs.update({
+            'crs': 'EPSG:4326',
+            'transform': transform,
+            'width': width,
+            'height': height
+        })
+        
+        # Reproject and write to temp file
+        with rasterio.open(temp_4326.name, 'w', **kwargs) as dst:
+            for i in range(1, src.count + 1):
+                reproject(
+                    source=rasterio.band(src, i),
+                    destination=rasterio.band(dst, i),
+                    src_transform=src.transform,
+                    src_crs=src.crs,
+                    dst_transform=transform,
+                    dst_crs='EPSG:3857',
+                    resampling=Resampling.nearest
+                )
 
     # --- Convert to COG ---
     # Organize by model: cogs/urbanHeat/LandSurfaceTemp/id_3.tif
-    app_label, model_name = instance.__class__.__module__.split('.')
-    cog_subdir = os.path.join(COG_DIRECTORY, app_label, model_name)
+    app_label = instance.__class__._meta.app_label   
+    model_name = instance.__class__.__name__.lower()    
+    model_key = f"{app_label}.{model_name}"
+ 
+    
+    cog_subdir = os.path.join(COG_DIRECTORY, app_label)
     os.makedirs(cog_subdir, exist_ok=True)
     
     cog_path = os.path.join(cog_subdir, f"{instance.__class__.__name__}_{instance.id}_{instance.date}.tif")
@@ -144,7 +186,7 @@ def export_raster_to_cog(instance):
     output_profile = cog_profiles.get("DEFLATE")
     
     cog_translate(
-        source=temp_tiff.name,
+        source=temp_4326.name,
         dst_path=cog_path,
         dst_kwargs=output_profile,
         overview_level=6,
@@ -155,9 +197,10 @@ def export_raster_to_cog(instance):
 
     # --- Cleanup ---
     os.unlink(temp_tiff.name)
+    os.unlink(temp_4326.name)
     
     # --- Save COG path to the database ---
-    instance.cog_path = cog_path
+    instance.cog_path = cog_path.replace("\\", "/")
     instance.save(update_fields=['cog_path'])
     
     print(f"✓ {instance.__class__.__name__} id={instance.id} → {cog_path}")

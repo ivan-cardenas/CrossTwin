@@ -7,7 +7,13 @@ View{% endblock %} {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/mainMap.css' %}" />
 {% endblock %} {% block extra_js %}
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.18.0/mapbox-gl.js"></script>
-<script src="{% static 'js/mainMap.js' %}"></script>
+<script src="{% static 'js/urbantwin/config.js' %}"></script>
+<script src="{% static 'js/urbantwin/city-name.js' %}"></script>
+<script src="{% static 'js/urbantwin/MapUI.js' %}"></script>
+<script src="{% static 'js/urbantwin/panels.js' %}"></script>
+<script src="{% static 'js/urbantwin/layers.js' %}"></script>
+<script src="{% static 'js/urbantwin/events.js' %}"></script>
+<script src="{% static 'js/urbantwin/map-init.js' %}"></script>
 {% endblock %} {% block content %}
 <div class="app-shell">
   <div class="map-wrapper">

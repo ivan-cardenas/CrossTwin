@@ -1,7 +1,3 @@
-/**
- * Urban Twin Map - Combined CrossTwin + Urban Twin Interface
- * Merges dynamic database layer loading with polished Urban Twin UI
- */
 
 // ============================================================
 // GLOBAL STATE
@@ -120,7 +116,7 @@ function initializeUrbanTwinMap(config) {
     addExternalLayers();
     fetchAvailableLayers();
     updateCityName();
-    addRasterLayer(map, 1);
+    
     
     // Listen for camera movements
     map.on('moveend', function() {
@@ -242,13 +238,21 @@ function addExternalLayers() {
 /**
  * Show/hide loading indicator
  */
+let loaderTimeout = null;
+
 function showLoader(show) {
   const loader = document.getElementById('map-loader');
-  if (loader) {
-    loader.classList.toggle('visible', show);
+  if (!loader) return;
+
+  if (show) {
+    loaderTimeout = setTimeout(() => {
+      loader.classList.add('visible');
+    }, 2000);
+  } else {
+    clearTimeout(loaderTimeout);
+    loader.classList.remove('visible');
   }
 }
-
 function addWmsLayer(layerConfig) {
   const { key, wms_url, wms_layers, opacity, display_name, color } = layerConfig;
 
@@ -535,46 +539,71 @@ async function addLayer(layerConfig) {
 
 async function addRasterLayer(map, appLabel, modelName, rasterID, opacity=0.7) {
   // Use your existing core/views.py endpoint
-  const url = rasterID 
-    ? `/api/rasters/${appLabel}/${modelName}/tiles/?id=${rasterID}`
-    : `/api/rasters/${appLabel}/${modelName}/tiles/`;
+  const tilesURL = rasterID 
+    ? `/api/raster/${appLabel}/${modelName}/tiles/?id=${rasterID}`
+    : `/api/raster/${appLabel}/${modelName}/tiles/`;
+
+  const infoURL = rasterID 
+    ? `/api/raster/${appLabel}/${modelName}/info/?id=${rasterID}`
+    : `/api/raster/${appLabel}/${modelName}/info/`;
   
   // const url = `/api/${appLabel}/${layerName}/tiles/?id=${rasterID}`;
 
-  console.log(`Loading raster layer from: ${url}`);
+  console.log(`Loading raster layer from: ${infoURL}`);
 
   try {
-    showLoader(true);
+    // showLoader(true);
+    // 1. Get raster info and bounds first
+    const infoResponse = await fetch(infoURL);
+    if (!infoResponse.ok) {
+      throw new Error(`Failed to get raster info: ${infoResponse.statusText}`);
+    }
+    const infoData = await infoResponse.json();
     
-    const response = await fetch(url);
-    if (!response.ok) { 
-      throw new Error(`Failed to load raster layer: ${response.statusText}`);
+    console.log(`📊 Raster bounds:`, infoData.bounds);
+    console.log(`📊 Zoom range: ${infoData.minzoom} - ${infoData.maxzoom}`);
+    
+    // 2. Get tile URL template
+    const tilesResponse = await fetch(tilesURL);
+    if (!tilesResponse.ok) { 
+      throw new Error(`Failed to load raster tiles: ${tilesResponse.statusText}`);
     } 
+    const tilesData = await tilesResponse.json();
     
-    const data = await response.json();
+    console.log(`🗺️ Tile URL: ${tilesData.tile_url}`);
     
-    // Create unique IDs for this raster instance
+    // 3. Create unique IDs
     const sourceId = `raster-source-${modelName}-${rasterID}`;
     const layerId = `raster-layer-${modelName}-${rasterID}`;
     
-    // Add source with TiTiler tile URL
+    // 4. Add source with bounds for optimization
     map.addSource(sourceId, {
       type: 'raster',
-      tiles: [data.tile_url],
+      tiles: [tilesData.tile_url],
       tileSize: 256,
+      bounds: infoData.bounds,  // ✅ Helps Mapbox know where to request tiles
+      minzoom: infoData.minzoom,
+      maxzoom: infoData.maxzoom,
     });
     
-    // Add layer
+    // 5. Add layer
     map.addLayer({
       id: layerId,
       source: sourceId,
       type: 'raster',
       paint: { 
-        'raster-opacity': opacity  // You can get this from layerConfig if needed
+        'raster-opacity': 0.7
       },
     });
     
-    console.log(`✅ Raster layer "${data.name}" loaded from TiTiler`);
+    // 6. Zoom to raster bounds
+    const [minLng, minLat, maxLng, maxLat] = infoData.bounds;
+    map.fitBounds(
+      [[minLng, minLat], [maxLng, maxLat]],
+      { padding: 50, duration: 1000 }
+    );
+    
+    console.log(`✅ Raster layer "${tilesData.name}" loaded and zoomed to bounds`);
     
   } catch (error) {
     console.error(`❌ Error loading raster layer "${appLabel}.${modelName}":`, error);

@@ -21,7 +21,7 @@ class LoadingManager {
     constructor() {
         this.overlay = document.getElementById('loadingOverlay');
         this.activeRequests = 0;
-        this.delayBeforeShow = 500; // Delay before showing spinner (ms)
+        this.delayBeforeShow = 1500; // Delay before showing spinner (ms)
 
         this.setupFetchInterceptor();
     }
