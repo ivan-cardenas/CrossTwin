@@ -10,13 +10,13 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
-    background: #0a0e1a;
+    background: #ffffff;
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 100vh;
     font-family: 'Syne', sans-serif;
-    overflow: hidden;
+    overflow-y: auto;
+    scroll-behavior: smooth;
   }
 
   .canvas {
@@ -128,6 +128,12 @@
   }
   .layer-data::before { background: linear-gradient(135deg, #10b981, #047857); }
 
+  .layer-viz {
+    background: linear-gradient(135deg, #2e0d11 0%, #3a0f11 100%);
+    animation-delay: 0.7s;
+  }
+  .layer-viz::before { background: linear-gradient(135deg, #f7557e, #d92840); }
+
   .layer-header {
     display: flex;
     align-items: flex-start;
@@ -149,6 +155,7 @@
   .icon-blue { background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59,130,246,0.3); }
   .icon-purple { background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168,85,247,0.3); }
   .icon-green { background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16,185,129,0.3); }
+  .icon-red { background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239,68,68,0.3); }
 
   .layer-meta {
     flex: 1;
@@ -165,6 +172,7 @@
   .layer-blue .layer-number { color: #60a5fa; }
   .layer-purple .layer-number { color: #c084fc; }
   .layer-green .layer-number { color: #34d399; }
+  .layer-red .layer-number { color: #ef4444; }
 
   .layer-name {
     font-size: 20px;
@@ -195,6 +203,7 @@
   .comp-blue { background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.18); }
   .comp-purple { background: rgba(168,85,247,0.08); border: 1px solid rgba(168,85,247,0.18); }
   .comp-green { background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.18); }
+  .comp-red { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.18); }
 
   .comp-label {
     font-family: 'Space Mono', monospace;
@@ -208,6 +217,7 @@
   .comp-blue .comp-label { color: #60a5fa; }
   .comp-purple .comp-label { color: #c084fc; }
   .comp-green .comp-label { color: #34d399; }
+  .comp-red .comp-label { color: #ef4444; }
 
   .comp-title {
     font-size: 13px;
@@ -243,6 +253,7 @@
   .glow-blue { box-shadow: 0 4px 40px rgba(59,130,246,0.12), 0 1px 0 rgba(59,130,246,0.1) inset; }
   .glow-purple { box-shadow: 0 4px 40px rgba(168,85,247,0.12), 0 1px 0 rgba(168,85,247,0.1) inset; }
   .glow-green { box-shadow: 0 4px 40px rgba(16,185,129,0.12), 0 1px 0 rgba(16,185,129,0.1) inset; }
+  .glow-red { box-shadow: 0 4px 40px rgba(239,68,68,0.12), 0 1px 0 rgba(239,68,68,0.1) inset; }
 
   .flow-badge {
     position: absolute;
@@ -266,6 +277,7 @@
   .badge-blue { background: rgba(59,130,246,0.12); color: #60a5fa; border: 1px solid rgba(59,130,246,0.25); }
   .badge-purple { background: rgba(168,85,247,0.12); color: #c084fc; border: 1px solid rgba(168,85,247,0.25); }
   .badge-green { background: rgba(16,185,129,0.12); color: #34d399; border: 1px solid rgba(16,185,129,0.25); }
+  .badge-red { background: rgba(239,68,68,0.12); color: #ef4444; border: 1px solid rgba(239,68,68,0.25); }
 </style>
 </head>
 <body>
@@ -277,12 +289,62 @@
 
   <div class="layers">
 
+    <!-- DATA LAYER -->
+    <div class="layer layer-data glow-green layer-green">
+      <div class="layer-header">
+        <div class="layer-icon icon-green">🗄️</div>
+        <div class="layer-meta">
+          <div class="layer-number">TIER 03 / 04</div>
+          <div class="layer-name">Data Layer</div>
+          <div class="layer-tech">PostgreSQL · PostGIS · GeoDjango ORM</div>
+        </div>
+        <div >
+          <span class="badge badge-green">BACK END</span>
+          <span class="badge badge-green">SPATIAL DB</span>
+        </div>
+      </div>
+      <div class="layer-body">
+        <div class="component comp-green">
+          <div class="comp-label">Database</div>
+          <div class="comp-title">PostgreSQL + PostGIS</div>
+          <div class="comp-desc">Spatially-enabled relational store with geometry columns</div>
+        </div>
+        <div class="component comp-green">
+          <div class="comp-label">ORM</div>
+          <div class="comp-title">GeoDjango Models</div>
+          <div class="comp-desc">Declarative geometry fields · CRS metadata · constraints</div>
+        </div>
+        <div class="component comp-green">
+          <div class="comp-label">Indexing</div>
+          <div class="comp-title">Spatial Indexes</div>
+          <div class="comp-desc">Auto-maintained GIST indexes for geometry queries</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONNECTOR 0 -->
+    <div class="connector">
+      <div style="display:flex;flex-direction:column;align-items:center;width:100%;position:relative;height:48px">
+        <svg width="820" height="48" viewBox="0 0 820 48" style="position:absolute;top:0;left:50%;transform:translateX(-50%)">
+          <line x1="410" y1="0" x2="410" y2="48" stroke="url(#grad1)" stroke-width="1.5" stroke-dasharray="4 3"/>
+          <defs>
+            <linearGradient id="grad1" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.6"/>
+              <stop offset="100%" stop-color="#a855f7" stop-opacity="0.6"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        <div class="connector-label">Django Form Validation · GeoDjango ORM</div>
+      </div>
+    </div>
+
+
     <!-- PRESENTATION LAYER -->
     <div class="layer layer-presentation glow-blue layer-blue">
       <div class="layer-header">
         <div class="layer-icon icon-blue">🖥️</div>
         <div class="layer-meta">
-          <div class="layer-number">TIER 01 / 03</div>
+          <div class="layer-number">TIER 02 / 04</div>
           <div class="layer-name">Presentation Layer</div>
           <div class="layer-tech">React · Multipart Form · HTTP POST</div>
         </div>
@@ -295,7 +357,7 @@
         <div class="component comp-blue">
           <div class="comp-label">Input</div>
           <div class="comp-title">File Upload Interface</div>
-          <div class="comp-desc">File select, Planning sector selection, Target model selection</div>
+          <div class="comp-desc">File select and extension check, Planning sector selection, Target model selection, CRS Detection</div>
         </div>
         <div class="component comp-blue">
           <div class="comp-label">Mapping</div>
@@ -331,7 +393,7 @@
       <div class="layer-header">
         <div class="layer-icon icon-purple">⚙️</div>
         <div class="layer-meta">
-          <div class="layer-number">TIER 02 / 03</div>
+          <div class="layer-number">TIER 03 / 04</div>
           <div class="layer-name">Application Layer</div>
           <div class="layer-tech">Django REST · Format Parsers · Validation Pipeline</div>
         </div>
@@ -359,7 +421,7 @@
       </div>
     </div>
 
-    <!-- CONNECTOR 2 -->
+    <!-- CONNECTOR 2
     <div class="connector">
       <div style="display:flex;flex-direction:column;align-items:center;width:100%;position:relative;height:48px">
         <svg width="820" height="48" viewBox="0 0 820 48" style="position:absolute;top:0;left:50%;transform:translateX(-50%)">
@@ -371,39 +433,56 @@
             </linearGradient>
           </defs>
         </svg>
-        <div class="connector-label">GeoDjango ORM · bulk_create()</div>
+        <div class="connector-label">GeoDjango ORM · update_or_create()</div>
+      </div>
+    </div> -->
+
+    
+    <!-- CONNECTOR 3 -->
+    <div class="connector">
+      <div style="display:flex;flex-direction:column;align-items:center;width:100%;position:relative;height:48px">
+        <svg width="820" height="48" viewBox="0 0 820 48" style="position:absolute;top:0;left:50%;transform:translateX(-50%)">
+          <line x1="410" y1="0" x2="410" y2="48" stroke="url(#grad2)" stroke-width="1.5" stroke-dasharray="4 3"/>
+          <defs>
+            <linearGradient id="grad2" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#a855f7" stop-opacity="0.6"/>
+              <stop offset="100%" stop-color="#10b981" stop-opacity="0.6"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        <div class="connector-label">Tiling and Serving</div>
       </div>
     </div>
 
-    <!-- DATA LAYER -->
-    <div class="layer layer-data glow-green layer-green">
+    <!-- VIZUALIZATION LAYER -->
+    <div class="layer layer-viz glow-red layer-red">
       <div class="layer-header">
-        <div class="layer-icon icon-green">🗄️</div>
+        <div class="layer-icon icon-red">🗄️</div>
         <div class="layer-meta">
-          <div class="layer-number">TIER 03 / 03</div>
-          <div class="layer-name">Data Layer</div>
-          <div class="layer-tech">PostgreSQL · PostGIS · GeoDjango ORM</div>
+          <div class="layer-number">TIER 04 / 04</div>
+          <div class="layer-name">Visualization Layer</div>
+          <div class="layer-tech">TiTiler · Mapbox GL · React · FastAPI · Rasterio</div>
         </div>
         <div >
-          <span class="badge badge-green">BACK END</span>
-          <span class="badge badge-green">SPATIAL DB</span>
+          <span class="badge badge-red">FRONT END</span>
+          <span class="badge badge-red">MAP</span>
         </div>
       </div>
       <div class="layer-body">
-        <div class="component comp-green">
-          <div class="comp-label">Database</div>
-          <div class="comp-title">PostgreSQL + PostGIS</div>
-          <div class="comp-desc">Spatially-enabled relational store with geometry columns</div>
+        <div class="component comp-red">
+          <div class="comp-label">Tiler</div>
+          <div class="comp-title">TiTiler + FastAPI </div>
+          <div class="comp-desc">Web tile server, ZXY tiling scheme, REST API </div>
         </div>
-        <div class="component comp-green">
-          <div class="comp-label">ORM</div>
-          <div class="comp-title">GeoDjango Models</div>
-          <div class="comp-desc">Declarative geometry fields · CRS metadata · constraints</div>
+        <div class="component comp-red">
+          <div class="comp-label">Rendering</div>
+          <div class="comp-title">Mapbox GL</div>
+          <div class="comp-desc">Vector tiles, raster tiles, dynamic styling, WMS and WMTS</div>
         </div>
-        <div class="component comp-green">
-          <div class="comp-label">Indexing</div>
-          <div class="comp-title">Spatial Indexes</div>
-          <div class="comp-desc">Auto-maintained GIST indexes for geometry queries</div>
+        <div class="component comp-red">
+          <div class="comp-label">Navigation</div>
+          <div class="comp-title">Data Inspection</div>
+          <div class="comp-desc">Metadata, attribute queries, spatial queries</div>
         </div>
       </div>
     </div>
