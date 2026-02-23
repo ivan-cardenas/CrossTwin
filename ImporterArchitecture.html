@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GIS Framework Architecture</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0e1a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'Syne', sans-serif;
+    overflow: hidden;
+  }
+
+  .canvas {
+    width: 900px;
+    padding: 48px 40px;
+    position: relative;
+  }
+
+  .title-block {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+
+  .title-block h1 {
+    font-size: 13px;
+    font-family: 'Space Mono', monospace;
+    letter-spacing: 4px;
+    color: #4a9eff;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    opacity: 0.85;
+  }
+
+  .title-block h2 {
+    font-size: 28px;
+    font-weight: 800;
+    color: #e8edf8;
+    letter-spacing: -0.5px;
+  }
+
+  .layers {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    position: relative;
+  }
+
+  /* Connector lines between layers */
+  .connector {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 48px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .connector-line {
+    width: 2px;
+    height: 100%;
+    background: linear-gradient(to bottom, var(--from), var(--to));
+    position: relative;
+  }
+
+  .connector-label {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    background: #0a0e1a;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: #8899bb;
+    white-space: nowrap;
+    border: 1px solid #1e2a45;
+    letter-spacing: 1px;
+  }
+
+  /* Layer cards */
+  .layer {
+    border-radius: 16px;
+    padding: 28px 32px;
+    position: relative;
+    overflow: hidden;
+    animation: fadeSlide 0.6s ease both;
+  }
+
+  .layer::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 16px;
+    padding: 1.5px;
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+  }
+
+  /* Presentation Layer */
+  .layer-presentation {
+    background: linear-gradient(135deg, #0d1b35 0%, #0f2040 100%);
+    animation-delay: 0.1s;
+  }
+  .layer-presentation::before { background: linear-gradient(135deg, #3b82f6, #1e40af); }
+
+  /* Application Layer */
+  .layer-application {
+    background: linear-gradient(135deg, #1a0d2e 0%, #200f3a 100%);
+    animation-delay: 0.3s;
+  }
+  .layer-application::before { background: linear-gradient(135deg, #a855f7, #6d28d9); }
+
+  /* Data Layer */
+  .layer-data {
+    background: linear-gradient(135deg, #0d2218 0%, #0f2a1e 100%);
+    animation-delay: 0.5s;
+  }
+  .layer-data::before { background: linear-gradient(135deg, #10b981, #047857); }
+
+  .layer-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+
+  .layer-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 22px;
+  }
+
+  .icon-blue { background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59,130,246,0.3); }
+  .icon-purple { background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168,85,247,0.3); }
+  .icon-green { background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16,185,129,0.3); }
+
+  .layer-meta {
+    flex: 1;
+  }
+
+  .layer-number {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 3px;
+    margin-bottom: 4px;
+    opacity: 0.6;
+  }
+
+  .layer-blue .layer-number { color: #60a5fa; }
+  .layer-purple .layer-number { color: #c084fc; }
+  .layer-green .layer-number { color: #34d399; }
+
+  .layer-name {
+    font-size: 20px;
+    font-weight: 600;
+    color: #e8edf8;
+    margin-bottom: 2px;
+  }
+
+  .layer-tech {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    opacity: 0.55;
+    color: #a0aec0;
+  }
+
+  .layer-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+  }
+
+  .component {
+    border-radius: 10px;
+    padding: 14px 16px;
+    position: relative;
+  }
+
+  .comp-blue { background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.18); }
+  .comp-purple { background: rgba(168,85,247,0.08); border: 1px solid rgba(168,85,247,0.18); }
+  .comp-green { background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.18); }
+
+  .comp-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 5px;
+    opacity: 0.5;
+  }
+
+  .comp-blue .comp-label { color: #60a5fa; }
+  .comp-purple .comp-label { color: #c084fc; }
+  .comp-green .comp-label { color: #34d399; }
+
+  .comp-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #dde4f0;
+    margin-bottom: 4px;
+  }
+
+  .comp-desc {
+    font-size: 11px;
+    color: #6b7fa3;
+    line-height: 1.5;
+    font-family: 'Space Mono', monospace;
+  }
+
+  /* Background grid */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: 
+      linear-gradient(rgba(74,158,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(74,158,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+  }
+
+  @keyframes fadeSlide {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .glow-blue { box-shadow: 0 4px 40px rgba(59,130,246,0.12), 0 1px 0 rgba(59,130,246,0.1) inset; }
+  .glow-purple { box-shadow: 0 4px 40px rgba(168,85,247,0.12), 0 1px 0 rgba(168,85,247,0.1) inset; }
+  .glow-green { box-shadow: 0 4px 40px rgba(16,185,129,0.12), 0 1px 0 rgba(16,185,129,0.1) inset; }
+
+  .flow-badge {
+    position: absolute;
+    right: 32px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+  }
+
+  .badge {
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    letter-spacing: 1px;
+  }
+
+  .badge-blue { background: rgba(59,130,246,0.12); color: #60a5fa; border: 1px solid rgba(59,130,246,0.25); }
+  .badge-purple { background: rgba(168,85,247,0.12); color: #c084fc; border: 1px solid rgba(168,85,247,0.25); }
+  .badge-green { background: rgba(16,185,129,0.12); color: #34d399; border: 1px solid rgba(16,185,129,0.25); }
+</style>
+</head>
+<body>
+<div class="canvas">
+  <div class="title-block">
+    <h1>Section 3.2 — System Architecture</h1>
+    <h2>Three-Tier GIS Data Import Framework</h2>
+  </div>
+
+  <div class="layers">
+
+    <!-- PRESENTATION LAYER -->
+    <div class="layer layer-presentation glow-blue layer-blue">
+      <div class="layer-header">
+        <div class="layer-icon icon-blue">🖥️</div>
+        <div class="layer-meta">
+          <div class="layer-number">TIER 01 / 03</div>
+          <div class="layer-name">Presentation Layer</div>
+          <div class="layer-tech">React · Multipart Form · HTTP POST</div>
+        </div>
+        <div >
+          <span class="badge badge-blue">USER INTERFACE</span>
+          <span class="badge badge-blue">CLIENT-SIDE</span>
+        </div>
+      </div>
+      <div class="layer-body">
+        <div class="component comp-blue">
+          <div class="comp-label">Input</div>
+          <div class="comp-title">File Upload Interface</div>
+          <div class="comp-desc">File select, Planning sector selection, Target model selection</div>
+        </div>
+        <div class="component comp-blue">
+          <div class="comp-label">Mapping</div>
+          <div class="comp-title">Attribute Mapping Interface</div>
+          <div class="comp-desc">Preview data, attribute mapping, dry run</div>
+        </div>
+        <div class="component comp-blue">
+          <div class="comp-label">Feedback</div>
+          <div class="comp-title">Import Summary</div>
+          <div class="comp-desc">Features inserted, rejected, per-record errors</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONNECTOR 1 -->
+    <div class="connector">
+      <div style="display:flex;flex-direction:column;align-items:center;width:100%;position:relative;height:48px">
+        <svg width="820" height="48" viewBox="0 0 820 48" style="position:absolute;top:0;left:50%;transform:translateX(-50%)">
+          <line x1="410" y1="0" x2="410" y2="48" stroke="url(#grad1)" stroke-width="1.5" stroke-dasharray="4 3"/>
+          <defs>
+            <linearGradient id="grad1" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.6"/>
+              <stop offset="100%" stop-color="#a855f7" stop-opacity="0.6"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        <div class="connector-label">HTTP Multipart · JSON Response</div>
+      </div>
+    </div>
+
+    <!-- APPLICATION LAYER -->
+    <div class="layer layer-application glow-purple layer-purple">
+      <div class="layer-header">
+        <div class="layer-icon icon-purple">⚙️</div>
+        <div class="layer-meta">
+          <div class="layer-number">TIER 02 / 03</div>
+          <div class="layer-name">Application Layer</div>
+          <div class="layer-tech">Django REST · Format Parsers · Validation Pipeline</div>
+        </div>
+        <div >
+          <span class="badge badge-purple">MIDDLEWARE</span>
+          <span class="badge badge-purple">LOGIC</span>
+        </div>
+      </div>
+      <div class="layer-body">
+        <div class="component comp-purple">
+          <div class="comp-label">Parsing</div>
+          <div class="comp-title">Format Handlers</div>
+          <div class="comp-desc">Shapefile · GeoJSON · CSV · Tiff (GDAL/OGR, GEOS, Geopandas)</div>
+        </div>
+        <div class="component comp-purple">
+          <div class="comp-label">Stage 1</div>
+          <div class="comp-title">CRS Reprojection</div>
+          <div class="comp-desc">GDAL transform → EPSG target</div>
+        </div>
+        <div class="component comp-purple">
+          <div class="comp-label">Stage 2</div>
+          <div class="comp-title">Schema Validation</div>
+          <div class="comp-desc">Type coercion · nullability · error reporting</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONNECTOR 2 -->
+    <div class="connector">
+      <div style="display:flex;flex-direction:column;align-items:center;width:100%;position:relative;height:48px">
+        <svg width="820" height="48" viewBox="0 0 820 48" style="position:absolute;top:0;left:50%;transform:translateX(-50%)">
+          <line x1="410" y1="0" x2="410" y2="48" stroke="url(#grad2)" stroke-width="1.5" stroke-dasharray="4 3"/>
+          <defs>
+            <linearGradient id="grad2" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#a855f7" stop-opacity="0.6"/>
+              <stop offset="100%" stop-color="#10b981" stop-opacity="0.6"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        <div class="connector-label">GeoDjango ORM · bulk_create()</div>
+      </div>
+    </div>
+
+    <!-- DATA LAYER -->
+    <div class="layer layer-data glow-green layer-green">
+      <div class="layer-header">
+        <div class="layer-icon icon-green">🗄️</div>
+        <div class="layer-meta">
+          <div class="layer-number">TIER 03 / 03</div>
+          <div class="layer-name">Data Layer</div>
+          <div class="layer-tech">PostgreSQL · PostGIS · GeoDjango ORM</div>
+        </div>
+        <div >
+          <span class="badge badge-green">BACK END</span>
+          <span class="badge badge-green">SPATIAL DB</span>
+        </div>
+      </div>
+      <div class="layer-body">
+        <div class="component comp-green">
+          <div class="comp-label">Database</div>
+          <div class="comp-title">PostgreSQL + PostGIS</div>
+          <div class="comp-desc">Spatially-enabled relational store with geometry columns</div>
+        </div>
+        <div class="component comp-green">
+          <div class="comp-label">ORM</div>
+          <div class="comp-title">GeoDjango Models</div>
+          <div class="comp-desc">Declarative geometry fields · CRS metadata · constraints</div>
+        </div>
+        <div class="component comp-green">
+          <div class="comp-label">Indexing</div>
+          <div class="comp-title">Spatial Indexes</div>
+          <div class="comp-desc">Auto-maintained GIST indexes for geometry queries</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>
