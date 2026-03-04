@@ -43,9 +43,9 @@ def _derive_version(commit_count: str) -> str:
     except ValueError:
         return "v0.1"
 
-    major = n // 1000
-    minor = (n % 1000) // 100
-    patch = n % 100
+    major = n // 100
+    minor = (n % 100) // 10
+    patch = n % 10
     return f"v{major}.{minor}.{patch}"
 
 
