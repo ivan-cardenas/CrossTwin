@@ -2,7 +2,7 @@ from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from django.db.models import Sum, F, FloatField, Case, When, Value, ExpressionWrapper
 from django.utils import timezone
-from .models import Neighborhood, City, Region
+from .models import Neighborhood, City, Province
 
 
 def _safe_divide_expr(numerator_value):
@@ -17,13 +17,13 @@ def _safe_divide_expr(numerator_value):
         output_field=FloatField()
     )
 
-@receiver(post_save, sender=Neighborhood, dispatch_uid="neigh_upsert_to_city_region")
-@receiver(post_delete, sender=Neighborhood, dispatch_uid="neigh_delete_to_city_region")
-def neighborhood_changed_update_city_and_region(sender, instance, **kwargs):
+@receiver(post_save, sender=Neighborhood, dispatch_uid="neigh_upsert_to_city_Province")
+@receiver(post_delete, sender=Neighborhood, dispatch_uid="neigh_delete_to_city_Province")
+def neighborhood_changed_update_city_and_Province(sender, instance, **kwargs):
     """
     Single signal function:
       - recompute City totals/density when a Neighborhood is created/updated/deleted
-      - then recompute Region totals/density based on its Cities
+      - then recompute Province totals/density based on its Cities
     """
     city_id = instance.city_id
     if not city_id:
@@ -40,15 +40,15 @@ def neighborhood_changed_update_city_and_region(sender, instance, **kwargs):
         last_updated=timezone.now()
     )
 
-    # 2) Recompute REGION totals from its cities
-    region_id = City.objects.filter(id=city_id).values_list('region_id', flat=True).first()
-    if region_id:
-        region_total = City.objects.filter(region_id=region_id).aggregate(
+    # 2) Recompute Province totals from its cities
+    Province_id = City.objects.filter(id=city_id).values_list('Province_id', flat=True).first()
+    if Province_id:
+        Province_total = City.objects.filter(Province_id=Province_id).aggregate(
             total=Sum('currentPopulation')
         )['total'] or 0
 
-        Region.objects.filter(id=region_id).update(
-            currentPopulation=region_total,
-            populationDensity=_safe_divide_expr(region_total),
+        Province.objects.filter(id=Province_id).update(
+            currentPopulation=Province_total,
+            populationDensity=_safe_divide_expr(Province_total),
             last_updated=timezone.now()
         )

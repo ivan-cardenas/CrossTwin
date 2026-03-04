@@ -6,48 +6,48 @@ from django.db import connection
 from django.apps import apps
 
 from .models import *
-from common.models import Region, City, Neighborhood
+from common.models import Province, City, Neighborhood
 
 # Create your views here.
-def _calculate_total_production_day(region, year):
-    total_extracted = ExtractionWater.objects.filter(region=region).aggregate(total=models.Sum('pumpflow_m3_s'))['total']
+def _calculate_total_production_day(Province, year):
+    total_extracted = ExtractionWater.objects.filter(Province=Province).aggregate(total=models.Sum('pumpflow_m3_s'))['total']
     total_extracted_day = total_extracted*86400 
-    total_imported = ImportedWater.objects.filter(region=region).aggregate(total=models.Sum('quantity_m3_d'))['total']
+    total_imported = ImportedWater.objects.filter(Province=Province).aggregate(total=models.Sum('quantity_m3_d'))['total']
     
     return total_extracted_day + total_imported
 
-def _get_consumption_capita(region, year):
+def _get_consumption_capita(Province, year):
     consumption_capita = ConsumptionCapita.objects.get(
-        region=region,
+        Province=Province,
         year=year
     )
     return consumption_capita
 
-def water_indicators(request, region_id, year):
+def water_indicators(request, Province_id, year):
     """Single view that calculates all indicators"""
     
     try:
-        region = get_object_or_404(Region, pk=region_id)
-        total_supply = _calculate_total_production_day(region, year)
-        consumption_capita_region = _get_consumption_capita(region, year)
-        total_demand = consumption_capita_region * region.currentPopulation
+        Province = get_object_or_404(Province, pk=Province_id)
+        total_supply = _calculate_total_production_day(Province, year)
+        consumption_capita_Province = _get_consumption_capita(Province, year)
+        total_demand = consumption_capita_Province * Province.currentPopulation
     except:
         # Mock data for demo
-        region = type('Region', (), {
-            'name': 'Demo Region (No Data)',
+        Province = type('Province', (), {
+            'name': 'Demo Province (No Data)',
             'currentPopulation': 1500000,
-            'pk': region_id
+            'pk': Province_id
         })()
         
         total_supply = 119120  # m³/day (0.8 m³/s extraction + 50k import)
-        consumption_capita_region = 0.120  # m³/person/day
-        total_demand = consumption_capita_region * region.currentPopulation
+        consumption_capita_Province = 0.120  # m³/person/day
+        total_demand = consumption_capita_Province * Province.currentPopulation
     
     difference = total_supply - total_demand
     supply_security = (total_supply / total_demand * 100) if total_demand > 0 else 0
     
     context = {
-        'region': region,
+        'Province': Province,
         'year': year,
         'indicators': {
             'total_supply': total_supply,
@@ -60,17 +60,17 @@ def water_indicators(request, region_id, year):
     return render(request, 'watersupply/water_indicators.html', context)
 
 def water_indicators_main(request):
-    """Main page with region/year selector"""
-    regions = Region.objects.all().order_by('regionName')
+    """Main page with Province/year selector"""
+    Provinces = Province.objects.all().order_by('ProvinceName')
     
-    if not regions.exists():
-        regions = [
-            type('Region', (), {'id': 1, 'regionName': 'Amsterdam Metropolitan Area'})(),
-            type('Region', (), {'id': 2, 'regionName': 'Rotterdam Region'})(),
-            type('Region', (), {'id': 3, 'regionName': 'Utrecht Province'})(),
+    if not Provinces.exists():
+        Provinces = [
+            type('Province', (), {'id': 1, 'ProvinceName': 'Amsterdam Metropolitan Area'})(),
+            type('Province', (), {'id': 2, 'ProvinceName': 'Rotterdam Province'})(),
+            type('Province', (), {'id': 3, 'ProvinceName': 'Utrecht Province'})(),
         ]
     
     context = {
-        'regions': regions,
+        'Provinces': Provinces,
     }
     return render(request, 'watersupply/select_filters.html', context)

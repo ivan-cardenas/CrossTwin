@@ -1,5 +1,5 @@
 from django.contrib import admin
-from urbanHeat.models import *
+from urban_heat.models import *
 # Register your models here.
 
 admin.site.register(StressCategory)

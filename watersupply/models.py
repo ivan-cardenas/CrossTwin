@@ -1,7 +1,7 @@
 from django.contrib.gis.db import models
 from django.utils import timezone
 from django.core.exceptions import ValidationError
-from common.models import Region, City, Neighborhood
+from common.models import Province, City, Neighborhood
 from django.conf import settings
 
 COORDINATE_SYSTEM = settings.COORDINATE_SYSTEM
@@ -74,7 +74,7 @@ class SupplySecurity(models.Model):
     last_updated = models.DateTimeField(default=timezone.now) 
     
     def __str__(self):
-        return f"{self.region} - {self.year}: {self.supply_security}"
+        return f"{self.city} - {self.year}: {self.supply_security}"
     
     class Meta:
         verbose_name = "Supply Security"
@@ -132,7 +132,7 @@ class MeteredResidential(models.Model):
 class AvailableFreshWater(models.Model):
     id=models.AutoField(primary_key=True)
     SourceName = models.CharField(max_length=100, help_text="Name of the water source")
-    region = models.ForeignKey(Region, on_delete=models.DO_NOTHING, null=True, help_text="Region code from common.Region. Get automatically assigned on save.")
+    Province = models.ForeignKey(Province, on_delete=models.DO_NOTHING, null=True, help_text="Province code from common.Province. Get automatically assigned on save.")
     geom = models.MultiPolygonField(srid=COORDINATE_SYSTEM)
     infiltrationRate_cm_h = models.FloatField(help_text="Infiltration rate in centimeters per hour") #TODO: this should be calculated from land cover and soil type
     infiltrationDepth_cm = models.FloatField(help_text="Infiltration depth in centimeters")
@@ -144,8 +144,8 @@ class AvailableFreshWater(models.Model):
         return f"{self.SourceName} - {self.totalQuantity_Mm3} Mm3"
     
     def save(self, *args, **kwargs):
-        region = Region.objects.get(geom__contains=self.geom.centroid)
-        self.region = region
+        Province = Province.objects.get(geom__contains=self.geom.centroid)
+        self.Province = Province
         super().save(**args, **kwargs)
         
     class Meta:
@@ -317,7 +317,7 @@ class AreaAffectedDrought(models.Model):
     
     id = models.AutoField(primary_key=True)
     geom = models.MultiPolygonField(srid=COORDINATE_SYSTEM)
-    region = models.ForeignKey(Region, on_delete=models.DO_NOTHING)
+    Province = models.ForeignKey(Province, on_delete=models.DO_NOTHING)
     areaName = models.CharField(max_length=100)
     SensibilityLevel = models.IntegerField(
         choices=SensibilityChoices.choices,
@@ -369,17 +369,17 @@ class TotalWaterProduction(models.Model):
         self.productionDay = calculated_production
         self.productionYR = self.productionDay * 365
         
-        # Find wich region this source belongs to
+        # Find wich Province this source belongs to
         try:
-            source_region = Region.objects.get(
+            source_Province = Province.objects.get(
                 geom__contains=self.source.geom.centroid
             )
-        except Region.DoesNotExist:
-            source_region = None
+        except Province.DoesNotExist:
+            source_Province = None
         
         try:
             elec_cost = ElectricityCost.objects.filter(
-                region=source_region,
+                Province=source_Province,
                 year=self.year
             ).cost_EUR_kWh
         except ElectricityCost.DoesNotExist:

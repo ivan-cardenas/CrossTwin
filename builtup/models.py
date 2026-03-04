@@ -1,7 +1,7 @@
 from django.utils import timezone
 from django.contrib.gis.db import models
 from django.db.models import Sum
-from common.models import Region, City, Neighborhood, SurfaceMaterialProperties, WallMaterialProperties
+from common.models import City, Neighborhood, SurfaceMaterialProperties, WallMaterialProperties
 from Energy.models import EnergyEfficiencyLabels
 
 from django.conf import settings

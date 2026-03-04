@@ -33,7 +33,7 @@ const BASEMAPS = {
 const TOOL_CATEGORIES = {
   overview:    null,
   common:      ['common'],
-  temperature: ['temperature', 'heat', 'weather', 'urbanheat,'],
+  temperature: ['temperature', 'heat', 'weather', 'urban_heat,'],
   builtup:     ['builtup'],
   energy:      ['Energy'],
   housing:     ['housing'],

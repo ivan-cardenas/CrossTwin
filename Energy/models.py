@@ -1,7 +1,7 @@
 from django.contrib.gis.db import models
 from django.utils import timezone
 from django.core.exceptions import ValidationError
-from common.models import Region, City, Neighborhood
+from common.models import Province, City, Neighborhood
 from django.conf import settings
 
 COORDINATE_SYSTEM = settings.COORDINATE_SYSTEM
@@ -10,13 +10,13 @@ COORDINATE_SYSTEM = settings.COORDINATE_SYSTEM
 
 class ElectricityCost(models.Model):
     id = models.AutoField(primary_key=True)
-    region = models.ForeignKey(Region, on_delete=models.DO_NOTHING, help_text="Region code from common.Region")
+    province = models.ForeignKey(Province, on_delete=models.DO_NOTHING, help_text="Province code from common.Province", null=True)
     year = models.IntegerField()
     cost_EUR_kWh = models.FloatField(help_text="Cost in EUR per kilowatt-hour")
     last_updated = models.DateTimeField(default=timezone.now)
     
     def __str__(self):
-        return f"{self.region} - {self.year}: {self.cost_EUR_kWh} EUR/kWh"
+        return f"{self.Province} - {self.year}: {self.cost_EUR_kWh} EUR/kWh"
     
     class Meta:
         verbose_name = "Electricity Cost"

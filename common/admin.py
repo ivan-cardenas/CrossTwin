@@ -1,10 +1,10 @@
 from django.contrib import admin
 from .models import *
 
-class RegionAdmin(admin.ModelAdmin):
-    model = Region
-    list_display = ['regionName', 'currentPopulation', 'populationDensity', 'area_km2', ]
-    search_fields = ['regionName']
+class ProvinceAdmin(admin.ModelAdmin):
+    model = Province
+    list_display = ['ProvinceName', 'currentPopulation', 'populationDensity', 'area_km2', ]
+    search_fields = ['ProvinceName']
     
 class CityAdmin(admin.ModelAdmin):
     model = City
@@ -25,7 +25,7 @@ class SurfaceMaterialPropertiesAdmin(admin.ModelAdmin):
     search_fields = ['material_name', 'description']
 
 # Register your models here.
-admin.site.register(Region, RegionAdmin)
+admin.site.register(Province, ProvinceAdmin)
 admin.site.register(City, CityAdmin)
 admin.site.register(Neighborhood, NeighborhoodAdmin)
 admin.site.register(LandCoverClasses, LandCoverClassesAdmin)

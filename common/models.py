@@ -7,10 +7,10 @@ from django.conf import settings
 CoordinateSystem = settings.COORDINATE_SYSTEM
 
 # Create your models here.
-class Region(models.Model):
+class Province(models.Model):
     id = models.AutoField(primary_key=True)
-    regionName = models.CharField(max_length=100)
-    currentPopulation = models.IntegerField(null=True, help_text="Total current population in the region", verbose_name="Current Population")
+    ProvinceName = models.CharField(max_length=100)
+    currentPopulation = models.IntegerField(null=True, help_text="Total current population in the Province", verbose_name="Current Population")
     populationDensity = models.FloatField(null=True, help_text="Population density in people per square kilometer", verbose_name="Population Density") # people/km2
     populationDate = models.DateField(null=True, help_text="Date of the population data", verbose_name="Population Date")
     area_km2 = models.FloatField(null=True, help_text="Area in square kilometers")
@@ -22,7 +22,7 @@ class Region(models.Model):
     def save(self, *args, **kwargs):
         if self.currentPopulation is None:
             try:
-                total = City.objects.filter(Region=self.id).aggregate(
+                total = City.objects.filter(Province=self.id).aggregate(
                     total=Sum('currentPopulation')
                 )['total']
                 self.currentPopulation = total 
@@ -41,17 +41,17 @@ class Region(models.Model):
         
 
     def __str__(self):
-        return self.regionName
+        return self.ProvinceName
 
     class Meta:
-        verbose_name = "Region"
-        verbose_name_plural = "Regions"
+        verbose_name = "Province"
+        verbose_name_plural = "Provinces"
         
         
         
 class City(models.Model):
     id = models.AutoField(primary_key=True)
-    region = models.ForeignKey(Region, on_delete=models.CASCADE, help_text="Region code from common.Region")
+    province = models.ForeignKey(Province, on_delete=models.CASCADE, help_text="Province code from common.Province")
     cityName = models.CharField(max_length=100)
     currentPopulation = models.IntegerField(help_text="Total current population in the city") 
     area_km2 = models.FloatField(null=True, help_text="Area in square kilometers")
@@ -150,27 +150,27 @@ class WallMaterialProperties(models.Model):
 
 class LandCoverVector(models.Model):
     id = models.AutoField(primary_key=True)
-    region = models.ForeignKey(Region, on_delete=models.DO_NOTHING, help_text="Region code from common.Region")
+    Province = models.ForeignKey(Province, on_delete=models.DO_NOTHING, help_text="Province code from common.Province")
     year = models.IntegerField()
     land_cover_type = models.ForeignKey(LandCoverClasses, on_delete=models.DO_NOTHING, help_text="Type of land cover (e.g., 'Urban', 'Forest', 'Agriculture', etc.)")
     land_use = models.CharField(max_length=100, help_text="Land use type (e.g., 'Residential', 'Commercial', 'Industrial', 'Park', etc.)")
     geom = models.MultiPolygonField(srid=CoordinateSystem)
-    percentage = models.FloatField(help_text="Percentage of the region covered by this land cover type") #TODO: Calculate this percentage based on the area of the geom and the total area of the region. #TODO: Vegetation Coverage and Builtup Coverage as additional fields?
+    percentage = models.FloatField(help_text="Percentage of the Province covered by this land cover type") #TODO: Calculate this percentage based on the area of the geom and the total area of the Province. #TODO: Vegetation Coverage and Builtup Coverage as additional fields?
     material = models.ForeignKey(SurfaceMaterialProperties, on_delete=models.DO_NOTHING, help_text="Material properties of the land cover type")
     last_updated = models.DateTimeField(default=timezone.now)
     
     def __str__(self):
-        return f"{self.region} - {self.year}: {self.land_cover_type} ({self.percentage}%)"
+        return f"{self.Province} - {self.year}: {self.land_cover_type} ({self.percentage}%)"
     
 class LandCoverRaster(models.Model):
     id = models.AutoField(primary_key=True)
-    region = models.ForeignKey(Region, on_delete=models.DO_NOTHING, help_text="Region code from common.Region")
+    Province = models.ForeignKey(Province, on_delete=models.DO_NOTHING, help_text="Province code from common.Province")
     year = models.IntegerField()
     raster = models.RasterField(srid=CoordinateSystem, null=True, blank=True, help_text="Raster file containing land cover classification values")
     last_updated = models.DateTimeField(default=timezone.now)
     
     def __str__(self):
-        return f"{self.region} - {self.year}: Land Cover Raster"
+        return f"{self.Province} - {self.year}: Land Cover Raster"
     
 class LandCoverWMS(models.Model):
     name = models.CharField(max_length=200)
@@ -192,13 +192,13 @@ class LandCoverWMS(models.Model):
 
 class DigitalElevationModel(models.Model):
     id = models.AutoField(primary_key=True)
-    region = models.ForeignKey(Region, on_delete=models.DO_NOTHING, help_text="Region code from common.Region")
+    Province = models.ForeignKey(Province, on_delete=models.DO_NOTHING, help_text="Province code from common.Province")
     year = models.IntegerField()
     dem_raster = models.RasterField(srid=CoordinateSystem, null=True, blank=True, help_text="Raster file containing elevation values")
     last_updated = models.DateTimeField(default=timezone.now)
     
     def __str__(self):
-        return f"{self.region} - {self.year}: Digital Elevation Model"
+        return f"{self.Province} - {self.year}: Digital Elevation Model"
     
 class DigitalElevationModelWMS(models.Model):
     name = models.CharField(max_length=200)
@@ -219,13 +219,13 @@ class DigitalElevationModelWMS(models.Model):
     
 class DigitalSurfaceModel(models.Model):
     id = models.AutoField(primary_key=True)
-    region = models.ForeignKey(Region, on_delete=models.DO_NOTHING, help_text="Region code from common.Region")
+    Province = models.ForeignKey(Province, on_delete=models.DO_NOTHING, help_text="Province code from common.Province")
     year = models.IntegerField()
     dsm_raster = models.RasterField(srid=CoordinateSystem, null=True, blank=True, help_text="Raster file containing surface elevation values")
     last_updated = models.DateTimeField(default=timezone.now)
     
     def __str__(self):
-        return f"{self.region} - {self.year}: Digital Surface Model"
+        return f"{self.Province} - {self.year}: Digital Surface Model"
     
 class DigitalSurfaceModelWMS(models.Model):
     name = models.CharField(max_length=200)

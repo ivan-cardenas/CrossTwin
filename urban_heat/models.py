@@ -1,7 +1,7 @@
 from django.contrib.gis.db import models
 from django.utils import timezone
 from django.core.exceptions import ValidationError
-from common.models import Region, City, Neighborhood
+from common.models import City, Neighborhood
 from django.conf import settings
 
 # Create your models here.

@@ -21,7 +21,25 @@ function initializeUrbanTwinMap(config) {
   });
 
   map.addControl(new mapboxgl.NavigationControl(), 'top-right');
-  map.addControl(new mapboxgl.ScaleControl(), 'bottom-right');
+  map.addControl(new mapboxgl.FullscreenControl(), 'top-right');
+  
+ 
+  // Add the control to the map.
+  map.addControl(new MapboxGeocoder({
+            accessToken: mapboxgl.accessToken,
+            useBrowserFocus: true,
+            mapboxgl: mapboxgl
+        }), 'top-left');
+  
+  map.addControl(new mapboxgl.GeolocateControl({
+    positionOptions: {
+      enableHighAccuracy: true
+    },
+    trackUserLocation: true
+  }), 'top-right');
+  map.addControl(new mapboxgl.ScaleControl(), 'top-left');
+
+  console.log('Map initialized');
 
   map.on('load', () => {
     console.log('Map loaded successfully');
@@ -39,6 +57,8 @@ function initializeUrbanTwinMap(config) {
   map.on('error', (e) => {
     console.error('Map error:', e.error);
   });
+
+  
 
   initializeUI();
   return map;

@@ -45,7 +45,7 @@ class HousingProject(models.Model):
         
 class CentralBankPolicy(models.Model):
     id = models.AutoField(primary_key=True)
-    region = models.ForeignKey("common.Region", verbose_name="Region", on_delete=models.DO_NOTHING)
+    province = models.ForeignKey("common.Province", verbose_name="Province", on_delete=models.DO_NOTHING)
     year = models.IntegerField(help_text="Year of the policy data")
     interest_rate = models.FloatField(help_text="Central bank interest rate in percentage (%)")
     LTV_limit = models.FloatField(help_text="Loan-to-Value limit in percentage (%)")
@@ -53,7 +53,7 @@ class CentralBankPolicy(models.Model):
     last_updated = models.DateTimeField(default=timezone.now)
     
     def __str__(self):
-        return f"Central Bank Policy {self.year} for {self.region}"
+        return f"Central Bank Policy {self.year} for {self.Province}"
     
     class Meta:
         verbose_name = "Central Bank Policy"
@@ -62,7 +62,7 @@ class CentralBankPolicy(models.Model):
 
 class CreditSupplyConditions(models.Model):
     id = models.AutoField(primary_key=True)
-    region = models.ForeignKey("common.Region", verbose_name="Region", on_delete=models.DO_NOTHING)
+    province = models.ForeignKey("common.Province", verbose_name="Province", on_delete=models.DO_NOTHING)
     year = models.IntegerField(help_text="Year of the credit supply conditions data")
     mortgageRate = models.FloatField(help_text="Mortgage rate in percentage (%)")
     mortgage_approval_rate = models.FloatField(help_text="Mortgage approval rate in percentage (%)")
@@ -70,7 +70,7 @@ class CreditSupplyConditions(models.Model):
     last_updated = models.DateTimeField(default=timezone.now)
     
     def __str__(self):
-        return f"Credit Supply Conditions {self.year} for {self.region}"
+        return f"Credit Supply Conditions {self.year} for {self.Province}"
     
     class Meta:
         verbose_name = "Credit Supply Conditions"

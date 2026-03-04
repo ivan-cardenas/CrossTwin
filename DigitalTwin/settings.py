@@ -89,11 +89,11 @@ INSTALLED_APPS = [
     
     
     "common",
-    "urbanHeat",
+    "urban_heat",
     "watersupply",
     "weather",
     "Energy",
-    "Housing",
+    "housing",
     "builtup",
     
     
@@ -126,6 +126,10 @@ TEMPLATES = [
             ],
         },
     },
+]
+
+TEMPLATES[0]['OPTIONS']['context_processors'] += [
+    'common.version.version_context',
 ]
 
 WSGI_APPLICATION = "DigitalTwin.wsgi.application"

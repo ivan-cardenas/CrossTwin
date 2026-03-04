@@ -2,7 +2,7 @@ import os
 from django.contrib.gis.db import models
 from django.utils import timezone
 from django.core.exceptions import ValidationError
-from common.models import Region, City, Neighborhood
+from common.models import Province, City, Neighborhood
 from django.conf import settings
 
 from core.rasterOperations import interpolate_raster
@@ -114,12 +114,12 @@ class InterpolatedRasterBase(models.Model):
         blank=True,
         help_text="Interpolated raster data (stored in PostGIS)"
     )
-    region = models.ForeignKey(
-        'common.Region',
+    Province = models.ForeignKey(
+        'common.Province',
         on_delete=models.CASCADE,
         null=True,
         blank=True,
-        help_text="Region this raster covers"
+        help_text="Province this raster covers"
     )
     bounds = models.PolygonField(
         srid=COORDINATE_SYSTEM,
@@ -182,8 +182,8 @@ class InterpolatedRasterBase(models.Model):
         """Determine bounds for interpolation"""
         if bounds_geom:
             return bounds_geom.extent
-        elif self.region:
-            return self.region.geom.extent
+        elif self.Province:
+            return self.Province.geom.extent
         elif self.bounds:
             return self.bounds.extent
         else:
@@ -269,12 +269,12 @@ class InterpolatedRasterBase(models.Model):
         raise NotImplementedError("Child classes must implement generate_from_measurements")
     
     @classmethod
-    def generate_for_region(cls, region, datetime, resolution=10, method='idw'):
+    def generate_for_Province(cls, Province, datetime, resolution=10, method='idw'):
         """
-        Convenience method to generate raster for a region
+        Convenience method to generate raster for a Province
         
         Args:
-            region: Region model instance
+            Province: Province model instance
             datetime: DateTime to interpolate for
             resolution: Cell size in meters
             method: Interpolation method
@@ -283,13 +283,13 @@ class InterpolatedRasterBase(models.Model):
             Raster instance
         """
         raster = cls.objects.create(
-            name=f"{cls._meta.verbose_name} - {region.name}",
+            name=f"{cls._meta.verbose_name} - {Province.name}",
             date=datetime,
-            region=region
+            Province=Province
         )
         raster.generate_from_measurements(
             measurement_datetime=datetime,
-            bounds_geom=region.geom,
+            bounds_geom=Province.geom,
             resolution=resolution,
             method=method
         )

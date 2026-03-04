@@ -21,7 +21,7 @@ class LoadingManager {
     constructor() {
         this.overlay = document.getElementById('loadingOverlay');
         this.activeRequests = 0;
-        this.delayBeforeShow = 1500; // Delay before showing spinner (ms)
+        this.delayBeforeShow = 3000; // Delay before showing spinner (ms)
 
         this.setupFetchInterceptor();
     }
@@ -124,7 +124,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
                 <div class="hidden md:flex items-center gap-3 text-slate-300">
                     <span class="px-3 py-1 text-sm rounded-full bg-white/5 border border-white/10">Live Prototype</span>
-                    <span class="text-xs text-slate-400">v0.1</span>
+                    
+                    <span class="version-badge" title="{{ git.branch }} · {{ git.short_hash }}">
+                    <span class="version-badge__tag">{{ git.version_tag }}</span>
+                    {% comment %} <span class="version-badge__commits">{{ git.commit_count }} commits</span> {% endcomment %}
+                    </span>
                 </div>
             </div>
         </header>
