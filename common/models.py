@@ -244,3 +244,11 @@ class DigitalSurfaceModelWMS(models.Model):
     def __str__(self):
         return self.display_name
     
+class EnvironmentalCosts(models.Model):
+    id = models.AutoField(primary_key=True)
+    price_EUR_kg_CO2 = models.FloatField()
+    price_EUR_price_EUR_droughtDamage_m3 = models.FloatField()
+    
+    
+    def __str__(self):
+        return f"{self.Province} - {self.year}: Environment Costs"

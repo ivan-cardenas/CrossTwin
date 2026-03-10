@@ -3,7 +3,7 @@ from django.contrib.gis.db import models as gis_models
 
 def build_model_registry():
     """Build MODEL_REGISTRY dynamically from specified apps."""
-    allowed_apps = ['common', 'urbanHeat', 'watersupply', 'weather', 'builtup', 'Energy', 'Housing']
+    allowed_apps = ['common', 'urbanHeat', 'watersupply', 'weather', 'builtup', 'Energy', 'Housing', 'nature']
     registry = {}
     
     for app_label in allowed_apps:
@@ -40,3 +40,4 @@ RASTER_REGISTRY = {
     if value._meta.get_fields() and any(isinstance(f, gis_models.RasterField) for f in value._meta.get_fields())
 }    
 
+#TODO add H3 hexagons configuration for aggregation

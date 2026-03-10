@@ -9,18 +9,19 @@ from .models import *
 from common.models import Province, City, Neighborhood
 
 # Create your views here.
-def _calculate_total_production_day(Province, year):
-    total_extracted = ExtractionWater.objects.filter(Province=Province).aggregate(total=models.Sum('pumpflow_m3_s'))['total']
+
+
+
+def _calculate_total_production_day(Watershed, year):
+    total_extracted = ExtractionWater.objects.filter(Watershed=Watershed).aggregate(total=models.Sum('pumpflow_m3_s'))['total']
     total_extracted_day = total_extracted*86400 
     total_imported = ImportedWater.objects.filter(Province=Province).aggregate(total=models.Sum('quantity_m3_d'))['total']
     
     return total_extracted_day + total_imported
 
-def _get_consumption_capita(Province, year):
-    consumption_capita = ConsumptionCapita.objects.get(
-        Province=Province,
-        year=year
-    )
+def _get_consumption_capita(City, year):
+    consumption_capita = ConsumptionCapita.objects.get(City=City,year=year)['consumption_capita_L_d']
+    
     return consumption_capita
 
 def water_indicators(request, Province_id, year):

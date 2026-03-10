@@ -14,7 +14,7 @@ let cityNameTimeout;
 // Configuration (set from Django template via initializeUrbanTwinMap)
 let CONFIG = {
   mapboxToken: '{{ mapbox_access_token }}',
-  layersApiUrl: '/map/api/layers/',
+  layersApiUrl: '../api/layers/',
   initialCenter: [6.895, 52.219],
   initialZoom: 13,
   initialPitch: 60,

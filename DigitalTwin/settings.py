@@ -82,12 +82,10 @@ INSTALLED_APPS = [
     # "rest_framework",
     "crispy_forms",
     "crispy_tailwind",
-    
     'core.apps.CoreConfig',
     
     "importer",
-    
-    
+        
     "common",
     "urban_heat",
     "watersupply",
@@ -95,7 +93,7 @@ INSTALLED_APPS = [
     "Energy",
     "housing",
     "builtup",
-    
+    "nature",   
     
     "mainMap",
     

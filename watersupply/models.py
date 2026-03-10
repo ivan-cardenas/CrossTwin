@@ -1,7 +1,7 @@
 from django.contrib.gis.db import models
 from django.utils import timezone
 from django.core.exceptions import ValidationError
-from common.models import Province, City, Neighborhood
+from common.models import Province, City, Neighborhood, EnvironmentalCosts
 from django.conf import settings
 
 COORDINATE_SYSTEM = settings.COORDINATE_SYSTEM
@@ -80,20 +80,7 @@ class SupplySecurity(models.Model):
         verbose_name = "Supply Security"
         verbose_name_plural = "Supply Security Records"
     
-class PipeNetwork(models.Model):
-    id = models.AutoField(primary_key=True)
-    length_km = models.FloatField(help_text="in kilometers") # km
-    geom = models.MultiLineStringField(srid=COORDINATE_SYSTEM)
-    maitenanceCost_EUR_km = models.FloatField(null=True, help_text="in EUR per kilometer") # TODO: check if units are EUR or M.U.
-    last_updated = models.DateTimeField(default=timezone.now)
-    
-    def __str__(self):
-        return f"{self.length_km} km"   
-    
-    class Meta:
-        verbose_name = "Pipe Network"
-        verbose_name_plural = "Pipe Networks"
-    
+
 class UsersLocation(models.Model):
     id = models.AutoField(primary_key=True)
     neighborhood = models.ForeignKey(Neighborhood, on_delete=models.DO_NOTHING, help_text="Neighborhood code from common.Neighborhood") #TODO: Change to City or make per point?
@@ -127,12 +114,24 @@ class MeteredResidential(models.Model):
     class Meta:
         verbose_name = "Metered Residential"
         verbose_name_plural = "Metered Residential"
+
+class Watershed(models.Model):
+    id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=100, help_text="Name of the watershed")
+    geom = models.MultiPolygonField(srid=COORDINATE_SYSTEM)
+    last_updated = models.DateTimeField(default=timezone.now)
     
+    def __str__(self):
+        return f"{self.name}"
     
+    class Meta:
+        verbose_name = "Watershed"
+        verbose_name_plural = "Watersheds"
+
 class AvailableFreshWater(models.Model):
     id=models.AutoField(primary_key=True)
-    SourceName = models.CharField(max_length=100, help_text="Name of the water source")
-    Province = models.ForeignKey(Province, on_delete=models.DO_NOTHING, null=True, help_text="Province code from common.Province. Get automatically assigned on save.")
+    SourceName = models.CharField(max_length=100, help_text="Name of the water source. Corresponds to the Balance Area ")
+    watershed = models.ForeignKey(Watershed, on_delete=models.DO_NOTHING, null=True, help_text="Watershed code from common.Watershed. ")
     geom = models.MultiPolygonField(srid=COORDINATE_SYSTEM)
     infiltrationRate_cm_h = models.FloatField(help_text="Infiltration rate in centimeters per hour") #TODO: this should be calculated from land cover and soil type
     infiltrationDepth_cm = models.FloatField(help_text="Infiltration depth in centimeters")
@@ -155,9 +154,31 @@ class AvailableFreshWater(models.Model):
 class ExtractionWater(models.Model):
     id=models.AutoField(primary_key=True)
     source = models.ForeignKey(AvailableFreshWater,
-                               on_delete=models.DO_NOTHING, help_text="AvailableFreshWater ID from watersupply.AvailableFreshWater. Get automatically assigned on save.")
+                               on_delete=models.DO_NOTHING, help_text="AvailableFreshWater ID from watersupply.AvailableFreshWater. Corresponds to the Balance Area")
     geom = models.MultiPointField(srid=COORDINATE_SYSTEM)
-    stationName = models.CharField(max_length=100, help_text="Name of the extraction station")
+    stationName = models.CharField(max_length=100, 
+                                   help_text="Name of the extraction station or well")
+    type = models.CharField(max_length=100,
+                            choices=[('residential', 'Residential'), ('commercial', 'Commercial'), ('industrial', 'Industrial')],
+                            help_text="Type of extraction (Residential, Commercial, Industrial)", default='residential')
+    # --- Permit & Extraction ---
+    permit_Mm3_yr = models.FloatField(
+        null=True, blank=True,
+        help_text="Maximum permitted extraction in Mm³/yr"
+    )
+    agreement_Mm3_yr = models.FloatField(
+        null=True, blank=True,
+        help_text="Agreed extraction in Mm³/yr"
+    )
+    current_extraction_Mm3_yr = models.FloatField(
+        null=True, blank=True,
+        help_text="Current actual extraction in Mm³/yr"
+    )
+    num_wells = models.IntegerField(
+        null=True, blank=True,
+        help_text="Number of individual wells at this station"
+    )
+    # --- Pump ---
     pumpflow_m3_s = models.FloatField(help_text="Pump flow in cubic meters per second")
     pumpMaxFlow_m3_s = models.FloatField(help_text="Maximum pump flow in cubic meters per second")
     OperationTime_h_day = models.FloatField(help_text="Operation time in hours per day")
@@ -168,6 +189,39 @@ class ExtractionWater(models.Model):
     pumpEmmissionFactor_kg_CO2_kWh = models.FloatField(null=True, help_text="Pump emission factor in kilograms of CO2 per kilowatt-hour")
     pumpEmission_day_kg_CO2 = models.FloatField(null=True, help_text="Pump emissions in kilograms of CO2 per day")
     pumpEmission_year_kg_CO2 = models.FloatField(null=True, help_text="Pump emissions in kilograms of CO2 per year")
+
+    # --- Cost fields (per m³) ---
+    opex_EUR_m3 = models.FloatField(
+        null=True, blank=True,
+        help_text="Total OPEX in EUR per m³ (labor+energy+chemicals+tax)"
+    )
+    labor_EUR_m3 = models.FloatField(null=True, blank=True)
+    energy_EUR_m3 = models.FloatField(null=True, blank=True)
+    chemicals_EUR_m3 = models.FloatField(null=True, blank=True)
+    tax_EUR_m3 = models.FloatField(null=True, blank=True)
+
+    # --- Environmental cost fields (per m³) ---
+    co2_cost_EUR_m3 = models.FloatField(
+        null=True, blank=True,
+        help_text="CO₂ emission cost in EUR per m³"
+    )
+    drought_damage_EUR_m3 = models.FloatField(
+        null=True, blank=True,
+        help_text="Drought damage cost in EUR per m³"
+    )
+
+    # --- Ownership ---
+    inside_property = models.BooleanField(
+        default=True,
+        help_text="Whether the well is on owned land"
+    )
+
+    # --- Active state (for scenarios) ---
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Whether this well is currently active"
+    )
+    
     last_updated = models.DateTimeField(default=timezone.now)
     
     def __str__(self):
@@ -188,6 +242,17 @@ class ExtractionWater(models.Model):
             self.pumpEmission_day_kg_CO2 = None
             self.pumpEmission_year_kg_CO2 = None
         
+        # calculate OPEX
+        
+        if self.opex_EUR_m3 is None:
+            self.opex_EUR_m3 = self.labor_EUR_m3 + self.energy_EUR_m3 + self.chemicals_EUR_m3 + self.tax_EUR_m3
+        
+        if self.co2_cost_EUR_m3 is None:
+            self.co2_cost_EUR_m3 = self.pumpEmission_day_kg_CO2 * EnvironmentalCosts.price_EUR_kg_CO2
+        
+        if self.drought_damage_EUR_m3 is None:
+            self.drought_damage_EUR_m3 = self.pumpEmission_day_kg_CO2 * EnvironmentalCosts.price_EUR_droughtDamage_m3
+            
         super().save(**args, **kwargs)
     
     class Meta:
@@ -228,7 +293,35 @@ class WaterTreatment(models.Model):
     class Meta:
         verbose_name = "Water Treatment"
         verbose_name_plural = "Water Treatment Records"
+
+class PipeNetwork(models.Model):
+    id = models.AutoField(primary_key=True)
+    length_km = models.FloatField(help_text="in kilometers")
+    diameter_mm = models.FloatField(help_text="Pipe diameter in millimeters", null=True, blank=True)
+    diameter_in = models.FloatField(help_text="Pipe diameter in inches", null=True, blank=True)      
+    geom = models.MultiLineStringField(srid=COORDINATE_SYSTEM)
+    maitenanceCost_EUR_km = models.FloatField(null=True, help_text="in EUR per kilometer")
+    origin = models.ForeignKey(ExtractionWater, on_delete=models.DO_NOTHING, help_text="ExtractionWater ID from watersupply.ExtractionWater", null=True) # type: ignore
+    destination = models.ForeignKey(UsersLocation, on_delete=models.DO_NOTHING, help_text="UsersLocation ID from common.UsersLocation", null=True) # type: ignore
+    last_updated = models.DateTimeField(default=timezone.now)
     
+    def __str__(self):
+        return f"{self.length_km} km"   
+    
+    def save(self, *args, **kwargs):
+        if self.diameter_mm is not None: self.diameter_in = self.diameter_mm / 25.4
+        if self.diameter_in is not None: self.diameter_mm = self.diameter_in * 25.4
+        super().save(**args, **kwargs)
+        
+        
+    class Meta:
+        verbose_name = "Pipe Network"
+        verbose_name_plural = "Pipe Networks"
+        
+        constraints = [
+            models.UniqueConstraint(fields=['origin', 'destination'], name='unique_pipe_network')
+        ]
+
 class CoverageWaterSupply(models.Model):
     id = models.AutoField(primary_key=True)
     city = models.ForeignKey(City, on_delete=models.DO_NOTHING, null=True, help_text="City code from common.City")

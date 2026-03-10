@@ -142,7 +142,7 @@ def available_layers(request):
                 'app_label': app_label,
                 'model_name': model_name,
                 'display_name': model._meta.verbose_name_plural.title(),
-                'url': f'/map/api/{app_label}/{model_name}/geojson/',
+                'url': f'/api/layers/{app_label}/{model_name}/geojson/',
                 'geometry_type': geom_type,
                 'geometry_field': geom_field,
                 'color': colors[color_index % len(colors)],

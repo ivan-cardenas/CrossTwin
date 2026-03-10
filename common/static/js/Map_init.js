@@ -28,7 +28,8 @@ function initializeUrbanTwinMap(config) {
   map.addControl(new MapboxGeocoder({
             accessToken: mapboxgl.accessToken,
             useBrowserFocus: true,
-            mapboxgl: mapboxgl
+            mapboxgl: mapboxgl,
+
         }), 'top-left');
   
   map.addControl(new mapboxgl.GeolocateControl({
@@ -108,7 +109,7 @@ function add3DBuildings() {
       'source-layer': 'building',
       filter: ['==', ['get', 'extrude'], 'true'],
       type: 'fill-extrusion',
-      minzoom: 13,
+      minzoom: 6,
       paint: {
         'fill-extrusion-color': '#d0e0f0',
         'fill-extrusion-height': [
