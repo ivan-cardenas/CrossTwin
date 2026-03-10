@@ -1121,25 +1121,26 @@
     border-radius: 8px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.3);
     min-width: 200px;
+    color: #fcfcfc;
     font-family: "Space Grotesk", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 /* Search input */
 .mapboxgl-ctrl-geocoder--input {
-    color: #ffffff;
-    background: transparent;
+    color: #fcfcfc;
     font-size: 14px;
-    font-family: 'Your Font', sans-serif;
+    font-family: "Space Grotesk", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     padding: 8px 40px;  /* leave room for icons */
 }
 
 .mapboxgl-ctrl-geocoder--input::placeholder {
-    color: rgba(255,255,255,0.4);
+    color: rgba(255, 255, 255, 0.87);
 }
 
 .mapboxgl-ctrl-geocoder--input:focus {
     outline: none;
     box-shadow: 0 0 0 2px #4a90e2;
+    color: #fcfcfc;
 }
 
 /* Search + close icons */
@@ -1159,7 +1160,7 @@
 }
 
 /* Suggestions dropdown */
-.suggestions {
+.mapboxgl-ctrl-geocoder--suggestions {
     background-color: #1a1a1a;
     border-radius: 0 0 8px 8px;
     border-top: 1px solid rgba(255,255,255,0.1);
@@ -1169,15 +1170,15 @@
     padding: 4px 0;
 }
 
-.suggestions > li > a {
+.mapboxgl-ctrl-geocoder--suggestions  > li > a {
     color: #fff;
     padding: 8px 16px;
     display: block;
     text-decoration: none;
 }
 
-.suggestions > .active > a,
-.suggestions > li > a:hover {
+.mapboxgl-ctrl-geocoder--suggestions  > .active > a,
+.mapboxgl-ctrl-geocoder--suggestions  > li > a:hover {
     background-color: rgba(255,255,255,0.1);
     color: #fff;
 }
