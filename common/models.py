@@ -64,10 +64,12 @@ class City(models.Model):
     last_updated = models.DateTimeField(default=timezone.now)
     
     def save(self, *args, **kwargs):
-        total = Neighborhood.objects.filter(city=self).aggregate(
-            total=Sum('currentPopulation')
-        )['total']
-        self.currentPopulation = total or 0
+        
+        if self.pk:
+            total = Neighborhood.objects.filter(city=self).aggregate(
+                total=Sum('currentPopulation')
+            )['total']
+            self.currentPopulation = total or 0
         
         if self.area_km2 and self.area_km2 > 0:
             self.populationDensity = float (self.currentPopulation / self.area_km2)
@@ -75,7 +77,8 @@ class City(models.Model):
             self.populationDensity = None
             
         self.last_updated = timezone.now()
-        super.save(*args, **kwargs)
+        
+        super().save(*args, **kwargs)
         
     def __str__(self):
         return f"{self.cityName} - {self.currentPopulation} inhabitants"
@@ -95,6 +98,14 @@ class Neighborhood(models.Model):
     geom = models.MultiPolygonField(srid=CoordinateSystem)
     last_updated = models.DateTimeField(default=timezone.now)
     
+    def save(self, *args, **kwargs):
+        
+        self.area_km2 = self.geom.area / 1e6
+        self.populationDensity = float (self.currentPopulation / self.area_km2)
+            
+        self.last_updated = timezone.now()
+        
+        super().save(*args, **kwargs)
     
     def __str__(self):
         return self.neighborhoodName

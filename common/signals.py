@@ -41,14 +41,14 @@ def neighborhood_changed_update_city_and_Province(sender, instance, **kwargs):
     )
 
     # 2) Recompute Province totals from its cities
-    Province_id = City.objects.filter(id=city_id).values_list('Province_id', flat=True).first()
-    if Province_id:
-        Province_total = City.objects.filter(Province_id=Province_id).aggregate(
+    province_id = City.objects.filter(id=city_id).values_list('province_id', flat=True).first()
+    if province_id:
+        province_total = City.objects.filter(province_id=province_id).aggregate(
             total=Sum('currentPopulation')
         )['total'] or 0
 
-        Province.objects.filter(id=Province_id).update(
-            currentPopulation=Province_total,
-            populationDensity=_safe_divide_expr(Province_total),
+        Province.objects.filter(id=province_id).update(
+            currentPopulation=province_total,
+            populationDensity=_safe_divide_expr(province_total),
             last_updated=timezone.now()
         )

@@ -1,4 +1,5 @@
 from django.contrib.gis.db import models
+from django.db.models import Sum, F, ExpressionWrapper, FloatField
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 from common.models import Province, City, Neighborhood, EnvironmentalCosts
@@ -37,7 +38,7 @@ class ConsumptionCapita(models.Model):
         if self.consumption_capita_L_d < 0:
             raise ValidationError("Consumption Capita cannot be negative")
         self.total_consumption_m3_yr = (self.consumption_capita_L_d * 365 * 1000 * self.city.currentPopulation)
-        super().save(**args, **kwargs)
+        super().save(*args, **kwargs)
         
 
     def __str__(self):
@@ -59,7 +60,7 @@ class TotalWaterDemand(models.Model):
     
     def save(self, *args, **kwargs):
         self.demandYR = self.demandDay * 365
-        super().save(**args, **kwargs)
+        super().save(*args, **kwargs)
         
     class Meta:
         verbose_name = "Total Water Demand"
@@ -105,8 +106,41 @@ class MeteredResidential(models.Model):
     collected_meters = models.IntegerField(help_text="Number of collected meters")
     userTariff_EUR_m3 = models.FloatField(help_text="in EUR per cubic meter")
     userAffordability_PCT = models.FloatField(help_text="in percent")
-    Recovery_EUR = models.FloatField(help_text="in EUR")
+    
+    consumption_m3_yr = models.FloatField(
+        null=True, blank=True,
+        help_text="Annual consumption volume billed (m³/yr)"
+    )
+    Recovery_EUR = models.FloatField(
+        null=True, blank=True,
+        help_text="Annual revenue recovered in EUR"
+    )
     last_updated = models.DateTimeField(default=timezone.now)
+    
+    def save(self, *args, **kwargs):
+        city = self.userLocation.neighborhood.city
+        # Get most recent record for this city, not filtered by current year
+        consumption_record = ConsumptionCapita.objects.filter(
+            city=city
+        ).order_by('-year').first()
+        
+        if consumption_record and self.userLocation.populationServed:
+            collection_ratio = (
+                self.collected_meters / self.installed_meters
+                if self.installed_meters else 0  # ← guard against zero division
+            )
+            # Use per-capita rate × local population served × collection ratio
+            # NOT total_consumption_m3_yr which is already the whole city total
+            self.consumption_m3_yr = (
+                consumption_record.consumption_capita_L_d  # L/person/day
+                / 1000                                     # → m³/person/day
+                * 365                                      # → m³/person/yr
+                * self.userLocation.populationServed       # → m³/yr for this area
+                * collection_ratio                         # → billed portion only
+            )
+            self.Recovery_EUR = self.consumption_m3_yr * self.userTariff_EUR_m3
+        
+        super().save(*args, **kwargs)
     
     def __str__(self):
         return f"{self.user.neighborhood} - {self.installed_meters} installed meters. {self.Recovery_EUR} EUR recovered"
@@ -145,7 +179,7 @@ class AvailableFreshWater(models.Model):
     def save(self, *args, **kwargs):
         Province = Province.objects.get(geom__contains=self.geom.centroid)
         self.Province = Province
-        super().save(**args, **kwargs)
+        super().save(*args, **kwargs)
         
     class Meta:
         verbose_name = "Available Fresh Water"
@@ -253,7 +287,7 @@ class ExtractionWater(models.Model):
         if self.drought_damage_EUR_m3 is None:
             self.drought_damage_EUR_m3 = self.pumpEmission_day_kg_CO2 * EnvironmentalCosts.price_EUR_droughtDamage_m3
             
-        super().save(**args, **kwargs)
+        super().save(*args, **kwargs)
     
     class Meta:
         verbose_name = "Extraction Water"
@@ -266,7 +300,9 @@ class ImportedWater(models.Model):
     id=models.AutoField(primary_key=True)
     sourceName = models.CharField(max_length=100, help_text="Name of the imported water source")
     quantity_m3_d = models.FloatField(help_text="Quantity in cubic meters per day")
-    price_EUR_m3 = models.FloatField(help_text="Price in EUR per cubic meter") #TODO : Check if it's EUR or M.U.
+    price_EUR_m3 = models.FloatField(help_text="Price in EUR per cubic meter")
+    is_active = models.BooleanField(default=True)
+    last_updated = models.DateTimeField(default=timezone.now)
     
     def __str__(self):
         return f"{self.sourceName} - {self.quantity_m3_d} m3/d"
@@ -311,7 +347,7 @@ class PipeNetwork(models.Model):
     def save(self, *args, **kwargs):
         if self.diameter_mm is not None: self.diameter_in = self.diameter_mm / 25.4
         if self.diameter_in is not None: self.diameter_mm = self.diameter_in * 25.4
-        super().save(**args, **kwargs)
+        super().save(*args, **kwargs)
         
         
     class Meta:
@@ -394,6 +430,29 @@ class OPEX(models.Model):
     
     def __str__(self):
         return f"{self.year}: {self.UnitaryOPEX_EUR_m3} EUR/m3"
+    
+    def save(self, *args, **kwargs):
+        
+        self.OPEX_recovered_EUR = MeteredResidential.objects.aggregate(Sum('Recovery_EUR'))['Recovery_EUR__sum']
+        
+        result = ExtractionWater.objects.filter(is_active=True).aggregate(
+            total_weighted_opex=Sum(ExpressionWrapper(F('opex_EUR_m3') * F('extraction_volume_m3'), output_field=FloatField())),
+            
+            total_volume=Sum('extraction_volume_m3')
+            )
+        total_volume = result['total_volume'] or 0       
+               
+        self.total_OPEX = result['total_weighted_opex']
+        self.UnitaryOPEX_EUR_m3 = self.total_OPEX / total_volume if total_volume else 0
+        
+        if self.OPEX_recovered_EUR:
+            self.OPEX_recovered_PCT = (self.OPEX_recovered_EUR / self.total_OPEX) * 100
+        else:
+            self.OPEX_recovered_PCT = None
+        
+        
+        
+        super().save(*args, **kwargs)
     
     class Meta:
         verbose_name = "OPEX"
