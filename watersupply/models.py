@@ -345,6 +345,7 @@ class PipeNetwork(models.Model):
         return f"{self.length_km} km"   
     
     def save(self, *args, **kwargs):
+        self.length_km = self.geom.length / 1000
         if self.diameter_mm is not None: self.diameter_in = self.diameter_mm / 25.4
         if self.diameter_in is not None: self.diameter_mm = self.diameter_in * 25.4
         super().save(*args, **kwargs)

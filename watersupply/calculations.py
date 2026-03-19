@@ -12,5 +12,3 @@ def demand_supply_diff(cities:dict):
 
     return difference
 
-def calculate_total_OPEX
-    
