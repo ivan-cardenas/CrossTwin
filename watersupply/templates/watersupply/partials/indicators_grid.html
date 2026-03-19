@@ -1,0 +1,63 @@
+<div class="grid">
+
+  <div class="card">
+    <div class="card-icon">💧</div>
+    <div class="card-label">Total Supply</div>
+    <div>
+      <div class="card-value">{{ indicators.total_supply_Mm3 }}</div>
+      <div class="card-unit">Mm³ / year</div>
+    </div>
+    <div class="bar-track">
+      <div class="bar-fill" style="width: {{ indicators.total_supply_percent }}%"></div>
+    </div>
+  </div>
+
+  <div class="card c2">
+    <div class="card-icon">🏠</div>
+    <div class="card-label">Consumption per Capita</div>
+    <div>
+      <div class="card-value">{{ indicators.consumption_capita }}</div>
+      <div class="card-unit">L / person / day</div>
+    </div>
+    <div class="bar-track">
+      <div class="bar-fill" style="width: {{ indicators.consumption_percent }}%"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-icon">🛡️</div>
+    <div class="card-label">Supply Security</div>
+    <div>
+      <div class="card-value">{{ indicators.supply_security }}</div>
+      <div class="card-unit">% of demand covered</div>
+    </div>
+    <div class="bar-track">
+      <div class="bar-fill" style="width: {{ indicators.supply_security }}%"></div>
+    </div>
+  </div>
+
+  <div class="card c2">
+    <div class="card-icon">⏱️</div>
+    <div class="card-label">Service Time</div>
+    <div>
+      <div class="card-value">{{ indicators.service_time }}</div>
+      <div class="card-unit">hours / year</div>
+    </div>
+    <div class="bar-track">
+      <div class="bar-fill" style="width: {{ indicators.service_time_percent }}%"></div>
+    </div>
+  </div>
+
+  <div class="card c2 wide">
+    <div class="card-icon">💶</div>
+    <div class="card-label">OPEX</div>
+    <div>
+      <div class="card-value">€ {{ indicators.opex }}</div>
+      <div class="card-unit">EUR / year</div>
+    </div>
+    <div class="bar-track">
+      <div class="bar-fill" style="width: {{ indicators.opex_percent }}%"></div>
+    </div>
+  </div>
+
+</div>

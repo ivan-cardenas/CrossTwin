@@ -97,18 +97,66 @@ def water_indicators(request, location, year):
 
     return render(request, 'watersupply/water_indicators.html', context)
 
-def water_indicators_main(request):
-    """Main page with Province/year selector"""
-    Provinces = Province.objects.all().order_by('ProvinceName')
+def recalculate_indicators(request, location, year):
+    """Partial re-render triggered by HTMX slider"""
     
-    if not Provinces.exists():
-        Provinces = [
-            type('Province', (), {'id': 1, 'ProvinceName': 'Amsterdam Metropolitan Area'})(),
-            type('Province', (), {'id': 2, 'ProvinceName': 'Rotterdam Province'})(),
-            type('Province', (), {'id': 3, 'ProvinceName': 'Utrecht Province'})(),
-        ]
+    consumption = float(request.GET.get('consumption', 120))  # L/p/day from slider
+
+    try:
+        province = get_object_or_404(PM, ProvinceName=location)
+        population = province.currentPopulation
+        importedWater = (
+            ImportedWater.objects.filter(is_active=True)
+            .aggregate(total=models.Sum('quantity_m3_d'))['total'] or 0
+        )
+        availableWater = (
+            AvailableFreshWater.objects
+            .filter(geom__intersects=province.geom)
+            .aggregate(total=Sum('totalQuantity_Mm3'))['total'] or 0
+        )
+        opex_total = (
+            OPEX.objects.filter(year=year)
+            .aggregate(total=models.Sum('totalOPEX_EUR'))['total'] or 0
+        )
+        service_hours_max = 8760
+
+    except Exception as e:
+        print(f"[recalculate] fallback: {e}")
+        population = 500_000
+        importedWater = 50_000
+        availableWater = 100
+        opex_total = 2_000_000
+        service_hours_max = 8760
+
+    # ── all math in Python ────────────────────────────────
+    demand_m3_yr   = (consumption / 1000) * population * 365
+    supply_m3_yr   = demand_m3_yr + importedWater
+    supply_Mm3     = round(supply_m3_yr / 1_000_000, 2)
     
-    context = {
-        'Provinces': Provinces,
+    supply_security = min(
+        round(supply_Mm3 / availableWater * 100, 1), 100
+    ) if availableWater > 0 else 0
+
+    service_time = (
+        service_hours_max 
+        if supply_m3_yr >= demand_m3_yr 
+        else round(service_hours_max * (supply_m3_yr / demand_m3_yr), 0)
+    )
+
+    opex_per_m3 = opex_total / supply_m3_yr if supply_m3_yr > 0 else 0
+    opex = round(supply_m3_yr * opex_per_m3)
+
+    indicators = {
+        'consumption_capita': consumption,
+        'total_supply_Mm3': supply_Mm3,
+        'total_supply_percent': min(supply_Mm3 / availableWater * 100, 100) if availableWater > 0 else 0,
+        'supply_security': supply_security,
+        'service_time': service_time,
+        'service_time_percent': round(service_time / service_hours_max * 100, 1),
+        'opex': opex,
+        'opex_percent': min(opex / 10_000_000 * 100, 100),
+        'consumption_percent': min(consumption / 300 * 100, 100),
     }
-    return render(request, 'watersupply/select_filters.html', context)
+
+    # returns only the partial template, not the full page
+    return render(request, 'watersupply/partials/indicators_grid.html', {'indicators': indicators})

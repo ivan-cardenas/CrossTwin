@@ -1,4 +1,5 @@
 {% load humanize %}
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -256,185 +257,62 @@
       body { padding: 24px 16px; }
     }
   </style>
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
 </head>
 <body>
 
   <header>
-    <div class="header-left">
-      <span class="label-tag">CrossTwin · Water Supply Intelligence</span>
-      <h1>{{ Province.name }} <span>Overview</span></h1>
-    </div>
+    <span class="label-tag">CrossTwin · Water Supply Intelligence</span>
+    <h1>{{ Province.ProvinceName }}</h1>
     <div class="year-badge">{{ year }}</div>
   </header>
 
   <div class="grid">
+{% load static %}
+<!DOCTYPE html>
+<html>
+<head>
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+</head>
+<body>
 
-    <!-- Total Supply -->
-    <div class="card">
-      <div class="card-icon">💧</div>
-      <div class="card-label">Total Supply</div>
-      <div>
-        <div class="card-value">{{ indicators.total_supply_Mm3|floatformat:2 }}</div>
-        <div class="card-unit">Mm³ / year</div>
-      </div>
-      <div class="bar-track"><div class="bar-fill" style="width:{{indicators.total_supply_percent}}%"></div></div>
+  <header>
+    <span class="label-tag">CrossTwin · Water Supply Intelligence</span>
+    <h1>{{ Province.ProvinceName }}</h1>
+    <div class="year-badge">{{ year }}</div>
+  </header>
+
+  <!-- Slider — outside the swap target so it persists -->
+  <div class="slider-container">
+    <label class="label-tag">Consumption per Capita</label>
+    <div class="slider-row">
+      <input
+        type="range"
+        name="consumption"
+        min="50" max="300" step="1"
+        value="{{ consumption_capita_base }}"
+        hx-get="{% url 'recalculate_indicators' Province.ProvinceName year %}"
+        hx-trigger="input changed delay:200ms"
+        hx-target="#indicators-grid"
+        hx-include="this"
+      />
+      <!-- show current slider value with a little JS, just for the label -->
+      <span id="slider-display">{{ consumption_capita_base }}</span>
+      <span class="card-unit">L / person / day</span>
     </div>
-
-    <!-- Consumption per Capita — pip scale (5 dots, out of 0.200 m³ max) -->
-    <div class="card c2">
-      <div class="card-icon">👤</div>
-      <div class="card-label">Consumption per Capita</div>
-      <div>
-        <div class="card-value">{{ indicators.consumption_capita|floatformat:0 }}</div>
-        <div class="card-unit">L³ / person / day</div>
-      </div>
-      <div class="pips"
-           data-pips="{% widthratio indicators.consumption_capita 200 5 %}"
-           data-total="5">
-        <span class="pip"></span>
-        <span class="pip"></span>
-        <span class="pip"></span>
-        <span class="pip"></span>
-        <span class="pip"></span>
-      </div>
-    </div>
-
-    <!-- Imported Water -->
-    <div class="card c3">
-      <div class="card-icon">🔄</div>
-      <div class="card-label">Imported Water</div>
-      <div>
-        <div class="card-value">{{ indicators.imported_water|floatformat:0 }}</div>
-        <div class="card-unit">m³ / year</div>
-      </div>
-      <div class="bar-track"><div class="bar-fill" style="width: 38%"></div></div>
-    </div>
-
-    <!-- Supply Security — donut gauge -->
-    <div class="card gauge">
-      <div class="gauge-header">
-        <div class="card-icon">🛡️</div>
-        <div class="card-label">Supply Security</div>
-      </div>
-      <div class="gauge-body">
-        <svg viewBox="0 0 100 100" width="110" height="110">
-          <!-- track ring -->
-          <circle cx="50" cy="50" r="38" fill="none"
-            stroke="rgba(255,255,255,0.06)" stroke-width="8"/>
-          <!-- filled arc — animated by JS -->
-          <circle cx="50" cy="50" r="38" fill="none"
-            stroke="var(--accent-card,var(--accent))" stroke-width="8"
-            stroke-linecap="round"
-            transform="rotate(-90 50 50)"
-            stroke-dasharray="{% widthratio indicators.supply_security 100 239 %} 239"
-            data-gauge="{% widthratio indicators.supply_security 100 239 %}"
-            data-max="239"/>
-          <!-- value label -->
-          <text x="50" y="47" text-anchor="middle"
-            font-family="'Syne',sans-serif" font-size="20" font-weight="700" fill="#e8f4ff">
-            {{ indicators.supply_security|floatformat:1 }}%
-          </text>
-          <text x="50" y="61" text-anchor="middle"
-            font-family="'DM Mono',monospace" font-size="6.5" fill="rgba(232,244,255,0.38)"
-            letter-spacing="0.08em">OF DEMAND COVERED</text>
-        </svg>
-      </div>
-    </div>
-
-    <!-- Service Time — speedometer arc -->
-    <div class="card c2 gauge">
-      <div class="gauge-header">
-        <div class="card-icon">🕐</div>
-        <div class="card-label">Service Time</div>
-      </div>
-      <div class="gauge-body bottom">
-        <!-- viewBox gives room for stroke caps and labels below the arc -->
-        <svg viewBox="0 0 100 68" width="100%" style="max-width:190px;display:block;margin:0 auto;">
-          <!-- track arc: semicircle centre (50,54) r=38 -->
-          <path d="M 12,54 A 38,38 0 0,1 88,54"
-            fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="7" stroke-linecap="round"/>
-          <!-- filled arc — animated by JS -->
-          <path d="M 12,54 A 38,38 0 0,1 88,54"
-            fill="none" stroke="var(--accent-card,var(--accent))" stroke-width="7"
-            stroke-linecap="round"
-            stroke-dasharray="{% widthratio indicators.service_time 24 119 %} 119"
-            data-gauge="{% widthratio indicators.service_time 24 119 %}"
-            data-max="119"/>
-          <!-- value -->
-          <text x="50" y="44" text-anchor="middle"
-            font-family="'Syne',sans-serif" font-size="18" font-weight="700" fill="#e8f4ff">
-            {{ indicators.service_time|floatformat:0 }}<tspan font-size="10" fill="rgba(232,244,255,0.5)"> h/day</tspan>
-          </text>
-          <!-- scale labels -->
-          <text x="10" y="66" text-anchor="middle"
-            font-family="'DM Mono',monospace" font-size="7.5" fill="rgba(232,244,255,0.3)">0</text>
-          <text x="90" y="66" text-anchor="middle"
-            font-family="'DM Mono',monospace" font-size="7.5" fill="rgba(232,244,255,0.3)">24h</text>
-        </svg>
-      </div>
-    </div>
-
-    <!-- Network Length -->
-    <div class="card">
-      <div class="card-icon">🔗</div>
-      <div class="card-label">Network Length</div>
-      <div>
-        <div class="card-value">{{ indicators.network_length|floatformat:1 }}</div>
-        <div class="card-unit">km of distribution mains</div>
-      </div>
-      <div class="bar-track"><div class="bar-fill" style="width: 55%"></div></div>
-    </div>
-
-    <!-- Available Water -->
-    <div class="card c3">
-      <div class="card-icon">🏔️</div>
-      <div class="card-label">Available Water</div>
-      <div>
-        <div class="card-value">{{ indicators.available_water|floatformat:2 }}</div>
-        <div class="card-unit">Mm³ · licensed groundwater</div>
-      </div>
-      <div class="bar-track"><div class="bar-fill" style="width: 70%"></div></div>
-    </div>
-
-    <!-- OPEX -->
-    <div class="card c2 wide">
-      <div class="card-icon">💰</div>
-      <div class="card-label">Operational Expenditure (OPEX)</div>
-      <div>
-        <div class="card-value">€ {{ indicators.opex|floatformat:0|intcomma }}</div>
-        <div class="card-unit">EUR / year</div>
-      </div>
-      <div class="bar-track"><div class="bar-fill" style="width: 74%"></div></div>
-    </div>
-
   </div>
 
-  <footer>CrossTwin · Province Digital Twin · EPSG:28992 · {{ year }}</footer>
+  <!-- HTMX swaps this div on every slider change -->
+  <div id="indicators-grid">
+    {% include 'watersupply/partials/indicators_grid.html' %}
+  </div>
 
+  <!-- Only JS needed: update the slider label display -->
   <script>
-    // Animate SVG gauge arcs (donut + speedometer)
-    document.querySelectorAll('[data-gauge]').forEach(function (el) {
-      var target = el.getAttribute('data-gauge');
-      var max    = el.getAttribute('data-max');
-      el.style.strokeDasharray = '0 ' + max;
-      requestAnimationFrame(function () {
-        requestAnimationFrame(function () {
-          el.style.transition = 'stroke-dasharray 1.3s cubic-bezier(0.16,1,0.3,1)';
-          el.style.strokeDasharray = target + ' ' + max;
-        });
+    document.querySelector('input[name="consumption"]')
+      .addEventListener('input', e => {
+        document.getElementById('slider-display').textContent = e.target.value;
       });
-    });
-
-    // Fill pip indicators
-    document.querySelectorAll('.pips[data-pips]').forEach(function (container) {
-      var filled = parseInt(container.getAttribute('data-pips'), 10);
-      var pips   = container.querySelectorAll('.pip');
-      pips.forEach(function (pip, i) {
-        if (i < filled) {
-          setTimeout(function () { pip.classList.add('on'); }, 80 + i * 80);
-        }
-      });
-    });
   </script>
 
 </body>
