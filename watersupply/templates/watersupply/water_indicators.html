@@ -1,0 +1,441 @@
+{% load humanize %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Province Water Supply Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:        #080e1a;
+      --surface:   rgba(255,255,255,0.04);
+      --border:    rgba(255,255,255,0.08);
+      --border-hi: rgba(99,210,255,0.35);
+      --accent:    #63d2ff;
+      --accent2:   #00e5c0;
+      --accent3:   #ff7a52;
+      --text:      #e8f4ff;
+      --muted:     rgba(232,244,255,0.45);
+      --glow:      0 0 40px rgba(99,210,255,0.12);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'DM Mono', monospace;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 40px 32px;
+      background-image:
+        radial-gradient(ellipse 60% 40% at 80% 10%, rgba(99,210,255,0.07) 0%, transparent 70%),
+        radial-gradient(ellipse 40% 50% at 10% 80%, rgba(0,229,192,0.05) 0%, transparent 70%);
+    }
+
+    /* ── Header ───────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin-bottom: 40px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 24px;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .header-left { display: flex; flex-direction: column; gap: 6px; }
+
+    .label-tag {
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      color: var(--accent);
+      text-transform: uppercase;
+    }
+
+    h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(1.6rem, 4vw, 2.4rem);
+      font-weight: 800;
+      line-height: 1.1;
+      color: var(--text);
+    }
+
+    h1 span { color: var(--accent); }
+
+    .year-badge {
+      font-family: 'Syne', sans-serif;
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--muted);
+      border-left: 2px solid var(--border);
+      padding-left: 20px;
+    }
+
+    /* ── Grid ─────────────────────────────────────────── */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 16px;
+    }
+
+    /* ── Card ─────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px 22px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.25s, box-shadow 0.25s, transform 0.2s;
+      cursor: default;
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent-card, var(--accent)), transparent);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .card:hover {
+      border-color: var(--border-hi);
+      box-shadow: var(--glow);
+      transform: translateY(-2px);
+    }
+
+    .card:hover::before { opacity: 1; }
+
+    /* accent variants */
+    .card.c2 { --accent-card: var(--accent2); }
+    .card.c3 { --accent-card: var(--accent3); }
+
+    .card-icon {
+      width: 36px; height: 36px;
+      border-radius: 8px;
+      background: rgba(99,210,255,0.08);
+      border: 1px solid rgba(99,210,255,0.15);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 17px;
+    }
+
+    .card.c2 .card-icon {
+      background: rgba(0,229,192,0.08);
+      border-color: rgba(0,229,192,0.15);
+    }
+    .card.c3 .card-icon {
+      background: rgba(255,122,82,0.08);
+      border-color: rgba(255,122,82,0.15);
+    }
+
+    .card-label {
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .card-value {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.95rem;
+      font-weight: 700;
+      line-height: 1;
+      color: var(--text);
+    }
+
+    .card-unit {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    /* wide card spans 2 columns on larger screens */
+    .card.wide {
+      grid-column: span 2;
+    }
+
+    /* ── Bar fill ─────────────────────────────────────── */
+    .bar-track {
+      width: 100%;
+      height: 4px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 99px;
+      overflow: hidden;
+      margin-top: auto;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 99px;
+      background: linear-gradient(90deg, var(--accent-card, var(--accent)), rgba(99,210,255,0.4));
+      transition: width 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    /* ── Pip indicators (dot scale) ───────────────────── */
+    .pips {
+      display: flex;
+      gap: 7px;
+      margin-top: auto;
+      align-items: center;
+    }
+
+    .pip {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.10);
+      flex-shrink: 0;
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+
+    .pip.on {
+      background: var(--accent-card, var(--accent));
+      border-color: var(--accent-card, var(--accent));
+      box-shadow: 0 0 7px var(--accent-card, var(--accent));
+    }
+
+    /* ── SVG Gauge cards ──────────────────────────────── */
+    .card.gauge {
+      min-height: 200px;
+    }
+
+    .gauge-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .gauge-body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex: 1;
+    }
+
+    .gauge-body.bottom {
+      align-items: flex-end;
+      padding-bottom: 4px;
+    }
+
+    /* ── Footer ───────────────────────────────────────── */
+    footer {
+      margin-top: 36px;
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.1em;
+      text-align: right;
+    }
+
+    /* ── Animations ───────────────────────────────────── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(14px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .card { animation: fadeUp 0.5s ease both; }
+    .card:nth-child(1) { animation-delay: 0.05s; }
+    .card:nth-child(2) { animation-delay: 0.10s; }
+    .card:nth-child(3) { animation-delay: 0.15s; }
+    .card:nth-child(4) { animation-delay: 0.20s; }
+    .card:nth-child(5) { animation-delay: 0.25s; }
+    .card:nth-child(6) { animation-delay: 0.30s; }
+    .card:nth-child(7) { animation-delay: 0.35s; }
+    .card:nth-child(8) { animation-delay: 0.40s; }
+
+    @media (max-width: 600px) {
+      .card.wide { grid-column: span 1; }
+      body { padding: 24px 16px; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="header-left">
+      <span class="label-tag">CrossTwin · Water Supply Intelligence</span>
+      <h1>{{ Province.name }} <span>Overview</span></h1>
+    </div>
+    <div class="year-badge">{{ year }}</div>
+  </header>
+
+  <div class="grid">
+
+    <!-- Total Supply -->
+    <div class="card">
+      <div class="card-icon">💧</div>
+      <div class="card-label">Total Supply</div>
+      <div>
+        <div class="card-value">{{ indicators.total_supply_Mm3|floatformat:2 }}</div>
+        <div class="card-unit">Mm³ / year</div>
+      </div>
+      <div class="bar-track"><div class="bar-fill" style="width:{{indicators.total_supply_percent}}%"></div></div>
+    </div>
+
+    <!-- Consumption per Capita — pip scale (5 dots, out of 0.200 m³ max) -->
+    <div class="card c2">
+      <div class="card-icon">👤</div>
+      <div class="card-label">Consumption per Capita</div>
+      <div>
+        <div class="card-value">{{ indicators.consumption_capita|floatformat:0 }}</div>
+        <div class="card-unit">L³ / person / day</div>
+      </div>
+      <div class="pips"
+           data-pips="{% widthratio indicators.consumption_capita 200 5 %}"
+           data-total="5">
+        <span class="pip"></span>
+        <span class="pip"></span>
+        <span class="pip"></span>
+        <span class="pip"></span>
+        <span class="pip"></span>
+      </div>
+    </div>
+
+    <!-- Imported Water -->
+    <div class="card c3">
+      <div class="card-icon">🔄</div>
+      <div class="card-label">Imported Water</div>
+      <div>
+        <div class="card-value">{{ indicators.imported_water|floatformat:0 }}</div>
+        <div class="card-unit">m³ / year</div>
+      </div>
+      <div class="bar-track"><div class="bar-fill" style="width: 38%"></div></div>
+    </div>
+
+    <!-- Supply Security — donut gauge -->
+    <div class="card gauge">
+      <div class="gauge-header">
+        <div class="card-icon">🛡️</div>
+        <div class="card-label">Supply Security</div>
+      </div>
+      <div class="gauge-body">
+        <svg viewBox="0 0 100 100" width="110" height="110">
+          <!-- track ring -->
+          <circle cx="50" cy="50" r="38" fill="none"
+            stroke="rgba(255,255,255,0.06)" stroke-width="8"/>
+          <!-- filled arc — animated by JS -->
+          <circle cx="50" cy="50" r="38" fill="none"
+            stroke="var(--accent-card,var(--accent))" stroke-width="8"
+            stroke-linecap="round"
+            transform="rotate(-90 50 50)"
+            stroke-dasharray="{% widthratio indicators.supply_security 100 239 %} 239"
+            data-gauge="{% widthratio indicators.supply_security 100 239 %}"
+            data-max="239"/>
+          <!-- value label -->
+          <text x="50" y="47" text-anchor="middle"
+            font-family="'Syne',sans-serif" font-size="20" font-weight="700" fill="#e8f4ff">
+            {{ indicators.supply_security|floatformat:1 }}%
+          </text>
+          <text x="50" y="61" text-anchor="middle"
+            font-family="'DM Mono',monospace" font-size="6.5" fill="rgba(232,244,255,0.38)"
+            letter-spacing="0.08em">OF DEMAND COVERED</text>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Service Time — speedometer arc -->
+    <div class="card c2 gauge">
+      <div class="gauge-header">
+        <div class="card-icon">🕐</div>
+        <div class="card-label">Service Time</div>
+      </div>
+      <div class="gauge-body bottom">
+        <!-- viewBox gives room for stroke caps and labels below the arc -->
+        <svg viewBox="0 0 100 68" width="100%" style="max-width:190px;display:block;margin:0 auto;">
+          <!-- track arc: semicircle centre (50,54) r=38 -->
+          <path d="M 12,54 A 38,38 0 0,1 88,54"
+            fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="7" stroke-linecap="round"/>
+          <!-- filled arc — animated by JS -->
+          <path d="M 12,54 A 38,38 0 0,1 88,54"
+            fill="none" stroke="var(--accent-card,var(--accent))" stroke-width="7"
+            stroke-linecap="round"
+            stroke-dasharray="{% widthratio indicators.service_time 24 119 %} 119"
+            data-gauge="{% widthratio indicators.service_time 24 119 %}"
+            data-max="119"/>
+          <!-- value -->
+          <text x="50" y="44" text-anchor="middle"
+            font-family="'Syne',sans-serif" font-size="18" font-weight="700" fill="#e8f4ff">
+            {{ indicators.service_time|floatformat:0 }}<tspan font-size="10" fill="rgba(232,244,255,0.5)"> h/day</tspan>
+          </text>
+          <!-- scale labels -->
+          <text x="10" y="66" text-anchor="middle"
+            font-family="'DM Mono',monospace" font-size="7.5" fill="rgba(232,244,255,0.3)">0</text>
+          <text x="90" y="66" text-anchor="middle"
+            font-family="'DM Mono',monospace" font-size="7.5" fill="rgba(232,244,255,0.3)">24h</text>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Network Length -->
+    <div class="card">
+      <div class="card-icon">🔗</div>
+      <div class="card-label">Network Length</div>
+      <div>
+        <div class="card-value">{{ indicators.network_length|floatformat:1 }}</div>
+        <div class="card-unit">km of distribution mains</div>
+      </div>
+      <div class="bar-track"><div class="bar-fill" style="width: 55%"></div></div>
+    </div>
+
+    <!-- Available Water -->
+    <div class="card c3">
+      <div class="card-icon">🏔️</div>
+      <div class="card-label">Available Water</div>
+      <div>
+        <div class="card-value">{{ indicators.available_water|floatformat:2 }}</div>
+        <div class="card-unit">Mm³ · licensed groundwater</div>
+      </div>
+      <div class="bar-track"><div class="bar-fill" style="width: 70%"></div></div>
+    </div>
+
+    <!-- OPEX -->
+    <div class="card c2 wide">
+      <div class="card-icon">💰</div>
+      <div class="card-label">Operational Expenditure (OPEX)</div>
+      <div>
+        <div class="card-value">€ {{ indicators.opex|floatformat:0|intcomma }}</div>
+        <div class="card-unit">EUR / year</div>
+      </div>
+      <div class="bar-track"><div class="bar-fill" style="width: 74%"></div></div>
+    </div>
+
+  </div>
+
+  <footer>CrossTwin · Province Digital Twin · EPSG:28992 · {{ year }}</footer>
+
+  <script>
+    // Animate SVG gauge arcs (donut + speedometer)
+    document.querySelectorAll('[data-gauge]').forEach(function (el) {
+      var target = el.getAttribute('data-gauge');
+      var max    = el.getAttribute('data-max');
+      el.style.strokeDasharray = '0 ' + max;
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          el.style.transition = 'stroke-dasharray 1.3s cubic-bezier(0.16,1,0.3,1)';
+          el.style.strokeDasharray = target + ' ' + max;
+        });
+      });
+    });
+
+    // Fill pip indicators
+    document.querySelectorAll('.pips[data-pips]').forEach(function (container) {
+      var filled = parseInt(container.getAttribute('data-pips'), 10);
+      var pips   = container.querySelectorAll('.pip');
+      pips.forEach(function (pip, i) {
+        if (i < filled) {
+          setTimeout(function () { pip.classList.add('on'); }, 80 + i * 80);
+        }
+      });
+    });
+  </script>
+
+</body>
+</html>

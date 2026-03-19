@@ -37,7 +37,6 @@ class ConsumptionCapita(models.Model):
     def save(self, *args, **kwargs):
         if self.consumption_capita_L_d < 0:
             raise ValidationError("Consumption Capita cannot be negative")
-        self.total_consumption_m3_yr = (self.consumption_capita_L_d * 365 * 1000 * self.city.currentPopulation)
         super().save(*args, **kwargs)
         
 
@@ -59,6 +58,7 @@ class TotalWaterDemand(models.Model):
         return f"{self.city} - {self.year}: {self.demandDay} Mm3/day"
     
     def save(self, *args, **kwargs):
+        self.demandDay = self.city.currentPopulation * ConsumptionCapita.objects.get(city=self.city, year=self.year).consumption_capita_L_d
         self.demandYR = self.demandDay * 365
         super().save(*args, **kwargs)
         

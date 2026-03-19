@@ -52,3 +52,25 @@ def neighborhood_changed_update_city_and_Province(sender, instance, **kwargs):
             populationDensity=_safe_divide_expr(province_total),
             last_updated=timezone.now()
         )
+        
+@receiver(post_save, sender=City, dispatch_uid="city_upsert_to_Province")
+@receiver(post_delete, sender=City, dispatch_uid="city_delete_to_Province")
+def city_changed_update_Province(sender, instance, **kwargs):
+    """
+    Single signal function:
+      - recompute Province totals/density when a City is created/updated/deleted
+    """
+    province_id = instance.province_id
+    if not province_id:
+        return
+
+    # 1) Recompute Province totals from its cities
+    province_total = City.objects.filter(province_id=province_id).aggregate(
+        total=Sum('currentPopulation')
+    )['total'] or 0
+
+    Province.objects.filter(id=province_id).update(
+        currentPopulation=province_total,
+        populationDensity=_safe_divide_expr(province_total),
+        last_updated=timezone.now()
+    )

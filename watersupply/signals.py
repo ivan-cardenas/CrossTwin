@@ -3,7 +3,7 @@ from django.dispatch import receiver
 from django.db.models import Sum, F, FloatField, Case, When, Value, ExpressionWrapper
 from django.utils import timezone
 from .models import ConsumptionCapita
-from common.models import City
+from common.models import City, Province
 
 
 @receiver(post_save, sender=City)
@@ -14,7 +14,7 @@ def update_consumption_on_population_change(sender, instance, **kwargs):
     """
     ConsumptionCapita.objects.filter(city=instance).update(
         total_consumption_m3_yr=ExpressionWrapper(
-            F("consumption_capita_L_d") / 1000.0 * F("city__population")*365,
+            F("consumption_capita_L_d") / 1000.0 * F("province__population")*365,
             output_field=FloatField(),
         ),
         

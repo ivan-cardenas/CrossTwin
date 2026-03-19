@@ -83,7 +83,7 @@ INSTALLED_APPS = [
     "crispy_forms",
     "crispy_tailwind",
     'core.apps.CoreConfig',
-    
+    'django.contrib.humanize',
     "importer",
         
     "common",
