@@ -12,151 +12,124 @@ from .calculations import _get_consumption_capita, calculate_supply_security
 from django.contrib.gis.db.models.functions import Intersection, Length
 from django.contrib.gis.measure import D
 
+# ── constants ─────────────────────────────────────────────────────────
+SERVICE_HOURS_MAX = 24
+MAX_OPEX_EUR      = 10_000_000
+MAX_CONSUMPTION   = 300
 
-MAX_SUPPLY_M3    = 20_000_000   # 20 Mm³/yr = full bar
-MAX_CONSUMPTION  = 200          # 200 L/p/day = full bar
-MAX_NETWORK      = 5_000        # 5000 km = full bar
-MAX_OPEX         = 10_000_000   # €10M = full bar
-
-def water_indicators(request, location, year):
-    """Single view that calculates all indicators"""
-
-    try:
-        province = get_object_or_404(PM, ProvinceName=location)
-        consumption_capita_province = _get_consumption_capita(province, year)
-        total_demand = consumption_capita_province * province.currentPopulation
-
-        importedWater = (
-            ImportedWater.objects
-            .filter(is_active=True)
-            .aggregate(total=models.Sum('quantity_m3_d'))['total'] or 0
-        )
-
-        total_supply = total_demand + importedWater  # adjust to your actual logic
-
-        supply_security = calculate_supply_security(province)
-
-        service_obj = SupplySecurity.objects.get(province=province, year=year)
-        serviceTime = service_obj.serviceTime_h_day  # instance attr, not dict
-
-        network_length = (
-            PipeNetwork.objects
-            .filter(geom__intersects=province.geom)       # lowercase province
-            .annotate(clipped=Intersection('geom', province.geom))
-            .annotate(clipped_length=Length('clipped'))
-            .aggregate(total=Sum('clipped_length'))['total']
-        )
-        network_length = network_length.km if network_length else 0
-
-        availableWater = (
-            AvailableFreshWater.objects
-            .filter(geom__intersects=province.geom)       # lowercase province
-            .aggregate(total=Sum('totalQuantity_Mm3'))['total'] or 0
-        )
-
-        opex = (
-            OPEX.objects
-            .filter(year=year)                            # filter, not get → then aggregate
-            .aggregate(total=models.Sum('totalOPEX_EUR'))['total'] or 0
-        )
-
-    except Exception as e:
-        print(f"[water_indicators] falling back to mock data: {e}")
-
-        province = type('Province', (), {
-            'ProvinceName': 'Demo Province (No Data)',
-            'currentPopulation': 500_000,
-        })()
-
-        total_supply = 119_120*365
-        consumption_capita_province = 120 # L/p
-        total_demand = consumption_capita_province/1000 * province.currentPopulation # 
-        importedWater = 50_000
-        supply_security = (total_supply / total_demand * 100) if total_demand > 0 else 0
-        serviceTime = 8
-        network_length = 0
-        availableWater = 100 
-        opex = 0
-
-    print("total_demand", total_demand)
-    context = {
-        'Province': province,                            # lowercase — the instance
-        'year': year,
-        'indicators': {
-            'total_supply_Mm3': round(total_supply / 1_000_000, 2),  # pre-divided by 1_000_000,
-            'total_supply_percent': round(total_supply/1000000 / availableWater * 100, 2),
-            'consumption_capita': consumption_capita_province,
-            'imported_water': importedWater,
-            'supply_security': supply_security,
-            'service_time': serviceTime,
-            'network_length': network_length,
-            'available_water': availableWater,
-            'opex': opex,
-        }
-    }
-
-    return render(request, 'watersupply/water_indicators.html', context)
-
-def recalculate_indicators(request, location, year):
-    """Partial re-render triggered by HTMX slider"""
+# ── shared helper ─────────────────────────────────────────────────────
+def _get_province_data(location, year):
+    """Fetch all fixed DB values for a province/year. Returns a dict."""
+    province = get_object_or_404(PM, ProvinceName=location)
     
-    consumption = float(request.GET.get('consumption', 120))  # L/p/day from slider
+    imported_water_m3_yr = (
+        ImportedWater.objects.filter(is_active=True)
+        .aggregate(total=models.Sum('quantity_m3_d'))['total'] or 0
+    ) * 365
 
-    try:
-        province = get_object_or_404(PM, ProvinceName=location)
-        population = province.currentPopulation
-        importedWater = (
-            ImportedWater.objects.filter(is_active=True)
-            .aggregate(total=models.Sum('quantity_m3_d'))['total'] or 0
-        )
-        availableWater = (
-            AvailableFreshWater.objects
-            .filter(geom__intersects=province.geom)
-            .aggregate(total=Sum('totalQuantity_Mm3'))['total'] or 0
-        )
-        opex_total = (
-            OPEX.objects.filter(year=year)
-            .aggregate(total=models.Sum('totalOPEX_EUR'))['total'] or 0
-        )
-        service_hours_max = 8760
-
-    except Exception as e:
-        print(f"[recalculate] fallback: {e}")
-        population = 500_000
-        importedWater = 50_000
-        availableWater = 100
-        opex_total = 2_000_000
-        service_hours_max = 8760
-
-    # ── all math in Python ────────────────────────────────
-    demand_m3_yr   = (consumption / 1000) * population * 365
-    supply_m3_yr   = demand_m3_yr + importedWater
-    supply_Mm3     = round(supply_m3_yr / 1_000_000, 2)
-    
-    supply_security = min(
-        round(supply_Mm3 / availableWater * 100, 1), 100
-    ) if availableWater > 0 else 0
-
-    service_time = (
-        service_hours_max 
-        if supply_m3_yr >= demand_m3_yr 
-        else round(service_hours_max * (supply_m3_yr / demand_m3_yr), 0)
+    available_water_Mm3 = (
+        AvailableFreshWater.objects
+        .filter(geom__intersects=province.geom)
+        .aggregate(total=Sum('totalQuantity_Mm3'))['total'] or 0
     )
 
-    opex_per_m3 = opex_total / supply_m3_yr if supply_m3_yr > 0 else 0
-    opex = round(supply_m3_yr * opex_per_m3)
+    opex_total = (
+        OPEX.objects.filter(year=year)
+        .aggregate(total=models.Sum('totalOPEX_EUR'))['total'] or 0
+    )
 
-    indicators = {
-        'consumption_capita': consumption,
-        'total_supply_Mm3': supply_Mm3,
-        'total_supply_percent': min(supply_Mm3 / availableWater * 100, 100) if availableWater > 0 else 0,
-        'supply_security': supply_security,
-        'service_time': service_time,
-        'service_time_percent': round(service_time / service_hours_max * 100, 1),
-        'opex': opex,
-        'opex_percent': min(opex / 10_000_000 * 100, 100),
-        'consumption_percent': min(consumption / 300 * 100, 100),
+    network_length = (
+        PipeNetwork.objects
+        .filter(geom__intersects=province.geom)
+        .annotate(clipped=Intersection('geom', province.geom))
+        .annotate(clipped_length=Length('clipped'))
+        .aggregate(total=Sum('clipped_length'))['total']
+    )
+
+    demand_m3_d, supply_m3_d, supply_security = calculate_supply_security(province)
+
+    return {
+        'province':             province,
+        'population':           province.currentPopulation,
+        'consumption_capita':   _get_consumption_capita(province, year),
+        'demand_m3_d':          demand_m3_d,
+        'supply_m3_d':          supply_m3_d,
+        'supply_security':      supply_security,
+        'imported_water_m3_yr': imported_water_m3_yr,
+        'available_water_Mm3':  available_water_Mm3,
+        'opex_total':           opex_total,
+        'network_length':       network_length.km if network_length else 0,
     }
 
-    # returns only the partial template, not the full page
+MOCK_DATA = {
+    'province':             type('Province', (), {'ProvinceName': 'Demo', 'currentPopulation': 500_000})(),
+    'population':           500_000,
+    'consumption_capita':   100,
+    'supply_m3_d':          20_000,
+    'imported_water_m3_yr': 50,
+    'available_water_Mm3':  100,
+    'opex_total':           10_000,
+    'network_length':       5_000,
+}
+
+# ── shared calculation ────────────────────────────────────────────────
+def _build_indicators(data, consumption_override=None):
+    """Pure function: takes DB data dict, returns indicators dict."""
+    consumption  = (consumption_override or data['consumption_capita'])/1000
+    demand_m3_d  = consumption * data['population']
+    supply_m3_d  = data['supply_m3_d']
+    available    = data['available_water_Mm3']
+    opex_total   = data['opex_total']
+
+    demand_Mm3_yr  = demand_m3_d  * 365 / 1_000_000
+    supply_Mm3_yr  = supply_m3_d  * 365 / 1_000_000
+
+    service_time = (
+        SERVICE_HOURS_MAX if supply_m3_d >= demand_m3_d
+        else round(SERVICE_HOURS_MAX * supply_m3_d / demand_m3_d, 1)
+    )
+
+    return {
+        'consumption_capita':    consumption,
+        'consumption_percent':   min(consumption / MAX_CONSUMPTION * 100, 100),
+        'total_supply_Mm3':      round(supply_Mm3_yr, 2),
+        'total_demand_Mm3':      round(demand_Mm3_yr, 2),
+        'total_supply_percent':  round(min(supply_Mm3_yr / available * 100, 100), 1) if available else 0,
+        'total_demand_percent':  round(min(demand_Mm3_yr / available * 100, 100), 1) if available else 0,  # ← missing
+        'supply_security':       supply_Mm3_yr/demand_Mm3_yr * 100,
+        'service_time':          service_time,
+        'service_time_percent':  round(service_time / SERVICE_HOURS_MAX * 100, 1),
+        'network_length':        data['network_length'],
+        'opex':                  opex_total,
+        'opex_percent':          min(opex_total / MAX_OPEX_EUR * 100, 100),
+    }
+
+
+# ── views ─────────────────────────────────────────────────────────────
+def water_indicators(request, location, year):
+    try:
+        data = _get_province_data(location, year)
+    except Exception as e:
+        print(f"[water_indicators] mock fallback: {e}")
+        data = MOCK_DATA
+
+    context = {
+        'Province':   data['province'],
+        'year':       year,
+        'indicators': _build_indicators(data),
+    }
+    return render(request, 'watersupply/water_indicators.html', context)
+
+
+def recalculate_indicators(request, location, year):
+    consumption = float(request.GET.get('consumption', 120))
+
+    try:
+        data = _get_province_data(location, year)
+    except Exception as e:
+        print(f"[recalculate] mock fallback: {e}")
+        data = MOCK_DATA
+
+    indicators = _build_indicators(data, consumption_override=consumption)
+    print(f"[recalculate] indicators: {indicators}")
     return render(request, 'watersupply/partials/indicators_grid.html', {'indicators': indicators})

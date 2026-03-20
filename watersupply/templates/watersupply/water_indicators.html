@@ -77,7 +77,6 @@
     /* ── Grid ─────────────────────────────────────────── */
     .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
       gap: 16px;
     }
 
@@ -256,25 +255,154 @@
       .card.wide { grid-column: span 1; }
       body { padding: 24px 16px; }
     }
+
+    /* ── Slider — Consumption per Capita ─────────────── */
+    .slider-container {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px 22px 18px;
+      margin-bottom: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.25s, box-shadow 0.25s;
+    }
+
+    .slider-container::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent2), transparent);
+    }
+
+    .slider-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .slider-header-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .slider-value-display {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1;
+    }
+
+    .slider-value-display .slider-unit {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      margin-left: 6px;
+      font-weight: 400;
+    }
+
+    /* zone track + thumb */
+    .slider-zone-wrap {
+      position: relative;
+    }
+
+    /* zone colour bar behind the range */
+    .slider-zones {
+      display: flex;
+      height: 6px;
+      border-radius: 99px;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    /* slider min=50 max=300 → 250-unit range
+       50–150 optimal (40%), 150–250 elevated (40%), 250–300 excess (20%) */
+    .sz-ok   { flex: 40; background: rgba(0,229,192,0.35); }
+    .sz-warn { flex: 40; background: rgba(255,184,77,0.35); }
+    .sz-bad  { flex: 20; background: rgba(255,122,82,0.35); }
+
+    input[type="range"].zone-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      left: 0; right: 0;
+      width: 100%;
+      height: 6px;
+      background: transparent;
+      cursor: pointer;
+      margin: 0;
+    }
+
+    input[type="range"].zone-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--thumb-col, var(--accent2));
+      box-shadow: 0 0 0 3px rgba(0,0,0,0.4), 0 0 10px var(--thumb-col, var(--accent2));
+      transition: background 0.3s, box-shadow 0.3s, transform 0.15s;
+      cursor: grab;
+    }
+
+    input[type="range"].zone-slider:active::-webkit-slider-thumb {
+      transform: scale(1.25);
+      cursor: grabbing;
+    }
+
+    input[type="range"].zone-slider::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border: none;
+      border-radius: 50%;
+      background: var(--thumb-col, var(--accent2));
+      box-shadow: 0 0 0 3px rgba(0,0,0,0.4), 0 0 10px var(--thumb-col, var(--accent2));
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+
+    .slider-zone-wrap {
+      height: 20px;
+      display: flex;
+      align-items: center;
+    }
+
+    .slider-zones-container {
+      position: relative;
+      width: 100%;
+    }
+
+    .slider-threshold-labels {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 8px;
+      font-size: 9px;
+      color: rgba(232,244,255,0.35);
+      font-family: 'DM Mono', monospace;
+    }
+
+    .threshold-tag {
+      font-size: 9px;
+      letter-spacing: 0.1em;
+      padding: 2px 6px;
+      border-radius: 4px;
+      text-transform: uppercase;
+    }
+
+    .threshold-tag.ok   { color: #00e5c0; background: rgba(0,229,192,0.1); border: 1px solid rgba(0,229,192,0.2); }
+    .threshold-tag.warn { color: #ffb84d; background: rgba(255,184,77,0.1); border: 1px solid rgba(255,184,77,0.2); }
+    .threshold-tag.bad  { color: #ff7a52; background: rgba(255,122,82,0.1); border: 1px solid rgba(255,122,82,0.2); }
   </style>
   <script src="https://unpkg.com/htmx.org@1.9.10"></script>
 </head>
 <body>
-
-  <header>
-    <span class="label-tag">CrossTwin · Water Supply Intelligence</span>
-    <h1>{{ Province.ProvinceName }}</h1>
-    <div class="year-badge">{{ year }}</div>
-  </header>
-
-  <div class="grid">
 {% load static %}
-<!DOCTYPE html>
-<html>
-<head>
-  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-</head>
-<body>
 
   <header>
     <span class="label-tag">CrossTwin · Water Supply Intelligence</span>
@@ -284,21 +412,51 @@
 
   <!-- Slider — outside the swap target so it persists -->
   <div class="slider-container">
-    <label class="label-tag">Consumption per Capita</label>
-    <div class="slider-row">
-      <input
-        type="range"
-        name="consumption"
-        min="50" max="300" step="1"
-        value="{{ consumption_capita_base }}"
-        hx-get="{% url 'recalculate_indicators' Province.ProvinceName year %}"
-        hx-trigger="input changed delay:200ms"
-        hx-target="#indicators-grid"
-        hx-include="this"
-      />
-      <!-- show current slider value with a little JS, just for the label -->
-      <span id="slider-display">{{ consumption_capita_base }}</span>
-      <span class="card-unit">L / person / day</span>
+    <div class="slider-header">
+      <div class="slider-header-left">
+        <div class="card-icon" style="background:rgba(0,229,192,0.08);border-color:rgba(0,229,192,0.15);">🏠</div>
+        <span class="card-label">Consumption per Capita</span>
+      </div>
+      <div class="slider-value-display">
+        <span id="slider-display">{{ consumption_capita_base }}</span>
+        <span class="slider-unit">L / person / day</span>
+      </div>
+    </div>
+
+    <div class="slider-zones-container">
+      <!-- zone colour track -->
+      <div class="slider-zones">
+        <div class="sz-ok"></div>
+        <div class="sz-warn"></div>
+        <div class="sz-bad"></div>
+      </div>
+      <!-- range input floats over the zone track -->
+      <div class="slider-zone-wrap">
+        <input
+          id="consumption-slider"
+          class="zone-slider"
+          type="range"
+          name="consumption"
+          min="50" max="300" step="1"
+          value="{{ consumption_capita_base }}"
+          hx-get="{% url 'watersupply:recalculate_indicators' Province.ProvinceName year %}"
+          hx-trigger="input changed delay:200ms"
+          hx-target="#indicators-grid"
+          hx-include="this"
+        />
+      </div>
+      <!-- threshold labels -->
+      <div class="slider-threshold-labels">
+        <span>50</span>
+        <span>150</span>
+        <span>250</span>
+        <span>300</span>
+      </div>
+    </div>
+
+    <!-- zone tag -->
+    <div>
+      <span id="zone-tag" class="threshold-tag ok">Optimal</span>
     </div>
   </div>
 
@@ -307,12 +465,29 @@
     {% include 'watersupply/partials/indicators_grid.html' %}
   </div>
 
-  <!-- Only JS needed: update the slider label display -->
   <script>
-    document.querySelector('input[name="consumption"]')
-      .addEventListener('input', e => {
-        document.getElementById('slider-display').textContent = e.target.value;
-      });
+    function zoneStyle(val) {
+      if (val < 150)       return { col: '#00e5c0', label: 'Optimal',  cls: 'ok'   };
+      else if (val < 250)  return { col: '#ffb84d', label: 'Elevated', cls: 'warn' };
+      else                 return { col: '#ff7a52', label: 'Excess',   cls: 'bad'  };
+    }
+
+    function applyZone(val) {
+      const z   = zoneStyle(val);
+      const sl  = document.getElementById('consumption-slider');
+      const tag = document.getElementById('zone-tag');
+      const disp = document.getElementById('slider-display');
+      if (disp) disp.textContent = val;
+      if (sl)  sl.style.setProperty('--thumb-col', z.col);
+      if (tag) { tag.textContent = z.label; tag.className = 'threshold-tag ' + z.cls; }
+    }
+
+    const slider = document.getElementById('consumption-slider');
+    if (slider) {
+      /* set initial state */
+      applyZone(parseInt(slider.value, 10));
+      slider.addEventListener('input', e => applyZone(parseInt(e.target.value, 10)));
+    }
   </script>
 
 </body>
