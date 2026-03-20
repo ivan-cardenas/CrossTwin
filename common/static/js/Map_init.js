@@ -59,7 +59,15 @@ function initializeUrbanTwinMap(config) {
     console.error('Map error:', e.error);
   });
 
-  
+  map.on('click', 'provinces-layer', (e) => {
+  const provinceName = e.features[0].properties.ProvinceName;
+  const btn = document.querySelector('[data-tool="water"]');
+  btn.setAttribute('hx-get', 
+    `/watersupply/indicators/${provinceName}/2025/`
+  );
+  htmx.process(btn);  // re-process HTMX attributes after change
+  btn.click();
+});
 
   initializeUI();
   return map;

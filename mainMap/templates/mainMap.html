@@ -1,5 +1,8 @@
-{% extends 'base.html' %} {% load static %} {% block title %}Urban Twin - Map
-View{% endblock %} {% block extra_css %}
+
+{% extends 'base.html' %} 
+{% load static %} 
+{% block title %}Urban Twin - Map View{% endblock %} 
+{% block extra_css %}
 <link
   href="https://api.mapbox.com/mapbox-gl-js/v3.18.0/mapbox-gl.css"
   rel="stylesheet"
@@ -7,6 +10,7 @@ View{% endblock %} {% block extra_css %}
 <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.1.0/mapbox-gl-geocoder.min.js"></script>
 <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.1.0/mapbox-gl-geocoder.css" type="text/css">
 <link rel="stylesheet" href="{% static 'css/mainMap.css' %}" />
+<link rel="stylesheet" href="{% static 'css/indicators.css' %}" />
 {% endblock %} {% block extra_js %}
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.18.0/mapbox-gl.js"></script>
 <script src="{% static 'js/config.js' %}"></script>
@@ -54,10 +58,14 @@ View{% endblock %} {% block extra_css %}
         <span style="font-size: 1em;">🌳💧</span>
         <div class="tool-tooltip">Green and Blue Space</div>
       </button>
-      <button class="tool-button" data-tool="water">
-        <span>🚰</span>
-        <div class="tool-tooltip">Water Supply</div>
-      </button>
+      <button class="tool-button" data-tool="water"
+        hx-get="{% url 'watersupply:water_indicators' location='Demo' year=2025 %}"
+        hx-target="#panel-body"
+        hx-indicator="#map-loader"
+        hx-swap="innerHTML">
+  <span>🚰</span>
+  <div class="tool-tooltip">Water Supply</div>
+</button>
       <button class="tool-button" data-tool="groundwater">
         <spanstyle="font-size: 1em;">🪨💧</span>
         <div class="tool-tooltip">Groundwater</div>
@@ -280,6 +288,11 @@ document.getElementById('calculateBtn')?.addEventListener('click', () => {
 document.getElementById('settingsBtn')?.addEventListener('click', () => {
   console.log('Settings clicked');
   // Open settings panel
+});
+
+document.querySelector('[data-tool="water"]')?.addEventListener('click', () => {
+  document.getElementById('side-panel').classList.add('open');
+  document.getElementById('panel-title').textContent = 'WATER SUPPLY';
 });
 </script>
 {% endblock content %}

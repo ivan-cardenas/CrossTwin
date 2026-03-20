@@ -1,0 +1,301 @@
+{% load static %}
+
+<div style="padding: 0 4px;">
+
+  <!-- Header -->
+  <div style="margin-bottom:16px;">
+    <div style="font-size:10px; letter-spacing:0.14em; text-transform:uppercase;
+                color:rgba(232,244,255,0.45); margin-bottom:4px;">
+      Water Supply Indicators
+    </div>
+    <div style="font-family:'Syne',sans-serif; font-size:1.1rem; font-weight:700;">
+      {{ Province.ProvinceName }}
+      <span style="color:rgba(232,244,255,0.4); font-size:0.85rem;">· {{ year }}</span>
+    </div>
+  </div>
+
+  <!-- Styled slider -->
+  <div class="slider-container">
+    <div class="slider-header">
+      <div class="slider-header-left">
+        <div class="card-icon" style="background:rgba(0,229,192,0.08);border-color:rgba(0,229,192,0.15);">🏠</div>
+        <span class="card-label">Consumption per Capita</span>
+      </div>
+      <div class="slider-value-display">
+        <span id="slider-display">{{ indicators.consumption_capita }}</span>
+        <span class="slider-unit">L / person / day</span>
+      </div>
+    </div>
+    <div class="slider-zones-container">
+      <div class="slider-zones">
+        <div class="sz-ok"></div>
+        <div class="sz-warn"></div>
+        <div class="sz-bad"></div>
+      </div>
+      <div class="slider-zone-wrap">
+        <input id="consumption-slider"
+               class="zone-slider"
+               type="range"
+               name="consumption"
+               min="50" max="300" step="1"
+               value="{{ indicators.consumption_capita }}"
+               hx-get="{% url 'watersupply:recalculate_indicators' Province.ProvinceName year %}"
+               hx-trigger="input changed delay:200ms"
+               hx-target="#indicators-grid"
+               hx-include="this"/>
+      </div>
+      <div class="slider-threshold-labels">
+        <span>50</span><span>150</span><span>250</span><span>300</span>
+      </div>
+    </div>
+    <div><span id="zone-tag" class="threshold-tag ok">Optimal</span></div>
+  </div>
+
+  <!-- Cards — swap target for recalculate -->
+  <div id="indicators-grid">
+
+    <div class="grid">
+
+      <!-- Total Supply -->
+      <div class="card gauge"
+           data-gauge-val="{{ indicators.total_supply_percent }}"
+           data-gauge-id="gauge-supply"
+           data-gauge-display="{{ indicators.total_supply_Mm3 }}">
+        <div class="gauge-header">
+          <div class="card-icon">💧</div>
+          <div class="card-label">Total Supply</div>
+        </div>
+        <div class="gauge-body bottom">
+          <svg viewBox="0 0 120 70" width="160" height="95" aria-hidden="true">
+            <path d="M 10,65 A 50,50 0 0 1 110,65"
+                  fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10" stroke-linecap="round"/>
+            <path id="gauge-supply"
+                  d="M 10,65 A 50,50 0 0 1 110,65"
+                  fill="none" stroke="#63d2ff" stroke-width="10" stroke-linecap="round"
+                  stroke-dasharray="157.08" stroke-dashoffset="157.08"
+                  style="transition: stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)"/>
+            <text x="60" y="55" text-anchor="middle"
+                  font-family="Syne,sans-serif" font-size="15" font-weight="700"
+                  fill="#e8f4ff" id="gauge-supply-txt">–</text>
+            <text x="60" y="67" text-anchor="middle"
+                  font-family="DM Mono,monospace" font-size="7"
+                  fill="rgba(232,244,255,0.45)">Mm³ / year</text>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Total Demand -->
+      <div class="card gauge"
+           data-gauge-val="{{ indicators.total_demand_percent }}"
+           data-gauge-id="gauge-demand"
+           data-gauge-display="{{ indicators.total_demand_Mm3 }}">
+        <div class="gauge-header">
+          <div class="card-icon">🔽</div>
+          <div class="card-label">Total Demand</div>
+        </div>
+        <div class="gauge-body bottom">
+          <svg viewBox="0 0 120 70" width="160" height="95" aria-hidden="true">
+            <path d="M 10,65 A 50,50 0 0 1 110,65"
+                  fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10" stroke-linecap="round"/>
+            <path id="gauge-demand"
+                  d="M 10,65 A 50,50 0 0 1 110,65"
+                  fill="none" stroke="#63d2ff" stroke-width="10" stroke-linecap="round"
+                  stroke-dasharray="157.08" stroke-dashoffset="157.08"
+                  style="transition: stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)"/>
+            <text x="60" y="55" text-anchor="middle"
+                  font-family="Syne,sans-serif" font-size="15" font-weight="700"
+                  fill="#e8f4ff" id="gauge-demand-txt">–</text>
+            <text x="60" y="67" text-anchor="middle"
+                  font-family="DM Mono,monospace" font-size="7"
+                  fill="rgba(232,244,255,0.45)">Mm³ / year</text>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Supply Security -->
+      <div class="card gauge"
+           data-gauge-val="{{ indicators.supply_security }}"
+           data-gauge-id="gauge-sec">
+        <div class="gauge-header">
+          <div class="card-icon">🛡️</div>
+          <div class="card-label">Supply Security</div>
+        </div>
+        <div class="gauge-body" style="flex:1;display:flex;justify-content:center;align-items:center;">
+          <svg viewBox="0 0 100 100" width="110" height="110" aria-hidden="true">
+            <circle cx="50" cy="50" r="38"
+                    fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="12"/>
+            <circle id="gauge-sec"
+                    cx="50" cy="50" r="38"
+                    fill="none" stroke="#63d2ff" stroke-width="12" stroke-linecap="round"
+                    stroke-dasharray="238.76" stroke-dashoffset="238.76"
+                    transform="rotate(-90 50 50)"
+                    style="transition: stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)"/>
+            <line x1="19.2" y1="46.3" x2="4.3" y2="44.5"
+                  stroke="rgba(255,255,255,0.55)" stroke-width="2" stroke-linecap="round"/>
+            <text x="26" y="40" text-anchor="middle"
+                  font-family="DM Mono,monospace" font-size="6.5"
+                  fill="rgba(255,255,255,0.45)">100%</text>
+            <text x="50" y="46" text-anchor="middle"
+                  font-family="Syne,sans-serif" font-size="18" font-weight="700"
+                  fill="#e8f4ff" id="gauge-sec-txt">–</text>
+            <text x="50" y="59" text-anchor="middle"
+                  font-family="DM Mono,monospace" font-size="8"
+                  fill="rgba(232,244,255,0.45)" id="gauge-sec-sub">% covered</text>
+          </svg>
+        </div>
+        <div id="gauge-sec-badge"
+             style="display:none; font-size:9px; letter-spacing:0.12em;
+                    text-transform:uppercase; padding:3px 8px; border-radius:4px;
+                    align-self:flex-start; margin-top:-6px;
+                    color:#00e5c0; background:rgba(0,229,192,0.10);
+                    border:1px solid rgba(0,229,192,0.25);">surplus</div>
+      </div>
+
+      <!-- Service Time -->
+      <div class="card c2"
+           data-pip-val="{{ indicators.service_time_percent }}"
+           data-pip-id="pips-svc">
+        <div class="gauge-header">
+          <div class="card-icon">⏱️</div>
+          <div class="card-label">Service Time</div>
+        </div>
+        <div>
+          <div class="card-value">{{ indicators.service_time }}</div>
+          <div class="card-unit">hours / day</div>
+        </div>
+        <div class="pips" id="pips-svc">
+          <div class="pip"></div><div class="pip"></div><div class="pip"></div>
+          <div class="pip"></div><div class="pip"></div><div class="pip"></div>
+          <div class="pip"></div><div class="pip"></div><div class="pip"></div>
+          <div class="pip"></div><div class="pip"></div><div class="pip"></div>
+        </div>
+      </div>
+
+      <!-- OPEX -->
+      <div class="card c3 wide"
+           data-consumption="{{ indicators.consumption_capita }}">
+        <div class="gauge-header">
+          <div class="card-icon">💶</div>
+          <div class="card-label">OPEX</div>
+        </div>
+        <div style="display:flex; align-items:baseline; gap:8px;">
+          <div class="card-value">€ {{ indicators.opex }}</div>
+          <div class="card-unit">EUR / year</div>
+        </div>
+        <div style="position:relative;">
+          <div class="bar-track" style="height:8px;">
+            <div class="bar-fill"
+                 style="width:{{ indicators.opex_percent }}%;
+                        background:linear-gradient(90deg,#ff7a52,rgba(255,122,82,0.4));">
+            </div>
+          </div>
+          <div style="display:flex; justify-content:space-between;
+                      margin-top:6px; font-size:9px;
+                      color:rgba(232,244,255,0.35); font-family:'DM Mono',monospace;">
+            <span>0%</span>
+            <span>{{ indicators.opex_percent }}% of budget cap</span>
+            <span>100%</span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /.grid -->
+  </div><!-- /#indicators-grid -->
+
+</div>
+
+<script>
+  // ── Zone slider ────────────────────────────────────────
+  function zoneStyle(val) {
+    if (val < 150)      return { col: '#00e5c0', label: 'Optimal',  cls: 'ok'   };
+    else if (val < 250) return { col: '#ffb84d', label: 'Elevated', cls: 'warn' };
+    else                return { col: '#ff7a52', label: 'Excess',   cls: 'bad'  };
+  }
+
+  function applyZone(val) {
+    const z = zoneStyle(val);
+    const sl   = document.getElementById('consumption-slider');
+    const tag  = document.getElementById('zone-tag');
+    const disp = document.getElementById('slider-display');
+    if (disp) disp.textContent = val;
+    if (sl)   sl.style.setProperty('--thumb-col', z.col);
+    if (tag)  { tag.textContent = z.label; tag.className = 'threshold-tag ' + z.cls; }
+  }
+
+  const slider = document.getElementById('consumption-slider');
+  if (slider) {
+    applyZone(parseInt(slider.value, 10));
+    slider.addEventListener('input', e => applyZone(parseInt(e.target.value, 10)));
+  }
+
+  // ── Gauge init ─────────────────────────────────────────
+  function initGauges() {
+    document.querySelectorAll('[data-gauge-id]').forEach(card => {
+      const val     = parseFloat(card.dataset.gaugeVal) || 0;
+      const id      = card.dataset.gaugeId;
+      const display = card.dataset.gaugeDisplay || '';
+      const path    = document.getElementById(id);
+      const txt     = document.getElementById(id + '-txt');
+      if (!path) return;
+
+      path.getAnimations().forEach(a => a.cancel());
+
+      if (id === 'gauge-supply' || id === 'gauge-demand') {
+        const total  = 157.08;
+        const target = total - (total * Math.min(val, 100) / 100);
+        path.animate(
+          [{ strokeDashoffset: total }, { strokeDashoffset: target }],
+          { duration: 1200, easing: 'cubic-bezier(0.16,1,0.3,1)', fill: 'forwards' }
+        );
+        if (txt) txt.textContent = display;
+
+      } else if (id === 'gauge-sec') {
+        const circ   = 238.76;
+        const MAX    = 130;
+        const capped = Math.min(val, MAX);
+        let col;
+        if      (val > 110) col = '#00e57a';
+        else if (val >= 80) col = '#ffb84d';
+        else if (val >= 50) col = '#ff7a52';
+        else                col = '#ff5252';
+        path.setAttribute('stroke', col);
+        path.animate(
+          [{ strokeDashoffset: circ }, { strokeDashoffset: circ - (circ * capped / MAX) }],
+          { duration: 1200, easing: 'cubic-bezier(0.16,1,0.3,1)', fill: 'forwards' }
+        );
+        if (txt) txt.textContent = Math.round(val) + '%';
+        const sub   = document.getElementById('gauge-sec-sub');
+        const badge = document.getElementById('gauge-sec-badge');
+        if (val > 110) {
+          if (sub)   sub.textContent = '% surplus';
+          if (badge) { badge.style.display = 'block'; badge.style.color = col; }
+        } else {
+          if (sub)   sub.textContent = '% covered';
+          if (badge) badge.style.display = 'none';
+        }
+      }
+    });
+
+    document.querySelectorAll('[data-pip-id]').forEach(card => {
+      const val  = parseFloat(card.dataset.pipVal) || 0;
+      const id   = card.dataset.pipId;
+      const wrap = document.getElementById(id);
+      if (!wrap) return;
+      const pips   = wrap.querySelectorAll('.pip');
+      const filled = Math.round(val / 100 * pips.length);
+      pips.forEach(p => p.classList.remove('on'));
+      pips.forEach((p, i) => {
+        if (i < filled) setTimeout(() => p.classList.add('on'), i * 60);
+      });
+    });
+  }
+
+  initGauges();
+
+  if (!window._gaugeListenerAttached) {
+    document.body.addEventListener('htmx:afterSwap', function(evt) {
+      if (evt.detail.target.id === 'indicators-grid') initGauges();
+    });
+    window._gaugeListenerAttached = true;
+  }
+</script>

@@ -22,7 +22,7 @@ def calculate_supply_security(Province):
     if demand and production:
         supply_security = production / demand
     else:
-        supply_security = 0
+        supply_security = None
 
     return demand, production, supply_security
 

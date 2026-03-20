@@ -20,7 +20,10 @@ MAX_CONSUMPTION   = 300
 # ── shared helper ─────────────────────────────────────────────────────
 def _get_province_data(location, year):
     """Fetch all fixed DB values for a province/year. Returns a dict."""
-    province = get_object_or_404(PM, ProvinceName=location)
+    try:
+        province = PM.objects.get(ProvinceName=location)  # ← must be .get() not get_object_or_404
+    except PM.DoesNotExist:
+        return None
     
     imported_water_m3_yr = (
         ImportedWater.objects.filter(is_active=True)
@@ -47,6 +50,7 @@ def _get_province_data(location, year):
     )
 
     demand_m3_d, supply_m3_d, supply_security = calculate_supply_security(province)
+    print("[recalculate] calculate_supply_security result:", calculate_supply_security(province))
 
     return {
         'province':             province,
@@ -75,8 +79,8 @@ MOCK_DATA = {
 # ── shared calculation ────────────────────────────────────────────────
 def _build_indicators(data, consumption_override=None):
     """Pure function: takes DB data dict, returns indicators dict."""
-    consumption  = (consumption_override or data['consumption_capita'])/1000
-    demand_m3_d  = consumption * data['population']
+    consumption  = (consumption_override or data['consumption_capita'])
+    demand_m3_d  = consumption/1000 * data['population']
     supply_m3_d  = data['supply_m3_d']
     available    = data['available_water_Mm3']
     opex_total   = data['opex_total']
@@ -95,7 +99,7 @@ def _build_indicators(data, consumption_override=None):
         'total_supply_Mm3':      round(supply_Mm3_yr, 2),
         'total_demand_Mm3':      round(demand_Mm3_yr, 2),
         'total_supply_percent':  round(min(supply_Mm3_yr / available * 100, 100), 1) if available else 0,
-        'total_demand_percent':  round(min(demand_Mm3_yr / available * 100, 100), 1) if available else 0,  # ← missing
+        'total_demand_percent':  round(min(demand_Mm3_yr / available * 100, 100), 1) if available else 0, 
         'supply_security':       supply_Mm3_yr/demand_Mm3_yr * 100,
         'service_time':          service_time,
         'service_time_percent':  round(service_time / SERVICE_HOURS_MAX * 100, 1),
@@ -107,10 +111,8 @@ def _build_indicators(data, consumption_override=None):
 
 # ── views ─────────────────────────────────────────────────────────────
 def water_indicators(request, location, year):
-    try:
-        data = _get_province_data(location, year)
-    except Exception as e:
-        print(f"[water_indicators] mock fallback: {e}")
+    data = _get_province_data(location, year)
+    if data is None:
         data = MOCK_DATA
 
     context = {
@@ -118,18 +120,19 @@ def water_indicators(request, location, year):
         'year':       year,
         'indicators': _build_indicators(data),
     }
+
+    if request.headers.get('HX-Request'):
+        return render(request, 'watersupply/partials/indicators_panel.html', context)  # full panel
     return render(request, 'watersupply/water_indicators.html', context)
 
 
 def recalculate_indicators(request, location, year):
     consumption = float(request.GET.get('consumption', 120))
-
-    try:
-        data = _get_province_data(location, year)
-    except Exception as e:
-        print(f"[recalculate] mock fallback: {e}")
+    data = _get_province_data(location, year)
+    if data is None:
         data = MOCK_DATA
 
     indicators = _build_indicators(data, consumption_override=consumption)
-    print(f"[recalculate] indicators: {indicators}")
-    return render(request, 'watersupply/partials/indicators_grid.html', {'indicators': indicators})
+    print("[recalculate] indicators:", indicators)
+
+    return render(request, 'watersupply/partials/indicators_grid.html', {'indicators': indicators})  # cards only

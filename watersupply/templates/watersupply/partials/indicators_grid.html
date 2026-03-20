@@ -1,3 +1,4 @@
+{% comment %} Indicators_grid.html {% endcomment %}
 <div class="grid">
 
   <div class="card gauge"
@@ -151,93 +152,4 @@
 
 </div>
 
-<script>
-// Named function — called on page load AND after every HTMX swap
-function initGauges() {
-
-  /* ── Semicircle gauges (supply & demand) ── */
-  document.querySelectorAll('[data-gauge-id]').forEach(card => {
-    const val     = parseFloat(card.dataset.gaugeVal) || 0;
-    const id      = card.dataset.gaugeId;
-    const display = card.dataset.gaugeDisplay || '';   // ← from data-gauge-display
-    const path    = document.getElementById(id);
-    const txt     = document.getElementById(id + '-txt');
-    if (!path) return;
-
-    if (id === 'gauge-supply' || id === 'gauge-demand') {
-      const total  = 157.08;
-      const capped = Math.min(val, 100);
-      requestAnimationFrame(() => {
-        path.style.strokeDashoffset = total - (total * capped / 100);
-      });
-      if (txt) txt.textContent = display;           // ← reads data attribute, not baked tag
-
-    } else if (id === 'gauge-sec') {
-      const circ   = 238.76;
-      const MAX    = 130;
-      const capped = Math.min(val, MAX);
-      let col;
-      if      (val > 110) col = '#00e57a';
-      else if (val >= 80) col = '#ffb84d';
-      else if (val >= 50) col = '#ff7a52';
-      else                col = '#ff5252';
-      path.setAttribute('stroke', col);
-      requestAnimationFrame(() => {
-        path.style.strokeDashoffset = circ - (circ * capped / MAX);
-      });
-      if (txt) txt.textContent = Math.round(val) + '%';
-      const sub   = document.getElementById('gauge-sec-sub');
-      const badge = document.getElementById('gauge-sec-badge');
-      if (val > 110) {
-        if (sub)   sub.textContent = '% surplus';
-        if (badge) { badge.style.display = 'block'; badge.style.color = col; }
-      } else {
-        if (sub)   sub.textContent = '% covered';
-        if (badge) badge.style.display = 'none';
-      }
-    }
-  });
-
-  /* ── Pip dots — Service Time ── */
-  document.querySelectorAll('[data-pip-id]').forEach(card => {
-    const val  = parseFloat(card.dataset.pipVal) || 0;
-    const id   = card.dataset.pipId;
-    const wrap = document.getElementById(id);
-    if (!wrap) return;
-    const pips   = wrap.querySelectorAll('.pip');
-    const filled = Math.round(val / 100 * pips.length);
-    // reset first (important after HTMX swap re-adds existing pips)
-    pips.forEach(p => p.classList.remove('on'));
-    pips.forEach((p, i) => {
-      if (i < filled) setTimeout(() => p.classList.add('on'), i * 60);
-    });
-  });
-
-  /* ── Zone bar needle — Consumption per Capita ── */
-  const capCard = document.querySelector('[data-consumption]');
-  const needle  = document.getElementById('cap-needle');
-  if (needle && capCard) {
-    const capVal = parseFloat(capCard.dataset.consumption) || 0;
-    const pct    = Math.min(capVal / 300 * 100, 100);
-    let col = '#00e5c0';
-    if      (capVal < 50)  col = '#ff4d4d';
-    else if (capVal > 250) col = '#ff7a52';
-    else if (capVal > 150) col = '#ffb84d';
-    needle.style.background  = col;
-    needle.style.boxShadow   = `0 0 6px ${col}`;
-    requestAnimationFrame(() => {
-      needle.style.left = `calc(${pct}% - 1.5px)`;
-    });
-  }
-}
-
-// Run on first load
-initGauges();
-
-// Re-run after every HTMX swap targeting #indicators-grid
-document.body.addEventListener('htmx:afterSwap', function(evt) {
-  if (evt.detail.target.id === 'indicators-grid') {
-    initGauges();
-  }
-});
-</script>
+<script>if (typeof initGauges === 'function') initGauges();</script>
