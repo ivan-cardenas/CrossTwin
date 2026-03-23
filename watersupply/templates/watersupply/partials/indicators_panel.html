@@ -205,7 +205,8 @@
 </div>
 
 <script>
-  // ── Zone slider ────────────────────────────────────────
+(function() {  // ← IIFE wrapper — all vars are local, no redeclaration
+
   function zoneStyle(val) {
     if (val < 150)      return { col: '#00e5c0', label: 'Optimal',  cls: 'ok'   };
     else if (val < 250) return { col: '#ffb84d', label: 'Elevated', cls: 'warn' };
@@ -213,7 +214,7 @@
   }
 
   function applyZone(val) {
-    const z = zoneStyle(val);
+    const z    = zoneStyle(val);
     const sl   = document.getElementById('consumption-slider');
     const tag  = document.getElementById('zone-tag');
     const disp = document.getElementById('slider-display');
@@ -228,8 +229,8 @@
     slider.addEventListener('input', e => applyZone(parseInt(e.target.value, 10)));
   }
 
-  // ── Gauge init ─────────────────────────────────────────
-  function initGauges() {
+  // initGauges needs to be global so htmx:afterSwap can call it
+  window.initGauges = function() {
     document.querySelectorAll('[data-gauge-id]').forEach(card => {
       const val     = parseFloat(card.dataset.gaugeVal) || 0;
       const id      = card.dataset.gaugeId;
@@ -238,20 +239,17 @@
       const txt     = document.getElementById(id + '-txt');
       if (!path) return;
 
-      path.getAnimations().forEach(a => a.cancel());
-
       if (id === 'gauge-supply' || id === 'gauge-demand') {
         const total  = 157.08;
-        const target = total - (total * Math.min(val, 100) / 100);
-        path.animate(
-          [{ strokeDashoffset: total }, { strokeDashoffset: target }],
-          { duration: 1200, easing: 'cubic-bezier(0.16,1,0.3,1)', fill: 'forwards' }
-        );
+        const capped = Math.min(val, 100);
+        requestAnimationFrame(() => {
+          path.style.strokeDashoffset = total - (total * capped / 100);
+        });
         if (txt) txt.textContent = display;
 
       } else if (id === 'gauge-sec') {
         const circ   = 238.76;
-        const MAX    = 130;
+        const MAX    = 200;
         const capped = Math.min(val, MAX);
         let col;
         if      (val > 110) col = '#00e57a';
@@ -259,10 +257,9 @@
         else if (val >= 50) col = '#ff7a52';
         else                col = '#ff5252';
         path.setAttribute('stroke', col);
-        path.animate(
-          [{ strokeDashoffset: circ }, { strokeDashoffset: circ - (circ * capped / MAX) }],
-          { duration: 1200, easing: 'cubic-bezier(0.16,1,0.3,1)', fill: 'forwards' }
-        );
+        requestAnimationFrame(() => {
+          path.style.strokeDashoffset = circ - (circ * capped / MAX);
+        });
         if (txt) txt.textContent = Math.round(val) + '%';
         const sub   = document.getElementById('gauge-sec-sub');
         const badge = document.getElementById('gauge-sec-badge');
@@ -288,14 +285,18 @@
         if (i < filled) setTimeout(() => p.classList.add('on'), i * 60);
       });
     });
-  }
+  };
 
-  initGauges();
+  // Run on panel load
+  window.initGauges();
 
+  // Register listener only once
   if (!window._gaugeListenerAttached) {
     document.body.addEventListener('htmx:afterSwap', function(evt) {
-      if (evt.detail.target.id === 'indicators-grid') initGauges();
+      if (evt.detail.target.id === 'indicators-grid') window.initGauges();
     });
     window._gaugeListenerAttached = true;
   }
+
+})();  // ← end IIFE
 </script>

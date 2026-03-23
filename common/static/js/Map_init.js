@@ -59,15 +59,21 @@ function initializeUrbanTwinMap(config) {
     console.error('Map error:', e.error);
   });
 
-  map.on('click', 'provinces-layer', (e) => {
-  const provinceName = e.features[0].properties.ProvinceName;
-  const btn = document.querySelector('[data-tool="water"]');
-  btn.setAttribute('hx-get', 
-    `/watersupply/indicators/${provinceName}/2025/`
-  );
-  htmx.process(btn);  // re-process HTMX attributes after change
-  btn.click();
-});
+  window.ACTIVE_PROVINCE = 'Demo';
+  window.ACTIVE_YEAR = 2025;
+
+  map.on('click', 'common.Province-fill', (e) => {
+    const props = e.features[0].properties;
+    window.ACTIVE_PROVINCE = props.ProvinceName;
+
+    const waterBtn = document.querySelector('[data-tool="water"]');
+    waterBtn.setAttribute(
+      'hx-get',
+      `/watersupply/indicators/${window.ACTIVE_PROVINCE}/${window.ACTIVE_YEAR}/`
+    );
+    htmx.process(waterBtn);
+    waterBtn.click();
+  });
 
   initializeUI();
   return map;

@@ -101,8 +101,3 @@ function initializeUI() {
   });
 }
 
-document.querySelector('[data-tool="water"]')?.addEventListener('click', () => {
-  // Open the side panel
-  document.getElementById('side-panel').classList.add('open');
-  document.getElementById('panel-title').textContent = 'WATER SUPPLY';
-});

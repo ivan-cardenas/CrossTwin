@@ -770,6 +770,7 @@ def _raster_import(raster_path, target_label, field_name, metadata_map, dry_run=
                     
                     
 def upload_geodata(request):
+    
     """
     Two-step wizard:
       GET              -> render Step 1 (upload form)
@@ -1228,3 +1229,8 @@ def upload_geodata(request):
     # Any other method/state → return Step 1
     django_messages.warning(request, "Unexpected state. Starting over.")
     return redirect(reverse('importer:upload_geodata'))
+
+def get_external_data(request):
+    
+    context = {}
+    return render(request, 'importer/external_data.html', context=context)

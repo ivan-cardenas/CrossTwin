@@ -312,13 +312,56 @@
   opacity: 1;
 }
 
+.actions-divider {
+  width: 100%;
+  height: 1px;
+  background: rgba(255,255,255,0.06);
+  margin: 8px 0;
+}
+
+.year-btn-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 0 4px;
+}
+
+.year-btn {
+  width: 100%;
+  padding: 8px 12px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  color: rgba(232,244,255,0.55);
+  font-family: 'DM Mono', monospace;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+
+.year-btn:hover {
+  background: rgba(99,210,255,0.08);
+  border-color: rgba(99,210,255,0.25);
+  color: #e8f4ff;
+}
+
+.year-btn.active {
+  background: rgba(99,210,255,0.12);
+  border-color: rgba(99,210,255,0.45);
+  color: #63d2ff;
+  box-shadow: 0 0 12px rgba(99,210,255,0.15);
+}
+
 /* ============================================================
    LAYERS PANEL
    ============================================================ */
 .layers-panel {
   position: absolute;
-  left: 90px;
-  top: 18px;
+  left: 100px;
+  top: 56px;
   width: 300px;
   max-height: calc(100vh - 180px);
   background: var(--bg-body-mid);
@@ -952,6 +995,7 @@
   display: block;
   margin-bottom: 4px;
   color: var(--accent);
+  font-size: large;
 }
 
 .onboarding-hint p {
@@ -1266,3 +1310,5 @@
 /* ============================================================
 WATER INDICATORS CSS
 */
+
+

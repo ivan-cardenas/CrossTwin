@@ -228,8 +228,27 @@
     
     <button class="action-panel-btn" id="importDataBtn">
       <span class="bi bi-cloud-upload"></span>
-      <span class="action-btn-text">Import Data</span>
+      <span class="action-btn-text">Upload Data</span>
     </button>
+
+    <button class="action-panel-btn" id="getDataBtn">
+      <span class="bi bi-cloud-download"></span>
+      <span class="action-btn-text">Retrive Data from APIs</span>
+    </button>
+  <!-- Year selector -->
+  <div class="actions-divider"></div>
+  <div class="actions-header">
+    <span class="actions-title">SELECT YEAR</span>
+  </div>
+  <div class="year-btn-group" id="year-btn-group">
+    <button class="year-btn active" data-year="2023">2023</button>
+    <button class="year-btn" data-year="2024">2024</button>
+    <button class="year-btn" data-year="2025">2025</button>
+    <button class="year-btn" data-year="2026">2026</button>
+    <button class="year-btn" data-year="2030">2030</button>
+  </div>
+
+</div>
     
     {% comment %} <button class="action-panel-btn" id="scenario1Btn">
       <span class="bi bi-diagram-3"></span>
@@ -275,6 +294,12 @@ document.getElementById('importDataBtn')?.addEventListener('click', () => {
   window.location.href = '/importer/';
 });
 
+document.getElementById('importDataBtn')?.addEventListener('click', () => {
+  console.log('Import Data clicked');
+  // Redirect to import page or open modal
+  window.location.href = '/importer/getExternalData/';
+});
+
 document.getElementById('scenario1Btn')?.addEventListener('click', () => {
   console.log('Scenario 1 clicked');
   // Toggle scenario 1
@@ -290,9 +315,47 @@ document.getElementById('settingsBtn')?.addEventListener('click', () => {
   // Open settings panel
 });
 
-document.querySelector('[data-tool="water"]')?.addEventListener('click', () => {
-  document.getElementById('side-panel').classList.add('open');
-  document.getElementById('panel-title').textContent = 'WATER SUPPLY';
+document.querySelectorAll('.year-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    // Update active state
+    document.querySelectorAll('.year-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    window.ACTIVE_YEAR = parseInt(btn.dataset.year);
+
+    // Update water button URL with new year
+    const waterBtn = document.querySelector('[data-tool="water"]');
+    waterBtn.setAttribute(
+      'hx-get',
+      `/watersupply/indicators/${window.ACTIVE_PROVINCE}/${window.ACTIVE_YEAR}/`
+    );
+    htmx.process(waterBtn);
+
+    // If water panel is already open, reload it with new year
+    const panelTitle = document.getElementById('panel-title');
+    if (panelTitle?.textContent === 'WATER SUPPLY') {
+      htmx.trigger(waterBtn, 'click');
+    }
+  });
 });
+
+document.body.addEventListener('htmx:afterSwap', function(evt) {
+  if (evt.detail.target.id === 'panel-body') {
+    // Open the side panel
+    document.getElementById('side-panel').classList.add('open');
+    document.getElementById('panel-title').textContent = 'WATER SUPPLY';
+  }
+});
+
+function syncWaterBtn() {
+  const waterBtn = document.querySelector('[data-tool="water"]');
+  if (!waterBtn) return;
+  waterBtn.setAttribute(
+    'hx-get',
+    `/watersupply/indicators/${window.ACTIVE_PROVINCE}/${window.ACTIVE_YEAR}/`
+  );
+  htmx.process(waterBtn);
+}
+
 </script>
 {% endblock content %}
