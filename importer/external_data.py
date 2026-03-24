@@ -767,47 +767,60 @@ class GEEAuthManager:
         """
         Initialize GEE with service account credentials.
         """
+        print("[GEE_AUTH] initialize: starting GEE authentication")
         try:
             import ee
-            
+            print("[GEE_AUTH] initialize: earthengine-api library found")
+
             # Parse and validate JSON
             try:
                 credentials_dict = json.loads(service_account_json)
             except json.JSONDecodeError as e:
+                print(f"[GEE_AUTH] initialize: ERROR - invalid JSON: {e}")
                 return False, f"Invalid JSON: {e}"
-            
+
             # Check required fields
             required_fields = ['type', 'project_id', 'private_key', 'client_email']
             missing = [f for f in required_fields if f not in credentials_dict]
             if missing:
+                print(f"[GEE_AUTH] initialize: ERROR - missing fields: {missing}")
                 return False, f"Missing required fields: {', '.join(missing)}"
-            
+
             if credentials_dict.get('type') != 'service_account':
+                print(f"[GEE_AUTH] initialize: ERROR - wrong type: {credentials_dict.get('type')}")
                 return False, "JSON must be a service account key (type='service_account')"
-            
+
+            print(f"[GEE_AUTH] initialize: authenticating as {credentials_dict['client_email']} project={credentials_dict['project_id']}")
+
             # Create credentials
             from google.oauth2 import service_account
             credentials = service_account.Credentials.from_service_account_info(
                 credentials_dict,
                 scopes=['https://www.googleapis.com/auth/earthengine']
             )
-            
+            print("[GEE_AUTH] initialize: credentials object created")
+
             # Initialize Earth Engine
             ee.Initialize(credentials=credentials, project=credentials_dict['project_id'])
-            
+            print("[GEE_AUTH] initialize: ee.Initialize() completed")
+
             # Test connection
             ee.Number(1).getInfo()
-            
+            print("[GEE_AUTH] initialize: connection test passed")
+
             cls._initialized = True
             cls._credentials = credentials
             cls._project_id = credentials_dict['project_id']
-            
+
+            print(f"[GEE_AUTH] initialize: authentication successful")
             return True, f"Successfully authenticated as {credentials_dict['client_email']}"
-            
+
         except ImportError:
+            print("[GEE_AUTH] initialize: ERROR - earthengine-api not installed")
             return False, "Google Earth Engine library not installed. Run: pip install earthengine-api google-auth"
         except Exception as e:
             cls._initialized = False
+            print(f"[GEE_AUTH] initialize: ERROR - {e}")
             return False, f"GEE authentication failed: {str(e)}"
     
     @classmethod
@@ -832,7 +845,7 @@ class PDOKImporter:
     def fetch_wfs(dataset: Dict, bbox: Optional[list] = None, max_features: int = 10000) -> ImportResult:
         """
         Fetch vector data from PDOK WFS service and import directly to Django model.
-        
+
         Args:
             dataset: Catalog entry dict
             bbox: [xmin, ymin, xmax, ymax] in EPSG:28992
@@ -843,18 +856,23 @@ class PDOKImporter:
             layer = dataset["layer"]
             dataset_key = dataset["key"]
             model_path = dataset["target_model"]
-            
+
+            print(f"[PDOK] fetch_wfs: dataset={dataset_key} layer={layer} bbox={bbox}")
+
             # Get field mapping for this dataset
             mapping = FIELD_MAPPINGS.get(dataset_key)
             if not mapping:
+                print(f"[PDOK] fetch_wfs: ERROR - no field mapping for {dataset_key}")
                 return ImportResult("error", f"No field mapping defined for {dataset_key}")
-            
+
             # Get model class
             try:
                 Model = get_model_class(model_path)
+                print(f"[PDOK] fetch_wfs: model class resolved: {Model}")
             except ValueError as e:
+                print(f"[PDOK] fetch_wfs: ERROR - {e}")
                 return ImportResult("error", str(e))
-            
+
             # Build WFS request parameters
             params = {
                 "service": "WFS",
@@ -865,50 +883,57 @@ class PDOKImporter:
                 "srsName": dataset["params"].get("srsName", "EPSG:28992"),
                 "count": max_features,
             }
-            
+
             # Add bbox filter if provided
             if bbox:
                 params["bbox"] = f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]},EPSG:28992"
-            
+                print(f"[PDOK] fetch_wfs: bbox filter applied: {params['bbox']}")
+
             # Add CQL filter if specified
             if "cql_filter" in dataset.get("params", {}):
                 params["cql_filter"] = dataset["params"]["cql_filter"]
-            
+                print(f"[PDOK] fetch_wfs: cql_filter applied: {params['cql_filter'][:80]}...")
+
+            print(f"[PDOK] fetch_wfs: sending GET to {url}")
             logger.info(f"Fetching WFS: {url} layer={layer}")
             response = requests.get(url, params=params, timeout=120)
             response.raise_for_status()
-            
+            print(f"[PDOK] fetch_wfs: response received status={response.status_code} size={len(response.content)} bytes")
+
             geojson = response.json()
             features = geojson.get("features", [])
-            
+            print(f"[PDOK] fetch_wfs: {len(features)} features returned")
+
             if not features:
+                print("[PDOK] fetch_wfs: no features found, returning early")
                 return ImportResult("success", "No features found in the specified area.", 0)
-            
+
             # Import features to database
             geom_field = mapping.get("__geometry__", "geom")
             unique_wfs_prop = mapping.get("__unique__")
             unique_model_field = mapping.get("__unique_field__")
-            
+
             created_count = 0
             updated_count = 0
             errors = []
-            
+
+            print(f"[PDOK] fetch_wfs: starting DB import (geom_field={geom_field} unique={unique_wfs_prop}→{unique_model_field})")
             with transaction.atomic():
                 for feat in features:
                     try:
                         props = feat.get("properties", {})
                         geom_json = feat.get("geometry")
-                        
+
                         if not geom_json:
                             continue
-                        
+
                         # Parse geometry
                         geom = GEOSGeometry(json.dumps(geom_json))
-                        
+
                         # Ensure correct SRID
                         if geom.srid is None:
                             geom.srid = 28992
-                        
+
                         # Convert to MultiPolygon if model expects it
                         model_geom_field = Model._meta.get_field(geom_field)
                         if hasattr(model_geom_field, 'geom_type'):
@@ -920,21 +945,21 @@ class PDOKImporter:
                             elif model_geom_field.geom_type == 'MULTIPOINT' and geom.geom_type == 'Point':
                                 from django.contrib.gis.geos import MultiPoint
                                 geom = MultiPoint(geom)
-                        
+
                         # Build field values from mapping
                         field_values = {geom_field: geom}
-                        
+
                         for wfs_prop, model_field in mapping.items():
                             if wfs_prop.startswith("__"):
                                 continue  # Skip special keys
                             if wfs_prop in props and props[wfs_prop] is not None:
                                 field_values[model_field] = props[wfs_prop]
-                        
+
                         # Use update_or_create if unique field is defined
                         if unique_wfs_prop and unique_model_field and unique_wfs_prop in props:
                             lookup = {unique_model_field: props[unique_wfs_prop]}
                             defaults = {k: v for k, v in field_values.items() if k != unique_model_field}
-                            
+
                             obj, was_created = Model.objects.update_or_create(
                                 **lookup,
                                 defaults=defaults
@@ -947,30 +972,35 @@ class PDOKImporter:
                             # Just create new records
                             Model.objects.create(**field_values)
                             created_count += 1
-                            
+
                     except Exception as e:
                         errors.append(str(e))
                         if len(errors) > 10:
+                            print(f"[PDOK] fetch_wfs: too many errors ({len(errors)}), stopping early")
                             break  # Stop after too many errors
-            
+
+            print(f"[PDOK] fetch_wfs: DB import done - created={created_count} updated={updated_count} errors={len(errors)}")
+
             # Build result message
             msg_parts = []
             if created_count:
                 msg_parts.append(f"created {created_count}")
             if updated_count:
                 msg_parts.append(f"updated {updated_count}")
-            
+
             msg = f"Imported {len(features)} features from {layer}: " + ", ".join(msg_parts) + "."
-            
+
             if errors:
                 msg += f" ({len(errors)} errors)"
                 logger.warning(f"Import errors for {dataset_key}: {errors[:5]}")
-            
+
             return ImportResult("success", msg, created_count, updated_count)
-            
+
         except requests.RequestException as e:
+            print(f"[PDOK] fetch_wfs: HTTP ERROR - {e}")
             return ImportResult("error", f"WFS request failed: {e}")
         except Exception as e:
+            print(f"[PDOK] fetch_wfs: UNEXPECTED ERROR - {e}")
             logger.exception(f"WFS import error for {dataset['key']}")
             return ImportResult("error", f"Import failed: {e}")
 
@@ -983,7 +1013,9 @@ class PDOKImporter:
         try:
             url = dataset.get("wcs_url", dataset["url"])
             layer = dataset["layer"]
-            
+
+            print(f"[PDOK] fetch_wcs: dataset={dataset['key']} layer={layer} bbox={bbox}")
+
             # Build WCS GetCoverage request
             params = {
                 "service": "WCS",
@@ -996,22 +1028,25 @@ class PDOKImporter:
                     f"y({bbox[1]},{bbox[3]})",
                 ],
             }
-            
+
+            print(f"[PDOK] fetch_wcs: sending GET to {url}")
             logger.info(f"Fetching WCS: {url} coverage={layer}")
             response = requests.get(url, params=params, timeout=300)
             response.raise_for_status()
-            
+            print(f"[PDOK] fetch_wcs: response received status={response.status_code} size={len(response.content) / 1024:.1f} KB")
+
             # Save raster to temp file
             temp_dir = Path(settings.MEDIA_ROOT) / "imports" / "pdok" / "rasters"
             temp_dir.mkdir(parents=True, exist_ok=True)
-            
+
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"{dataset['key']}_{timestamp}.tif"
             filepath = temp_dir / filename
-            
+
             with open(filepath, 'wb') as f:
                 f.write(response.content)
-            
+            print(f"[PDOK] fetch_wcs: raster saved to {filepath}")
+
             return ImportResult(
                 "success",
                 f"Downloaded raster from {layer} ({len(response.content) / 1024:.1f} KB).",
@@ -1019,10 +1054,12 @@ class PDOKImporter:
                 0,
                 str(filepath)
             )
-            
+
         except requests.RequestException as e:
+            print(f"[PDOK] fetch_wcs: HTTP ERROR - {e}")
             return ImportResult("error", f"WCS request failed: {e}")
         except Exception as e:
+            print(f"[PDOK] fetch_wcs: UNEXPECTED ERROR - {e}")
             logger.exception(f"WCS import error for {dataset['key']}")
             return ImportResult("error", f"Import failed: {e}")
 
@@ -1033,34 +1070,38 @@ class PDOKImporter:
         """
         try:
             from xml.etree import ElementTree as ET
-            
+
             atom_url = dataset["url"]
-            
+            print(f"[PDOK] fetch_atom: dataset={dataset['key']} atom_url={atom_url} bbox={bbox} max_tiles={max_tiles}")
+
             logger.info(f"Fetching ATOM feed: {atom_url}")
             response = requests.get(atom_url, timeout=60)
             response.raise_for_status()
-            
+            print(f"[PDOK] fetch_atom: ATOM feed received status={response.status_code}")
+
             # Parse ATOM XML
             root = ET.fromstring(response.content)
             ns = {'atom': 'http://www.w3.org/2005/Atom', 'georss': 'http://www.georss.org/georss'}
-            
+
             # Find entries with download links
             entries = root.findall('.//atom:entry', ns)
-            
+            print(f"[PDOK] fetch_atom: {len(entries)} entries found in feed")
+
             if not entries:
+                print("[PDOK] fetch_atom: no entries in ATOM feed")
                 return ImportResult("error", "No entries found in ATOM feed.")
-            
+
             # Filter by bbox intersection
             bbox_polygon = Polygon.from_bbox(bbox)
             matching_tiles = []
-            
+
             for entry in entries:
                 link_el = entry.find('atom:link[@rel="alternate"]', ns)
                 if link_el is None:
                     continue
-                
+
                 tile_url = link_el.get('href')
-                
+
                 # Try to get georss:polygon or georss:box
                 georss_box = entry.find('georss:box', ns)
                 if georss_box is not None:
@@ -1073,36 +1114,45 @@ class PDOKImporter:
                 else:
                     # No georss info, include tile (can't filter)
                     matching_tiles.append(tile_url)
-            
+
+            print(f"[PDOK] fetch_atom: {len(matching_tiles)} tiles intersect bbox")
+
             if not matching_tiles:
+                print("[PDOK] fetch_atom: no tiles intersect the bounding box")
                 return ImportResult("success", "No tiles intersect the specified bounding box.", 0)
-            
+
             # Limit number of tiles
             tiles_to_download = matching_tiles[:max_tiles]
-            
+            print(f"[PDOK] fetch_atom: downloading {len(tiles_to_download)} tiles (capped at max_tiles={max_tiles})")
+
             # Download tiles
             temp_dir = Path(settings.MEDIA_ROOT) / "imports" / "pdok" / "rasters"
             temp_dir.mkdir(parents=True, exist_ok=True)
-            
+
             downloaded = []
-            for tile_url in tiles_to_download:
+            for i, tile_url in enumerate(tiles_to_download, 1):
+                print(f"[PDOK] fetch_atom: [{i}/{len(tiles_to_download)}] downloading {tile_url}")
                 try:
                     tile_response = requests.get(tile_url, timeout=300)
                     tile_response.raise_for_status()
-                    
+
                     tile_filename = tile_url.split('/')[-1]
                     tile_path = temp_dir / tile_filename
-                    
+
                     with open(tile_path, 'wb') as f:
                         f.write(tile_response.content)
-                    
+
+                    print(f"[PDOK] fetch_atom: [{i}/{len(tiles_to_download)}] saved {tile_filename} ({len(tile_response.content) / 1024:.1f} KB)")
                     downloaded.append(str(tile_path))
                 except Exception as e:
+                    print(f"[PDOK] fetch_atom: [{i}/{len(tiles_to_download)}] ERROR downloading {tile_url}: {e}")
                     logger.warning(f"Failed to download tile {tile_url}: {e}")
-            
+
             if not downloaded:
+                print("[PDOK] fetch_atom: no tiles downloaded successfully")
                 return ImportResult("error", "Failed to download any tiles.")
-            
+
+            print(f"[PDOK] fetch_atom: done - {len(downloaded)}/{len(tiles_to_download)} tiles downloaded")
             return ImportResult(
                 "success",
                 f"Downloaded {len(downloaded)} of {len(matching_tiles)} tiles ({max_tiles} max).",
@@ -1110,8 +1160,9 @@ class PDOKImporter:
                 0,
                 downloaded[0] if len(downloaded) == 1 else str(temp_dir)
             )
-            
+
         except Exception as e:
+            print(f"[PDOK] fetch_atom: UNEXPECTED ERROR - {e}")
             logger.exception(f"ATOM import error for {dataset['key']}")
             return ImportResult("error", f"ATOM import failed: {e}")
 
@@ -1122,9 +1173,12 @@ class PDOKImporter:
         """
         layer = dataset.get("layer", "unknown")
         url = dataset["url"]
-        
+
+        print(f"[PDOK] register_wms: dataset={dataset['key']} layer={layer} url={url}")
+
         # For WMS, we typically just store the configuration
         # The actual rendering happens via TiTiler or direct WMS calls
+        print(f"[PDOK] register_wms: WMS layer registered (no data download)")
         return ImportResult(
             "success",
             f"WMS layer registered: {layer}. URL: {url}",
@@ -1184,7 +1238,9 @@ function evaluatePixel(sample) {
         try:
             url = dataset.get("wcs_url", dataset["url"])
             layer = dataset["layer"]
-            
+
+            print(f"[SENTINEL2] fetch_wcs: dataset={dataset['key']} layer={layer} bbox={bbox}")
+
             params = {
                 "service": "WCS",
                 "version": "2.0.1",
@@ -1196,21 +1252,24 @@ function evaluatePixel(sample) {
                     f"Long({bbox[0]},{bbox[2]})",
                 ],
             }
-            
+
+            print(f"[SENTINEL2] fetch_wcs: sending GET to {url}")
             logger.info(f"Fetching Sentinel-2 WCS: {url}")
             response = requests.get(url, params=params, timeout=300)
             response.raise_for_status()
-            
+            print(f"[SENTINEL2] fetch_wcs: response received status={response.status_code} size={len(response.content) / 1024:.1f} KB")
+
             temp_dir = Path(settings.MEDIA_ROOT) / "imports" / "sentinel2"
             temp_dir.mkdir(parents=True, exist_ok=True)
-            
+
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"{dataset['key']}_{timestamp}.tif"
             filepath = temp_dir / filename
-            
+
             with open(filepath, 'wb') as f:
                 f.write(response.content)
-            
+            print(f"[SENTINEL2] fetch_wcs: raster saved to {filepath}")
+
             return ImportResult(
                 "success",
                 f"Downloaded {layer} ({len(response.content) / 1024:.1f} KB).",
@@ -1218,8 +1277,9 @@ function evaluatePixel(sample) {
                 0,
                 str(filepath)
             )
-            
+
         except Exception as e:
+            print(f"[SENTINEL2] fetch_wcs: ERROR - {e}")
             logger.exception(f"Sentinel-2 WCS error for {dataset['key']}")
             return ImportResult("error", f"WCS request failed: {e}")
 
@@ -1235,20 +1295,25 @@ function evaluatePixel(sample) {
         Fetch processed imagery via Sentinel Hub Process API.
         """
         try:
+            print(f"[SENTINEL2] fetch_process_api: dataset={dataset['key']} bbox={bbox} date_from={date_from} date_to={date_to}")
             if not token:
+                print("[SENTINEL2] fetch_process_api: ERROR - no authentication token provided")
                 return ImportResult("error", "Sentinel Hub Process API requires authentication token.")
-            
+
             evalscript_key = dataset.get("evalscript", "TRUE_COLOR")
             evalscript = Sentinel2Importer.EVALSCRIPTS.get(evalscript_key)
-            
+            print(f"[SENTINEL2] fetch_process_api: evalscript={evalscript_key}")
+
             if not evalscript:
+                print(f"[SENTINEL2] fetch_process_api: ERROR - unknown evalscript: {evalscript_key}")
                 return ImportResult("error", f"Unknown evalscript: {evalscript_key}")
-            
+
             # Default date range: last 30 days
             if not date_from:
                 date_from = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
             if not date_to:
                 date_to = datetime.now().strftime("%Y-%m-%d")
+            print(f"[SENTINEL2] fetch_process_api: date range {date_from} → {date_to}")
             
             # Build request payload
             payload = {
@@ -1282,21 +1347,24 @@ function evaluatePixel(sample) {
             }
             
             url = dataset["url"]
+            print(f"[SENTINEL2] fetch_process_api: sending POST to {url}")
             logger.info(f"Fetching Sentinel-2 Process API: {evalscript_key}")
-            
+
             response = requests.post(url, json=payload, headers=headers, timeout=120)
             response.raise_for_status()
-            
+            print(f"[SENTINEL2] fetch_process_api: response received status={response.status_code} size={len(response.content) / 1024:.1f} KB")
+
             temp_dir = Path(settings.MEDIA_ROOT) / "imports" / "sentinel2"
             temp_dir.mkdir(parents=True, exist_ok=True)
-            
+
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"{dataset['key']}_{timestamp}.tif"
             filepath = temp_dir / filename
-            
+
             with open(filepath, 'wb') as f:
                 f.write(response.content)
-            
+            print(f"[SENTINEL2] fetch_process_api: raster saved to {filepath}")
+
             return ImportResult(
                 "success",
                 f"Downloaded {evalscript_key} for {date_from} to {date_to} ({len(response.content) / 1024:.1f} KB).",
@@ -1304,8 +1372,9 @@ function evaluatePixel(sample) {
                 0,
                 str(filepath)
             )
-            
+
         except Exception as e:
+            print(f"[SENTINEL2] fetch_process_api: ERROR - {e}")
             logger.exception(f"Sentinel-2 Process API error for {dataset['key']}")
             return ImportResult("error", f"Process API request failed: {e}")
 
@@ -1314,7 +1383,9 @@ function evaluatePixel(sample) {
         """Register a Sentinel-2 WMS layer."""
         layer = dataset.get("layer", "unknown")
         url = dataset["url"]
-        
+
+        print(f"[SENTINEL2] register_wms: dataset={dataset['key']} layer={layer} url={url}")
+        print("[SENTINEL2] register_wms: WMS layer registered (no data download)")
         return ImportResult(
             "success",
             f"WMS layer registered: {layer}. URL: {url}",
@@ -1337,68 +1408,82 @@ class GEEImporter:
         """
         try:
             import ee
-            
-            if not GEEAuthManager.is_initialized():
-                return ImportResult("error", "GEE not authenticated. Please provide credentials.")
-            
+
             asset_id = dataset.get("asset_id")
             band = dataset.get("band")
-            
+            print(f"[GEE] export_raster: dataset={dataset['key']} asset_id={asset_id} band={band} bbox={bbox} date_from={date_from} date_to={date_to}")
+
+            if not GEEAuthManager.is_initialized():
+                print("[GEE] export_raster: ERROR - GEE not authenticated")
+                return ImportResult("error", "GEE not authenticated. Please provide credentials.")
+
             if not asset_id:
+                print("[GEE] export_raster: ERROR - no asset_id")
                 return ImportResult("error", "No asset_id specified for GEE dataset.")
-            
+
             # Define region
             region = ee.Geometry.Rectangle(bbox)
-            
+            print(f"[GEE] export_raster: region defined from bbox")
+
             # Load image or image collection
             try:
                 # Try as ImageCollection first
+                print(f"[GEE] export_raster: loading ImageCollection {asset_id}")
                 collection = ee.ImageCollection(asset_id)
-                
+
                 # Apply date filter if needed
                 if date_from and date_to:
                     collection = collection.filterDate(date_from, date_to)
-                
+                    print(f"[GEE] export_raster: date filter applied {date_from} → {date_to}")
+
                 # Filter by region
                 collection = collection.filterBounds(region)
-                
+                print("[GEE] export_raster: spatial filter applied, compositing (mean)")
+
                 # Composite (mean)
                 image = collection.mean()
-                
+
             except Exception:
                 # Fall back to single Image
+                print(f"[GEE] export_raster: ImageCollection failed, falling back to single Image")
                 image = ee.Image(asset_id)
-            
+
             # Select band if specified
             if band:
                 image = image.select(band)
-            
+                print(f"[GEE] export_raster: band selected: {band}")
+
             # Clip to region
             image = image.clip(region)
-            
+            print("[GEE] export_raster: image clipped to region")
+
             # Get download URL
+            print("[GEE] export_raster: requesting download URL from GEE")
             url = image.getDownloadURL({
                 'scale': 30,
                 'region': region,
                 'format': 'GEO_TIFF',
                 'crs': 'EPSG:4326'
             })
-            
+            print(f"[GEE] export_raster: download URL obtained: {url[:80]}...")
+
             logger.info(f"Downloading GEE raster from: {url[:100]}...")
             response = requests.get(url, timeout=300)
             response.raise_for_status()
-            
+            print(f"[GEE] export_raster: download complete status={response.status_code} size={len(response.content) / 1024:.1f} KB")
+
             # Save to file
             temp_dir = Path(settings.MEDIA_ROOT) / "imports" / "gee"
             temp_dir.mkdir(parents=True, exist_ok=True)
-            
+
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"{dataset['key']}_{timestamp}.tif"
             filepath = temp_dir / filename
-            
+
             with open(filepath, 'wb') as f:
                 f.write(response.content)
-            
+            print(f"[GEE] export_raster: raster saved to {filepath}")
+
             return ImportResult(
                 "success",
                 f"Downloaded {band or asset_id} ({len(response.content) / 1024:.1f} KB).",
@@ -1406,10 +1491,12 @@ class GEEImporter:
                 0,
                 str(filepath)
             )
-            
+
         except ImportError:
+            print("[GEE] export_raster: ERROR - earthengine-api not installed")
             return ImportResult("error", "earthengine-api not installed.")
         except Exception as e:
+            print(f"[GEE] export_raster: UNEXPECTED ERROR - {e}")
             logger.exception(f"GEE export error for {dataset['key']}")
             return ImportResult("error", f"GEE export failed: {e}")
 
@@ -1436,32 +1523,41 @@ def import_dataset(
     Returns:
         ImportResult with status and details
     """
+    print(f"[DISPATCH] import_dataset: dataset_key={dataset_key} bbox={bbox} date_from={date_from} date_to={date_to}")
+
     if dataset_key not in CATALOG_BY_KEY:
+        print(f"[DISPATCH] import_dataset: ERROR - unknown dataset key: {dataset_key}")
         return ImportResult("error", f"Unknown dataset: {dataset_key}")
-    
+
     dataset = CATALOG_BY_KEY[dataset_key]
-    
+
     # Check if enabled
     if not dataset.get("enabled", True):
+        print(f"[DISPATCH] import_dataset: SKIPPED - dataset {dataset_key} is not enabled")
         return ImportResult("skipped", "Dataset is not yet enabled.")
-    
+
     # Check bbox requirement
     if dataset.get("requires_bbox") and not bbox:
+        print(f"[DISPATCH] import_dataset: SKIPPED - {dataset_key} requires bbox but none provided")
         return ImportResult("skipped", "This dataset requires a bounding box.")
-    
+
     # Initialize GEE if needed
     if dataset["source"] == "gee":
         if gee_credentials:
+            print("[DISPATCH] import_dataset: initializing GEE with provided credentials")
             success, msg = GEEAuthManager.initialize(gee_credentials)
             if not success:
+                print(f"[DISPATCH] import_dataset: ERROR - GEE init failed: {msg}")
                 return ImportResult("error", msg)
         elif not GEEAuthManager.is_initialized():
+            print("[DISPATCH] import_dataset: ERROR - GEE not initialized and no credentials provided")
             return ImportResult("error", "GEE requires authentication. Please provide service account JSON.")
-    
+
     # Dispatch based on source and format
     source = dataset["source"]
     fmt = dataset.get("format", "wfs")
-    
+    print(f"[DISPATCH] import_dataset: dispatching source={source} format={fmt}")
+
     if source == "pdok":
         if fmt == "wfs":
             return PDOKImporter.fetch_wfs(dataset, bbox)
@@ -1471,7 +1567,7 @@ def import_dataset(
             return PDOKImporter.register_wms(dataset)
         elif fmt == "atom":
             return PDOKImporter.fetch_atom(dataset, bbox)
-    
+
     elif source == "sentinel2":
         if fmt == "wcs":
             return Sentinel2Importer.fetch_wcs(dataset, bbox)
@@ -1481,8 +1577,9 @@ def import_dataset(
             )
         elif fmt == "wms":
             return Sentinel2Importer.register_wms(dataset)
-    
+
     elif source == "gee":
         return GEEImporter.export_raster(dataset, bbox, date_from, date_to)
-    
+
+    print(f"[DISPATCH] import_dataset: ERROR - no handler for source={source} format={fmt}")
     return ImportResult("error", f"No handler for source={source}, format={fmt}")
