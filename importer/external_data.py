@@ -29,6 +29,8 @@ from django.contrib.gis.geos import GEOSGeometry, Polygon, MultiPolygon
 from django.conf import settings
 from django.utils import timezone
 
+coordinate_system = settings.COORDINATE_SYSTEM
+
 logger = logging.getLogger(__name__)
 
 
@@ -146,7 +148,7 @@ EXTERNAL_DATA_CATALOG = [
         "url": "https://service.pdok.nl/kadaster/bestuurlijkegebieden/wfs/v1_0",
         "layer": "bestuurlijkegebieden:Provinciegebied",
         "format": "wfs",
-        "params": {"srsName": "EPSG:28992"},
+        "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "enabled": True,
     },
     {
@@ -159,7 +161,7 @@ EXTERNAL_DATA_CATALOG = [
         "url": "https://service.pdok.nl/kadaster/bestuurlijkegebieden/wfs/v1_0",
         "layer": "bestuurlijkegebieden:Gemeentegebied",
         "format": "wfs",
-        "params": {"srsName": "EPSG:28992"},
+        "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "enabled": True,
     },
     {
@@ -172,7 +174,7 @@ EXTERNAL_DATA_CATALOG = [
         "url": "https://service.pdok.nl/cbs/wijkenbuurten/wfs/v1_0",
         "layer": "wijkenbuurten:buurten",
         "format": "wfs",
-        "params": {"srsName": "EPSG:28992"},
+        "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "enabled": True,
     },
 
@@ -187,7 +189,7 @@ EXTERNAL_DATA_CATALOG = [
         "url": "https://service.pdok.nl/lv/bag/wfs/v2_0",
         "layer": "bag:pand",
         "format": "wfs",
-        "params": {"srsName": "EPSG:28992"},
+        "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "requires_bbox": True,
         "enabled": True,
     },
@@ -201,7 +203,7 @@ EXTERNAL_DATA_CATALOG = [
         "url": "https://service.pdok.nl/lv/bag/wfs/v2_0",
         "layer": "bag:openbareruimte",
         "format": "wfs",
-        "params": {"srsName": "EPSG:28992"},
+        "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "requires_bbox": True,
         "enabled": True,
     },
@@ -217,7 +219,7 @@ EXTERNAL_DATA_CATALOG = [
         "url": "https://service.pdok.nl/rvo/natura2000/wfs/v1_0",
         "layer": "natura2000",
         "format": "wfs",
-        "params": {"srsName": "EPSG:28992"},
+        "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "enabled": True,
     },
     {
@@ -230,7 +232,7 @@ EXTERNAL_DATA_CATALOG = [
         "url": "https://service.pdok.nl/brt/top10nl/wfs/v1_0",
         "layer": "top10nl:Waterdeel",
         "format": "wfs",
-        "params": {"srsName": "EPSG:28992"},
+        "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "requires_bbox": True,
         "enabled": True,
     },
@@ -244,7 +246,7 @@ EXTERNAL_DATA_CATALOG = [
         "url": "https://service.pdok.nl/rws/vaarweginfo/wfs/v1_0",
         "layer": "vaarweginfo:vaarwegvakken",
         "format": "wfs",
-        "params": {"srsName": "EPSG:28992"},
+        "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "enabled": True,
     },
     {
@@ -258,7 +260,7 @@ EXTERNAL_DATA_CATALOG = [
         "layer": "top10nl:Terrein",
         "format": "wfs",
         "params": {
-            "srsName": "EPSG:28992",
+            "srsName": "EPSG:{coordinate_system}",
             "cql_filter": "typelandgebruik='bos: loofbos' OR typelandgebruik='bos: naaldbos' OR typelandgebruik='bos: gemengd bos'"
         },
         "requires_bbox": True,
@@ -276,7 +278,7 @@ EXTERNAL_DATA_CATALOG = [
         "url": "https://service.pdok.nl/rvo/epontline/wfs/v1_0",
         "layer": "epontline:Energielabel",
         "format": "wfs",
-        "params": {"srsName": "EPSG:28992"},
+        "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "requires_bbox": True,
         "enabled": True,
     },
@@ -291,7 +293,7 @@ EXTERNAL_DATA_CATALOG = [
         "target_model": "common.DigitalElevationModel",
         "url": "https://service.pdok.nl/rws/ahn/atom/v1_0/dtm_05m.xml",
         "format": "atom",
-        "params": {"srsName": "EPSG:28992"},
+        "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "requires_bbox": True,
         "enabled": True,
     },
@@ -305,7 +307,7 @@ EXTERNAL_DATA_CATALOG = [
         "url": "https://service.pdok.nl/rws/ahn/wms/v1_0",
         "layer": "dtm_05m",
         "format": "wms",
-        "params": {"srsName": "EPSG:28992"},
+        "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "enabled": True,
     },
     {
@@ -317,7 +319,7 @@ EXTERNAL_DATA_CATALOG = [
         "target_model": "common.DigitalSurfaceModel",
         "url": "https://service.pdok.nl/rws/ahn/atom/v1_0/dsm_05m.xml",
         "format": "atom",
-        "params": {"srsName": "EPSG:28992"},
+        "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "requires_bbox": True,
         "enabled": True,
     },
@@ -331,7 +333,7 @@ EXTERNAL_DATA_CATALOG = [
         "url": "https://service.pdok.nl/rws/ahn/wms/v1_0",
         "layer": "dsm_05m",
         "format": "wms",
-        "params": {"srsName": "EPSG:28992"},
+        "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "enabled": True,
     },
 
@@ -347,7 +349,7 @@ EXTERNAL_DATA_CATALOG = [
         "wcs_url": "https://service.pdok.nl/rvo/lgn/wcs/v1_0",
         "layer": "lgn2021",
         "format": "wcs",
-        "params": {"srsName": "EPSG:28992"},
+        "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "requires_bbox": True,
         "enabled": True,
     },
