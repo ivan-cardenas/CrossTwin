@@ -49,6 +49,7 @@ FIELD_MAPPINGS = {
         "__unique__": "naam",
         "__unique_field__": "ProvinceName",
         "naam": "ProvinceName",
+        "code": "id",
         # Population fields are computed in model.save(), not from WFS
     },
     "pdok_cities": {
@@ -56,7 +57,7 @@ FIELD_MAPPINGS = {
         "__unique__": "naam",
         "__unique_field__": "CityName",
         "naam": "CityName",
-        "code": "code",
+        "code": "id",        
         # Province FK will be resolved via spatial join
     },
     "pdok_neighborhoods": {

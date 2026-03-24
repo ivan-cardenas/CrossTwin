@@ -6,6 +6,9 @@ Handles PDOK WFS fetches and passes to _generic_import.
 """
 import json
 import logging
+import os
+import tempfile
+import geopandas as gpd
 
 from django.conf import settings
 from django.shortcuts import render, redirect
@@ -14,6 +17,7 @@ from django.contrib import messages as django_messages
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.conf import settings
+import requests
 
 from .external_data import (
     EXTERNAL_DATA_CATALOG,
@@ -105,7 +109,7 @@ def _fetch_pdok_wfs(ds, bbox=None, max_features=50000):
     # Write to a temp file so GeoPandas can read it cleanly
     fd, tmp = tempfile.mkstemp(suffix=".geojson")
     try:
-        with os.fdopen(fd, "w") as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(resp.text)
 
         gdf = gpd.read_file(tmp)
