@@ -19,7 +19,7 @@ def build_model_registry():
     return registry
 
 MODEL_REGISTRY = build_model_registry()
-
+print(MODEL_REGISTRY)
 
 VECTOR_REGISTRY = {
         key: value 

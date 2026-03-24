@@ -1,0 +1,471 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="space-y-8">
+    <!-- Header Section -->
+    <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+        <div class="space-y-2">
+            <p class="text-[11px] uppercase tracking-[0.28em] text-cyan-100/80">External Sources</p>
+            <h1 class="text-2xl md:text-3xl font-semibold text-slate-50">Import Public Data</h1>
+            <p class="text-slate-300 max-w-2xl">
+                Select datasets from PDOK, Sentinel-2, or Google Earth Engine to import directly into the database.
+            </p>
+        </div>
+    <!-- Messages -->
+    {% if messages %}
+    <div class="space-y-2">
+        {% for m in messages %}
+        <div class="flex items-start gap-3 rounded-xl border border-cyan-500/35 bg-cyan-500/10 px-4 py-3 text-cyan-50">
+            <span class="mt-1 h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_10px_rgba(94,234,212,0.6)]"></span>
+            <p>{{ m }}</p>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- GEE Credentials Panel (shown when GEE datasets selected) -->
+    <div id="gee-credentials-panel" class="hidden glass rounded-xl overflow-hidden">
+        <div class="px-5 py-3 border-b border-white/5 flex items-center gap-3">
+            <div class="flex-shrink-0 h-7 w-7 rounded-lg bg-amber-500/15 border border-amber-500/25 flex items-center justify-center">
+                <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+                </svg>
+            </div>
+            <div>
+                <h3 class="text-sm font-medium text-slate-200">Google Earth Engine Authentication</h3>
+                <p class="text-xs text-slate-400">Paste your service account JSON to access GEE datasets</p>
+            </div>
+        </div>
+        <div class="px-5 py-4 space-y-3">
+            <textarea id="gee-credentials-input"
+                      rows="6"
+                      placeholder='{"type": "service_account", "project_id": "...", "private_key": "...", ...}'
+                      class="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200 placeholder-slate-500 font-mono focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 focus:outline-none resize-none"></textarea>
+            <p class="text-xs text-slate-500">
+                <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                Create a service account in Google Cloud Console with Earth Engine API enabled. Download the JSON key file and paste its contents here.
+            </p>
+        </div>
+    </div>
+
+    <!-- Date Range Panel (shown when temporal datasets selected) -->
+    <div id="date-range-panel" class="hidden glass rounded-xl overflow-hidden">
+        <div class="px-5 py-3 border-b border-white/5 flex items-center gap-3">
+            <div class="flex-shrink-0 h-7 w-7 rounded-lg bg-violet-500/15 border border-violet-500/25 flex items-center justify-center">
+                <svg class="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                </svg>
+            </div>
+            <div>
+                <h3 class="text-sm font-medium text-slate-200">Date Range</h3>
+                <p class="text-xs text-slate-400">Specify the time period for temporal datasets</p>
+            </div>
+        </div>
+        <div class="px-5 py-4 flex flex-wrap items-center gap-4">
+            <div class="flex items-center gap-2">
+                <label for="date-from" class="text-sm text-slate-400">From:</label>
+                <input type="date" id="date-from"
+                       class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/50 focus:outline-none">
+            </div>
+            <div class="flex items-center gap-2">
+                <label for="date-to" class="text-sm text-slate-400">To:</label>
+                <input type="date" id="date-to"
+                       class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/50 focus:outline-none">
+            </div>
+            <p class="text-xs text-slate-500 w-full">
+                <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                For GEE ImageCollections, data will be composited (mean) over this range. For Sentinel-2 Process API, this defines the acquisition window.
+            </p>
+        </div>
+    </div>
+
+    <!-- Selection toolbar -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 glass rounded-xl px-5 py-4">
+        <div class="flex items-center gap-4">
+            <span id="selection-count" class="text-sm text-slate-300">
+                <span class="font-semibold text-cyan-300" id="count-number">0</span> datasets selected
+            </span>
+            <button type="button" id="select-all-btn" class="text-xs text-slate-400 hover:text-cyan-300 transition-colors underline underline-offset-2">
+                Select all enabled
+            </button>
+            <button type="button" id="deselect-all-btn" class="text-xs text-slate-400 hover:text-cyan-300 transition-colors underline underline-offset-2">
+                Clear selection
+            </button>
+        </div>
+        <button type="button" id="import-btn" disabled
+                class="btn-primary opacity-50 cursor-not-allowed transition-all duration-200">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+            </svg>
+            <span>Import Selected</span>
+        </button>
+    </div>
+
+    <!-- Bbox notice (shown when any bbox-requiring dataset is selected) -->
+    <div id="bbox-notice" class="hidden flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/8 px-4 py-3 text-amber-100">
+        <svg class="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+        </svg>
+        <div class="text-sm">
+            <span class="font-medium">Some selected datasets require a bounding box.</span>
+            These large datasets (marked with <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-xs font-medium">bbox</span>) 
+            will only fetch features within a defined area of interest to avoid excessive download sizes.
+            Bounding-box filtering will be available in a future update.
+        </div>
+    </div>
+
+    <!-- Source sections -->
+    {% for source in sources %}
+    <div class="space-y-4">
+        <!-- Source header -->
+        <div class="flex items-center gap-3">
+            {% if source.info.color == "cyan" %}
+            <div class="flex-shrink-0 h-9 w-9 rounded-lg bg-cyan-500/15 border border-cyan-500/25 flex items-center justify-center">
+                <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+            </div>
+            {% elif source.info.color == "violet" %}
+            <div class="flex-shrink-0 h-9 w-9 rounded-lg bg-violet-500/15 border border-violet-500/25 flex items-center justify-center">
+                <svg class="w-5 h-5 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                </svg>
+            </div>
+            {% elif source.info.color == "amber" %}
+            <div class="flex-shrink-0 h-9 w-9 rounded-lg bg-amber-500/15 border border-amber-500/25 flex items-center justify-center">
+                <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"/>
+                </svg>
+            </div>
+            {% endif %}
+            <div>
+                <h2 class="text-lg font-semibold text-slate-50">{{ source.info.name }}</h2>
+                <p class="text-sm text-slate-400">{{ source.info.description }}</p>
+            </div>
+            <span class="ml-auto text-xs text-slate-500 tabular-nums">{{ source.dataset_count }} dataset{{ source.dataset_count|pluralize }}</span>
+        </div>
+
+        <!-- Categories & datasets -->
+        {% for category in source.categories %}
+        <div class="glass rounded-xl overflow-hidden">
+            <div class="px-5 py-3 border-b border-white/5">
+                <h3 class="text-sm font-medium text-slate-200 uppercase tracking-wide">{{ category.name }}</h3>
+            </div>
+            <div class="divide-y divide-white/5">
+                {% for ds in category.datasets %}
+                <label class="dataset-row flex items-start gap-4 px-5 py-4 cursor-pointer hover:bg-white/[0.03] transition-colors {% if not ds.enabled %}opacity-50{% endif %}"
+                       data-key="{{ ds.key }}"
+                       data-source="{{ ds.source }}"
+                       data-enabled="{{ ds.enabled|yesno:'true,false' }}"
+                       data-requires-bbox="{{ ds.requires_bbox|default_if_none:False|yesno:'true,false' }}"
+                       data-requires-auth="{{ ds.requires_auth|default_if_none:False|yesno:'true,false' }}"
+                       data-requires-date-range="{{ ds.requires_date_range|default_if_none:False|yesno:'true,false' }}">
+                    <div class="pt-0.5">
+                        <input type="checkbox"
+                               name="datasets"
+                               value="{{ ds.key }}"
+                               {% if not ds.enabled %}disabled{% endif %}
+                               class="dataset-checkbox h-4 w-4 rounded border-white/20 bg-white/5 text-cyan-500 focus:ring-cyan-500/50 focus:ring-offset-0 cursor-pointer disabled:cursor-not-allowed">
+                    </div>
+                    <div class="flex-1 min-w-0 space-y-1">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="text-sm font-medium text-slate-100">{{ ds.name }}</span>
+                            {% if ds.requires_bbox %}
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 text-[10px] font-semibold uppercase tracking-wider">bbox</span>
+                            {% endif %}
+                            {% if ds.requires_auth %}
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-300 text-[10px] font-semibold uppercase tracking-wider">auth</span>
+                            {% endif %}
+                            {% if ds.requires_date_range %}
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300 text-[10px] font-semibold uppercase tracking-wider">temporal</span>
+                            {% endif %}
+                            <!-- Format badges -->
+                            {% if ds.format == "wms" %}
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 text-[10px] font-semibold uppercase tracking-wider">WMS</span>
+                            {% elif ds.format == "wfs" %}
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300 text-[10px] font-semibold uppercase tracking-wider">WFS</span>
+                            {% elif ds.format == "wcs" or ds.format == "atom" or ds.format == "process_api" or ds.format == "raster" %}
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 text-[10px] font-semibold uppercase tracking-wider">raster</span>
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-500/15 text-slate-300 text-[10px] font-semibold uppercase tracking-wider">tiff</span>
+                            {% endif %}
+                        </div>
+                        <p class="text-xs text-slate-400 leading-relaxed">{{ ds.description }}</p>
+                        <div class="flex items-center gap-3 text-[11px] text-slate-500">
+                            <span>Target: <code class="px-1 py-0.5 rounded bg-white/5 text-slate-300">{{ ds.target_model }}</code></span>
+                        </div>
+                    </div>
+                    <!-- Status indicator (for import progress) -->
+                    <div class="import-status hidden flex-shrink-0" data-key="{{ ds.key }}">
+                        <div class="status-pending hidden">
+                            <svg class="w-5 h-5 text-slate-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        </div>
+                        <div class="status-success hidden">
+                            <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                        </div>
+                        <div class="status-skipped hidden">
+                            <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                            </svg>
+                        </div>
+                        <div class="status-error hidden">
+                            <svg class="w-5 h-5 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </div>
+                    </div>
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endfor %}
+
+    <!-- Results panel (shown after import) -->
+    <div id="results-panel" class="hidden glass rounded-xl overflow-hidden">
+        <div class="px-5 py-3 border-b border-white/5">
+            <h3 class="text-sm font-medium text-slate-200 uppercase tracking-wide">Import Results</h3>
+        </div>
+        <div id="results-list" class="divide-y divide-white/5">
+            <!-- Populated dynamically -->
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const catalog = {{ catalog_json|safe }};
+    const checkboxes = document.querySelectorAll('.dataset-checkbox');
+    const importBtn = document.getElementById('import-btn');
+    const selectAllBtn = document.getElementById('select-all-btn');
+    const deselectAllBtn = document.getElementById('deselect-all-btn');
+    const countEl = document.getElementById('count-number');
+    const bboxNotice = document.getElementById('bbox-notice');
+    const geeCredentialsPanel = document.getElementById('gee-credentials-panel');
+    const geeCredentialsInput = document.getElementById('gee-credentials-input');
+    const dateRangePanel = document.getElementById('date-range-panel');
+    const dateFromInput = document.getElementById('date-from');
+    const dateToInput = document.getElementById('date-to');
+    const resultsPanel = document.getElementById('results-panel');
+    const resultsList = document.getElementById('results-list');
+
+    // Set default date range (last 30 days)
+    const today = new Date();
+    const thirtyDaysAgo = new Date(today);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    dateToInput.value = today.toISOString().split('T')[0];
+    dateFromInput.value = thirtyDaysAgo.toISOString().split('T')[0];
+
+    function getSelected() {
+        return Array.from(checkboxes)
+            .filter(cb => cb.checked)
+            .map(cb => cb.value);
+    }
+
+    function updateUI() {
+        const selected = getSelected();
+        const count = selected.length;
+        countEl.textContent = count;
+
+        if (count > 0) {
+            importBtn.disabled = false;
+            importBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        } else {
+            importBtn.disabled = true;
+            importBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        }
+
+        // Show bbox notice if any bbox-requiring dataset is selected
+        const needsBbox = selected.some(k => catalog[k] && catalog[k].requires_bbox);
+        bboxNotice.classList.toggle('hidden', !needsBbox);
+
+        // Show GEE credentials panel if any GEE dataset is selected
+        const needsGeeAuth = selected.some(k => catalog[k] && catalog[k].source === 'gee');
+        geeCredentialsPanel.classList.toggle('hidden', !needsGeeAuth);
+
+        // Show date range panel if any temporal dataset is selected
+        const needsDateRange = selected.some(k => catalog[k] && catalog[k].requires_date_range);
+        dateRangePanel.classList.toggle('hidden', !needsDateRange);
+    }
+
+    checkboxes.forEach(cb => cb.addEventListener('change', updateUI));
+
+    selectAllBtn.addEventListener('click', function () {
+        checkboxes.forEach(cb => {
+            if (!cb.disabled) cb.checked = true;
+        });
+        updateUI();
+    });
+
+    deselectAllBtn.addEventListener('click', function () {
+        checkboxes.forEach(cb => cb.checked = false);
+        updateUI();
+    });
+
+    // Import button handler
+    importBtn.addEventListener('click', async function () {
+        const selected = getSelected();
+        if (!selected.length) return;
+
+        // Check if GEE credentials needed but not provided
+        const needsGeeAuth = selected.some(k => catalog[k] && catalog[k].source === 'gee');
+        if (needsGeeAuth && !geeCredentialsInput.value.trim()) {
+            alert('Please paste your Google Earth Engine service account JSON credentials.');
+            geeCredentialsInput.focus();
+            return;
+        }
+
+        // Validate GEE credentials JSON if provided
+        let geeCredentials = null;
+        if (geeCredentialsInput.value.trim()) {
+            try {
+                geeCredentials = geeCredentialsInput.value.trim();
+                JSON.parse(geeCredentials); // Validate it's valid JSON
+            } catch (e) {
+                alert('Invalid JSON in GEE credentials. Please check the format.');
+                geeCredentialsInput.focus();
+                return;
+            }
+        }
+
+        // Disable button, show loading
+        importBtn.disabled = true;
+        importBtn.innerHTML = `
+            <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span>Importing…</span>
+        `;
+
+        // Reset all status indicators
+        document.querySelectorAll('.import-status').forEach(el => {
+            el.classList.add('hidden');
+            el.querySelector('.status-pending').classList.add('hidden');
+            el.querySelector('.status-success').classList.add('hidden');
+            el.querySelector('.status-skipped').classList.add('hidden');
+            el.querySelector('.status-error').classList.add('hidden');
+        });
+
+        // Show pending status on each selected row
+        selected.forEach(key => {
+            const statusEl = document.querySelector(`.import-status[data-key="${key}"]`);
+            if (statusEl) {
+                statusEl.classList.remove('hidden');
+                statusEl.querySelector('.status-pending').classList.remove('hidden');
+            }
+        });
+
+        try {
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value
+                || document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];
+
+            const payload = {
+                datasets: selected,
+                date_from: dateFromInput.value || null,
+                date_to: dateToInput.value || null,
+            };
+
+            if (geeCredentials) {
+                payload.gee_credentials = geeCredentials;
+            }
+
+            const resp = await fetch("{% url 'importer:start_external_import' %}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken,
+                },
+                body: JSON.stringify(payload),
+            });
+
+            const data = await resp.json();
+
+            if (data.error) {
+                alert(data.error);
+                return;
+            }
+
+            // Update status icons
+            for (const [key, result] of Object.entries(data.results || {})) {
+                const statusEl = document.querySelector(`.import-status[data-key="${key}"]`);
+                if (!statusEl) continue;
+
+                statusEl.querySelector('.status-pending').classList.add('hidden');
+
+                if (result.status === 'success') {
+                    statusEl.querySelector('.status-success').classList.remove('hidden');
+                } else if (result.status === 'skipped') {
+                    statusEl.querySelector('.status-skipped').classList.remove('hidden');
+                } else if (result.status === 'error') {
+                    statusEl.querySelector('.status-error').classList.remove('hidden');
+                } else {
+                    // pending / not-implemented
+                    statusEl.querySelector('.status-skipped').classList.remove('hidden');
+                }
+            }
+
+            // Show results panel
+            resultsList.innerHTML = '';
+            for (const [key, result] of Object.entries(data.results || {})) {
+                const ds = catalog[key];
+                const name = ds ? ds.name : key;
+                const statusColor = result.status === 'success'
+                    ? 'text-emerald-300'
+                    : result.status === 'error'
+                        ? 'text-rose-300'
+                        : 'text-amber-300';
+
+                let extraInfo = '';
+                if (result.records_created) {
+                    extraInfo = ` (${result.records_created} records)`;
+                }
+                if (result.file_path) {
+                    extraInfo += ` → ${result.file_path.split('/').pop()}`;
+                }
+
+                resultsList.innerHTML += `
+                    <div class="px-5 py-3 flex items-start gap-3">
+                        <span class="mt-0.5 h-2 w-2 rounded-full ${
+                            result.status === 'success' ? 'bg-emerald-400' :
+                            result.status === 'error' ? 'bg-rose-400' : 'bg-amber-400'
+                        }"></span>
+                        <div class="min-w-0">
+                            <p class="text-sm font-medium text-slate-200">${name}</p>
+                            <p class="text-xs ${statusColor}">${result.message}${extraInfo}</p>
+                        </div>
+                    </div>
+                `;
+            }
+            resultsPanel.classList.remove('hidden');
+
+        } catch (err) {
+            console.error('Import request failed:', err);
+            alert('Import request failed. Check the console for details.');
+        } finally {
+            importBtn.disabled = false;
+            importBtn.innerHTML = `
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                </svg>
+                <span>Import Selected</span>
+            `;
+            updateUI();
+        }
+    });
+});
+</script>
+
+<!-- CSRF token for AJAX -->
+{% csrf_token %}
+{% endblock content %}
