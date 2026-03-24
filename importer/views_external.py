@@ -7,6 +7,7 @@ Add this to your existing views.py or import from it.
 import json
 import logging
 
+from django.conf import settings
 from django.shortcuts import render, redirect
 from django.urls import reverse
 from django.contrib import messages as django_messages
@@ -22,6 +23,8 @@ from .external_data import (
 )
 
 logger = logging.getLogger(__name__)
+
+coordinate_system = settings.COORDINATE_SYSTEM
 
 
 def get_external_data(request):
@@ -81,7 +84,7 @@ def start_external_import(request):
         return JsonResponse({"error": "Invalid JSON"}, status=400)
 
     selected_keys = body.get("datasets", [])
-    bbox = body.get("bbox", None)  # [xmin, ymin, xmax, ymax] in EPSG:28992
+    bbox = body.get("bbox", None)  # [xmin, ymin, xmax, ymax] in EPSG:{coordinate_system}
     gee_credentials = body.get("gee_credentials", None)  # Service account JSON string
     sentinel_token = body.get("sentinel_token", None)  # Copernicus token (future)
     date_from = body.get("date_from", None)  # YYYY-MM-DD
