@@ -6,13 +6,8 @@ Handles PDOK WFS fetches and passes to _generic_import.
 """
 import json
 import logging
-import tempfile
-import os
 
-import geopandas as gpd
-import pandas as pd
-import requests
-
+from django.conf import settings
 from django.shortcuts import render, redirect
 from django.urls import reverse
 from django.contrib import messages as django_messages
@@ -30,12 +25,8 @@ from .views import _generic_import, _get_model_spec
 
 logger = logging.getLogger(__name__)
 
-COORDINATE_SYSTEM = settings.COORDINATE_SYSTEM  # 28992
+coordinate_system = settings.COORDINATE_SYSTEM
 
-
-# ---------------------------------------------------------------------------
-# Page view
-# ---------------------------------------------------------------------------
 
 def get_external_data(request):
     """
@@ -377,7 +368,11 @@ def start_external_import(request):
         return JsonResponse({"error": "Invalid JSON"}, status=400)
 
     selected_keys = body.get("datasets", [])
-    bbox = body.get("bbox", None)
+    bbox = body.get("bbox", None)  # [xmin, ymin, xmax, ymax] in EPSG:{coordinate_system}
+    gee_credentials = body.get("gee_credentials", None)  # Service account JSON string
+    sentinel_token = body.get("sentinel_token", None)  # Copernicus token (future)
+    date_from = body.get("date_from", None)  # YYYY-MM-DD
+    date_to = body.get("date_to", None)  # YYYY-MM-DD
 
     if not selected_keys:
         return JsonResponse({"error": "No datasets selected."}, status=400)
