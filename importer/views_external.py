@@ -18,13 +18,15 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.conf import settings
 import requests
+from pyproj import Transformer
 
-from .external_data import (
+from .external_catalog import (
     EXTERNAL_DATA_CATALOG,
     CATALOG_BY_KEY,
     SOURCE_INFO,
-    get_catalog_grouped,
+    get_catalog_grouped
 )
+
 from .views import _generic_import, _get_model_spec
 
 logger = logging.getLogger(__name__)
@@ -40,7 +42,7 @@ def get_external_data(request):
     catalog_grouped = get_catalog_grouped()
 
     sources = []
-    for src_key in ["pdok", "sentinel2", "gee"]:
+    for src_key in ["pdok", "CBS", "sentinel2", "gee"]:
         info = SOURCE_INFO[src_key]
         categories = []
         for cat_name, datasets in catalog_grouped.get(src_key, {}).items():
@@ -58,12 +60,16 @@ def get_external_data(request):
 
     context = {
         "sources": sources,
+        "mapbox_access_token": settings.MAPBOX_ACCESS_TOKEN,
+        "coordinate_system": settings.COORDINATE_SYSTEM,
         "catalog_json": json.dumps(
             {d["key"]: {
                 "name": d["name"],
+                "source": d["source"],
                 "target_model": d["target_model"],
                 "requires_bbox": d.get("requires_bbox", False),
                 "requires_auth": d.get("requires_auth", False),
+                "requires_date_range": d.get("requires_date_range", False),
                 "enabled": d.get("enabled", True),
             } for d in EXTERNAL_DATA_CATALOG}
         ),
@@ -99,8 +105,16 @@ def _fetch_pdok_wfs(ds, bbox=None, max_features=50000):
     }
 
     if bbox:
-        # bbox expected as [xmin, ymin, xmax, ymax] in EPSG:28992
-        params["bbox"] = f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]},urn:ogc:def:crs:EPSG::28992"
+        # bbox arrives as [west, south, east, north] in WGS84 from the frontend map.
+        # Convert to the target CRS required by this WFS endpoint.
+        target_srs = ds["params"].get("srsName", "EPSG:28992")
+        target_epsg = int(target_srs.split(":")[-1])
+        if target_epsg != 4326:
+            tx = Transformer.from_crs("EPSG:4326", f"EPSG:{target_epsg}", always_xy=True)
+            x1, y1 = tx.transform(bbox[0], bbox[1])
+            x2, y2 = tx.transform(bbox[2], bbox[3])
+            bbox = [x1, y1, x2, y2]
+        params["bbox"] = f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]},urn:ogc:def:crs:EPSG::{target_epsg}"
 
     logger.info("Fetching WFS: %s  layer=%s", ds["url"], ds["layer"])
     resp = requests.get(ds["url"], params=params, timeout=120)
@@ -377,6 +391,10 @@ def start_external_import(request):
     sentinel_token = body.get("sentinel_token", None)  # Copernicus token (future)
     date_from = body.get("date_from", None)  # YYYY-MM-DD
     date_to = body.get("date_to", None)  # YYYY-MM-DD
+    
+    #TODO: create retriever for gee
+    #TODO: create retriever for sentinel
+    #TODO: use dates for retrievers
 
     if not selected_keys:
         return JsonResponse({"error": "No datasets selected."}, status=400)
@@ -411,14 +429,16 @@ def start_external_import(request):
             continue
 
         # ── WFS vector datasets ───────────────────────────────────
-        if ds["source"] == "pdok":
+        if ds["source"] == "pdok" or ds["source"] == "CBS":
             results[key] = _handle_pdok_vector(ds, bbox)
             continue
+        
+        
 
         # ── Fallback ──────────────────────────────────────────────
         results[key] = {
             "status": "skipped",
-            "message": f"No handler for source '{ds['source']}' / format '{ds.get('format')}'.",
+            "message": f"ERROR ON VIEWS_EXTERNAL:No handler for source '{ds['source']}' / format '{ds.get('format')}'.",
         }
 
     return JsonResponse({"results": results})

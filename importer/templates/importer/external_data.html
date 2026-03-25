@@ -1,15 +1,23 @@
 {% extends "base.html" %}
 {% load static %}
 
+{% block extra_css %}
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.18.0/mapbox-gl.css" rel="stylesheet">
+{% endblock extra_css %}
+
+{% block extra_js %}
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.18.0/mapbox-gl.js"></script>
+{% endblock extra_js %}
+
 {% block content %}
 <div class="space-y-8">
     <!-- Header Section -->
-    <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+    <div class="flex flex-cols gap-4">
         <div class="space-y-2">
             <p class="text-[11px] uppercase tracking-[0.28em] text-cyan-100/80">External Sources</p>
             <h1 class="text-2xl md:text-3xl font-semibold text-slate-50">Import Public Data</h1>
-            <p class="text-slate-300 max-w-2xl">
-                Select datasets from PDOK, Sentinel-2, or Google Earth Engine to import directly into the database.
+            <p class="text-slate-400 max-w-2xl">
+                Select datasets from PDOK, CBS, Sentinel-2, or Google Earth Engine to import directly into the database.
             </p>
         </div>
     <!-- Messages -->
@@ -24,70 +32,20 @@
     </div>
     {% endif %}
 
-    <!-- GEE Credentials Panel (shown when GEE datasets selected) -->
-    <div id="gee-credentials-panel" class="hidden glass rounded-xl overflow-hidden">
-        <div class="px-5 py-3 border-b border-white/5 flex items-center gap-3">
-            <div class="flex-shrink-0 h-7 w-7 rounded-lg bg-amber-500/15 border border-amber-500/25 flex items-center justify-center">
-                <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
-                </svg>
-            </div>
-            <div>
-                <h3 class="text-sm font-medium text-slate-200">Google Earth Engine Authentication</h3>
-                <p class="text-xs text-slate-400">Paste your service account JSON to access GEE datasets</p>
-            </div>
+    <!-- Results panel (shown after import) -->
+    <div id="results-panel" class="hidden glass rounded-xl overflow-hidden">
+        <div class="px-5 py-3 border-b border-white/5">
+            <h3 class="text-sm font-medium text-slate-400 uppercase tracking-wide">Import Results</h3>
         </div>
-        <div class="px-5 py-4 space-y-3">
-            <textarea id="gee-credentials-input"
-                      rows="6"
-                      placeholder='{"type": "service_account", "project_id": "...", "private_key": "...", ...}'
-                      class="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200 placeholder-slate-500 font-mono focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 focus:outline-none resize-none"></textarea>
-            <p class="text-xs text-slate-500">
-                <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-                Create a service account in Google Cloud Console with Earth Engine API enabled. Download the JSON key file and paste its contents here.
-            </p>
-        </div>
-    </div>
-
-    <!-- Date Range Panel (shown when temporal datasets selected) -->
-    <div id="date-range-panel" class="hidden glass rounded-xl overflow-hidden">
-        <div class="px-5 py-3 border-b border-white/5 flex items-center gap-3">
-            <div class="flex-shrink-0 h-7 w-7 rounded-lg bg-violet-500/15 border border-violet-500/25 flex items-center justify-center">
-                <svg class="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-                </svg>
-            </div>
-            <div>
-                <h3 class="text-sm font-medium text-slate-200">Date Range</h3>
-                <p class="text-xs text-slate-400">Specify the time period for temporal datasets</p>
-            </div>
-        </div>
-        <div class="px-5 py-4 flex flex-wrap items-center gap-4">
-            <div class="flex items-center gap-2">
-                <label for="date-from" class="text-sm text-slate-400">From:</label>
-                <input type="date" id="date-from"
-                       class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/50 focus:outline-none">
-            </div>
-            <div class="flex items-center gap-2">
-                <label for="date-to" class="text-sm text-slate-400">To:</label>
-                <input type="date" id="date-to"
-                       class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/50 focus:outline-none">
-            </div>
-            <p class="text-xs text-slate-500 w-full">
-                <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-                For GEE ImageCollections, data will be composited (mean) over this range. For Sentinel-2 Process API, this defines the acquisition window.
-            </p>
+        <div id="results-list" class="divide-y divide-white/5">
+            <!-- Populated dynamically -->
         </div>
     </div>
 
     <!-- Selection toolbar -->
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 glass rounded-xl px-5 py-4">
+    <div class="w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 glass rounded-xl px-5 py-4">
         <div class="flex items-center gap-4">
-            <span id="selection-count" class="text-sm text-slate-300">
+            <span id="selection-count" class="text-sm text-slate-400">
                 <span class="font-semibold text-cyan-300" id="count-number">0</span> datasets selected
             </span>
             <button type="button" id="select-all-btn" class="text-xs text-slate-400 hover:text-cyan-300 transition-colors underline underline-offset-2">
@@ -105,31 +63,132 @@
             <span>Import Selected</span>
         </button>
     </div>
+    
+    </div><!-- end header -->
 
-    <!-- Bbox notice (shown when any bbox-requiring dataset is selected) -->
-    <div id="bbox-notice" class="hidden flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/8 px-4 py-3 text-amber-100">
-        <svg class="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-        </svg>
-        <div class="text-sm">
-            <span class="font-medium">Some selected datasets require a bounding box.</span>
-            These large datasets (marked with <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-xs font-medium">bbox</span>) 
-            will only fetch features within a defined area of interest to avoid excessive download sizes.
-            Bounding-box filtering will be available in a future update.
+    <!-- Panels (max 2 columns via flex-wrap) -->
+    <div class="flex flex-wrap gap-4">
+
+    <!-- GEE Credentials Panel (shown when GEE datasets selected) -->
+    <div id="gee-credentials-panel" class="hidden flex-1 min-w-[280px] glass rounded-xl overflow-hidden">
+        <div class="px-5 py-3 border-b border-white/5 flex items-center gap-3">
+            <div class="flex-shrink-0 h-7 w-7 rounded-lg bg-amber-500/15 border border-amber-500/25 flex items-center justify-center">
+                <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+                </svg>
+            </div>
+            <div>
+                <h3 class="text-sm font-medium text-slate-400">Google Earth Engine Authentication</h3>
+                <p class="text-xs text-slate-400">Paste your service account JSON to access GEE datasets</p>
+            </div>
+        </div>
+        <div class="px-5 py-4 space-y-3">
+            <textarea id="gee-credentials-input"
+                      rows="6"
+                      placeholder='{"type": "service_account", "project_id": "...", "private_key": "...", ...}'
+                      class="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200 placeholder-amber-300/50 font-mono focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 focus:outline-none resize-none"></textarea>
+            <p class="text-xs text-slate-250">
+                <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                Create a service account in Google Cloud Console with Earth Engine API enabled. Download the JSON key file and paste its contents here.
+            </p>
         </div>
     </div>
 
+    <!-- Date Range Panel (shown when temporal datasets selected) -->
+    <div id="date-range-panel" class="hidden flex-1 min-w-[280px] glass rounded-xl overflow-hidden">
+        <div class="px-5 py-3 border-b border-white/5 flex items-center gap-3">
+            <div class="flex-shrink-0 h-7 w-7 rounded-lg bg-violet-500/15 border border-violet-500/25 flex items-center justify-center">
+                <svg class="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                </svg>
+            </div>
+            <div>
+                <h3 class="text-sm font-medium text-slate-400">Date Range</h3>
+                <p class="text-xs text-slate-400">Specify the time period for temporal datasets</p>
+            </div>
+        </div>
+        <div class="px-5 py-4 flex flex-wrap items-center gap-4">
+            <div class="flex items-center gap-2">
+                <label for="date-from" class="text-sm text-slate-400">From:</label>
+                <input type="date" id="date-from"
+                       class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-400 focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/50 focus:outline-none">
+            </div>
+            <div class="flex items-center gap-2">
+                <label for="date-to" class="text-sm text-slate-400">To:</label>
+                <input type="date" id="date-to"
+                       class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-400 focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/50 focus:outline-none">
+            </div>
+            <p class="text-xs text-slate-250 w-full">
+                <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                For GEE ImageCollections, data will be composited (mean) over this range. For Sentinel-2 Process API, this defines the acquisition window.
+            </p>
+        </div>
+    </div>
+
+    <!-- Bbox map panel (shown when any bbox-requiring dataset is selected) -->
+    <div id="bbox-panel" class="hidden w-full h-[600px] glass rounded-xl overflow-hidden flex flex-col">
+        <div class="px-5 py-3 border-b border-white/5 flex items-center gap-3">
+            <div class="flex-shrink-0 h-7 w-7 rounded-lg bg-amber-500/15 border border-amber-500/25 flex items-center justify-center">
+                <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+                </svg>
+            </div>
+            <div class="flex-1">
+                <h3 class="text-sm font-medium text-slate-400">Area of Interest</h3>
+                <p class="text-xs text-slate-400">Draw a bounding box on the map for large datasets</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <button type="button" id="bbox-draw-btn"
+                        class="text-xs px-3 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/25 text-amber-300 hover:bg-amber-500/25 transition-colors cursor-pointer">
+                    Draw Rectangle
+                </button>
+                <button type="button" id="bbox-clear-btn"
+                        class="hidden text-xs px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:text-slate-400 transition-colors cursor-pointer">
+                    Clear
+                </button>
+            </div>
+        </div>
+        <div class="relative flex-1 overflow-hidden">
+            <div id="bbox-map" class="h-full w-full min-h-0"></div>
+            <!-- Drawing mode indicator -->
+            <div id="bbox-draw-hint" class="hidden absolute top-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-lg bg-amber-500/90 text-xs font-medium text-white shadow-lg z-10">
+                Click two corners to draw the rectangle
+            </div>
+            <!-- Bbox coordinates display -->
+            <div id="bbox-info" class="hidden absolute bottom-0 left-0 right-0 px-4 py-2 bg-slate-900/80 backdrop-blur-sm text-xs text-slate-400 font-mono flex items-center justify-between">
+                <span id="bbox-coords"></span>
+                <span class="text-emerald-400">bbox set</span>
+            </div>
+        </div>
+    </div>
+
+    </div><!-- end flex panels -->
+
     <!-- Source sections -->
+    <div class="flex flex-wrap gap-6">
     {% for source in sources %}
-    <div class="space-y-4">
+    <div class="flex-1 flex-col space-y-4 gap-6">
         <!-- Source header -->
         <div class="flex items-center gap-3">
             {% if source.info.color == "cyan" %}
+            
             <div class="flex-shrink-0 h-9 w-9 rounded-lg bg-cyan-500/15 border border-cyan-500/25 flex items-center justify-center">
-                <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-5 h-5 text-cyan-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
             </div>
+
+            {% elif source.info.color == "indigo" %}
+            <div class="flex-shrink-0 h-9 w-9 rounded-lg bg-indigo-500/15 border border-indigo-500/25 flex items-center justify-center">
+                <svg fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 text-indigo-100">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6" />
+                </svg>
+            </div>
+
             {% elif source.info.color == "violet" %}
             <div class="flex-shrink-0 h-9 w-9 rounded-lg bg-violet-500/15 border border-violet-500/25 flex items-center justify-center">
                 <svg class="w-5 h-5 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -147,14 +206,14 @@
                 <h2 class="text-lg font-semibold text-slate-50">{{ source.info.name }}</h2>
                 <p class="text-sm text-slate-400">{{ source.info.description }}</p>
             </div>
-            <span class="ml-auto text-xs text-slate-500 tabular-nums">{{ source.dataset_count }} dataset{{ source.dataset_count|pluralize }}</span>
+            <span class="ml-auto text-xs text-slate-250 tabular-nums">{{ source.dataset_count }} dataset{{ source.dataset_count|pluralize }}</span>
         </div>
 
         <!-- Categories & datasets -->
         {% for category in source.categories %}
         <div class="glass rounded-xl overflow-hidden">
             <div class="px-5 py-3 border-b border-white/5">
-                <h3 class="text-sm font-medium text-slate-200 uppercase tracking-wide">{{ category.name }}</h3>
+                <h3 class="text-sm font-medium text-slate-400 uppercase tracking-wide">{{ category.name }}</h3>
             </div>
             <div class="divide-y divide-white/5">
                 {% for ds in category.datasets %}
@@ -191,12 +250,12 @@
                             <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300 text-[10px] font-semibold uppercase tracking-wider">WFS</span>
                             {% elif ds.format == "wcs" or ds.format == "atom" or ds.format == "process_api" or ds.format == "raster" %}
                             <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 text-[10px] font-semibold uppercase tracking-wider">raster</span>
-                            <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-500/15 text-slate-300 text-[10px] font-semibold uppercase tracking-wider">tiff</span>
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-500/15 text-slate-400 text-[10px] font-semibold uppercase tracking-wider">tiff</span>
                             {% endif %}
                         </div>
                         <p class="text-xs text-slate-400 leading-relaxed">{{ ds.description }}</p>
-                        <div class="flex items-center gap-3 text-[11px] text-slate-500">
-                            <span>Target: <code class="px-1 py-0.5 rounded bg-white/5 text-slate-300">{{ ds.target_model }}</code></span>
+                        <div class="flex items-center gap-3 text-[11px] text-slate-250">
+                            <span>Target: <code class="px-1 py-0.5 rounded bg-white/5 text-slate-400">{{ ds.target_model }}</code></span>
                         </div>
                     </div>
                     <!-- Status indicator (for import progress) -->
@@ -230,16 +289,8 @@
         {% endfor %}
     </div>
     {% endfor %}
+    </div><!-- end source sections flex -->
 
-    <!-- Results panel (shown after import) -->
-    <div id="results-panel" class="hidden glass rounded-xl overflow-hidden">
-        <div class="px-5 py-3 border-b border-white/5">
-            <h3 class="text-sm font-medium text-slate-200 uppercase tracking-wide">Import Results</h3>
-        </div>
-        <div id="results-list" class="divide-y divide-white/5">
-            <!-- Populated dynamically -->
-        </div>
-    </div>
 </div>
 
 <script>
@@ -250,7 +301,6 @@ document.addEventListener('DOMContentLoaded', function () {
     const selectAllBtn = document.getElementById('select-all-btn');
     const deselectAllBtn = document.getElementById('deselect-all-btn');
     const countEl = document.getElementById('count-number');
-    const bboxNotice = document.getElementById('bbox-notice');
     const geeCredentialsPanel = document.getElementById('gee-credentials-panel');
     const geeCredentialsInput = document.getElementById('gee-credentials-input');
     const dateRangePanel = document.getElementById('date-range-panel');
@@ -259,12 +309,162 @@ document.addEventListener('DOMContentLoaded', function () {
     const resultsPanel = document.getElementById('results-panel');
     const resultsList = document.getElementById('results-list');
 
+    // Bbox panel elements
+    const bboxPanel = document.getElementById('bbox-panel');
+    const bboxDrawBtn = document.getElementById('bbox-draw-btn');
+    const bboxClearBtn = document.getElementById('bbox-clear-btn');
+    const bboxDrawHint = document.getElementById('bbox-draw-hint');
+    const bboxInfo = document.getElementById('bbox-info');
+    const bboxCoordsEl = document.getElementById('bbox-coords');
+
     // Set default date range (last 30 days)
     const today = new Date();
     const thirtyDaysAgo = new Date(today);
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     dateToInput.value = today.toISOString().split('T')[0];
     dateFromInput.value = thirtyDaysAgo.toISOString().split('T')[0];
+
+    // ── Bbox Map ──────────────────────────────────────────────────────
+    let bboxMap = null;
+    let bboxMapReady = false;
+    let currentBbox = null;       // [west, south, east, north] in WGS84
+    let drawingMode = false;
+    let firstCorner = null;       // LngLat of first click
+
+    function initBboxMap() {
+        if (bboxMap) { bboxMap.resize(); return; }
+
+        mapboxgl.accessToken = '{{ mapbox_access_token }}';
+        bboxMap = new mapboxgl.Map({
+            container: 'bbox-map',
+            style: 'mapbox://styles/mapbox/dark-v11',
+            center: [5.28, 52.13],   // Center of Netherlands
+            zoom: 6.5,
+            attributionControl: false,
+        });
+        bboxMap.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
+
+        bboxMap.on('load', function () {
+            bboxMapReady = true;
+            // Empty source for the bbox rectangle
+            bboxMap.addSource('bbox-rect', {
+                type: 'geojson',
+                data: { type: 'FeatureCollection', features: [] },
+            });
+            bboxMap.addLayer({
+                id: 'bbox-fill',
+                type: 'fill',
+                source: 'bbox-rect',
+                paint: { 'fill-color': '#f59e0b', 'fill-opacity': 0.15 },
+            });
+            bboxMap.addLayer({
+                id: 'bbox-outline',
+                type: 'line',
+                source: 'bbox-rect',
+                paint: { 'line-color': '#f59e0b', 'line-width': 2, 'line-dasharray': [2, 2] },
+            });
+        });
+
+        // ── Drawing interactions ──────────────────────────────────────
+        bboxMap.on('click', function (e) {
+            if (!drawingMode) return;
+
+            if (!firstCorner) {
+                // First click: store corner
+                firstCorner = e.lngLat;
+            } else {
+                // Second click: finalize rectangle
+                const sw = firstCorner;
+                const ne = e.lngLat;
+                currentBbox = [
+                    Math.min(sw.lng, ne.lng),
+                    Math.min(sw.lat, ne.lat),
+                    Math.max(sw.lng, ne.lng),
+                    Math.max(sw.lat, ne.lat),
+                ];
+                setBboxRect(currentBbox);
+                exitDrawingMode();
+                showBboxInfo();
+            }
+        });
+
+        bboxMap.on('mousemove', function (e) {
+            if (!drawingMode || !firstCorner) return;
+            // Live preview rectangle as mouse moves
+            const sw = firstCorner;
+            const ne = e.lngLat;
+            const preview = [
+                Math.min(sw.lng, ne.lng),
+                Math.min(sw.lat, ne.lat),
+                Math.max(sw.lng, ne.lng),
+                Math.max(sw.lat, ne.lat),
+            ];
+            setBboxRect(preview);
+        });
+    }
+
+    function setBboxRect(bbox) {
+        if (!bboxMapReady) return;
+        const [w, s, e, n] = bbox;
+        bboxMap.getSource('bbox-rect').setData({
+            type: 'Feature',
+            geometry: {
+                type: 'Polygon',
+                coordinates: [[[w,s],[e,s],[e,n],[w,n],[w,s]]],
+            },
+        });
+    }
+
+    function enterDrawingMode() {
+        drawingMode = true;
+        firstCorner = null;
+        bboxMap.getCanvas().style.cursor = 'crosshair';
+        bboxMap.dragPan.disable();
+        bboxDrawHint.classList.remove('hidden');
+        bboxDrawBtn.textContent = 'Cancel';
+        bboxDrawBtn.classList.add('bg-rose-500/15', 'border-rose-500/25', 'text-rose-300');
+        bboxDrawBtn.classList.remove('bg-amber-500/15', 'border-amber-500/25', 'text-amber-300');
+    }
+
+    function exitDrawingMode() {
+        drawingMode = false;
+        firstCorner = null;
+        if (bboxMap) {
+            bboxMap.getCanvas().style.cursor = '';
+            bboxMap.dragPan.enable();
+        }
+        bboxDrawHint.classList.add('hidden');
+        bboxDrawBtn.textContent = 'Draw Rectangle';
+        bboxDrawBtn.classList.remove('bg-rose-500/15', 'border-rose-500/25', 'text-rose-300');
+        bboxDrawBtn.classList.add('bg-amber-500/15', 'border-amber-500/25', 'text-amber-300');
+    }
+
+    function showBboxInfo() {
+        if (!currentBbox) { bboxInfo.classList.add('hidden'); return; }
+        const [w, s, e, n] = currentBbox;
+        bboxCoordsEl.textContent = `W ${w.toFixed(4)}  S ${s.toFixed(4)}  E ${e.toFixed(4)}  N ${n.toFixed(4)}`;
+        bboxInfo.classList.remove('hidden');
+        bboxClearBtn.classList.remove('hidden');
+    }
+
+    function clearBbox() {
+        currentBbox = null;
+        if (bboxMapReady) {
+            bboxMap.getSource('bbox-rect').setData({ type: 'FeatureCollection', features: [] });
+        }
+        bboxInfo.classList.add('hidden');
+        bboxClearBtn.classList.add('hidden');
+        exitDrawingMode();
+    }
+
+    bboxDrawBtn.addEventListener('click', function () {
+        if (drawingMode) { exitDrawingMode(); return; }
+        enterDrawingMode();
+    });
+
+    bboxClearBtn.addEventListener('click', clearBbox);
+
+    // ── Selection logic ───────────────────────────────────────────────
 
     function getSelected() {
         return Array.from(checkboxes)
@@ -285,9 +485,14 @@ document.addEventListener('DOMContentLoaded', function () {
             importBtn.classList.add('opacity-50', 'cursor-not-allowed');
         }
 
-        // Show bbox notice if any bbox-requiring dataset is selected
+        // Show bbox panel if any bbox-requiring dataset is selected
         const needsBbox = selected.some(k => catalog[k] && catalog[k].requires_bbox);
-        bboxNotice.classList.toggle('hidden', !needsBbox);
+        const wasBboxHidden = bboxPanel.classList.contains('hidden');
+        bboxPanel.classList.toggle('hidden', !needsBbox);
+        // Initialize map on first show (must happen after the container is visible)
+        if (needsBbox && wasBboxHidden) {
+            setTimeout(initBboxMap, 50);
+        }
 
         // Show GEE credentials panel if any GEE dataset is selected
         const needsGeeAuth = selected.some(k => catalog[k] && catalog[k].source === 'gee');
@@ -312,10 +517,17 @@ document.addEventListener('DOMContentLoaded', function () {
         updateUI();
     });
 
-    // Import button handler
+    // ── Import handler ────────────────────────────────────────────────
     importBtn.addEventListener('click', async function () {
         const selected = getSelected();
         if (!selected.length) return;
+
+        // Check if bbox needed but not drawn
+        const needsBbox = selected.some(k => catalog[k] && catalog[k].requires_bbox);
+        if (needsBbox && !currentBbox) {
+            alert('Please draw a bounding box on the map for the selected datasets.');
+            return;
+        }
 
         // Check if GEE credentials needed but not provided
         const needsGeeAuth = selected.some(k => catalog[k] && catalog[k].source === 'gee');
@@ -375,6 +587,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 date_from: dateFromInput.value || null,
                 date_to: dateToInput.value || null,
             };
+
+            if (currentBbox) {
+                payload.bbox = currentBbox;  // [west, south, east, north] WGS84
+            }
 
             if (geeCredentials) {
                 payload.gee_credentials = geeCredentials;
@@ -441,7 +657,7 @@ document.addEventListener('DOMContentLoaded', function () {
                             result.status === 'error' ? 'bg-rose-400' : 'bg-amber-400'
                         }"></span>
                         <div class="min-w-0">
-                            <p class="text-sm font-medium text-slate-200">${name}</p>
+                            <p class="text-sm font-medium text-slate-400">${name}</p>
                             <p class="text-xs ${statusColor}">${result.message}${extraInfo}</p>
                         </div>
                     </div>

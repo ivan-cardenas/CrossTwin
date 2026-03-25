@@ -22,8 +22,7 @@ class HousingSupplyDemand(models.Model):
     class Meta:
         verbose_name = "Housing Supply and Demand"
         verbose_name_plural = "Housing Supply and Demand Records"
-        
-        
+          
 class HousingProject(models.Model):
     id=models.AutoField(primary_key=True)
     neighborhood = models.ForeignKey("common.Neighborhood", verbose_name="Neighborhood", on_delete=models.DO_NOTHING)
@@ -92,8 +91,7 @@ class Mortgage(models.Model):
     class Meta:
         verbose_name = "Mortgage"
         verbose_name_plural = "Mortgages"
-        
-        
+            
 class Rentals(models.Model):
     id = models.AutoField(primary_key=True)
     property = models.ForeignKey("builtup.Property", verbose_name="Property", on_delete=models.DO_NOTHING)
@@ -113,9 +111,7 @@ class Rentals(models.Model):
     class Meta:
         verbose_name = "Rental"
         verbose_name_plural = "Rentals"
-        
-    
-        
+              
 class HousePriceIndex(models.Model):
     id = models.AutoField(primary_key=True)
     neighborhood = models.ForeignKey("common.Neighborhood", verbose_name="Neighborhood", on_delete=models.DO_NOTHING)

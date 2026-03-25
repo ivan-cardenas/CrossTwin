@@ -86,10 +86,37 @@ class City(models.Model):
     class Meta:
         verbose_name = "City"
         verbose_name_plural = "Cities"
+ 
+class District(models.Model):
+    id = models.AutoField(primary_key=True)
+    city = models.ForeignKey(City, on_delete=models.DO_NOTHING, help_text="City code from common.City")
+    districtName = models.CharField(max_length=100, help_text="Name of the district")
+    currentPopulation = models.IntegerField(help_text="Current population in the district") 
+    populationDate = models.DateField(null=True)
+    area_km2 = models.FloatField(help_text="Area in square kilometers")
+    populationDensity = models.FloatField(help_text="Population density in people per square kilometer") # people/km2
+    geom = models.MultiPolygonField(srid=CoordinateSystem)
+    last_updated = models.DateTimeField(default=timezone.now)
+    
+    def save(self, *args, **kwargs):
+        
+        self.area_km2 = self.geom.area / 1e6
+        self.populationDensity = float (self.currentPopulation / self.area_km2)
+            
+        self.last_updated = timezone.now()
+        
+        super().save(*args, **kwargs)
+    
+    def __str__(self):
+        return self.districtName
+    
+    class Meta:
+        verbose_name = "District"
+        verbose_name_plural = "Districts"
         
 class Neighborhood(models.Model):
     id = models.AutoField(primary_key=True)
-    city = models.ForeignKey(City, on_delete=models.DO_NOTHING, help_text="City code from common.City")
+    district = models.ForeignKey(District, on_delete=models.DO_NOTHING, help_text="City code from common.City")
     neighborhoodName = models.CharField(max_length=100, help_text="Name of the neighborhood")
     currentPopulation = models.IntegerField(help_text="Current population in the neighborhood") 
     populationDate = models.DateField(null=True)
