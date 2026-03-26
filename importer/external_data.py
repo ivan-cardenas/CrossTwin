@@ -463,6 +463,157 @@ class PDOKImporter:
             1
         )
 
+class CBSImporter:
+    """Import handler for CBS StatLine OData datasets."""
+    
+    BASE_URL_API  = "https://opendata.cbs.nl/ODataApi/OData/{table_id}"
+    BASE_URL_FEED = "https://opendata.cbs.nl/ODataFeed/OData/{table_id}"
+    
+    @staticmethod
+    def fetch(
+    dataset: Dict,
+    date_from: Optional[str] = None,   # e.g. "2020"
+    date_to: Optional[str] = None,     # e.g. "2023"
+    bbox: Optional[list] = None,       # accepted for interface consistency, ignored
+    ) -> ImportResult:
+        """
+        Fetch tabular data from CBS OData API and import to Django model.
+
+        Args:
+            dataset:   Catalog entry dict
+            date_from: Start year as string, e.g. "2020"
+            date_to:   End year as string, e.g. "2023"
+            bbox:      Ignored (CBS data is tabular, not spatial)
+        """
+        try:
+            table_id    = dataset["table_id"]
+            model_path  = dataset["target_model"]
+            dataset_key = dataset["key"]
+
+            mapping = FIELD_MAPPINGS.get(dataset_key)
+            if not mapping:
+                return ImportResult("error", f"No field mapping defined for {dataset_key}")
+
+            try:
+                Model = get_model_class(model_path)
+            except ValueError as e:
+                return ImportResult("error", str(e))
+
+            use_feed = dataset.get("params", {}).get("use_feed", False)
+            base = CBSImporter.BASE_URL_FEED if use_feed else CBSImporter.BASE_URL_API
+            url  = f"{base.format(table_id=table_id)}/TypedDataSet"
+
+            # Build $filter — merge dataset-level filter with date range
+            filter_parts = []
+
+            dataset_filter = dataset.get("params", {}).get("filter")
+            if dataset_filter:
+                filter_parts.append(dataset_filter)
+
+            # CBS annual period codes look like "2023JJ00"
+            # Use startswith on the year prefix for a safe range filter
+            if date_from and date_to:
+                year_filters = " or ".join(
+                    f"startswith(Perioden,'{y}')"
+                    for y in range(int(date_from), int(date_to) + 1)
+                )
+                filter_parts.append(f"({year_filters})")
+            elif date_from:
+                filter_parts.append(f"startswith(Perioden,'{date_from}')")
+            elif date_to:
+                filter_parts.append(f"startswith(Perioden,'{date_to}')")
+
+            params = {"$format": "json"}
+            if filter_parts:
+                params["$filter"] = " and ".join(filter_parts)
+
+            select_fields = dataset.get("params", {}).get("select")
+            if select_fields:
+                params["$select"] = ",".join(select_fields)
+
+            logger.info(f"Fetching CBS OData: table={table_id} filter={params.get('$filter', 'none')}")
+
+            # Paginate
+            all_rows = []
+            next_url = url
+
+            while next_url:
+                response = requests.get(next_url, params=params, timeout=120)
+                response.raise_for_status()
+                data = response.json()
+                all_rows.extend(data.get("value", []))
+                next_url = data.get("odata.nextLink") or data.get("@odata.nextLink")
+                params = {}
+
+            if not all_rows:
+                return ImportResult("success", "No rows returned from CBS.", 0)
+            
+            # Import rows
+            unique_cbs_field   = mapping.get("__unique__")
+            unique_model_field = mapping.get("__unique_field__")
+            
+            created_count = updated_count = 0
+            errors = []
+            
+            with transaction.atomic():
+                for row in all_rows:
+                    try:
+                        field_values = {}
+                        
+                        for cbs_col, model_field in mapping.items():
+                            if cbs_col.startswith("__"):
+                                continue
+                            value = row.get(cbs_col)
+                            if value is not None:
+                                # Strip trailing spaces common in CBS region codes
+                                if isinstance(value, str):
+                                    value = value.strip()
+                                field_values[model_field] = value
+                        
+                        if not field_values:
+                            continue
+                        
+                        if unique_cbs_field and unique_model_field:
+                            raw_key = row.get(unique_cbs_field, "")
+                            lookup  = {unique_model_field: raw_key.strip() if isinstance(raw_key, str) else raw_key}
+                            defaults = {k: v for k, v in field_values.items() if k != unique_model_field}
+                            obj, was_created = Model.objects.update_or_create(
+                                **lookup, defaults=defaults
+                            )
+                            created_count += was_created
+                            updated_count += not was_created
+                        else:
+                            Model.objects.create(**field_values)
+                            created_count += 1
+                            
+                    except Exception as e:
+                        errors.append(str(e))
+                        if len(errors) > 10:
+                            break
+            
+            msg = f"Imported {len(all_rows)} rows from CBS {table_id}: created {created_count}, updated {updated_count}."
+            if errors:
+                msg += f" ({len(errors)} errors)"
+                logger.warning(f"CBS import errors for {dataset_key}: {errors[:5]}")
+            
+            return ImportResult("success", msg, created_count, updated_count)
+        
+        except requests.RequestException as e:
+            return ImportResult("error", f"CBS OData request failed: {e}")
+        except Exception as e:
+            logger.exception(f"CBS import error for {dataset['key']}")
+            return ImportResult("error", f"Import failed: {e}")
+    
+    @staticmethod
+    def get_metadata(table_id: str) -> Dict:
+        """
+        Fetch column definitions and units for a CBS table.
+        Useful for building field mappings.
+        """
+        url = f"https://opendata.cbs.nl/ODataApi/OData/{table_id}/DataProperties"
+        response = requests.get(url, params={"$format": "json"}, timeout=30)
+        response.raise_for_status()
+        return response.json().get("value", [])
 
 class Sentinel2Importer:
     """Import handler for Sentinel-2 datasets."""
@@ -795,7 +946,7 @@ def import_dataset(
     fmt = dataset.get("format", "wfs")
     
     print(f"[DISPATCH] import_dataset: dataset_key={dataset_key} bbox={bbox} date_from={date_from} date_to={date_to}")
-    if source == "pdok" or source == "CBS":
+    if source == "pdok":
         
         if fmt == "wfs":
             return PDOKImporter.fetch_wfs(dataset, bbox)
@@ -805,6 +956,9 @@ def import_dataset(
             return PDOKImporter.register_wms(dataset)
         elif fmt == "atom":
             return PDOKImporter.fetch_atom(dataset, bbox)
+        
+    elif source == "CBS":
+        return CBSImporter.fetch(dataset, date_from, date_to, bbox)
     
     elif source == "sentinel2":
         if fmt == "wcs":

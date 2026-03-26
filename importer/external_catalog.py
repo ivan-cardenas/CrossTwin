@@ -29,17 +29,28 @@ FIELD_MAPPINGS = {
         "code": "id",        
         # Province FK will be resolved via spatial join
     },
+    "pdok_districts": {
+        "__geometry__": "geom",
+        "__unique__": "wijkcode",
+        "__unique_field__": "wijkcode",
+        "wijknaam": "districtName",
+        "wijkcode": "id",
+        # City FK will be resolved via spatial join
+    },
     "pdok_neighborhoods": {
         "__geometry__": "geom",
         "__unique__": "buurtcode",
         "__unique_field__": "code",
         "buurtnaam": "NeighborhoodName",
-        "buurtcode": "code",
-        "wijkcode": "wijkcode",
+        "buurtcode": "id",
         "aantalInwoners": "currentPopulation",
-        "aantalHuishoudens": "numHouseholds"
         # City FK will be resolved via spatial join
     },
+    "CBS_Housing": {
+        "aantalHuishoudens": "numHouseholds",
+        
+    },
+    
     "pdok_buildings": {
         "__geometry__": "geom",
         "__unique__": "identificatie",
@@ -171,12 +182,12 @@ EXTERNAL_DATA_CATALOG = [
       "key": "CBS_Housing",
       "source": "CBS",
       "category": "Housing",
-      "name": "Neighborhoods - Buurten ",
+      "name": "Neighborhoods - Buurten",
       "description": "CBS neighborhood housing Statistical Data from the Wijken en Buurten dataset.",
       "target_model": "housing.HousingSupplyDemand",
-      "url": "https://service.pdok.nl/cbs/wijkenbuurten/wfs/v1_0",
+      "url": "https://service.pdok.nl/cbs/wijkenbuurten/wfs/v1_0", #TODO: change for https://opendata.cbs.nl/ODataApi/OData/86098NED and adjust mapping
       "layer": "wijkenbuurten:buurten",
-      "format": "wfs",
+      "format": "wfs", 
       "requires_bbox": True,
       "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
       "enabled": True,

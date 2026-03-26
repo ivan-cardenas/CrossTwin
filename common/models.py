@@ -66,7 +66,7 @@ class City(models.Model):
     def save(self, *args, **kwargs):
         
         if self.pk:
-            total = Neighborhood.objects.filter(city=self).aggregate(
+            total = District.objects.filter(city=self).aggregate(
                 total=Sum('currentPopulation')
             )['total']
             self.currentPopulation = total or 0
@@ -88,7 +88,7 @@ class City(models.Model):
         verbose_name_plural = "Cities"
  
 class District(models.Model):
-    id = models.AutoField(primary_key=True)
+    id = models.CharField(primary_key=True)
     city = models.ForeignKey(City, on_delete=models.DO_NOTHING, help_text="City code from common.City")
     districtName = models.CharField(max_length=100, help_text="Name of the district")
     currentPopulation = models.IntegerField(help_text="Current population in the district") 
@@ -115,7 +115,7 @@ class District(models.Model):
         verbose_name_plural = "Districts"
         
 class Neighborhood(models.Model):
-    id = models.AutoField(primary_key=True)
+    id = models.CharField(primary_key=True)
     district = models.ForeignKey(District, on_delete=models.DO_NOTHING, help_text="City code from common.City", null=True, blank=True)
     neighborhoodName = models.CharField(max_length=100, help_text="Name of the neighborhood")
     currentPopulation = models.IntegerField(help_text="Current population in the neighborhood") 
