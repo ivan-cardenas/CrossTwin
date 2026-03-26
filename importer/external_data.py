@@ -551,15 +551,29 @@ class CBSImporter:
             # Import rows
             unique_cbs_field   = mapping.get("__unique__")
             unique_model_field = mapping.get("__unique_field__")
-            
+            unique_composite   = mapping.get("__unique_fields__")  # e.g. ["city", "year"]
+
+            # Transform config: extract year from Perioden, resolve City FK from RegioS
+            year_source = mapping.get("__year_source__")
+            year_field  = mapping.get("__year_field__")
+            city_source = mapping.get("__city_source__")
+            city_field  = mapping.get("__city_field__")
+
+            # Pre-fetch city lookup cache if needed
+            city_cache = {}
+            if city_source and city_field:
+                from django.apps import apps as django_apps
+                City = django_apps.get_model("common", "City")
+                city_cache = {c.pk: c for c in City.objects.all()}
+
             created_count = updated_count = 0
             errors = []
-            
+
             with transaction.atomic():
                 for row in all_rows:
                     try:
                         field_values = {}
-                        
+
                         for cbs_col, model_field in mapping.items():
                             if cbs_col.startswith("__"):
                                 continue
@@ -569,11 +583,43 @@ class CBSImporter:
                                 if isinstance(value, str):
                                     value = value.strip()
                                 field_values[model_field] = value
-                        
+
+                        # Extract year from Perioden (e.g. "2023KW04" → 2023)
+                        if year_source and year_field:
+                            period = str(row.get(year_source, "")).strip()
+                            if len(period) >= 4:
+                                field_values[year_field] = int(period[:4])
+                            else:
+                                continue  # skip rows without a valid period
+
+                        # Resolve City FK from RegioS (e.g. "GM0363  " → City pk=363)
+                        if city_source and city_field:
+                            region = str(row.get(city_source, "")).strip()
+                            gm_code = region.replace("GM", "")
+                            try:
+                                city_pk = int(gm_code)
+                            except ValueError:
+                                errors.append(f"Invalid GM code: {region}")
+                                continue
+                            city_obj = city_cache.get(city_pk)
+                            if not city_obj:
+                                continue  # city not imported yet, skip
+                            field_values[city_field] = city_obj
+
                         if not field_values:
                             continue
-                        
-                        if unique_cbs_field and unique_model_field:
+
+                        # Determine dedup strategy
+                        if unique_composite:
+                            # Composite unique: e.g. lookup by (city, year)
+                            lookup = {f: field_values[f] for f in unique_composite if f in field_values}
+                            defaults = {k: v for k, v in field_values.items() if k not in unique_composite}
+                            obj, was_created = Model.objects.update_or_create(
+                                **lookup, defaults=defaults
+                            )
+                            created_count += was_created
+                            updated_count += not was_created
+                        elif unique_cbs_field and unique_model_field:
                             raw_key = row.get(unique_cbs_field, "")
                             lookup  = {unique_model_field: raw_key.strip() if isinstance(raw_key, str) else raw_key}
                             defaults = {k: v for k, v in field_values.items() if k != unique_model_field}
@@ -585,7 +631,7 @@ class CBSImporter:
                         else:
                             Model.objects.create(**field_values)
                             created_count += 1
-                            
+
                     except Exception as e:
                         errors.append(str(e))
                         if len(errors) > 10:
@@ -946,8 +992,8 @@ def import_dataset(
     fmt = dataset.get("format", "wfs")
     
     print(f"[DISPATCH] import_dataset: dataset_key={dataset_key} bbox={bbox} date_from={date_from} date_to={date_to}")
-    if source == "pdok":
-        
+    if source == "pdok" or (source == "CBS" and fmt == "wfs"):
+
         if fmt == "wfs":
             return PDOKImporter.fetch_wfs(dataset, bbox)
         elif fmt == "wcs":
@@ -956,8 +1002,8 @@ def import_dataset(
             return PDOKImporter.register_wms(dataset)
         elif fmt == "atom":
             return PDOKImporter.fetch_atom(dataset, bbox)
-        
-    elif source == "CBS":
+
+    elif source == "CBS" and fmt == "odata":
         return CBSImporter.fetch(dataset, date_from, date_to, bbox)
     
     elif source == "sentinel2":

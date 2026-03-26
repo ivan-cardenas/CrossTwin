@@ -10,7 +10,8 @@ AFFORDABILITY_STRESS_LEVELS = [('low', 'Low'), ('moderate', 'Moderate'), ('high'
 # Create your models here.
 class HousingSupplyDemand(models.Model):
     id = models.AutoField(primary_key=True)
-    neighborhood = models.ForeignKey("common.Neighborhood", verbose_name="Neighborhood", on_delete=models.DO_NOTHING)
+    city = models.ForeignKey("common.City", verbose_name="City", on_delete=models.DO_NOTHING, null=True, blank=True)
+    neighborhood = models.ForeignKey("common.Neighborhood", verbose_name="Neighborhood", on_delete=models.DO_NOTHING, null=True, blank=True)
     year = models.IntegerField(help_text="Year of the housing supply/demand data")
     supply_units = models.IntegerField(help_text="Number of housing units supplied")
     demand_units = models.IntegerField(help_text="Number of housing units demanded")

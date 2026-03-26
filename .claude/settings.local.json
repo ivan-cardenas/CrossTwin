@@ -1,9 +1,10 @@
 {
-  "outputStyle": "Explanatory",
   "permissions": {
     "allow": [
       "Bash(source /c/PERSONAL/Github/CrossTwin/.venv/Scripts/activate)",
-      "Bash(pip --version)"
+      "Bash(pip --version)",
+      "WebFetch(domain:opendata.cbs.nl)"
     ]
-  }
+  },
+  "outputStyle": "Explanatory"
 }

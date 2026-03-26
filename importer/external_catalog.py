@@ -47,8 +47,13 @@ FIELD_MAPPINGS = {
         # City FK will be resolved via spatial join
     },
     "CBS_Housing": {
-        "aantalHuishoudens": "numHouseholds",
-        
+        "__unique_fields__": ["city", "year"],
+        "__year_source__": "Perioden",
+        "__year_field__": "year",
+        "__city_source__": "RegioS",
+        "__city_field__": "city",
+        "EindstandVoorraad_22": "supply_units",
+        "VergundeNieuwbouw_2": "demand_units",
     },
     
     "pdok_buildings": {
@@ -182,14 +187,16 @@ EXTERNAL_DATA_CATALOG = [
       "key": "CBS_Housing",
       "source": "CBS",
       "category": "Housing",
-      "name": "Neighborhoods - Buurten",
-      "description": "CBS neighborhood housing Statistical Data from the Wijken en Buurten dataset.",
+      "name": "Housing Lifecycle (86098NED)",
+      "description": "CBS housing stock lifecycle per municipality: inventory, new construction, permits, demolitions.",
       "target_model": "housing.HousingSupplyDemand",
-      "url": "https://service.pdok.nl/cbs/wijkenbuurten/wfs/v1_0", #TODO: change for https://opendata.cbs.nl/ODataApi/OData/86098NED and adjust mapping
-      "layer": "wijkenbuurten:buurten",
-      "format": "wfs", 
-      "requires_bbox": True,
-      "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
+      "table_id": "86098NED",
+      "format": "odata",
+      "requires_bbox": False,
+      "params": {
+          "filter": "Gebruiksfunctie eq 'A045364' and startswith(RegioS,'GM') and substringof('KW04',Perioden)",
+          "select": ["RegioS", "Perioden", "EindstandVoorraad_22", "VergundeNieuwbouw_2"],
+      },
       "enabled": True,
     },
 
