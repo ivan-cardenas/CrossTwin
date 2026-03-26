@@ -116,7 +116,7 @@ class District(models.Model):
         
 class Neighborhood(models.Model):
     id = models.AutoField(primary_key=True)
-    district = models.ForeignKey(District, on_delete=models.DO_NOTHING, help_text="City code from common.City")
+    district = models.ForeignKey(District, on_delete=models.DO_NOTHING, help_text="City code from common.City", null=True, blank=True)
     neighborhoodName = models.CharField(max_length=100, help_text="Name of the neighborhood")
     currentPopulation = models.IntegerField(help_text="Current population in the neighborhood") 
     populationDate = models.DateField(null=True)

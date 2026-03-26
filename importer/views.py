@@ -1230,7 +1230,3 @@ def upload_geodata(request):
     django_messages.warning(request, "Unexpected state. Starting over.")
     return redirect(reverse('importer:upload_geodata'))
 
-def get_external_data(request):
-    
-    context = {}
-    return render(request, 'importer/external_data.html', context=context)

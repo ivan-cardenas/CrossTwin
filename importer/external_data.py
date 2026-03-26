@@ -23,6 +23,7 @@ from typing import Optional, Dict, Any, Tuple, List
 from datetime import datetime, timedelta
 
 import requests
+from pyproj import Transformer
 from django.apps import apps
 from django.db import transaction
 from django.contrib.gis.geos import GEOSGeometry, Polygon, MultiPolygon
@@ -190,9 +191,16 @@ class PDOKImporter:
                 "count": max_features,
             }
             
-            # Add bbox filter if provided
+            # Add bbox filter if provided (bbox arrives in WGS84 from frontend)
             if bbox:
-                params["bbox"] = f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]},EPSG:28992"
+                target_srs = dataset["params"].get("srsName", "EPSG:28992")
+                target_epsg = int(target_srs.split(":")[-1])
+                if target_epsg != 4326:
+                    tx = Transformer.from_crs("EPSG:4326", f"EPSG:{target_epsg}", always_xy=True)
+                    x1, y1 = tx.transform(bbox[0], bbox[1])
+                    x2, y2 = tx.transform(bbox[2], bbox[3])
+                    bbox = [x1, y1, x2, y2]
+                params["bbox"] = f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]},urn:ogc:def:crs:EPSG::{target_epsg}"
             
             # Add CQL filter if specified
             if "cql_filter" in dataset.get("params", {}):
