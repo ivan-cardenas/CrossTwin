@@ -150,6 +150,48 @@
     </div>
   </div>
 
+  <!-- NRW -->
+  <div class="card c3 wide">
+    <div class="gauge-header">
+      <div class="card-icon">🚰</div>
+      <div class="card-label">Non-Revenue Water</div>
+    </div>
+    <div style="display:flex; align-items:baseline; gap:8px;">
+      <div class="card-value">{{ indicators.nrw_m3_d }}</div>
+      <div class="card-unit">m³ / day ({{ indicators.nrw_percent }}% of supply)</div>
+    </div>
+    <div style="position:relative;">
+      <div class="bar-track" style="height:8px;">
+        <div class="bar-fill"
+             style="width:{{ indicators.nrw_percent }}%;
+                    background:linear-gradient(90deg,#ffb84d,rgba(255,184,77,0.4));">
+        </div>
+      </div>
+    </div>
+    <div style="display:flex; gap:16px; margin-top:10px;">
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Apparent</div>
+        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">{{ indicators.apparent_losses_m3_d }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">m³/d</span></div>
+      </div>
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Real</div>
+        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">{{ indicators.real_losses_m3_d }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">m³/d</span></div>
+      </div>
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">ILI</div>
+        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">
+          {% if indicators.ili != None %}
+            <span style="color:{% if indicators.ili <= 2 %}#00e5c0{% elif indicators.ili <= 4 %}#ffb84d{% else %}#ff7a52{% endif %};">
+              {{ indicators.ili }}
+            </span>
+          {% else %}
+            <span style="color:rgba(232,244,255,0.35);">—</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <script>if (typeof initGauges === 'function') initGauges();</script>

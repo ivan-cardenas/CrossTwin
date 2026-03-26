@@ -36,11 +36,6 @@ def _get_province_data(location, year):
         .aggregate(total=Sum('totalQuantity_Mm3'))['total'] or 0
     )
 
-    opex_total = (
-        OPEX.objects.filter(year=year)
-        .aggregate(total=models.Sum('totalOPEX_EUR'))['total'] or 0
-    )
-
     network_length = (
         PipeNetwork.objects
         .filter(geom__intersects=province.geom)
@@ -50,7 +45,30 @@ def _get_province_data(location, year):
     )
 
     demand_m3_d, supply_m3_d, supply_security = calculate_supply_security(province)
-    print("[recalculate] calculate_supply_security result:", calculate_supply_security(province))
+
+    # opex_total = total supply (m3/yr) × average opex per m3 from active wells
+    avg_opex_m3 = (
+        ExtractionWater.objects.filter(is_active=True, opex_EUR_m3__isnull=False)
+        .aggregate(avg=models.Avg('opex_EUR_m3'))['avg'] or 0
+    )
+    supply_m3_yr = (supply_m3_d or 0) * 365
+    opex_total = supply_m3_yr * avg_opex_m3
+
+    # Non-Revenue Water aggregates for the year
+    nrw_qs = NonRevenueWater.objects.filter(year=year)
+    apparent_losses_m3_d = (
+        nrw_qs.filter(type='A')
+        .aggregate(total=models.Sum('loss_Quantity_m3'))['total'] or 0
+    )
+    real_losses_m3_d = (
+        nrw_qs.filter(type='R')
+        .aggregate(total=models.Sum('loss_Quantity_m3'))['total'] or 0
+    )
+    nrw_m3_d = apparent_losses_m3_d + real_losses_m3_d
+
+    # ILI: latest value from real loss records for this year
+    latest_real = nrw_qs.filter(type='R', ILI__isnull=False).order_by('-last_updated').first()
+    ili = latest_real.ILI if latest_real else None
 
     return {
         'province':             province,
@@ -63,17 +81,28 @@ def _get_province_data(location, year):
         'available_water_Mm3':  available_water_Mm3,
         'opex_total':           opex_total,
         'network_length':       network_length.km if network_length else 0,
+        'nrw_m3_d':             nrw_m3_d,
+        'apparent_losses_m3_d': apparent_losses_m3_d,
+        'real_losses_m3_d':     real_losses_m3_d,
+        'ili':                  ili,
     }
+
+_MOCK_OPEX_M3 = 0.07  # EUR/m3
+_MOCK_SUPPLY_M3_D = 20_000
 
 MOCK_DATA = {
     'province':             type('Province', (), {'ProvinceName': 'Demo', 'currentPopulation': 500_000})(),
     'population':           500_000,
     'consumption_capita':   100,
-    'supply_m3_d':          20_000,
+    'supply_m3_d':          _MOCK_SUPPLY_M3_D,
     'imported_water_m3_yr': 50,
     'available_water_Mm3':  100,
-    'opex_total':           10_000,
+    'opex_total':           _MOCK_SUPPLY_M3_D * 365 * _MOCK_OPEX_M3,
     'network_length':       5_000,
+    'nrw_m3_d':             3_200,
+    'apparent_losses_m3_d': 1_200,
+    'real_losses_m3_d':     2_000,
+    'ili':                  3.5,
 }
 
 # ── shared calculation ────────────────────────────────────────────────
@@ -93,19 +122,28 @@ def _build_indicators(data, consumption_override=None):
         else round(SERVICE_HOURS_MAX * supply_m3_d / demand_m3_d, 1)
     )
 
+    # NRW as percentage of supply
+    nrw_m3_d = data.get('nrw_m3_d', 0)
+    nrw_percent = round(nrw_m3_d / supply_m3_d * 100, 1) if supply_m3_d else 0
+
     return {
         'consumption_capita':    consumption,
         'consumption_percent':   min(consumption / MAX_CONSUMPTION * 100, 100),
         'total_supply_Mm3':      round(supply_Mm3_yr, 2),
         'total_demand_Mm3':      round(demand_Mm3_yr, 2),
         'total_supply_percent':  round(min(supply_Mm3_yr / available * 100, 100), 1) if available else 0,
-        'total_demand_percent':  round(min(demand_Mm3_yr / available * 100, 100), 1) if available else 0, 
+        'total_demand_percent':  round(min(demand_Mm3_yr / available * 100, 100), 1) if available else 0,
         'supply_security':       supply_Mm3_yr/demand_Mm3_yr * 100,
         'service_time':          service_time,
         'service_time_percent':  round(service_time / SERVICE_HOURS_MAX * 100, 1),
         'network_length':        data['network_length'],
         'opex':                  opex_total,
         'opex_percent':          min(opex_total / MAX_OPEX_EUR * 100, 100),
+        'nrw_m3_d':              round(nrw_m3_d, 1),
+        'nrw_percent':           nrw_percent,
+        'apparent_losses_m3_d':  round(data.get('apparent_losses_m3_d', 0), 1),
+        'real_losses_m3_d':      round(data.get('real_losses_m3_d', 0), 1),
+        'ili':                   data.get('ili'),
     }
 
 

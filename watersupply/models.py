@@ -362,22 +362,96 @@ class PipeNetwork(models.Model):
 class CoverageWaterSupply(models.Model):
     id = models.AutoField(primary_key=True)
     city = models.ForeignKey(City, on_delete=models.DO_NOTHING, null=True, help_text="City code from common.City")
-    coveredArea_km2 = models.FloatField( help_text="Covered area in square kilometers")
     year = models.IntegerField()
+    buffer_m = models.FloatField(default=500, help_text="Buffer distance around pipes in meters")
+    coveredArea_km2 = models.FloatField(help_text="Covered area in square kilometers")
+    households_covered = models.IntegerField(default=0, help_text="Number of households within the service area")
+    households_total = models.IntegerField(default=0, help_text="Total households in the city")
     coveragePCT = models.FloatField(help_text="Coverage of users in percentage")
+    geom = models.MultiPolygonField(srid=COORDINATE_SYSTEM, null=True, blank=True,
+                                    help_text="Dissolved buffer polygon around pipe network")
     last_updated = models.DateTimeField(default=timezone.now)
-    
+
+    def save(self, *args, **kwargs):
+        from django.contrib.gis.geos import MultiPolygon
+        from django.contrib.gis.db.models import Union
+
+        # 1. Buffer all pipes in this city and dissolve overlaps
+        pipes = PipeNetwork.objects.filter(
+            destination__neighborhood__district__city=self.city
+        )
+        if not pipes.exists():
+            # Fallback: use all pipes whose geometry intersects the city
+            pipes = PipeNetwork.objects.filter(geom__intersects=self.city.geom)
+
+        if pipes.exists():
+            # Buffer each pipe and union into a single geometry
+            dissolved = (
+                pipes.aggregate(union=Union('geom'))['union']
+            )
+            if dissolved:
+                dissolved = dissolved.buffer(self.buffer_m)
+                # Ensure MultiPolygon
+                if dissolved.geom_type == 'Polygon':
+                    dissolved = MultiPolygon(dissolved)
+                self.geom = dissolved
+                self.coveredArea_km2 = round(dissolved.area / 1e6, 4)
+            else:
+                self.geom = None
+                self.coveredArea_km2 = 0
+        else:
+            self.geom = None
+            self.coveredArea_km2 = 0
+
+        # 2. Count households inside the buffer vs total in city
+        city_neighborhoods = Neighborhood.objects.filter(
+            district__city=self.city
+        )
+
+        # Total households: sum usersTotal from all UsersLocations in city
+        self.households_total = (
+            UsersLocation.objects.filter(neighborhood__in=city_neighborhoods)
+            .aggregate(total=Sum('usersTotal'))['total'] or 0
+        )
+
+        # Covered households: only neighborhoods intersecting the buffer
+        if self.geom:
+            covered_neighborhoods = city_neighborhoods.filter(
+                geom__intersects=self.geom
+            )
+            self.households_covered = (
+                UsersLocation.objects.filter(neighborhood__in=covered_neighborhoods)
+                .aggregate(total=Sum('usersTotal'))['total'] or 0
+            )
+        else:
+            self.households_covered = 0
+
+        # 3. Coverage percentage
+        if self.households_total > 0:
+            self.coveragePCT = round(
+                self.households_covered / self.households_total * 100, 1
+            )
+        else:
+            self.coveragePCT = 0
+
+        self.last_updated = timezone.now()
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.city} - covered area: {self.coveredArea_km2} km2. Coverage: {self.coveragePCT} %"
 
     class Meta:
         verbose_name = "Coverage Water Supply"
-        verbose_name_plural = "Coverage Water Supply Records"    
+        verbose_name_plural = "Coverage Water Supply Records"
 
 class NonRevenueWater(models.Model):
     class LossesTypes(models.TextChoices):
         Apparent = 'A','Apparent'
         Real = 'R', 'Real'
+
+    APPARENT_CHOICES = ['CM', 'UA', 'DE', 'OT']
+    REAL_CHOICES     = ['LP', 'LS', 'LM', 'OT']
+
     class LossesChoices(models.TextChoices):
         ConsumerMeter = 'CM','Meter Innacurracy'
         Unauthorized = 'UA', 'Unathorized consumption'
@@ -386,39 +460,97 @@ class NonRevenueWater(models.Model):
         lMains = 'LP','Leakage on Mains'
         lStorage = 'LS','Leakage and overflows at storage'
         lMeters = 'LM','Leakage at meter connection'
-        
+
     id = models.AutoField(primary_key=True)
     year = models.IntegerField()
     type = models.CharField(max_length=100,
                             choices=LossesTypes.choices,
                             default=LossesTypes.Apparent, help_text="Type of loss (Real or Apparent)")
-    specificLoss = models.CharField(max_length=100, 
+    specificLoss = models.CharField(max_length=100,
                             choices=LossesChoices.choices,
                             default=LossesChoices.ConsumerMeter , help_text="Specific loss category")
     loss_Quantity_m3 = models.FloatField(help_text="Loss quantity in cubic meters per day")
     WaterCost_EUR_day = models.FloatField(help_text="Water cost in EUR per day")
     UnavoidableLossses_PCT = models.FloatField(help_text="Unavoidable losses in percentage")
-    ILI = models.FloatField(help_text="Infrastructure Leakage Index") #Infrastructure Leakage Index -TODO: this should be calculated from losses
+    ILI = models.FloatField(null=True, blank=True, help_text="Infrastructure Leakage Index")
     last_updated = models.DateTimeField(default=timezone.now)
-    
+
+    def save(self, *args, **kwargs):
+        # Auto-assign loss type from specificLoss
+        if self.specificLoss in self.REAL_CHOICES:
+            self.type = self.LossesTypes.Real
+        else:
+            self.type = self.LossesTypes.Apparent
+
+        # Calculate ILI for Real losses: CARL / UARL across the whole year
+        if self.type == self.LossesTypes.Real:
+            # Get all other Real loss records for this year (exclude self if updating)
+            qs = NonRevenueWater.objects.filter(year=self.year, type='R')
+            if self.pk:
+                qs = qs.exclude(pk=self.pk)
+
+            carl_daily = sum(r.loss_Quantity_m3 for r in qs) + self.loss_Quantity_m3
+            uarl_daily = (
+                sum(r.loss_Quantity_m3 * r.UnavoidableLossses_PCT / 100 for r in qs)
+                + self.loss_Quantity_m3 * self.UnavoidableLossses_PCT / 100
+            )
+
+            self.ILI = round(carl_daily / uarl_daily, 2) if uarl_daily > 0 else None
+        else:
+            self.ILI = None
+
+        self.last_updated = timezone.now()
+        super().save(*args, **kwargs)
+
     def clean(self):
         valid_types = {
-            self.type.Apparent: ['CM', 'UA', 'DE', 'OT'],
-            self.type.Real: ['LP', 'LS', 'LM', 'OT']
+            'A': self.APPARENT_CHOICES,
+            'R': self.REAL_CHOICES,
         }
-        
+
         if self.type in valid_types and self.specificLoss not in valid_types[self.type]:
             raise ValidationError("Invalid loss specification for this loss type.")
-        else:
-            pass
-    
+
     def __str__(self):
-        
         return f"{self.year}: Losses: {self.type} - {self.specificLoss} - {self.loss_Quantity_m3} m3"
 
     class Meta:
         verbose_name = "Non Revenue Water"
         verbose_name_plural = "Non Revenue Water Records"
+
+    @staticmethod
+    def generate_random_event(year, water_cost_m3=0.50):
+        """
+        Create a random NonRevenueWater loss event.
+        Picks a random LossesChoices, assigns a plausible quantity
+        and unavoidable percentage, then saves.
+        """
+        import random
+
+        # Profiles: (specificLoss, quantity range m3/day, unavoidable %)
+        profiles = {
+            'CM': (50, 300, 60),     # Meter inaccuracy: moderate volume, high unavoidable
+            'UA': (20, 200, 10),     # Unauthorized: moderate, low unavoidable
+            'DE': (10, 100, 30),     # Data handling: low volume
+            'LP': (100, 2000, 25),   # Leakage mains: high volume
+            'LS': (50, 500, 20),     # Leakage storage: medium
+            'LM': (30, 400, 15),     # Leakage meters: medium
+            'OT': (10, 150, 40),     # Other
+        }
+
+        choice = random.choice(list(profiles.keys()))
+        q_min, q_max, unavoidable_pct = profiles[choice]
+        quantity = round(random.uniform(q_min, q_max), 1)
+
+        event = NonRevenueWater(
+            year=year,
+            specificLoss=choice,
+            loss_Quantity_m3=quantity,
+            WaterCost_EUR_day=round(quantity * water_cost_m3, 2),
+            UnavoidableLossses_PCT=unavoidable_pct,
+        )
+        event.save()
+        return event
     
 class OPEX(models.Model):
     id = models.AutoField(primary_key=True)
