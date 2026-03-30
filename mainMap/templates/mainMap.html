@@ -20,7 +20,9 @@
 <script src="{% static 'js/layers.js' %}"></script>
 <script src="{% static 'js/events.js' %}"></script>
 <script src="{% static 'js/Map_init.js' %}"></script>
-{% endblock %} {% block content %}
+{% endblock %} {% block content_section_class %}{% endblock %}
+{% block content_wrapper_class %}{% endblock %}
+{% block content %}
 <div class="app-shell">
   <div class="map-wrapper">
     <div id="map"></div>
