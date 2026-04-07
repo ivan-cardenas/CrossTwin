@@ -1,0 +1,148 @@
+{% load static %}
+
+<div style="padding: 0 4px;">
+
+  <!-- Header -->
+  <div style="margin-bottom:16px;">
+    <div style="font-size:10px; letter-spacing:0.14em; text-transform:uppercase;
+                color:rgba(232,244,255,0.45); margin-bottom:4px;">
+      Urban Heat Indicators
+    </div>
+    <div style="font-family:'Syne',sans-serif; font-size:1.1rem; font-weight:700;">
+      {{ Province.ProvinceName }}
+    </div>
+  </div>
+
+  <!-- Vegetation slider -->
+  <div class="slider-container">
+    <div class="slider-header">
+      <div class="slider-header-left">
+        <div class="card-icon" style="background:rgba(0,229,192,0.08);border-color:rgba(0,229,192,0.15);">🌿</div>
+        <span class="card-label">Vegetation Coverage</span>
+      </div>
+      <div class="slider-value-display">
+        <span id="slider-display">{{ indicators.vegetation_pct }}</span>
+        <span class="slider-unit">% of area</span>
+      </div>
+    </div>
+
+    <div class="slider-zones-container">
+      <div class="slider-zones">
+        <div class="sz-bad"></div>
+        <div class="sz-warn"></div>
+        <div class="sz-ok"></div>
+      </div>
+      <div class="slider-zone-wrap">
+        <input
+          id="vegetation-slider"
+          class="zone-slider"
+          type="range"
+          name="vegetation_pct"
+          min="0" max="60" step="0.5"
+          value="{{ indicators.vegetation_pct }}"
+          hx-get="{% url 'urban_heat:recalculate_indicators' Province.ProvinceName %}"
+          hx-trigger="input changed delay:200ms"
+          hx-target="#indicators-grid"
+          hx-include="this"
+        />
+      </div>
+      <div class="slider-threshold-labels">
+        <span>0%</span>
+        <span>15%</span>
+        <span>30%</span>
+        <span>60%</span>
+      </div>
+    </div>
+
+    <div>
+      <span id="zone-tag" class="threshold-tag ok">Good</span>
+    </div>
+  </div>
+
+  <!-- Cards — swap target -->
+  <div id="indicators-grid">
+    {% include 'urban_heat/partials/indicators_grid.html' %}
+  </div>
+
+</div>
+
+<script>
+(function() {
+
+  function zoneStyle(val) {
+    if (val >= 30)      return { col: '#00e5c0', label: 'Good',     cls: 'ok'   };
+    else if (val >= 15) return { col: '#ffb84d', label: 'Moderate', cls: 'warn' };
+    else                return { col: '#ff7a52', label: 'Low',      cls: 'bad'  };
+  }
+
+  function applyZone(val) {
+    const z    = zoneStyle(val);
+    const sl   = document.getElementById('vegetation-slider');
+    const tag  = document.getElementById('zone-tag');
+    const disp = document.getElementById('slider-display');
+    if (disp) disp.textContent = val;
+    if (sl)   sl.style.setProperty('--thumb-col', z.col);
+    if (tag)  { tag.textContent = z.label; tag.className = 'threshold-tag ' + z.cls; }
+  }
+
+  const slider = document.getElementById('vegetation-slider');
+  if (slider) {
+    applyZone(parseFloat(slider.value));
+    slider.addEventListener('input', e => applyZone(parseFloat(e.target.value)));
+  }
+
+  // initGauges — animate SVG gauges and ring charts
+  window.initGauges = function() {
+    document.querySelectorAll('[data-gauge-id]').forEach(card => {
+      const val     = parseFloat(card.dataset.gaugeVal) || 0;
+      const id      = card.dataset.gaugeId;
+      const display = card.dataset.gaugeDisplay || '';
+      const path    = document.getElementById(id);
+      const txt     = document.getElementById(id + '-txt');
+      if (!path) return;
+
+      if (id === 'gauge-svf') {
+        // Full ring gauge (SVF is 0-100%)
+        const circ   = 238.76;
+        const capped = Math.min(val, 100);
+        let col;
+        if      (val > 70) col = '#63d2ff';
+        else if (val > 40) col = '#ffb84d';
+        else               col = '#ff7a52';
+        path.setAttribute('stroke', col);
+        requestAnimationFrame(() => {
+          path.style.strokeDashoffset = circ - (circ * capped / 100);
+        });
+        if (txt) txt.textContent = display;
+      } else {
+        // Semicircle gauges (LST, PET, UTCI)
+        const total  = 157.08;
+        const capped = Math.min(val, 100);
+        // Color by thermal stress
+        let col;
+        if      (val > 75) col = '#ff5252';
+        else if (val > 50) col = '#ff7a52';
+        else if (val > 30) col = '#ffb84d';
+        else               col = '#00e5c0';
+        path.setAttribute('stroke', col);
+        requestAnimationFrame(() => {
+          path.style.strokeDashoffset = total - (total * capped / 100);
+        });
+        if (txt) txt.textContent = display ? display + '°' : '–';
+      }
+    });
+  };
+
+  // Run on panel load
+  window.initGauges();
+
+  // Re-run after HTMX swaps
+  if (!window._heatGaugeListenerAttached) {
+    document.body.addEventListener('htmx:afterSwap', function(evt) {
+      if (evt.detail.target.id === 'indicators-grid') window.initGauges();
+    });
+    window._heatGaugeListenerAttached = true;
+  }
+
+})();
+</script>

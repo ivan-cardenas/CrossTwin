@@ -1,0 +1,6 @@
+    ◻ Expand Water Supply calculations.py with DAG-derive…
+     ◻ Expand Water Supply views.py with full DPSIR indica…
+     ◻ Create Urban Heat calculations.py
+     ◻ Create Urban Heat views.py and urls.py
+     ◻ Create Urban Heat templates
+     ◻ Register urban_heat URL in root urls.py

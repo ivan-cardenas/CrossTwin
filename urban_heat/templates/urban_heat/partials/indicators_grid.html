@@ -1,0 +1,280 @@
+{% comment %} indicators_grid.html — Urban Heat {% endcomment %}
+<div class="grid">
+
+  <!-- ── LST ── -->
+  <div class="card gauge"
+       data-gauge-val="{{ indicators.lst_pct }}"
+       data-gauge-id="gauge-lst"
+       data-gauge-display="{{ indicators.lst_mean }}">
+    <div class="gauge-header">
+      <div class="card-icon">🌡️</div>
+      <div class="card-label">Land Surface Temp</div>
+    </div>
+    <div class="gauge-body bottom">
+      <svg viewBox="0 0 120 70" width="160" height="95" aria-hidden="true">
+        <path d="M 10,65 A 50,50 0 0 1 110,65"
+              fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10" stroke-linecap="round"/>
+        <path id="gauge-lst"
+              d="M 10,65 A 50,50 0 0 1 110,65"
+              fill="none" stroke="#ff7a52" stroke-width="10" stroke-linecap="round"
+              stroke-dasharray="157.08" stroke-dashoffset="157.08"
+              style="transition: stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)"/>
+        <text x="60" y="55" text-anchor="middle"
+              font-family="Syne,sans-serif" font-size="15" font-weight="700"
+              fill="#e8f4ff" id="gauge-lst-txt">–</text>
+        <text x="60" y="67" text-anchor="middle"
+              font-family="DM Mono,monospace" font-size="7"
+              fill="rgba(232,244,255,0.45)">°C mean</text>
+      </svg>
+    </div>
+    <div style="display:flex; gap:12px; font-size:9px; color:rgba(232,244,255,0.45); font-family:'DM Mono',monospace;">
+      <span>Min: {% if indicators.lst_min != None %}{{ indicators.lst_min }}°C{% else %}—{% endif %}</span>
+      <span>Max: {% if indicators.lst_max != None %}{{ indicators.lst_max }}°C{% else %}—{% endif %}</span>
+    </div>
+  </div>
+
+  <!-- ── PET ── -->
+  <div class="card gauge"
+       data-gauge-val="{{ indicators.pet_pct }}"
+       data-gauge-id="gauge-pet"
+       data-gauge-display="{{ indicators.pet_mean }}">
+    <div class="gauge-header">
+      <div class="card-icon">🧍</div>
+      <div class="card-label">PET</div>
+    </div>
+    <div class="gauge-body bottom">
+      <svg viewBox="0 0 120 70" width="160" height="95" aria-hidden="true">
+        <path d="M 10,65 A 50,50 0 0 1 110,65"
+              fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10" stroke-linecap="round"/>
+        <path id="gauge-pet"
+              d="M 10,65 A 50,50 0 0 1 110,65"
+              fill="none" stroke="#ffb84d" stroke-width="10" stroke-linecap="round"
+              stroke-dasharray="157.08" stroke-dashoffset="157.08"
+              style="transition: stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)"/>
+        <text x="60" y="55" text-anchor="middle"
+              font-family="Syne,sans-serif" font-size="15" font-weight="700"
+              fill="#e8f4ff" id="gauge-pet-txt">–</text>
+        <text x="60" y="67" text-anchor="middle"
+              font-family="DM Mono,monospace" font-size="7"
+              fill="rgba(232,244,255,0.45)">°C mean</text>
+      </svg>
+    </div>
+    {% if indicators.pet_category %}
+    <div style="font-size:9px; letter-spacing:0.12em; text-transform:uppercase; padding:3px 8px;
+                border-radius:4px; align-self:flex-start;
+                color:{% if 'Heat' in indicators.pet_category %}#ff7a52{% elif 'Cold' in indicators.pet_category %}#63d2ff{% else %}#00e5c0{% endif %};
+                background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1);">
+      {{ indicators.pet_category }}
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ── UTCI ── -->
+  <div class="card gauge"
+       data-gauge-val="{{ indicators.utci_pct }}"
+       data-gauge-id="gauge-utci"
+       data-gauge-display="{{ indicators.utci_mean }}">
+    <div class="gauge-header">
+      <div class="card-icon">🌤️</div>
+      <div class="card-label">UTCI</div>
+    </div>
+    <div class="gauge-body bottom">
+      <svg viewBox="0 0 120 70" width="160" height="95" aria-hidden="true">
+        <path d="M 10,65 A 50,50 0 0 1 110,65"
+              fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10" stroke-linecap="round"/>
+        <path id="gauge-utci"
+              d="M 10,65 A 50,50 0 0 1 110,65"
+              fill="none" stroke="#ff7a52" stroke-width="10" stroke-linecap="round"
+              stroke-dasharray="157.08" stroke-dashoffset="157.08"
+              style="transition: stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)"/>
+        <text x="60" y="55" text-anchor="middle"
+              font-family="Syne,sans-serif" font-size="15" font-weight="700"
+              fill="#e8f4ff" id="gauge-utci-txt">–</text>
+        <text x="60" y="67" text-anchor="middle"
+              font-family="DM Mono,monospace" font-size="7"
+              fill="rgba(232,244,255,0.45)">°C mean</text>
+      </svg>
+    </div>
+    {% if indicators.utci_category %}
+    <div style="font-size:9px; letter-spacing:0.12em; text-transform:uppercase; padding:3px 8px;
+                border-radius:4px; align-self:flex-start;
+                color:{% if 'Heat' in indicators.utci_category %}#ff7a52{% elif 'Cold' in indicators.utci_category %}#63d2ff{% else %}#00e5c0{% endif %};
+                background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1);">
+      {{ indicators.utci_category }}
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ── SVF ── -->
+  <div class="card gauge"
+       data-gauge-val="{{ indicators.svf_pct }}"
+       data-gauge-id="gauge-svf"
+       data-gauge-display="{{ indicators.svf_mean }}">
+    <div class="gauge-header">
+      <div class="card-icon">🔭</div>
+      <div class="card-label">Sky View Factor</div>
+    </div>
+    <div class="gauge-body" style="flex:1;display:flex;justify-content:center;align-items:center;">
+      <svg viewBox="0 0 100 100" width="110" height="110" aria-hidden="true">
+        <circle cx="50" cy="50" r="38"
+                fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="12"/>
+        <circle id="gauge-svf"
+                cx="50" cy="50" r="38"
+                fill="none" stroke="#63d2ff" stroke-width="12" stroke-linecap="round"
+                stroke-dasharray="238.76" stroke-dashoffset="238.76"
+                transform="rotate(-90 50 50)"
+                style="transition: stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)"/>
+        <text x="50" y="46" text-anchor="middle"
+              font-family="Syne,sans-serif" font-size="18" font-weight="700"
+              fill="#e8f4ff" id="gauge-svf-txt">–</text>
+        <text x="50" y="59" text-anchor="middle"
+              font-family="DM Mono,monospace" font-size="8"
+              fill="rgba(232,244,255,0.45)">mean (0–1)</text>
+      </svg>
+    </div>
+  </div>
+
+  <!-- ── Vegetation Coverage ── -->
+  <div class="card c3 wide">
+    <div class="gauge-header">
+      <div class="card-icon">🌿</div>
+      <div class="card-label">Vegetation Coverage</div>
+    </div>
+    <div style="display:flex; align-items:baseline; gap:8px;">
+      <div class="card-value">{{ indicators.vegetation_pct }}%</div>
+      <div class="card-unit">of province area</div>
+    </div>
+    <div style="position:relative;">
+      <div class="bar-track" style="height:8px;">
+        <div class="bar-fill"
+             style="width:{{ indicators.vegetation_pct }}%;
+                    background:linear-gradient(90deg,#00e5c0,rgba(0,229,192,0.4));">
+        </div>
+      </div>
+    </div>
+    <div style="display:flex; gap:16px; margin-top:10px;">
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Parks</div>
+        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">{{ indicators.park_area_km2 }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">km²</span></div>
+      </div>
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Green Land Cover</div>
+        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">{{ indicators.green_lc_km2 }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">km²</span></div>
+      </div>
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Total</div>
+        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">{{ indicators.total_green_km2 }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">km²</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Urban Morphology ── -->
+  <div class="card c3 wide">
+    <div class="gauge-header">
+      <div class="card-icon">🏗️</div>
+      <div class="card-label">Urban Morphology</div>
+    </div>
+    <div style="display:flex; gap:16px; flex-wrap:wrap;">
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Buildings</div>
+        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">{{ indicators.building_count }}</div>
+      </div>
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Avg Height</div>
+        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">{{ indicators.avg_height_m }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">m</span></div>
+      </div>
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Max Height</div>
+        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">{{ indicators.max_height_m }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">m</span></div>
+      </div>
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Aspect Ratio (H/W)</div>
+        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">
+          <span style="color:{% if indicators.aspect_ratio > 1.5 %}#ff7a52{% elif indicators.aspect_ratio > 1.0 %}#ffb84d{% else %}#00e5c0{% endif %};">
+            {{ indicators.aspect_ratio }}
+          </span>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Footprint</div>
+        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">{{ indicators.footprint_km2 }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">km²</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SUHII ── -->
+  <div class="card c2">
+    <div class="gauge-header">
+      <div class="card-icon">🏙️</div>
+      <div class="card-label">Heat Island (SUHII)</div>
+    </div>
+    <div>
+      <div class="card-value">
+        {% if indicators.suhii_mean != None %}
+          <span style="color:{% if indicators.suhii_mean > 4 %}#ff7a52{% elif indicators.suhii_mean > 2 %}#ffb84d{% else %}#00e5c0{% endif %};">
+            {{ indicators.suhii_mean }}°C
+          </span>
+        {% else %}
+          <span style="color:rgba(232,244,255,0.35);">—</span>
+        {% endif %}
+      </div>
+      <div class="card-unit">mean intensity</div>
+    </div>
+    <div style="display:flex; gap:12px; margin-top:8px; font-size:9px; color:rgba(232,244,255,0.45); font-family:'DM Mono',monospace;">
+      <span>Min: {% if indicators.suhii_min != None %}{{ indicators.suhii_min }}°C{% else %}—{% endif %}</span>
+      <span>Max: {% if indicators.suhii_max != None %}{{ indicators.suhii_max }}°C{% else %}—{% endif %}</span>
+    </div>
+  </div>
+
+  <!-- ── NBS Response ── -->
+  <div class="card c2">
+    <div class="gauge-header">
+      <div class="card-icon">🌳</div>
+      <div class="card-label">Nature-Based Solutions</div>
+    </div>
+    <div>
+      <div class="card-value">{{ indicators.nbs_count }}</div>
+      <div class="card-unit">interventions</div>
+    </div>
+    <div style="margin-top:6px; font-size:9px; color:rgba(232,244,255,0.45); font-family:'DM Mono',monospace;">
+      {{ indicators.nbs_area_km2 }} km² covered ({{ indicators.nbs_area_m2 }} m²)
+    </div>
+  </div>
+
+  <!-- ── Meteorology ── -->
+  <div class="card c3 wide">
+    <div class="gauge-header">
+      <div class="card-icon">☁️</div>
+      <div class="card-label">Current Meteorology</div>
+    </div>
+    <div style="display:flex; gap:16px; flex-wrap:wrap;">
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Air Temp</div>
+        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">
+          {% if indicators.air_temp_C != None %}{{ indicators.air_temp_C }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">°C</span>{% else %}—{% endif %}
+        </div>
+      </div>
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Humidity</div>
+        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">
+          {% if indicators.humidity_pct != None %}{{ indicators.humidity_pct }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">%</span>{% else %}—{% endif %}
+        </div>
+      </div>
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Wind</div>
+        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">
+          {% if indicators.wind_speed_m_s != None %}{{ indicators.wind_speed_m_s }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">m/s</span>{% else %}—{% endif %}
+        </div>
+      </div>
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Solar Radiation</div>
+        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">
+          {% if indicators.solar_radiation != None %}{{ indicators.solar_radiation }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">W/m²</span>{% else %}—{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>if (typeof initGauges === 'function') initGauges();</script>
