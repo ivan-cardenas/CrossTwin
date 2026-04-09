@@ -52,7 +52,12 @@
         <div class="tool-tooltip">Energy</div>
       </button>
 
-      <button class="tool-button" data-tool="temperature">
+      <button class="tool-button" data-tool="temperature"
+        data-panel-title="URBAN HEAT"
+        hx-get="{% url 'urban_heat:heat_indicators' location='Demo' %}"
+        hx-target="#panel-body"
+        hx-indicator="#map-loader"
+        hx-swap="innerHTML">
         <span>🌡️</span>
         <div class="tool-tooltip">Heat</div>
       </button>
@@ -61,6 +66,7 @@
         <div class="tool-tooltip">Green and Blue Space</div>
       </button>
       <button class="tool-button" data-tool="water"
+        data-panel-title="WATER SUPPLY"
         hx-get="{% url 'watersupply:water_indicators' location='Demo' year=2025 %}"
         hx-target="#panel-body"
         hx-indicator="#map-loader"
@@ -158,7 +164,7 @@
 
     <!-- GROUNDWATER LEGEND -->
     <div id="legend-groundwater" class="map-legend" style="display: none">
-      <div class="legend-title">Groundwater (GHG)</div>
+      <div class="legend-title">Average Groundwater table depth - GHG (m)</div>
       <img
         id="legend-img"
         src="https://service.pdok.nl/bzk/bro-grondwaterspiegeldiepte/wms/v2_0/legend/bro-grondwaterspiegeldieptemetingen-GHG/mediaan.png"
@@ -325,27 +331,30 @@ document.querySelectorAll('.year-btn').forEach(btn => {
 
     window.ACTIVE_YEAR = parseInt(btn.dataset.year);
 
-    // Update water button URL with new year
+    // Update panel button URLs with new year
     const waterBtn = document.querySelector('[data-tool="water"]');
     waterBtn.setAttribute(
       'hx-get',
       `/watersupply/indicators/${window.ACTIVE_PROVINCE}/${window.ACTIVE_YEAR}/`
     );
     htmx.process(waterBtn);
+    syncHeatBtn();
 
-    // If water panel is already open, reload it with new year
+    // If an HTMX panel is already open, reload it with new context
     const panelTitle = document.getElementById('panel-title');
     if (panelTitle?.textContent === 'WATER SUPPLY') {
       htmx.trigger(waterBtn, 'click');
+    } else if (panelTitle?.textContent === 'URBAN HEAT') {
+      htmx.trigger(document.querySelector('[data-tool="temperature"]'), 'click');
     }
   });
 });
 
 document.body.addEventListener('htmx:afterSwap', function(evt) {
   if (evt.detail.target.id === 'panel-body') {
-    // Open the side panel
+    const title = evt.detail.elt?.dataset?.panelTitle || 'INFO';
     document.getElementById('side-panel').classList.add('open');
-    document.getElementById('panel-title').textContent = 'WATER SUPPLY';
+    document.getElementById('panel-title').textContent = title;
   }
 });
 
@@ -357,6 +366,14 @@ function syncWaterBtn() {
     `/watersupply/indicators/${window.ACTIVE_PROVINCE}/${window.ACTIVE_YEAR}/`
   );
   htmx.process(waterBtn);
+}
+
+function syncHeatBtn() {
+  const heatBtn = document.querySelector('[data-tool="temperature"]');
+  if (!heatBtn) return;
+  const province = window.ACTIVE_PROVINCE || 'Demo';
+  heatBtn.setAttribute('hx-get', `/urban_heat/indicators/${province}/`);
+  htmx.process(heatBtn);
 }
 
 </script>
