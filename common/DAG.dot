@@ -1,0 +1,309 @@
+digraph CrossTwin {
+    // Global layout
+    rankdir=TB;
+    splines=ortho;
+    nodesep=0.6;
+    ranksep=1.0;
+    beautify=True;
+    fontname="Lato";
+    bgcolor="#ffffff00";
+    dpi=150;
+    pad=0.5;
+    concentrate=false;
+    newrank=true;
+
+    // // Graph title
+    // labelloc=t;
+    // label=<<FONT FACE="Lato" POINT-SIZE="22" COLOR="#2C3E50"><B>CrossTwin – DPSIR Causal Network</B></FONT>>;
+
+    node [fontname="Lato", fontsize=15, style="filled,rounded", shape=box, margin="0.25,0.12", penwidth=0.6, color="#44444480"];
+    edge [fontname="Lato", fontsize=9, color="#78909C", penwidth=1.5, arrowsize=0.7, arrowhead=vee, dir=forward, arrowtail=dot, tailclip=true];
+
+    // ─── LEGEND ──────────────────────────────────────────────────────────────
+    subgraph cluster_legend {
+        label=<<FONT FACE="Lato" POINT-SIZE="14" COLOR="#2C3E50"><B>DPSIR Legend</B></FONT>>;
+        style="rounded,filled";
+        fillcolor="#F5F5F5";
+        color="#BDBDBD";
+        margin=16;
+        node [shape=box, style="filled,rounded", fontsize=11, width=1.6, height=0.2, margin="0.15,0.08"];
+        L_D [label="Driver"        fillcolor="#EF8C1A" fontcolor="white" color="#D47A10"];
+        L_P [label="Pressure"      fillcolor="#8E24AA" fontcolor="white" color="#6A1B7A"];
+        L_S [label="State"         fillcolor="#00897B" fontcolor="white" color="#00695C"];
+        L_I [label="Impact"        fillcolor="#C62828" fontcolor="white" color="#A31F1F"];
+        L_R [label="Response"      fillcolor="#0097A7" fontcolor="white" color="#00838F"];
+        L_D -> L_P -> L_S -> L_I -> L_R [style=invis];
+    }
+
+    // ─── DRIVERS (Orange) ───────────────────────────────────────────────────────
+    node [fillcolor="#EF8C1A", fontcolor="white", color="#D47A10"];
+   
+    Population_Growth   [label="Population\nGrowth Rate"]; 
+    Climate_Change      [label="Climate Change"];
+    Buildings           [label="Buildings"];
+    Streets             [label="Streets\nRoad Network"];
+    Central_Bank        [label="Central Bank\nPolicy"];
+    Credit_Supply       [label="Credit Supply\nConditions"];
+    ConsumptionCapita   [label="Water Consumption\nper Capita"];
+    Income_Expenses     [label="Income / Expenses"];
+    Energy_Cost         [label="Energy Cost"];
+
+    // ─── IMPACTS (Red) ──────────────────────────────────────────────────────────
+    node [fillcolor="#C62828", fontcolor="white", color="#A31F1F"];
+    Accessibility       [label="Accessibility"];
+    
+    CO2_Emission        [label="CO2 eq Emission"];
+    
+    Energy_Consumption  [label="Energy Consumption"];
+
+    Affordability_Stress [label="Affordability Stress"];
+    Water_Tariff_Afford [label="Water Tariff\nAffordability"];
+    
+    
+    ILI                 [label="Infrastructure\n Leakage Index"];
+    User_Acceptance_WS  [label="User Acceptance\nWater Quality"];
+
+    Area_Drought        [label="Area Affected\nby Drought"];
+    Supply_Security     [label="Supply Security"];
+
+    LST                 [label="LST"];
+    PET                 [label="PET"];
+    UTCI                [label="UTCI"];
+    SVF                 [label="Sky View Factor"];
+    LandCover           [label="LandCover"];
+
+    Coverage_WS_Area    [label="Coverage Wate\n Supply Area"];
+    Coverage_WS         [label="Coverage Water\n Supply"];
+    Mortgage            [label="Mortgage"];
+    Rent                [label="Rent"];
+
+    // ─── STATE (Teal) ────────────────────────────────────────────────────────────
+    node [fillcolor="#00897B", fontcolor="white", color="#00695C"];
+    RS_Imagery          [label="RS Imagery"];
+    Meteorology         [label="Meteorology"];
+    
+    Green_Area          [label="Green Area"];
+    
+    Facilities          [label="Urban Facilities"]
+    
+    CityArea            [label="CityArea"];
+    Canyon_Aspect       [label="Canyon Aspect"];
+    DSM                 [label="DSM \nDigital Surface Model"];
+    Tmrt                [label="Tmrt\n Mean Radiant Temp"];
+    
+    Network             [label="Water Supply Network"];
+    NumberUsers         [label="Number of Water\nSupply Users"];
+    Metered_Res_Water   [label="Metered Residential\nWater"];
+    Total_Water_Demand  [label="Total Water\nDemand"];
+    Total_Water_Prod    [label="Total Water\nProduction"];
+    NRW                 [label="Non Revenue\nWater"];
+
+    Available_FW        [label="Available Fresh Water"];
+    
+    Infiltration        [label="Infiltration"];
+    
+    
+    OPEX                [label="Water supply OPEX"];
+    
+    House_Price_Index   [label="House Price Index"];
+    
+    
+    
+    Samples_Taken       [label="Samples Taken"];
+    Samples_WQ          [label="Samples Meeting \nWQ Standards"];
+    
+    WT_Cost             [label="Water Treatment\nCost"];
+    
+
+    // ─── PRESSURE (Purple) ───────────────────────────────────────────────────────
+    node [fillcolor="#8E24AA", fontcolor="white", color="#6A1B7A"];
+    Anthropogenic_Heat  [label="Anthropogenic Heat"];
+    Urbanization        [label="Urbanization"];
+    Total_Population    [label="Total Population"];
+    Housing_Demand      [label="Housing Demand"];
+    Housing_Supply      [label="Housing Supply"];
+    Vegetation_Coverage [label="Vegetation Coverage"];
+    Total_Extraction    [label="Total Extraction"];
+    
+    CollectionRatio     [label="Collection Ratio"];
+    Real_Losses         [label="Real Losses"];
+    Apparent_Losses     [label="Apparent Losses"];
+    
+    
+    
+
+    // ─── RESPONSE (Cyan) ─────────────────────────────────────────────────────────
+    node [fillcolor="#0097A7", fontcolor="white", color="#00838F"];
+    
+    New_Units           [label="New Units Completed"];
+    WT_Efficiency       [label="Water Treatment Efficiency"];
+    Zoning_Status       [label="Zoning Status"];
+    Property            [label="Property"];
+    OPEX_Recovery       [label="OPEX Recovery"];
+    Service_Time        [label="Service Time"];
+    Imported_Water      [label="Imported Water"];
+    NBS                 [label="Nature Based\nSolutions"]
+
+    
+
+    // ─── EDGES ──────────────────────────────────────────────────────────────────
+    // Population
+    Population_Growth   -> Total_Population;
+    Population_Growth   -> Urbanization;
+
+    Total_Population    -> Total_Water_Demand;
+    Total_Population    -> Anthropogenic_Heat;
+    
+    Total_Population    -> NumberUsers;
+    NumberUsers         -> Water_Tariff_Afford;
+
+    // Urbanization / Land
+    Urbanization        -> CityArea;
+    Urbanization        -> Buildings;
+    Urbanization        -> Streets;
+    Urbanization        -> LandCover;
+    Urbanization        -> Housing_Demand;
+    
+    CityArea            -> Coverage_WS_Area;
+    CityArea            -> Network;
+
+    Housing_Demand      -> Zoning_Status;
+    Housing_Demand      -> House_Price_Index;
+
+    LandCover           -> Green_Area;
+    LandCover           -> Infiltration;
+    LandCover           -> LST;
+
+    Buildings           -> DSM;
+    Buildings           -> Canyon_Aspect;
+
+    // Climate / Urban Heat
+    RS_Imagery          -> LandCover;
+    RS_Imagery          -> LST;
+
+    Climate_Change      -> Meteorology;
+    Anthropogenic_Heat  -> Meteorology;
+    Canyon_Aspect       -> Meteorology;
+
+    Meteorology         -> Tmrt;
+    Meteorology         -> PET;
+    Meteorology         -> UTCI;
+    Meteorology         -> Available_FW;
+
+    DSM                 -> SVF;
+    SVF                 -> Tmrt;
+    SVF                 -> PET;
+
+    LST                 -> PET;
+
+    Tmrt                -> PET;
+    Tmrt                -> UTCI;
+    
+    
+    Green_Area          -> Vegetation_Coverage;
+    Vegetation_Coverage -> DSM;
+
+    // Streets 
+    Streets             -> Canyon_Aspect;
+    
+    Canyon_Aspect       -> DSM;
+
+    // Accessibility
+    Facilities          -> Accessibility;
+    Streets             -> Accessibility;
+    Green_Area          -> Accessibility;
+    Accessibility       -> Property;
+
+    // Housing
+    Housing_Supply      -> Property;
+    Zoning_Status       -> Property;
+    Zoning_Status       -> New_Units;
+
+    New_Units           -> Housing_Supply;
+    New_Units           -> LandCover;
+    
+    Property            -> Affordability_Stress;
+    Property            -> Rent;
+    Property            -> House_Price_Index;
+    Property            -> Mortgage
+    Water_Tariff_Afford -> Income_Expenses;
+
+    Income_Expenses     -> Affordability_Stress;
+    Mortgage            -> Affordability_Stress;
+    Mortgage            -> Income_Expenses;
+    Rent                -> Income_Expenses;
+
+    Central_Bank        -> Mortgage;
+    Credit_Supply       -> Mortgage;
+
+    
+
+    // Water Demand / Supply
+    ConsumptionCapita   -> Total_Water_Demand;
+    Total_Water_Demand  -> Supply_Security;
+    Imported_Water      -> Total_Water_Prod;
+
+
+
+    Total_Water_Prod    -> Supply_Security;
+    Total_Water_Prod    -> OPEX;
+
+    Supply_Security     -> Service_Time;
+
+    Network             -> Coverage_WS_Area;
+    Network             -> Coverage_WS;
+    Network             -> New_Units;
+    Network             -> Real_Losses;
+    
+    Total_Water_Prod    -> Energy_Consumption;
+    
+    Infiltration        -> Available_FW;
+    Available_FW        -> Total_Extraction;
+
+    Total_Extraction    -> Total_Water_Prod;
+    Total_Extraction    -> Area_Drought;
+    Total_Extraction    -> Energy_Consumption;
+    Total_Extraction    -> CO2_Emission;
+
+    Coverage_WS_Area    -> NumberUsers;
+    NumberUsers         -> Coverage_WS;
+    NumberUsers         -> Metered_Res_Water;
+
+    Metered_Res_Water   -> CollectionRatio;
+
+    Real_Losses         -> NRW;
+    Apparent_Losses     -> NRW;
+
+    Real_Losses         -> ILI;
+    Apparent_Losses     -> ILI;
+
+    // Water costs / tariff
+    Energy_Cost         -> Energy_Consumption;
+    Energy_Cost         -> Total_Water_Prod;
+
+    Energy_Consumption  -> OPEX;
+    WT_Cost             -> OPEX;
+    Network             -> OPEX;
+    Imported_Water      -> OPEX;
+    Total_Water_Prod    -> OPEX;
+
+    OPEX                -> OPEX_Recovery;
+    Water_Tariff_Afford -> CollectionRatio;
+
+    CollectionRatio     -> OPEX_Recovery;
+    NRW                 -> OPEX_Recovery;
+
+
+    WT_Efficiency       -> WT_Cost;
+    WT_Efficiency       -> Samples_WQ
+    
+    Samples_Taken       -> Samples_WQ;
+    Samples_WQ          -> User_Acceptance_WS;
+    User_Acceptance_WS  -> CollectionRatio;
+
+
+    // NBS
+    UTCI                -> NBS;
+    PET                 -> NBS;
+    
+}

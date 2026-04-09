@@ -1,0 +1,145 @@
+{% comment %} heat_indicators.html {% endcomment %}
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Urban Heat Dashboard</title>
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+</head>
+<body>
+
+  <header>
+    <span class="label-tag">CrossTwin · Urban Heat Intelligence</span>
+    <h1>{{ Province.ProvinceName }}</h1>
+  </header>
+
+  <!-- Vegetation slider — outside the swap target so it persists -->
+  <div class="slider-container">
+    <div class="slider-header">
+      <div class="slider-header-left">
+        <div class="card-icon" style="background:rgba(0,229,192,0.08);border-color:rgba(0,229,192,0.15);">🌿</div>
+        <span class="card-label">Vegetation Coverage</span>
+      </div>
+      <div class="slider-value-display">
+        <span id="slider-display">{{ indicators.vegetation_pct }}</span>
+        <span class="slider-unit">% of area</span>
+      </div>
+    </div>
+
+    <div class="slider-zones-container">
+      <!-- Zone track: red → yellow → green (reversed vs water supply) -->
+      <div class="slider-zones">
+        <div class="sz-bad"></div>
+        <div class="sz-warn"></div>
+        <div class="sz-ok"></div>
+      </div>
+      <div class="slider-zone-wrap">
+        <input
+          id="vegetation-slider"
+          class="zone-slider"
+          type="range"
+          name="vegetation_pct"
+          min="0" max="60" step="0.5"
+          value="{{ indicators.vegetation_pct }}"
+          hx-get="{% url 'urban_heat:recalculate_indicators' Province.ProvinceName %}"
+          hx-trigger="input changed delay:200ms"
+          hx-target="#indicators-grid"
+          hx-include="this"
+        />
+      </div>
+      <div class="slider-threshold-labels">
+        <span>0%</span>
+        <span>15%</span>
+        <span>30%</span>
+        <span>60%</span>
+      </div>
+    </div>
+
+    <div>
+      <span id="zone-tag" class="threshold-tag ok">Good</span>
+    </div>
+  </div>
+
+  <!-- HTMX swaps this div -->
+  <div id="indicators-grid">
+    {% include 'urban_heat/partials/indicators_grid.html' %}
+  </div>
+
+  <script>
+    function zoneStyle(val) {
+      if (val >= 30)      return { col: '#00e5c0', label: 'Good',     cls: 'ok'   };
+      else if (val >= 15) return { col: '#ffb84d', label: 'Moderate', cls: 'warn' };
+      else                return { col: '#ff7a52', label: 'Low',      cls: 'bad'  };
+    }
+
+    function applyZone(val) {
+      const z   = zoneStyle(val);
+      const sl  = document.getElementById('vegetation-slider');
+      const tag = document.getElementById('zone-tag');
+      const disp = document.getElementById('slider-display');
+      if (disp) disp.textContent = val;
+      if (sl)  sl.style.setProperty('--thumb-col', z.col);
+      if (tag) { tag.textContent = z.label; tag.className = 'threshold-tag ' + z.cls; }
+    }
+
+    const slider = document.getElementById('vegetation-slider');
+    if (slider) {
+      applyZone(parseFloat(slider.value));
+      slider.addEventListener('input', e => applyZone(parseFloat(e.target.value)));
+    }
+  </script>
+
+  <script>
+function initGauges() {
+  document.querySelectorAll('[data-gauge-id]').forEach(card => {
+    const val     = parseFloat(card.dataset.gaugeVal) || 0;
+    const id      = card.dataset.gaugeId;
+    const display = card.dataset.gaugeDisplay || '';
+    const path    = document.getElementById(id);
+    const txt     = document.getElementById(id + '-txt');
+    if (!path) return;
+
+    if (id === 'gauge-svf') {
+      // Full ring gauge (SVF 0-100%)
+      const circ   = 238.76;
+      const capped = Math.min(val, 100);
+      let col;
+      if      (val > 70) col = '#63d2ff';
+      else if (val > 40) col = '#ffb84d';
+      else               col = '#ff7a52';
+      path.setAttribute('stroke', col);
+      requestAnimationFrame(() => {
+        path.style.strokeDashoffset = circ - (circ * capped / 100);
+      });
+      if (txt) txt.textContent = display;
+    } else {
+      // Semicircle gauges (LST, PET, UTCI)
+      const total  = 157.08;
+      const capped = Math.min(val, 100);
+      let col;
+      if      (val > 75) col = '#ff5252';
+      else if (val > 50) col = '#ff7a52';
+      else if (val > 30) col = '#ffb84d';
+      else               col = '#00e5c0';
+      path.setAttribute('stroke', col);
+      requestAnimationFrame(() => {
+        path.style.strokeDashoffset = total - (total * capped / 100);
+      });
+      if (txt) txt.textContent = display ? display + '°' : '–';
+    }
+  });
+}
+
+initGauges();
+
+document.body.addEventListener('htmx:afterSwap', function(evt) {
+  if (evt.detail.target.id === 'indicators-grid') {
+    initGauges();
+  }
+});
+</script>
+
+</body>
+</html>
