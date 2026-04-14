@@ -129,39 +129,36 @@
         </div>
     </div>
 
-    <!-- Bbox map panel (shown when any bbox-requiring dataset is selected) -->
+    <!-- City selector map panel (shown when any bbox-requiring dataset is selected) -->
     <div id="bbox-panel" class="hidden w-full h-[600px] glass rounded-xl overflow-hidden flex flex-col">
         <div class="px-5 py-3 border-b border-white/5 flex items-center gap-3">
             <div class="flex-shrink-0 h-7 w-7 rounded-lg bg-amber-500/15 border border-amber-500/25 flex items-center justify-center">
                 <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
                 </svg>
             </div>
             <div class="flex-1">
                 <h3 class="text-sm font-medium text-slate-400">Area of Interest</h3>
-                <p class="text-xs text-slate-400">Draw a bounding box on the map for large datasets</p>
+                <p class="text-xs text-slate-400">Click a city on the map to define the import area</p>
             </div>
-            <div class="flex items-center gap-2">
-                <button type="button" id="bbox-draw-btn"
-                        class="text-xs px-3 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/25 text-amber-300 hover:bg-amber-500/25 transition-colors cursor-pointer">
-                    Draw Rectangle
-                </button>
+            <!-- Shown after a city is selected -->
+            <div id="city-selected-info" class="hidden flex items-center gap-3">
+                <svg class="w-4 h-4 text-emerald-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                </svg>
+                <span class="text-sm font-medium text-emerald-300" id="selected-city-name"></span>
                 <button type="button" id="bbox-clear-btn"
-                        class="hidden text-xs px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:text-slate-400 transition-colors cursor-pointer">
+                        class="text-xs px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:text-slate-300 transition-colors cursor-pointer">
                     Clear
                 </button>
             </div>
         </div>
         <div class="relative flex-1 overflow-hidden">
             <div id="bbox-map" class="h-full w-full min-h-0"></div>
-            <!-- Drawing mode indicator -->
-            <div id="bbox-draw-hint" class="hidden absolute top-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-lg bg-amber-500/90 text-xs font-medium text-white shadow-lg z-10">
-                Click two corners to draw the rectangle
-            </div>
-            <!-- Bbox coordinates display -->
-            <div id="bbox-info" class="hidden absolute bottom-0 left-0 right-0 px-4 py-2 bg-slate-900/80 backdrop-blur-sm text-xs text-slate-400 font-mono flex items-center justify-between">
-                <span id="bbox-coords"></span>
-                <span class="text-emerald-400">bbox set</span>
+            <!-- Instruction hint (hidden once a city is selected) -->
+            <div id="city-hint" class="absolute top-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-lg bg-slate-800/90 border border-white/10 text-xs text-slate-300 shadow-lg z-10 pointer-events-none">
+                Click a city to select it as the area of interest
             </div>
         </div>
     </div>
@@ -309,13 +306,12 @@ document.addEventListener('DOMContentLoaded', function () {
     const resultsPanel = document.getElementById('results-panel');
     const resultsList = document.getElementById('results-list');
 
-    // Bbox panel elements
+    // City selector panel elements
     const bboxPanel = document.getElementById('bbox-panel');
-    const bboxDrawBtn = document.getElementById('bbox-draw-btn');
     const bboxClearBtn = document.getElementById('bbox-clear-btn');
-    const bboxDrawHint = document.getElementById('bbox-draw-hint');
-    const bboxInfo = document.getElementById('bbox-info');
-    const bboxCoordsEl = document.getElementById('bbox-coords');
+    const citySelectedInfo = document.getElementById('city-selected-info');
+    const selectedCityNameEl = document.getElementById('selected-city-name');
+    const cityHint = document.getElementById('city-hint');
 
     // Set default date range (last 30 days)
     const today = new Date();
@@ -324,12 +320,11 @@ document.addEventListener('DOMContentLoaded', function () {
     dateToInput.value = today.toISOString().split('T')[0];
     dateFromInput.value = thirtyDaysAgo.toISOString().split('T')[0];
 
-    // ── Bbox Map ──────────────────────────────────────────────────────
+    // ── City Selector Map ─────────────────────────────────────────────
     let bboxMap = null;
     let bboxMapReady = false;
     let currentBbox = null;       // [west, south, east, north] in WGS84
-    let drawingMode = false;
-    let firstCorner = null;       // LngLat of first click
+    let selectedCityId = null;
 
     function initBboxMap() {
         if (bboxMap) { bboxMap.resize(); return; }
@@ -338,7 +333,7 @@ document.addEventListener('DOMContentLoaded', function () {
         bboxMap = new mapboxgl.Map({
             container: 'bbox-map',
             style: 'mapbox://styles/mapbox/dark-v11',
-            center: [5.28, 52.13],   // Center of Netherlands
+            center: [5.28, 52.13],
             zoom: 6.5,
             attributionControl: false,
         });
@@ -346,121 +341,98 @@ document.addEventListener('DOMContentLoaded', function () {
 
         bboxMap.on('load', function () {
             bboxMapReady = true;
-            // Empty source for the bbox rectangle
-            bboxMap.addSource('bbox-rect', {
-                type: 'geojson',
-                data: { type: 'FeatureCollection', features: [] },
-            });
-            bboxMap.addLayer({
-                id: 'bbox-fill',
-                type: 'fill',
-                source: 'bbox-rect',
-                paint: { 'fill-color': '#f59e0b', 'fill-opacity': 0.15 },
-            });
-            bboxMap.addLayer({
-                id: 'bbox-outline',
-                type: 'line',
-                source: 'bbox-rect',
-                paint: { 'line-color': '#f59e0b', 'line-width': 2, 'line-dasharray': [2, 2] },
-            });
-        });
 
-        // ── Drawing interactions ──────────────────────────────────────
-        bboxMap.on('click', function (e) {
-            if (!drawingMode) return;
+            fetch("{% url 'importer:cities_geojson' %}")
+                .then(r => r.json())
+                .then(geojson => {
+                    bboxMap.addSource('cities', { type: 'geojson', data: geojson });
 
-            if (!firstCorner) {
-                // First click: store corner
-                firstCorner = e.lngLat;
-            } else {
-                // Second click: finalize rectangle
-                const sw = firstCorner;
-                const ne = e.lngLat;
-                currentBbox = [
-                    Math.min(sw.lng, ne.lng),
-                    Math.min(sw.lat, ne.lat),
-                    Math.max(sw.lng, ne.lng),
-                    Math.max(sw.lat, ne.lat),
-                ];
-                setBboxRect(currentBbox);
-                exitDrawingMode();
-                showBboxInfo();
-            }
-        });
+                    bboxMap.addLayer({
+                        id: 'cities-fill',
+                        type: 'fill',
+                        source: 'cities',
+                        paint: { 'fill-color': '#3b82f6', 'fill-opacity': 0.15 },
+                    });
+                    bboxMap.addLayer({
+                        id: 'cities-outline',
+                        type: 'line',
+                        source: 'cities',
+                        paint: { 'line-color': '#60a5fa', 'line-width': 1 },
+                    });
+                    bboxMap.addLayer({
+                        id: 'cities-label',
+                        type: 'symbol',
+                        source: 'cities',
+                        layout: {
+                            'text-field': ['get', 'name'],
+                            'text-size': 11,
+                            'text-anchor': 'center',
+                        },
+                        paint: {
+                            'text-color': '#94a3b8',
+                            'text-halo-color': '#0f172a',
+                            'text-halo-width': 1,
+                        },
+                    });
 
-        bboxMap.on('mousemove', function (e) {
-            if (!drawingMode || !firstCorner) return;
-            // Live preview rectangle as mouse moves
-            const sw = firstCorner;
-            const ne = e.lngLat;
-            const preview = [
-                Math.min(sw.lng, ne.lng),
-                Math.min(sw.lat, ne.lat),
-                Math.max(sw.lng, ne.lng),
-                Math.max(sw.lat, ne.lat),
-            ];
-            setBboxRect(preview);
+                    bboxMap.on('mouseenter', 'cities-fill', () => {
+                        bboxMap.getCanvas().style.cursor = 'pointer';
+                    });
+                    bboxMap.on('mouseleave', 'cities-fill', () => {
+                        bboxMap.getCanvas().style.cursor = '';
+                    });
+
+                    bboxMap.on('click', 'cities-fill', function (e) {
+                        if (!e.features.length) return;
+                        const props = e.features[0].properties;
+                        // bbox is serialized as a JSON string inside GeoJSON properties
+                        const bbox = typeof props.bbox === 'string' ? JSON.parse(props.bbox) : props.bbox;
+                        selectCity(props.id, props.name, bbox);
+                    });
+                })
+                .catch(err => console.error('Failed to load cities:', err));
         });
     }
 
-    function setBboxRect(bbox) {
+    function highlightSelectedCity() {
         if (!bboxMapReady) return;
-        const [w, s, e, n] = bbox;
-        bboxMap.getSource('bbox-rect').setData({
-            type: 'Feature',
-            geometry: {
-                type: 'Polygon',
-                coordinates: [[[w,s],[e,s],[e,n],[w,n],[w,s]]],
-            },
-        });
+        bboxMap.setPaintProperty('cities-fill', 'fill-color', [
+            'case', ['==', ['get', 'id'], selectedCityId], '#f59e0b', '#3b82f6'
+        ]);
+        bboxMap.setPaintProperty('cities-fill', 'fill-opacity', [
+            'case', ['==', ['get', 'id'], selectedCityId], 0.35, 0.15
+        ]);
+        bboxMap.setPaintProperty('cities-outline', 'line-color', [
+            'case', ['==', ['get', 'id'], selectedCityId], '#f59e0b', '#60a5fa'
+        ]);
+        bboxMap.setPaintProperty('cities-outline', 'line-width', [
+            'case', ['==', ['get', 'id'], selectedCityId], 2, 1
+        ]);
     }
 
-    function enterDrawingMode() {
-        drawingMode = true;
-        firstCorner = null;
-        bboxMap.getCanvas().style.cursor = 'crosshair';
-        bboxMap.dragPan.disable();
-        bboxDrawHint.classList.remove('hidden');
-        bboxDrawBtn.textContent = 'Cancel';
-        bboxDrawBtn.classList.add('bg-rose-500/15', 'border-rose-500/25', 'text-rose-300');
-        bboxDrawBtn.classList.remove('bg-amber-500/15', 'border-amber-500/25', 'text-amber-300');
-    }
-
-    function exitDrawingMode() {
-        drawingMode = false;
-        firstCorner = null;
-        if (bboxMap) {
-            bboxMap.getCanvas().style.cursor = '';
-            bboxMap.dragPan.enable();
-        }
-        bboxDrawHint.classList.add('hidden');
-        bboxDrawBtn.textContent = 'Draw Rectangle';
-        bboxDrawBtn.classList.remove('bg-rose-500/15', 'border-rose-500/25', 'text-rose-300');
-        bboxDrawBtn.classList.add('bg-amber-500/15', 'border-amber-500/25', 'text-amber-300');
-    }
-
-    function showBboxInfo() {
-        if (!currentBbox) { bboxInfo.classList.add('hidden'); return; }
-        const [w, s, e, n] = currentBbox;
-        bboxCoordsEl.textContent = `W ${w.toFixed(4)}  S ${s.toFixed(4)}  E ${e.toFixed(4)}  N ${n.toFixed(4)}`;
-        bboxInfo.classList.remove('hidden');
-        bboxClearBtn.classList.remove('hidden');
+    function selectCity(cityId, cityName, bbox) {
+        selectedCityId = cityId;
+        currentBbox = bbox;
+        selectedCityNameEl.textContent = cityName;
+        citySelectedInfo.classList.remove('hidden');
+        cityHint.classList.add('hidden');
+        highlightSelectedCity();
+        bboxMap.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], { padding: 40, duration: 800 });
     }
 
     function clearBbox() {
+        selectedCityId = null;
         currentBbox = null;
+        citySelectedInfo.classList.add('hidden');
+        cityHint.classList.remove('hidden');
         if (bboxMapReady) {
-            bboxMap.getSource('bbox-rect').setData({ type: 'FeatureCollection', features: [] });
+            bboxMap.setPaintProperty('cities-fill', 'fill-color', '#3b82f6');
+            bboxMap.setPaintProperty('cities-fill', 'fill-opacity', 0.15);
+            bboxMap.setPaintProperty('cities-outline', 'line-color', '#60a5fa');
+            bboxMap.setPaintProperty('cities-outline', 'line-width', 1);
+            bboxMap.flyTo({ center: [5.28, 52.13], zoom: 6.5, duration: 800 });
         }
-        bboxInfo.classList.add('hidden');
-        bboxClearBtn.classList.add('hidden');
-        exitDrawingMode();
     }
-
-    bboxDrawBtn.addEventListener('click', function () {
-        if (drawingMode) { exitDrawingMode(); return; }
-        enterDrawingMode();
-    });
 
     bboxClearBtn.addEventListener('click', clearBbox);
 
@@ -525,7 +497,7 @@ document.addEventListener('DOMContentLoaded', function () {
         // Check if bbox needed but not drawn
         const needsBbox = selected.some(k => catalog[k] && catalog[k].requires_bbox);
         if (needsBbox && !currentBbox) {
-            alert('Please draw a bounding box on the map for the selected datasets.');
+            alert('Please select a city on the map to define the area of interest.');
             return;
         }
 
