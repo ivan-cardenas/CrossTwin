@@ -1,157 +1,151 @@
 /* ==========================================================================
-   CrossTwin Theme - Enhanced Importer Styles
+   CrossTwin Theme
+   Neutral dark — monochrome base, single blue accent for interactive states
    ========================================================================== */
 
 :root {
-    --font-base: "Space Grotesk", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
-    
-    /* Text Colors */
-    --text-primary: #e0fff4;
-    --text-muted: #a7d8c9;
-    --text-dim: #6b9b8a;
-    --text-white: #fcfcfc;
-    --text-black: #0a0a0a;
-    --text-dark: #0a2922;
-    
-    /* Background Colors */
-    --bg-body-start: #041f1a;
-    --bg-body-mid: #0a2922;
-    --bg-body-end: #031a15;
-    --bg-body-light: #70cec6;
-    --bg-dropdown: #1e293b;
-    
-    /* Surface Colors */
-    --surface: rgba(255, 255, 255, 0.04);
-    --surface-strong: rgba(255, 255, 255, 0.08);
-    --surface-hover: rgba(255, 255, 255, 0.12);
-    --surface-inset: rgba(255, 255, 255, 0.05);
-    
-    /* Border & Shadow */
-    --border-soft: rgba(255, 255, 255, 0.12);
-    --border-medium: rgba(255, 255, 255, 0.18);
-    --shadow-soft: 0 20px 50px rgba(0, 0, 0, 0.35);
-    --shadow-glow: 0 10px 40px rgba(14, 165, 233, 0.15);
-    
-    /* Accent Colors */
-    --accent-1: #ff9b37;  /* Emerald */
-    --accent-2: #b86314;  /* Teal */
-    --accent-3: #22d3ee;  /* Cyan */
-    --accent-4: #6ee7b7;  /* Mint */
-    
-    /* Accent RGB values (for rgba usage) */
-    --accent-1-rgb: 94, 234, 212;
-    --accent-4-rgb: 56, 189, 248;
-    --accent-glow-rgb: 14, 165, 233;
-    --accent-hover: #ffb366;
-    
-    /* Status Colors */
-   --success: #4ade80;
-    --warning: #fcd34d;
-    --error: #f87171;
-    --info: #2dd4bf;
-    
-    /* Status RGB values (for rgba usage) */
-    --success-rgb: 52, 211, 153;
-    --warning-rgb: 251, 191, 36;
-    --error-rgb: 248, 113, 113;
-    --info-rgb: 96, 165, 250;
-    
-    /* Error text color */
-    --error-text: #fecdd3;
-    
-    /* Print colors */
-    --print-bg: white;
-    --print-text: black;
+    --font-base: "Space Grotesk", "Inter", system-ui, sans-serif;
+    --font-body: "Inter", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", "Fira Code", monospace;
+
+    /* Layout — written at runtime by JS in base.html */
+    --header-height: 48px;
+
+    /* Backgrounds */
+    --bg-0:  #080808;   /* page background */
+    --bg-1:  #111111;   /* cards, panels */
+    --bg-2:  #1a1a1a;   /* hover / raised */
+    --bg-3:  #222222;   /* active / pressed */
+    --bg-dropdown: #111111;
+
+    /* Borders — hairline only */
+    --border:        rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.14);
+    --border-focus:  rgba(59, 130, 246, 0.5);
+
+    /* Text — four steps from bright to invisible */
+    --text-primary:   #f0f0f0;   /* headings, important labels */
+    --text-secondary: #cecece;   /* body copy, descriptions */
+    --text-tertiary:  #d3d3d3;   /* muted labels, help text */
+    --text-dim:       #717171;   /* hairline separators, ghost text */
+    --text-white:     #ffffff;
+    --text-black:     #080808;
+
+    /* Single interactive accent — blue, used only   for focus/active states */
+    --accent:     #3b82f6;
+    --accent-rgb: 59, 130, 246;
+
+    /* Legacy aliases — mapped neutral so old code doesn't break visually */
+    --accent-1:     #f0f0f0;
+    --accent-2:     #888888;
+    --accent-3:     #3b82f6;
+    --accent-4:     #aaaaaa;
+    --accent-1-rgb: 240, 240, 240;
+    --accent-4-rgb: 170, 170, 170;
+    --accent-glow-rgb: 59, 130, 246;
+    --accent-hover: #ffffff;
+    --accent-muted: rgba(255, 255, 255, 0.06);
+
+    /* Status */
+    --success:     #22c55e;
+    --warning:     #f59e0b;
+    --error:       #ef4444;
+    --info:        #3b82f6;
+
+    --success-rgb: 34, 197, 94;
+    --warning-rgb: 245, 158, 11;
+    --error-rgb:   239, 68, 68;
+    --info-rgb:    59, 130, 246;
+    --error-text:  #fca5a5;
+
+    /* Shadow — no color tint */
+    --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3);
+
+    /* Surfaces (glass aliases — kept flat, no blur) */
+    --surface:        rgba(255, 255, 255, 0.03);
+    --surface-strong: rgba(255, 255, 255, 0.05);
+    --surface-hover:  rgba(255, 255, 255, 0.07);
+    --surface-inset:  rgba(255, 255, 255, 0.03);
+    --border-soft:    rgba(255, 255, 255, 0.08);
+    --border-medium:  rgba(255, 255, 255, 0.14);
+
+    /* Print */
+    --print-bg:   #ffffff;
+    --print-text: #000000;
 }
 
 /* ==========================================================================
-   Base Styles
+   Base
    ========================================================================== */
 
 body {
-    font-family: var(--font-base);
-    background: 
-        radial-gradient(120% 120% at 15% 20%, color-mix(in srgb, var(--accent-1) 18%, var(--bg-body-mid) 82%) 0%, rgba(15, 23, 42, 0) 50%),
-        radial-gradient(110% 110% at 80% 10%, color-mix(in srgb, var(--accent-2) 20%, var(--bg-body-mid) 80%) 0%, rgba(15, 23, 42, 0) 40%),
-        linear-gradient(160deg, var(--bg-body-start) 0%, var(--bg-body-mid) 40%, var(--bg-body-end) 100%);
+    font-family: var(--font-body);
+    background: var(--bg-0);
     color: var(--text-primary);
     min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
 }
 
 /* ==========================================================================
-   Glass Morphism
+   Header & footer chrome
+   ========================================================================== */
+
+.app-header {
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-0);
+    /* Height is content-driven (padding below).
+       JS reads offsetHeight after render and writes --header-height. */
+}
+
+/* Prototype / environment badge in the header */
+.header-badge {
+    padding: 0.15rem 0.5rem;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+}
+
+.app-footer {
+    border-top: 1px solid var(--border);
+}
+
+/* ==========================================================================
+   Glass — kept for compatibility, rendered flat
    ========================================================================== */
 
 .glass {
-    background: var(--surface);
-    border: 1px solid var(--border-soft);
-    box-shadow: var(--shadow-soft);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
+    background: var(--bg-1);
+    border: 1px solid var(--border);
 }
 
 .glass-strong {
-    background: var(--surface-strong);
-    border: 1px solid var(--border-medium);
-    box-shadow: var(--shadow-soft);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    background: var(--bg-1);
+    border: 1px solid var(--border-strong);
 }
 
 /* ==========================================================================
-   Gradient Orbs (Background Animation)
-   ========================================================================== */
-
-.gradient-orb {
-    position: fixed;
-    width: 420px;
-    height: 420px;
-    border-radius: 9999px;
-    filter: blur(70px);
-    opacity: 0.35;
-    z-index: 0;
-    pointer-events: none;
-    background: radial-gradient(circle at 30% 30%, var(--accent-1) 0%, var(--accent-2) 40%, transparent 70%);
-    animation: float 18s ease-in-out infinite;
-}
-
-.gradient-orb.secondary {
-    width: 360px;
-    height: 360px;
-    background: radial-gradient(circle at 50% 50%, var(--accent-3) 0%, var(--accent-4) 40%, transparent 70%);
-    animation-duration: 22s;
-}
-
-.orb-top-left { top: -4%; left: -6%; }
-.orb-bottom-right { right: -10%; bottom: 6%; }
-
-/* ==========================================================================
-   Animations
+   Animation
    ========================================================================== */
 
 .fade-in {
-    animation: fadeIn 0.7s ease;
-}
-
-@keyframes float {
-    0% { transform: translateY(0) translateX(0); }
-    50% { transform: translateY(-16px) translateX(10px); }
-    100% { transform: translateY(0) translateX(0); }
+    animation: fadeIn 0.25s ease;
 }
 
 @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
+    from { opacity: 0; }
+    to   { opacity: 1; }
 }
 
 @keyframes pulse-glow {
-    0%, 100% { box-shadow: 0 0 12px rgba(var(--accent-1-rgb), 0.4); }
-    50% { box-shadow: 0 0 20px rgba(var(--accent-1-rgb), 0.6); }
+    0%, 100% { opacity: 0.6; }
+    50%       { opacity: 1; }
 }
 
 /* ==========================================================================
-   Form Styles
+   Forms
    ========================================================================== */
 
 .upload-form input[type="text"],
@@ -161,81 +155,76 @@ body {
 .upload-form select,
 .upload-form textarea {
     width: 100%;
-    background: var(--surface);
-    border: 1px solid var(--border-soft);
-    border-radius: 12px;
-    padding: 0.75rem 1rem;
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
     color: var(--text-primary);
-    font-family: var(--font-base);
-    font-size: 0.9rem;
-    box-shadow: inset 0 1px 0 var(--surface-inset);
-    transition: all 0.2s ease;
+    font-family: var(--font-body);
+    font-size: 0.875rem;
+    transition: border-color 0.15s ease;
+    outline: none;
 }
 
 .upload-form input[type="file"] {
-    padding: 0.75rem;
+    padding: 0.5rem;
     cursor: pointer;
 }
 
 .upload-form input[type="file"]::file-selector-button {
-    background: linear-gradient(135deg, var(--accent-4) 0%, var(--accent-2) 100%);
-    border: none;
-    border-radius: 8px;
-    padding: 0.5rem 1rem;
-    color: var(--text-black);
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.3rem 0.75rem;
+    color: var(--text-primary);
     font-weight: 500;
-    font-family: var(--font-base);
+    font-family: var(--font-body);
+    font-size: 0.8rem;
     cursor: pointer;
-    margin-right: 1rem;
-    transition: all 0.2s ease;
+    margin-right: 0.75rem;
+    transition: background 0.15s ease;
 }
 
 .upload-form input[type="file"]::file-selector-button:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(var(--accent-4-rgb), 0.3);
+    background: var(--bg-3);
 }
 
 .upload-form input:focus,
 .upload-form select:focus,
 .upload-form textarea:focus {
-    outline: none;
-    border-color: color-mix(in srgb, var(--accent-4) 60%, transparent);
-    box-shadow: 
-        0 0 0 3px color-mix(in srgb, var(--accent-4) 15%, transparent),
-        0 10px 30px rgba(var(--accent-glow-rgb), 0.15);
+    border-color: var(--border-focus);
+    box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.12);
 }
 
 .upload-form select {
     appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23555555'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
-    background-position: right 0.75rem center;
-    background-size: 1.25rem;
-    padding-right: 2.5rem;
+    background-position: right 0.625rem center;
+    background-size: 1rem;
+    padding-right: 2rem;
 }
 
 .upload-form select option {
     background: var(--bg-dropdown);
     color: var(--text-primary);
-    padding: 0.5rem;
 }
 
-/* Checkbox Styling */
 .upload-form input[type="checkbox"] {
-    width: 1.25rem;
-    height: 1.25rem;
-    border-radius: 6px;
-    border: 1px solid var(--border-soft);
-    background: var(--surface);
+    width: 1rem;
+    height: 1rem;
+    border-radius: 3px;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-1);
     cursor: pointer;
     appearance: none;
     position: relative;
-    transition: all 0.2s ease;
+    transition: background 0.12s ease, border-color 0.12s ease;
 }
 
 .upload-form input[type="checkbox"]:checked {
-    background: linear-gradient(135deg, var(--accent-4) 0%, var(--accent-2) 100%);
-    border-color: var(--accent-4);
+    background: var(--accent);
+    border-color: var(--accent);
 }
 
 .upload-form input[type="checkbox"]:checked::after {
@@ -243,149 +232,143 @@ body {
     position: absolute;
     left: 50%;
     top: 50%;
-    width: 5px;
-    height: 9px;
-    border: solid var(--text-white);
-    border-width: 0 2px 2px 0;
+    width: 4px;
+    height: 7px;
+    border: solid #fff;
+    border-width: 0 1.5px 1.5px 0;
     transform: translate(-50%, -60%) rotate(45deg);
 }
 
-/* Help Text */
 .upload-form .helptext {
     display: block;
-    margin-top: 0.35rem;
-    color: var(--text-dim);
-    font-size: 0.8rem;
+    margin-top: 0.25rem;
+    color: var(--text-tertiary);
+    font-size: 0.775rem;
     line-height: 1.4;
 }
 
-/* Error List */
 .upload-form ul.errorlist,
 ul.errorlist {
-    margin-top: 0.5rem;
-    padding: 0.75rem 1rem;
-    border-radius: 10px;
-    background: rgba(var(--error-rgb), 0.1);
-    border: 1px solid rgba(var(--error-rgb), 0.3);
+    margin-top: 0.35rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 5px;
+    background: rgba(var(--error-rgb), 0.08);
+    border: 1px solid rgba(var(--error-rgb), 0.2);
     color: var(--error-text);
     list-style: none;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
 }
 
 .upload-form ul.errorlist li::before,
 ul.errorlist li::before {
-    content: '⚠ ';
+    content: '× ';
+    font-weight: 600;
 }
 
 /* ==========================================================================
-   Button Styles
+   Buttons
    ========================================================================== */
 
+/* ------------------------------------------------------------------
+   Buttons — three clear tonal levels so they read on dark surfaces
+   ------------------------------------------------------------------ */
+
+/* Primary: light on dark — strongest contrast */
 .btn-primary {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.5rem;
-    padding: 0.75rem 1.5rem;
-    background: linear-gradient(135deg, 
-        color-mix(in srgb, var(--accent-4) 90%, var(--text-white)) 0%, 
-        var(--accent-2) 100%);
-    border: none;
-    border-radius: 12px;
-    color: var(--text-black);
+    gap: 0.375rem;
+    padding: 0.5rem 1.125rem;
+    background: #e8e8e8;
+    border: 1px solid #d0d0d0;
+    border-radius: 6px;
+    color: #0a0a0a;
     font-weight: 600;
-    font-size: 0.9rem;
+    font-size: 0.875rem;
     font-family: var(--font-base);
     cursor: pointer;
-    transition: all 0.2s ease;
-    box-shadow: 
-        0 4px 15px rgba(var(--accent-4-rgb), 0.3),
-        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    transition: background 0.12s ease;
     text-decoration: none;
+    letter-spacing: 0.01em;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.15), 0 1px 2px rgba(0,0,0,0.4);
 }
 
-.btn-primary:hover {
-    transform: translateY(-2px);
-    box-shadow: 
-        0 8px 25px rgba(var(--accent-4-rgb), 0.4),
-        inset 0 1px 0 rgba(255, 255, 255, 0.2);
-}
+.btn-primary:hover  { background: #f5f5f5; border-color: #ddd; }
+.btn-primary:active { background: #d8d8d8; }
 
-.btn-primary:active {
-    transform: translateY(0);
-}
-
+/* Secondary: dark surface with visible border — mid contrast */
 .btn-secondary {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.5rem;
-    padding: 0.75rem 1.5rem;
-    background: var(--surface);
-    border: 1px solid var(--border-soft);
-    border-radius: 12px;
-    color: var(--text-primary);
+    gap: 0.375rem;
+    padding: 0.5rem 1.125rem;
+    background: #1c1c1c;
+    border: 1px solid #2e2e2e;
+    border-radius: 6px;
+    color: #d0d0d0;
     font-weight: 500;
-    font-size: 0.9rem;
-    font-family: var(--font-base);
+    font-size: 0.875rem;
+    font-family: var(--font-body);
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
     text-decoration: none;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 1px 2px rgba(0,0,0,0.3);
 }
 
 .btn-secondary:hover {
-    background: var(--surface-hover);
-    border-color: var(--border-medium);
-    transform: translateY(-1px);
+    background: #242424;
+    border-color: #3a3a3a;
+    color: #f0f0f0;
 }
 
 /* ==========================================================================
-   Table Styles (for data preview)
+   Tables
    ========================================================================== */
 
 .table-wrapper {
     overflow-x: auto;
-    border-radius: 12px;
-    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+    border: 1px solid var(--border);
 }
 
 .table-wrapper table,
 table.dataframe {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.85rem;
+    font-size: 0.82rem;
+    font-family: var(--font-body);
 }
 
 .table-wrapper th,
 .table-wrapper td,
 table.dataframe th,
 table.dataframe td {
-    padding: 0.75rem 1rem;
+    padding: 0.5rem 0.875rem;
     text-align: left;
-    border-bottom: 1px solid var(--border-soft);
+    border-bottom: 1px solid var(--border);
     white-space: nowrap;
 }
 
 .table-wrapper th,
 table.dataframe th {
-    background: var(--surface-strong);
+    background: var(--bg-1);
     font-weight: 600;
-    color: var(--text-primary);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
     position: sticky;
     top: 0;
 }
 
 .table-wrapper tr:hover,
-table.dataframe tr:hover {
-    background: var(--surface);
-}
+table.dataframe tr:hover { background: var(--bg-2); }
 
 .table-wrapper td,
-table.dataframe td {
-    color: var(--text-muted);
-}
+table.dataframe td { color: var(--text-primary); }
 
-/* Geometry column truncation */
 .table-wrapper td:last-child,
 table.dataframe td:last-child {
     max-width: 200px;
@@ -394,102 +377,95 @@ table.dataframe td:last-child {
 }
 
 /* ==========================================================================
-   Status Badges
+   Badges
    ========================================================================== */
 
 .badge {
     display: inline-flex;
     align-items: center;
-    gap: 0.25rem;
-    padding: 0.25rem 0.75rem;
-    border-radius: 9999px;
-    font-size: 0.75rem;
+    gap: 0.2rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
     font-weight: 500;
+    letter-spacing: 0.03em;
 }
 
 .badge-success {
-    background: rgba(var(--success-rgb), 0.15);
+    background: rgba(var(--success-rgb), 0.1);
     color: var(--success);
-    border: 1px solid rgba(var(--success-rgb), 0.3);
+    border: 1px solid rgba(var(--success-rgb), 0.2);
 }
 
 .badge-warning {
-    background: rgba(var(--warning-rgb), 0.15);
+    background: rgba(var(--warning-rgb), 0.1);
     color: var(--warning);
-    border: 1px solid rgba(var(--warning-rgb), 0.3);
+    border: 1px solid rgba(var(--warning-rgb), 0.2);
 }
 
 .badge-error {
-    background: rgba(var(--error-rgb), 0.15);
+    background: rgba(var(--error-rgb), 0.1);
     color: var(--error);
-    border: 1px solid rgba(var(--error-rgb), 0.3);
+    border: 1px solid rgba(var(--error-rgb), 0.2);
 }
 
 .badge-info {
-    background: rgba(var(--info-rgb), 0.15);
+    background: rgba(var(--info-rgb), 0.1);
     color: var(--info);
-    border: 1px solid rgba(var(--info-rgb), 0.3);
+    border: 1px solid rgba(var(--info-rgb), 0.2);
 }
 
 /* ==========================================================================
-   Code Blocks
+   Version badge
+   ========================================================================== */
+
+.version-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.7rem;
+    font-family: var(--font-mono);
+    color: var(--text-tertiary);
+}
+
+.version-badge__tag {
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    letter-spacing: 0.04em;
+}
+
+/* ==========================================================================
+   Code
    ========================================================================== */
 
 code {
     font-family: var(--font-mono);
+    font-size: 0.83em;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0.1em 0.3em;
+    color: var(--text-primary);
 }
 
 /* ==========================================================================
-   Responsive Utilities
+   Loading overlay
    ========================================================================== */
 
-@media (max-width: 640px) {
-    .upload-form input[type="file"]::file-selector-button {
-        margin-bottom: 0.5rem;
-        margin-right: 0;
-        display: block;
-        width: 100%;
-    }
-    
-    .btn-primary,
-    .btn-secondary {
-        width: 100%;
-    }
-}
-
-/* ==========================================================================
-   Print Styles
-   ========================================================================== */
-
-@media print {
-    .gradient-orb,
-    .glass {
-        display: none;
-    }
-    
-    body {
-        background: var(--print-bg);
-        color: var(--print-text);
-    }
-}
-
-/* ==========================================================================
-   Loading wheel
-   ========================================================================== */
-
-   .loading-overlay {
+.loading-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(8px);
+    inset: 0;
+    background: rgba(8, 8, 8, 0.75);
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     z-index: 9999;
-    transition: opacity 0.3s ease;
+    transition: opacity 0.2s ease;
+    gap: 16px;
 }
 
 .loading-overlay.hidden {
@@ -499,8 +475,8 @@ code {
 
 .loading-spinner {
     position: relative;
-    width: 120px;
-    height: 120px;
+    width: 36px;
+    height: 36px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -508,55 +484,100 @@ code {
 
 .spinner-ring {
     position: absolute;
-    width: 80px;
-    height: 80px;
-    border: 3px solid transparent;
-    border-top-color: #3b82f6;
+    border: 1.5px solid transparent;
     border-radius: 50%;
-    animation: spin 1.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
+    animation: spin 1.2s linear infinite;
+}
+
+.spinner-ring:nth-child(1) {
+    width: 36px;
+    height: 36px;
+    border-top-color: var(--text-primary);
 }
 
 .spinner-ring:nth-child(2) {
-    width: 60px;
-    height: 60px;
-    border-top-color: #06b6d4;
-    animation-delay: -0.5s;
-    animation-duration: 1.2s;
+    width: 24px;
+    height: 24px;
+    border-top-color: var(--text-secondary);
+    animation-delay: -0.4s;
+    animation-direction: reverse;
 }
 
 .spinner-ring:nth-child(3) {
-    width: 40px;
-    height: 40px;
-    border-top-color: #8b5cf6;
-    animation-delay: -1s;
-    animation-duration: 1.8s;
+    width: 14px;
+    height: 14px;
+    border-top-color: var(--text-tertiary);
+    animation-delay: -0.8s;
 }
 
 .loading-text {
-    position: absolute;
-    text-align: center;
-    bottom: -30px;
-    color: white;
-    font-size: 14px;
-    font-weight: 500;
-    letter-spacing: 0.5px;
-    animation: pulse 1.5s ease-in-out infinite;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
 }
 
 @keyframes spin {
-    0% {
-        transform: rotate(0deg);
-    }
-    100% {
-        transform: rotate(360deg);
-    }
+    to { transform: rotate(360deg); }
 }
 
-@keyframes pulse {
-    0%, 100% {
-        opacity: 1;
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+
+@media (max-width: 640px) {
+    .upload-form input[type="file"]::file-selector-button {
+        margin-bottom: 0.35rem;
+        margin-right: 0;
+        display: block;
+        width: 100%;
     }
-    50% {
-        opacity: 0.5;
+
+    .btn-primary,
+    .btn-secondary { width: 100%; }
+}
+
+/* ==========================================================================
+   Semantic color utilities — always use these instead of raw hex in HTML.
+   Prefixed ct- to avoid collision with Tailwind's built-in utilities.
+   ========================================================================== */
+
+/* Text */
+.ct-text-primary   { color: var(--text-primary); }
+.ct-text-secondary { color: var(--text-secondary); }
+.ct-text-tertiary  { color: var(--text-tertiary); }
+.ct-text-dim       { color: var(--text-dim); }
+.ct-text-white     { color: var(--text-white); }
+.ct-text-accent    { color: var(--accent); }
+.ct-text-success   { color: var(--success); }
+.ct-text-warning   { color: var(--warning); }
+.ct-text-error     { color: var(--error); }
+
+/* Backgrounds */
+.ct-bg-0  { background-color: var(--bg-0); }
+.ct-bg-1  { background-color: var(--bg-1); }
+.ct-bg-2  { background-color: var(--bg-2); }
+.ct-bg-3  { background-color: var(--bg-3); }
+
+/* Borders */
+.ct-border-soft   { border-color: var(--border); }
+.ct-border-medium { border-color: var(--border-strong); }
+.ct-border-focus  { border-color: var(--border-focus); }
+
+/* Border + text shorthand for UI chrome elements */
+.ct-label-dim {
+    color: var(--text-dim);
+    border-color: var(--border);
+}
+
+/* ==========================================================================
+   Print
+   ========================================================================== */
+
+@media print {
+    body {
+        background: var(--print-bg);
+        color: var(--print-text);
     }
 }

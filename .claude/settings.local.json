@@ -3,7 +3,10 @@
     "allow": [
       "Bash(source /c/PERSONAL/Github/CrossTwin/.venv/Scripts/activate)",
       "Bash(pip --version)",
-      "WebFetch(domain:opendata.cbs.nl)"
+      "WebFetch(domain:opendata.cbs.nl)",
+      "Read(//c/Users/icard/.claude/plugins/cache/ui-ux-pro-max-skill/ui-ux-pro-max/2.5.0/.claude/skills/ui-ux-pro-max/**)",
+      "Bash(python scripts/search.py \"geospatial digital twin dark precision minimal map dashboard\" --design-system -f markdown)",
+      "Bash(python \"C:\\\\Users\\\\icard\\\\.claude\\\\plugins\\\\cache\\\\ui-ux-pro-max-skill\\\\ui-ux-pro-max\\\\2.5.0\\\\cli\\\\assets\\\\scripts\\\\search.py\" \"geospatial digital twin dark precision minimal map dashboard\" --design-system -f markdown)"
     ]
   },
   "outputStyle": "Explanatory"
