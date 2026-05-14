@@ -86,13 +86,40 @@
       {% endcomment %}
     </div>
 
-    <!-- ONBOARDING HINT -->
+    <!-- ONBOARDING HINT / TOUR TRIGGER -->
     <div class="onboarding-hint" id="onboarding-hint">
       <strong>Start here</strong>
-      <p>
-        Use the icons on the left to explore thematic layers. Click 📑 to manage
-        all database layers.
-      </p>
+      <p>New to CrossTwin? Follow the 8-step guided tour to explore the platform.</p>
+      <button class="onboarding-tour-btn" id="start-tour-btn">▶ Start Guided Tour</button>
+    </div>
+
+    <!-- DEMO TOUR CARD -->
+    <div class="demo-tour hidden" id="demo-tour">
+      <div class="tour-progress" id="tour-progress">
+        <div class="tour-step-dot active" data-step="0"></div>
+        <div class="tour-step-dot" data-step="1"></div>
+        <div class="tour-step-dot" data-step="2"></div>
+        <div class="tour-step-dot" data-step="3"></div>
+        <div class="tour-step-dot" data-step="4"></div>
+        <div class="tour-step-dot" data-step="5"></div>
+        <div class="tour-step-dot" data-step="6"></div>
+        <div class="tour-step-dot" data-step="7"></div>
+      </div>
+      <div class="tour-content">
+        <div class="tour-step-badge">
+          <span class="tour-step-num" id="tour-step-num">1</span>
+          <span class="tour-step-of">of 8</span>
+        </div>
+        <div class="tour-step-body">
+          <div class="tour-step-title" id="tour-step-title">Select Topic</div>
+          <div class="tour-step-desc" id="tour-step-desc"></div>
+        </div>
+      </div>
+      <div class="tour-nav">
+        <button class="tour-btn tour-btn-ghost" id="tour-skip">Skip Tour</button>
+        <button class="tour-btn tour-btn-secondary" id="tour-prev" disabled>← Prev</button>
+        <button class="tour-btn tour-btn-primary" id="tour-next">Next →</button>
+      </div>
     </div>
 
     <!-- LAYERS PANEL -->
@@ -349,6 +376,136 @@ document.querySelectorAll('.year-btn').forEach(btn => {
     }
   });
 });
+
+// ── GUIDED TOUR ────────────────────────────────────────────────────────────
+const TOUR_STEPS = [
+  {
+    num: 1,
+    title: "① Select Topic",
+    desc: "Start by picking a thematic domain from the left toolbar — Housing, Energy, Heat, Water Supply, and more. Each icon switches the data context for the entire platform.",
+    target: ".toolbar",
+  },
+  {
+    num: 2,
+    title: "② Explore Current Data",
+    desc: "Click the 📑 Common Data icon to open the Database Layers panel. Browse all available spatial datasets, toggle individual layers on/off, and choose a basemap style.",
+    target: '[data-tool="common"]',
+  },
+  {
+    num: 3,
+    title: "③ Explore Indicators",
+    desc: "Select a thematic tool like 🚰 Water Supply or 🌡️ Heat to load live KPI dashboards in the right panel. Indicators are calculated directly from the spatial database.",
+    target: ".side-panel",
+  },
+  {
+    num: 4,
+    title: "④ Select Scenarios",
+    desc: "Use the Dashboard and Scenarios buttons at the bottom-right. Adjust sliders and input overrides (e.g. consumption, interest rate) to model what-if futures and compare years.",
+    target: ".bottom-right",
+  },
+  {
+    num: 5,
+    title: "⑤ Import Data",
+    desc: "Upload your own GeoJSON or Shapefile with 'Upload Data', or pull live datasets from PDOK, CBS, Sentinel-2, and Google Earth Engine via 'Retrieve Data from APIs'.",
+    target: ".right-actions-panel",
+  },
+  {
+    num: 6,
+    title: "⑥ Run Analysis",
+    desc: "With scenario parameters set, trigger cross-domain calculations. The DPSIR causal network automatically links drivers (e.g. population growth) to urban impacts (heat, water stress).",
+    target: null,
+  },
+  {
+    num: 7,
+    title: "⑦ View Results",
+    desc: "Results populate the side panel as charts, KPI cards, and new map layers. Use the year buttons (2023–2030) to compare the current baseline against future scenario projections.",
+    target: "#panel-body",
+  },
+  {
+    num: 8,
+    title: "⑧ Export Results",
+    desc: "Download scenario outputs as GeoJSON, CSV, or raster files. Share results with stakeholders or import into external GIS tools and technical reports.",
+    target: null,
+  },
+];
+
+let tourStep = 0;
+
+function startTour() {
+  tourStep = 0;
+  document.getElementById('onboarding-hint').style.display = 'none';
+  const tourEl = document.getElementById('demo-tour');
+  tourEl.classList.remove('hidden');
+  // Re-trigger animation on each open
+  tourEl.style.animation = 'none';
+  requestAnimationFrame(() => { tourEl.style.animation = ''; });
+  renderTourStep(tourStep);
+}
+
+function endTour() {
+  document.getElementById('demo-tour').classList.add('hidden');
+  clearTourHighlight();
+  localStorage.setItem('crosstwin_tour_seen', '1');
+  // Show hint as a restart button
+  const hint = document.getElementById('onboarding-hint');
+  hint.style.display = '';
+  hint.querySelector('p').textContent = 'Want to see the walkthrough again?';
+  const btn = hint.querySelector('#start-tour-btn');
+  if (btn) btn.textContent = '↺ Restart Tour';
+}
+
+function renderTourStep(idx) {
+  const step = TOUR_STEPS[idx];
+  document.getElementById('tour-step-num').textContent = step.num;
+  document.getElementById('tour-step-title').textContent = step.title;
+  document.getElementById('tour-step-desc').textContent = step.desc;
+
+  document.querySelectorAll('.tour-step-dot').forEach((dot, i) => {
+    dot.classList.remove('active', 'completed');
+    if (i < idx) dot.classList.add('completed');
+    if (i === idx) dot.classList.add('active');
+  });
+
+  document.getElementById('tour-prev').disabled = (idx === 0);
+  document.getElementById('tour-next').textContent =
+    idx === TOUR_STEPS.length - 1 ? 'Finish ✓' : 'Next →';
+
+  clearTourHighlight();
+  if (step.target) {
+    const el = document.querySelector(step.target);
+    if (el) el.classList.add('tour-highlight');
+  }
+}
+
+function clearTourHighlight() {
+  document.querySelectorAll('.tour-highlight').forEach(el => el.classList.remove('tour-highlight'));
+}
+
+document.getElementById('start-tour-btn')?.addEventListener('click', startTour);
+
+document.getElementById('tour-prev')?.addEventListener('click', () => {
+  if (tourStep > 0) renderTourStep(--tourStep);
+});
+
+document.getElementById('tour-next')?.addEventListener('click', () => {
+  if (tourStep < TOUR_STEPS.length - 1) {
+    renderTourStep(++tourStep);
+  } else {
+    endTour();
+  }
+});
+
+document.getElementById('tour-skip')?.addEventListener('click', endTour);
+
+document.querySelectorAll('.tour-step-dot').forEach((dot, i) => {
+  dot.addEventListener('click', () => { tourStep = i; renderTourStep(tourStep); });
+});
+
+// Auto-start on first visit (after map loads)
+if (!localStorage.getItem('crosstwin_tour_seen')) {
+  setTimeout(startTour, 1200);
+}
+// ── END GUIDED TOUR ────────────────────────────────────────────────────────
 
 document.body.addEventListener('htmx:afterSwap', function(evt) {
   if (evt.detail.target.id === 'panel-body') {

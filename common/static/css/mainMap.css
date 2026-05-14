@@ -962,6 +962,192 @@
     color: var(--text-secondary);
 }
 
+.onboarding-tour-btn {
+    display: block;
+    margin-top: 8px;
+    width: 100%;
+    padding: 5px 10px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 0.06em;
+    text-align: center;
+    transition: background 0.12s ease;
+}
+.onboarding-tour-btn:hover { background: #2563eb; }
+
+/* ============================================================
+   DEMO TOUR
+   ============================================================ */
+
+.demo-tour {
+    position: absolute;
+    bottom: 70px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 90;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 360px;
+    max-width: 460px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-ui-strong);
+    border-radius: 12px;
+    padding: 14px 16px;
+    box-shadow: var(--shadow-soft), 0 0 0 1px rgba(59, 130, 246, 0.12);
+    animation: tourFadeIn 0.22s ease;
+}
+
+.demo-tour.hidden { display: none; }
+
+@keyframes tourFadeIn {
+    from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+    to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.tour-progress {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+    justify-content: center;
+}
+
+.tour-step-dot {
+    height: 4px;
+    width: 18px;
+    border-radius: 2px;
+    background: var(--bg-active);
+    cursor: pointer;
+    transition: background 0.18s ease, width 0.18s ease;
+}
+
+.tour-step-dot.active    { background: var(--accent); width: 26px; }
+.tour-step-dot.completed { background: rgba(59, 130, 246, 0.38); }
+
+.tour-content {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+.tour-step-badge {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 42px;
+    height: 42px;
+    background: var(--accent);
+    border-radius: 8px;
+    color: #fff;
+    flex-shrink: 0;
+}
+
+.tour-step-num {
+    font-size: 20px;
+    font-weight: 700;
+    font-family: var(--font-base);
+    line-height: 1;
+}
+
+.tour-step-of {
+    font-size: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    opacity: 0.75;
+    line-height: 1;
+}
+
+.tour-step-body { flex: 1; }
+
+.tour-step-title {
+    font-family: var(--font-base);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.tour-step-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.55;
+}
+
+.tour-nav {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-ui);
+}
+
+.tour-btn {
+    padding: 5px 12px;
+    border-radius: 5px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.12s ease;
+    letter-spacing: 0.04em;
+    font-family: var(--font-body);
+}
+
+.tour-btn-primary {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+}
+.tour-btn-primary:hover { background: #2563eb; }
+
+.tour-btn-secondary {
+    background: var(--bg-raised);
+    color: var(--text-main);
+    border-color: var(--border-ui);
+}
+.tour-btn-secondary:hover { border-color: var(--border-ui-strong); }
+.tour-btn-secondary:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.tour-btn-ghost {
+    background: transparent;
+    color: var(--text-dim);
+    margin-right: auto;
+}
+.tour-btn-ghost:hover { color: var(--text-secondary); }
+
+/* Pulsing highlight ring applied to whichever element the current step targets */
+.tour-highlight {
+    outline: 2px solid var(--accent) !important;
+    outline-offset: 3px;
+    border-radius: 8px;
+    animation: tourPulse 1.8s ease-in-out infinite;
+    position: relative;
+    z-index: 50;
+}
+
+@keyframes tourPulse {
+    0%, 100% { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.18); }
+    50%       { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0.06); }
+}
+
+@media (max-width: 768px) {
+    .demo-tour {
+        min-width: calc(100vw - 32px);
+        max-width: calc(100vw - 32px);
+        left: 16px;
+        transform: none;
+        bottom: 80px;
+    }
+}
+
 /* ============================================================
    MAP LEGEND
    ============================================================ */
