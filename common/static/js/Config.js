@@ -16,7 +16,7 @@ let CONFIG = {
   mapboxToken: '{{ mapbox_access_token }}',
   layersApiUrl: '../api/layers/',
   initialCenter: [6.895, 52.219],
-  initialZoom: 14,
+  initialZoom: 16,
   initialPitch: 60,
   initialBearing: -35
 };

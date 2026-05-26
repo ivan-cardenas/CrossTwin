@@ -5,9 +5,6 @@ from django.contrib.gis.gdal import DataSource, SpatialReference
 from core.utils import MODEL_REGISTRY
 
 
-
-
-
 def get_target_model_choices():
     """Get choices for target model field."""
     groupped = {}
@@ -57,6 +54,16 @@ class GeoUploadForm(forms.Form):
         help_text="Optional: Specify the source coordinate system if not embedded in the file (e.g., 4326 for WGS84, 28992 for RD New)",
         widget=forms.NumberInput(attrs={
             'placeholder': 'e.g., 4326',
+            'class': 'number-input',
+        })
+    )
+    
+    target_crs = forms.IntegerField(
+        required=False,
+        label='Target CRS (EPSG)',
+        help_text=f"Optional: Specify the target coordinate system for transformation (default is {apps.get_app_config('common').settings.COORDINATE_SYSTEM})",
+        widget=forms.NumberInput(attrs={
+            'placeholder': f'e.g., {apps.get_app_config("common").settings.COORDINATE_SYSTEM}',
             'class': 'number-input',
         })
     )

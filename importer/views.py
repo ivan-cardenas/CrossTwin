@@ -436,6 +436,8 @@ def _generic_import(gdf, target_label, colmap, dry_run=True, target_srid=None):
             # Build lookup for upsert
             lookup = {}
             for key in (spec['upsert_keys'] or []):
+                if key == 'id':
+                    continue
                 src = colmap.get(key)
                 print(f"  Upsert key '{key}' -> source column '{src}'")
                 if not src:
