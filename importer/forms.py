@@ -3,6 +3,7 @@ from django.apps import apps
 from django.contrib.gis.geos import GEOSGeometry
 from django.contrib.gis.gdal import DataSource, SpatialReference
 from core.utils import MODEL_REGISTRY
+from django.conf import settings
 
 
 def get_target_model_choices():
@@ -58,12 +59,12 @@ class GeoUploadForm(forms.Form):
         })
     )
     
-    target_crs = forms.IntegerField(
+    target_srid = forms.IntegerField(
         required=False,
         label='Target CRS (EPSG)',
-        help_text=f"Optional: Specify the target coordinate system for transformation (default is {apps.get_app_config('common').settings.COORDINATE_SYSTEM})",
+        help_text=f"Optional: Specify the target coordinate system for transformation (default is {settings.COORDINATE_SYSTEM})",
         widget=forms.NumberInput(attrs={
-            'placeholder': f'e.g., {apps.get_app_config("common").settings.COORDINATE_SYSTEM}',
+            'placeholder': f'e.g., {settings.COORDINATE_SYSTEM}',
             'class': 'number-input',
         })
     )

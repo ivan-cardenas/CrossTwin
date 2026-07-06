@@ -3,6 +3,7 @@ from django.conf import settings
 
 COORDINATE_SYSTEM = settings.COORDINATE_SYSTEM
 from django.utils import timezone
+from django.apps import apps
 
 # Create your models here.
 class ProtectedArea(models.Model):
@@ -70,6 +71,13 @@ class Forests(models.Model):
 class GreenSpaces(models.Model):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=200)
+    city = models.ForeignKey(
+        'common.City',
+        on_delete=models.DO_NOTHING,
+        null=True,
+        blank=True,
+        help_text="City this green space belongs to (resolved via centroid intersection)",
+    )
     geom = models.MultiPolygonField(srid=COORDINATE_SYSTEM)
     last_updated = models.DateTimeField(default=timezone.now)
     area = models.FloatField(help_text="Area of the green space in square meters", null=True, blank=True)
