@@ -42,7 +42,7 @@ python manage.py export_cogs
 
 ### Model Registry System (`core/utils.py`)
 
-The central architectural pattern. `build_model_registry()` scans a hardcoded list of allowed apps (`common`, `urbanHeat`, `watersupply`, `weather`, `builtup`, `Energy`, `Housing`, `nature`) and builds four registries:
+The central architectural pattern. `build_model_registry()` scans a hardcoded list of allowed apps (`common`, `urbanHeat`, `watersupply`, `weather`, `builtup`, `Energy`, `housing`, `nature`) and builds four registries:
 
 - **`MODEL_REGISTRY`** — all models from allowed apps
 - **`VECTOR_REGISTRY`** — models with GeometryField (no RasterField)
@@ -133,10 +133,6 @@ Tests use `PostGISTestRunner` (`DigitalTwin/test_runner.py`) which creates the t
 - The GeoJSON API transforms to EPSG:4326 at query time via `ST_Transform`
 - Frontend CSS uses Tailwind with crispy-tailwind for forms
 
-## Known Issues
-
-- **Registry case mismatch**: `core/utils.py` lists `'Housing'` (capital H) in `allowed_apps`, but the Django app name is `'housing'` (lowercase in `apps.py` and `INSTALLED_APPS`). Housing models won't appear in `MODEL_REGISTRY` or as map layers until this is fixed. The `calculations.py` and `views.py` work via direct imports and are unaffected.
-
 ## TODOs
 
 Collected from inline `#TODO` comments across the codebase:
@@ -166,6 +162,3 @@ Collected from inline `#TODO` comments across the codebase:
 
 ### urban_heat
 - Add measurement method, source, and metadata fields to raster models: MRT, UTCI, SVF, LST (`urban_heat/models.py`)
-
-### Energy
-- Populate `EnergyEfficiencyLabels` with standard descriptions and connect to labels (`Energy/models.py`)
