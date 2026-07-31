@@ -436,6 +436,8 @@ def _generic_import(gdf, target_label, colmap, dry_run=True, target_srid=None):
             # Build lookup for upsert
             lookup = {}
             for key in (spec['upsert_keys'] or []):
+                if key == 'id':
+                    continue
                 src = colmap.get(key)
                 print(f"  Upsert key '{key}' -> source column '{src}'")
                 if not src:
@@ -500,9 +502,29 @@ def _generic_import(gdf, target_label, colmap, dry_run=True, target_srid=None):
                 else:
                     defaults[geom_field_name] = geos
 
+                    # Auto-assign city via centroid intersection if model has a city FK
+                    city_field = next(
+                        (f for f in opts.get_fields()
+                         if f.name == 'city' and isinstance(f, ForeignKey)),
+                        None
+                    )
+                    if city_field and 'city' not in lookup and 'city' not in defaults:
+                        from common.models import City
+                        centroid = geos.centroid
+                        city = City.objects.filter(geom__contains=centroid).first()
+                        if city:
+                            defaults['city'] = city
+                            print(f"  City resolved via centroid: {city}")
+                        else:
+                            print(f"  City not found for centroid {centroid}")
+
             # get_or_create / update
             print(f"  Calling get_or_create with lookup={lookup}")
-            obj, was_created = model.objects.update_or_create(**lookup, defaults=defaults)
+            if not lookup:
+                obj = model.objects.create(**defaults)
+                was_created = True
+            else:
+                obj, was_created = model.objects.update_or_create(**lookup, defaults=defaults)
             if was_created:
                 print(f"  CREATED: {obj}")
                 created += 1

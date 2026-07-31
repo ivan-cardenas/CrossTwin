@@ -123,7 +123,7 @@ function add3DBuildings() {
       'source-layer': 'building',
       filter: ['==', ['get', 'extrude'], 'true'],
       type: 'fill-extrusion',
-      minzoom: 6,
+      minzoom: 5,
       paint: {
         'fill-extrusion-color': '#d0e0f0',
         'fill-extrusion-height': [
@@ -134,7 +134,10 @@ function add3DBuildings() {
           'interpolate', ['linear'], ['zoom'],
           13, 0, 16, ['get', 'min_height']
         ],
-        'fill-extrusion-opacity': 0.7
+        'fill-extrusion-opacity': [
+          'interpolate', ['linear'], ['zoom'],
+          5, 1, 20, 0.4 
+        ]
       }
     }, labelLayerId);
   }
