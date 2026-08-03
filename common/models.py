@@ -70,8 +70,10 @@ class City(models.Model):
                 total=Sum('currentPopulation')
             )['total']
             self.currentPopulation = total or 0
+            
+        self.area_km2 = self.geom.area / 1e6  # Convert m2 to km2
         
-        if self.area_km2 and self.area_km2 > 0:
+        if self.area_km2 and self.area_km2 > 0 and self.currentPopulation is not None:
             self.populationDensity = float (self.currentPopulation / self.area_km2)
         else:
             self.populationDensity = None

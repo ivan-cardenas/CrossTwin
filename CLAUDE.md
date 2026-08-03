@@ -120,7 +120,7 @@ Two import paths:
 | Path | Purpose |
 |---|---|
 | `/` | Main map view |
-| `/map/api/layers/` | Layer catalog JSON |
+| `/api/layers/` | Layer catalog JSON |
 | `/api/layers/<app>/<model>/geojson/` | GeoJSON for vector model |
 | `/api/layers/<app>/<model>/bounds/` | Bounding box extent |
 | `/api/raster/<app>/<model>/tiles/` | TiTiler tile URL for raster |

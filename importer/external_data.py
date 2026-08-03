@@ -224,7 +224,20 @@ class PDOKImporter:
             created_count = 0
             updated_count = 0
             errors = []
-            
+
+            # Pre-load parent model objects for spatial FK resolution (done once per batch)
+            spatial_fk_conf = mapping.get("__spatial_fk__")
+            parent_objects = []
+            if spatial_fk_conf:
+                ParentModel = get_model_class(spatial_fk_conf["model"])
+                parent_objects = list(ParentModel.objects.all())
+                if not parent_objects and spatial_fk_conf.get("required", True):
+                    return ImportResult(
+                        "error",
+                        f"No {spatial_fk_conf['model']} records found — cannot resolve '{spatial_fk_conf['field']}' FK. "
+                        f"Import the parent records first.",
+                    )
+
             with transaction.atomic():
                 for feat in features:
                     try:
@@ -236,10 +249,14 @@ class PDOKImporter:
                         
                         # Parse geometry
                         geom = GEOSGeometry(json.dumps(geom_json))
-                        
-                        # Ensure correct SRID
-                        if geom.srid is None:
-                            geom.srid = 28992
+
+                        # GeoJSON parsing always sets srid=4326 by convention, but
+                        # PDOK returns coordinates in the requested srsName CRS
+                        # (EPSG:28992 by default). Force the correct SRID so Django
+                        # doesn't try to transform RD New meter values as WGS84 degrees.
+                        source_srs = dataset.get("params", {}).get("srsName", "EPSG:28992")
+                        source_epsg = int(source_srs.split(":")[-1])
+                        geom.srid = source_epsg
                         
                         # Convert to MultiPolygon if model expects it
                         model_geom_field = Model._meta.get_field(geom_field)
@@ -255,13 +272,29 @@ class PDOKImporter:
                         
                         # Build field values from mapping
                         field_values = {geom_field: geom}
-                        
+
                         for wfs_prop, model_field in mapping.items():
                             if wfs_prop.startswith("__"):
                                 continue  # Skip special keys
                             if wfs_prop in props and props[wfs_prop] is not None:
                                 field_values[model_field] = props[wfs_prop]
-                        
+
+                        # Resolve spatial FK: find the parent whose geometry contains this feature's centroid
+                        if spatial_fk_conf and parent_objects:
+                            centroid = geom.centroid
+                            parent = next((p for p in parent_objects if p.geom.contains(centroid)), None)
+                            if parent is None:
+                                # Boundary edge case: fall back to intersection
+                                parent = next((p for p in parent_objects if p.geom.intersects(centroid)), None)
+                            if parent:
+                                field_values[spatial_fk_conf["field"]] = parent
+                            elif spatial_fk_conf.get("required", True):
+                                errors.append(
+                                    f"No parent {spatial_fk_conf['model']} found for feature "
+                                    f"'{props.get(unique_wfs_prop, '?')}' — skipped."
+                                )
+                                continue
+
                         # Use update_or_create if unique field is defined
                         if unique_wfs_prop and unique_model_field and unique_wfs_prop in props:
                             lookup = {unique_model_field: props[unique_wfs_prop]}

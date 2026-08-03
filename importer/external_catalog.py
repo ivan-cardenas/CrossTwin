@@ -24,27 +24,27 @@ FIELD_MAPPINGS = {
     "pdok_cities": {
         "__geometry__": "geom",
         "__unique__": "naam",
-        "__unique_field__": "CityName",
-        "naam": "CityName",
-        "code": "id",        
-        # Province FK will be resolved via spatial join
+        "__unique_field__": "cityName",
+        "__spatial_fk__": {"field": "province", "model": "common.Province", "required": True},
+        "naam": "cityName",
+        "code": "id",
     },
     "pdok_districts": {
         "__geometry__": "geom",
         "__unique__": "wijkcode",
-        "__unique_field__": "wijkcode",
+        "__unique_field__": "id",
+        "__spatial_fk__": {"field": "city", "model": "common.City", "required": True},
         "wijknaam": "districtName",
         "wijkcode": "id",
-        # City FK will be resolved via spatial join
     },
     "pdok_neighborhoods": {
         "__geometry__": "geom",
         "__unique__": "buurtcode",
-        "__unique_field__": "code",
+        "__unique_field__": "id",
+        "__spatial_fk__": {"field": "district", "model": "common.District", "required": False},
         "buurtnaam": "NeighborhoodName",
         "buurtcode": "id",
         "aantalInwoners": "currentPopulation",
-        # City FK will be resolved via spatial join
     },
     "CBS_Housing": {
         "__unique_fields__": ["city", "year"],
@@ -149,6 +149,9 @@ EXTERNAL_DATA_CATALOG = [
         "url": "https://service.pdok.nl/kadaster/bestuurlijkegebieden/wfs/v1_0",
         "layer": "bestuurlijkegebieden:Gemeentegebied",
         "format": "wfs",
+        "requires_bbox": True,
+        "draw_bbox": True,
+        "requires_model": "common.Province",
         "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "enabled": True,
     },
@@ -158,15 +161,15 @@ EXTERNAL_DATA_CATALOG = [
         "category": "Administrative boundaries",
         "name": "Districts - Wijken ",
         "description": "CBS districts polygons from the Wijken en Buurten dataset.",
-        "target_model": "common.Districts",
-        "url": "https://service.pdok.nl/cbs/wijkenbuurten/wfs/v1_0",
+        "target_model": "common.District",
+        "url": "https://service.pdok.nl/cbs/wijkenbuurten/2025/wfs/v1_0", # UPDATE YEAR AS NEEDED
         "layer": "wijkenbuurten:wijken",
         "format": "wfs",
         "requires_bbox": True,
+        "requires_model": "common.City",
         "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "enabled": True,
     },
-    
     {
         "key": "pdok_neighborhoods",
         "source": "CBS",
@@ -174,13 +177,13 @@ EXTERNAL_DATA_CATALOG = [
         "name": "Neighborhoods - Buurten",
         "description": "CBS neighborhood polygons from the Wijken en Buurten dataset.",
         "target_model": "common.Neighborhood",
-        "url": "https://service.pdok.nl/cbs/wijkenbuurten/wfs/v1_0",
+        "url": "https://service.pdok.nl/cbs/2025/wijkenbuurten/wfs/v1_0", # UPDATE YEAR AS NEEDED
         "layer": "wijkenbuurten:buurten",
         "format": "wfs",
         "requires_bbox": True,
+        "requires_model": "common.District",
         "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "enabled": True,
-        
     },
     
     {

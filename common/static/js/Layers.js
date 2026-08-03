@@ -134,7 +134,7 @@ async function addLayer(layerConfig) {
       const properties = e.features[0].properties;
       new mapboxgl.Popup()
         .setLngLat(e.lngLat)
-        .setHTML(createPopupContent(properties, display_name))
+        .setHTML(createPopupContent(properties, display_name, layerConfig.fields || {}))
         .addTo(map);
     });
     map.on('mouseenter', clickLayerId, () => { map.getCanvas().style.cursor = 'pointer'; });
@@ -389,17 +389,49 @@ function addCoordinatesToBounds(coords, bounds, type) {
   }
 }
 
-function createPopupContent(properties, layerName) {
-  let html = `<h6>${layerName}</h6><table>`;
-  for (const [key, value] of Object.entries(properties)) {
-    if (value !== null && value !== undefined && key !== 'pk') {
-      let displayValue = value;
-      if (typeof value === 'number') {
-        displayValue = Number.isInteger(value) ? value : value.toFixed(2);
-      }
-      html += `<tr><td>${key.replace(/_/g, ' ')}</td><td>${displayValue}</td></tr>`;
-    }
+const _numFmt    = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2, useGrouping: true });
+const _intFmt    = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0, useGrouping: true });
+const _dateFmt   = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+const _skipKeys  = new Set(['pk', 'id']);
+
+function _formatValue(value, fieldMeta) {
+  if (value === null || value === undefined || value === '') return '—';
+
+  if (fieldMeta?.type === 'datetime' || fieldMeta?.type === 'date') {
+    const date = new Date(value);
+    if (!isNaN(date)) return _dateFmt.format(date);
   }
+
+  if (typeof value === 'number' || (typeof value === 'string' && !isNaN(value) && value.trim() !== '')) {
+    const num = Number(value);
+    const formatted = Number.isInteger(num) ? _intFmt.format(num) : _numFmt.format(num);
+    const unit = fieldMeta?.unit;
+    return unit ? `${formatted} <span class="popup-unit">${unit}</span>` : formatted;
+  }
+
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  return String(value);
+}
+
+function createPopupContent(properties, layerName, fields = {}) {
+  let html = `<div class="popup-header">${layerName}</div><table class="popup-table">`;
+
+  for (const [key, value] of Object.entries(properties)) {
+    if (value === null || value === undefined || _skipKeys.has(key)) continue;
+
+    // Skip raw FK id columns (e.g. province_id, city_id) — not meaningful in a popup
+    if (key.endsWith('_id') && fields[key.slice(0, -3)]) continue;
+
+    const meta  = fields[key] || null;
+    const label = meta?.label || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const title = meta?.help_text ? ` title="${meta.help_text}"` : '';
+
+    html += `<tr>
+      <td class="popup-label"${title}>${label}</td>
+      <td class="popup-value">${_formatValue(value, meta)}</td>
+    </tr>`;
+  }
+
   html += '</table>';
   return html;
 }

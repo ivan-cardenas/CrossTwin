@@ -1,5 +1,6 @@
 from django.shortcuts import render, redirect
 
+import re
 import json
 from django.http import JsonResponse, Http404
 from django.core.serializers import serialize
@@ -10,6 +11,64 @@ from django.apps import apps
 from django.conf import settings
 
 from core.utils import VECTOR_REGISTRY, WMS_REGISTRY, RASTER_REGISTRY, MODEL_REGISTRY
+
+
+# Ordered from most specific to least — first match wins
+_UNIT_PATTERNS = [
+    (r'\bppl/km[²2]\b|people per square kilo',      'ppl/km²'),
+    (r'\bMm[³3]/(?:day|d)\b|Million cubic meters? per day',  'Mm³/day'),
+    (r'\bMm[³3]/(?:yr|year)\b|Million cubic meters? per year', 'Mm³/yr'),
+    (r'\bm[³3]/(?:yr|year)\b|cubic meters? per year',          'm³/yr'),
+    (r'\bm[³3]/(?:day|d)\b|cubic meters? per day',             'm³/day'),
+    (r'\bL/person/day\b|liters? per person per day',            'L/person/day'),
+    (r'\bEUR/m[³3]\b|EUR per cubic met',             '€/m³'),
+    (r'\bcm/h\b|centimeters? per hour',              'cm/h'),
+    (r'\bkg[_ ]CO2/h\b|kg CO2 per hour',             'kg CO₂/h'),
+    (r'\bkm[²2]\b|square kilo',                      'km²'),
+    (r'\bm[²2]\b|square met',                        'm²'),
+    (r'\bkm\b|kilometer',                            'km'),
+    (r'\b(?:EUR|euro)\b',                            '€'),
+    (r'\bh(?:ours?)? per day\b',                     'h/day'),
+    (r'\bhours?\b',                                  'h'),
+    (r'%\s*per\s*year|percent.*per\s*year',          '%/yr'),
+    (r'\bin\s*%\b|percent(?:age)?',                  '%'),
+]
+
+
+def _extract_unit(help_text: str) -> str | None:
+    if not help_text:
+        return None
+    for pattern, unit in _UNIT_PATTERNS:
+        if re.search(pattern, help_text, re.IGNORECASE):
+            return unit
+    return None
+
+
+def _field_metadata(model) -> dict:
+    """Return {field_name: {label, help_text, unit}} for simple (non-geometry) fields."""
+    meta = {}
+    for f in model._meta.get_fields():
+        if f.many_to_many or f.one_to_many:
+            continue
+        if isinstance(f, gis_models.GeometryField):
+            continue
+        if not hasattr(f, 'column'):
+            continue
+        help_text = getattr(f, 'help_text', '') or ''
+        field_class = type(f).__name__
+        if 'DateTime' in field_class:
+            field_type = 'datetime'
+        elif 'Date' in field_class:
+            field_type = 'date'
+        else:
+            field_type = 'other'
+        meta[f.name] = {
+            'label': f.verbose_name.title() if hasattr(f, 'verbose_name') else f.name.replace('_', ' ').title(),
+            'help_text': str(help_text),
+            'unit': _extract_unit(str(help_text)),
+            'type': field_type,
+        }
+    return meta
 
 
 
@@ -330,6 +389,7 @@ def available_layers(request):
                 'geometry_field': geom_field,
                 'color': LAYER_STYLES.get(key, {}).get('color', _FALLBACK_COLORS[color_index % len(_FALLBACK_COLORS)]),
                 'style_layers': LAYER_STYLES.get(key, {}).get('layers'),
+                'fields': _field_metadata(model),
                 'count': count,
             })
             

@@ -32,6 +32,7 @@ class ProtectedArea(models.Model):
 class WaterWays(models.Model):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=200)
+    type = models.CharField(max_length=100, help_text="Type of waterway (e.g., river, canal, etc.)", null=True, blank=True)
     geom = models.LineStringField(srid=COORDINATE_SYSTEM)
     last_updated = models.DateTimeField(default=timezone.now)
 
@@ -45,6 +46,7 @@ class WaterWays(models.Model):
 class WaterBodies(models.Model):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=200)
+    type = models.CharField(max_length=100, help_text="Type of water body (e.g., lake, reservoir, stream, etc.)", null=True, blank=True)
     geom = models.MultiPolygonField(srid=COORDINATE_SYSTEM)
     last_updated = models.DateTimeField(default=timezone.now)
 
@@ -58,6 +60,7 @@ class WaterBodies(models.Model):
 class Forests(models.Model):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=200)
+    type = models.CharField(max_length=100, help_text="Type of forest (e.g., deciduous, coniferous, mixed, etc.)", null=True, blank=True)
     geom = models.MultiPolygonField(srid=COORDINATE_SYSTEM)
     last_updated = models.DateTimeField(default=timezone.now)
 
@@ -71,6 +74,7 @@ class Forests(models.Model):
 class GreenSpaces(models.Model):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=200)
+    type = models.CharField(max_length=100, help_text="Type of green space (e.g., park, garden, etc.)", null=True, blank=True)
     city = models.ForeignKey(
         'common.City',
         on_delete=models.DO_NOTHING,

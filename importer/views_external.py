@@ -7,6 +7,7 @@ Renders the catalog UI and dispatches imports via external_data.import_dataset.
 import json
 import logging
 
+from django.apps import apps
 from django.conf import settings
 from django.shortcuts import render
 from django.http import JsonResponse
@@ -57,6 +58,7 @@ def get_external_data(request):
                 "source": d["source"],
                 "target_model": d["target_model"],
                 "requires_bbox": d.get("requires_bbox", False),
+                "draw_bbox": d.get("draw_bbox", False),
                 "requires_auth": d.get("requires_auth", False),
                 "requires_date_range": d.get("requires_date_range", False),
                 "enabled": d.get("enabled", True),
@@ -123,6 +125,25 @@ def start_external_import(request):
     results = {}
 
     for key in selected_keys:
+        # Check that required prerequisite model has records before importing
+        ds = CATALOG_BY_KEY[key]
+        req_model_path = ds.get("requires_model")
+        if req_model_path:
+            try:
+                app_label, model_name = req_model_path.split(".")
+                ReqModel = apps.get_model(app_label, model_name)
+                if not ReqModel.objects.exists():
+                    results[key] = {
+                        "status": "error",
+                        "message": (
+                            f"No {model_name} records found in the database. "
+                            f"Please import or upload {model_name} data first."
+                        ),
+                    }
+                    continue
+            except LookupError:
+                pass  # model not registered yet — let the import attempt and fail naturally
+
         result = import_dataset(
             dataset_key=key,
             bbox=bbox,
