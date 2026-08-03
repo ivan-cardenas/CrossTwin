@@ -42,9 +42,10 @@ FIELD_MAPPINGS = {
         "__unique__": "buurtcode",
         "__unique_field__": "id",
         "__spatial_fk__": {"field": "district", "model": "common.District", "required": False},
-        "buurtnaam": "NeighborhoodName",
+        "buurtnaam": "neighborhoodName",
         "buurtcode": "id",
         "aantalInwoners": "currentPopulation",
+        "jaar": "populationDate",
     },
     "CBS_Housing": {
         "__unique_fields__": ["city", "year"],
@@ -177,7 +178,7 @@ EXTERNAL_DATA_CATALOG = [
         "name": "Neighborhoods - Buurten",
         "description": "CBS neighborhood polygons from the Wijken en Buurten dataset.",
         "target_model": "common.Neighborhood",
-        "url": "https://service.pdok.nl/cbs/2025/wijkenbuurten/wfs/v1_0", # UPDATE YEAR AS NEEDED
+        "url": "https://service.pdok.nl/cbs/wijkenbuurten/2025/wfs/v1_0", # UPDATE YEAR AS NEEDED
         "layer": "wijkenbuurten:buurten",
         "format": "wfs",
         "requires_bbox": True,

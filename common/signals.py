@@ -1,6 +1,6 @@
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
-from django.db.models import Sum
+from django.db.models import Sum, Avg, Min
 from django.utils import timezone
 from .models import Neighborhood, District, City, Province
 
@@ -20,6 +20,10 @@ def _recompute_population(model, pk, child_model, child_fk, parent_fk=None):
     obj = model.objects.filter(pk=pk).first()
     if obj is None:
         return None
+    
+    obj.year = child_model.objects.filter(**{child_fk: pk}).aggregate(
+        year=max('populationDate')
+    )['year']
 
     obj.currentPopulation = total
     if obj.area_km2 and obj.area_km2 > 0:
@@ -32,6 +36,7 @@ def _recompute_population(model, pk, child_model, child_fk, parent_fk=None):
         currentPopulation=obj.currentPopulation,
         populationDensity=obj.populationDensity,
         last_updated=obj.last_updated,
+        year=obj.year
     )
 
     if parent_fk:

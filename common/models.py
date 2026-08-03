@@ -93,22 +93,20 @@ class District(models.Model):
     id = models.CharField(primary_key=True)
     city = models.ForeignKey(City, on_delete=models.DO_NOTHING, help_text="City code from common.City")
     districtName = models.CharField(max_length=100, help_text="Name of the district")
-    currentPopulation = models.IntegerField(help_text="Current population in the district") 
+    currentPopulation = models.IntegerField(null=True, blank=True, help_text="Current population in the district")
     populationDate = models.DateField(null=True)
-    area_km2 = models.FloatField(help_text="Area in square kilometers")
-    populationDensity = models.FloatField(help_text="Population density in people per square kilometer") # people/km2
+    area_km2 = models.FloatField(null=True, blank=True, help_text="Area in square kilometers")
+    populationDensity = models.FloatField(null=True, blank=True, help_text="Population density in people per square kilometer")
     geom = models.MultiPolygonField(srid=CoordinateSystem)
     last_updated = models.DateTimeField(default=timezone.now)
     
     def save(self, *args, **kwargs):
-        
         self.area_km2 = self.geom.area / 1e6
-        self.populationDensity = float (self.currentPopulation / self.area_km2)
-            
+        pop = self.currentPopulation or 0
+        self.populationDensity = float(pop / self.area_km2) if self.area_km2 else 0.0
         self.last_updated = timezone.now()
-        
         super().save(*args, **kwargs)
-    
+
     def __str__(self):
         return self.districtName
     
@@ -120,22 +118,20 @@ class Neighborhood(models.Model):
     id = models.CharField(primary_key=True)
     district = models.ForeignKey(District, on_delete=models.DO_NOTHING, help_text="City code from common.City", null=True, blank=True)
     neighborhoodName = models.CharField(max_length=100, help_text="Name of the neighborhood")
-    currentPopulation = models.IntegerField(help_text="Current population in the neighborhood") 
+    currentPopulation = models.IntegerField(null=True, blank=True, help_text="Current population in the neighborhood")
     populationDate = models.DateField(null=True)
-    area_km2 = models.FloatField(help_text="Area in square kilometers")
-    populationDensity = models.FloatField(help_text="Population density in people per square kilometer") # people/km2
+    area_km2 = models.FloatField(null=True, blank=True, help_text="Area in square kilometers")
+    populationDensity = models.FloatField(null=True, blank=True, help_text="Population density in people per square kilometer")
     geom = models.MultiPolygonField(srid=CoordinateSystem)
     last_updated = models.DateTimeField(default=timezone.now)
     
     def save(self, *args, **kwargs):
-        
         self.area_km2 = self.geom.area / 1e6
-        self.populationDensity = float (self.currentPopulation / self.area_km2)
-            
+        pop = self.currentPopulation or 0
+        self.populationDensity = float(pop / self.area_km2) if self.area_km2 else 0.0
         self.last_updated = timezone.now()
-        
         super().save(*args, **kwargs)
-    
+
     def __str__(self):
         return self.neighborhoodName
     
