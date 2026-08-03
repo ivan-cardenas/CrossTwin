@@ -42,7 +42,7 @@ python manage.py export_cogs
 
 ### Model Registry System (`core/utils.py`)
 
-The central architectural pattern. `build_model_registry()` scans a hardcoded list of allowed apps (`common`, `urbanHeat`, `watersupply`, `weather`, `builtup`, `Energy`, `Housing`, `nature`) and builds four registries:
+The central architectural pattern. `build_model_registry()` scans a hardcoded list of allowed apps (`common`, `urbanHeat`, `watersupply`, `weather`, `builtup`, `Energy`, `housing`, `nature`) and builds four registries:
 
 - **`MODEL_REGISTRY`** — all models from allowed apps
 - **`VECTOR_REGISTRY`** — models with GeometryField (no RasterField)
@@ -56,6 +56,18 @@ These registries power generic API endpoints, the map layer catalog, and the imp
 The project follows the **DPSIR framework** (Driver → Pressure → State → Impact → Response) to model causal relationships between urban systems. The full causal graph is defined in `common/DAG.dot` (Graphviz format). Each domain app's `calculations.py` documents which DAG edges its functions implement via comments like `# DAG edges: Central_Bank -> Mortgage`.
 
 When adding new calculations, trace the relevant DAG edges and document them in the function docstring to maintain traceability between the causal model and code.
+
+#### DAG Edge Coverage Gaps
+
+Of the 102 edges in `common/DAG.dot`, only 28 are backed by real derivation logic (a `save()` method or a `calculations.py` function that actually reads the source field, not just a docstring claiming the edge). The rest are either flat stored fields with no computation, or `calculations.py` functions whose docstring claims a DAG edge the code doesn't actually implement. Verified gaps, by app:
+
+**common** — `Population_Growth -> Total_Population/Urbanization`: `City.popGrowthRate`/`urbanizationRate` are flat fields, never used to project `currentPopulation` (only summed from children via `signals.py`). No `Urbanization` model exists, so `Urbanization -> CityArea/Buildings/Streets/LandCover` has nowhere to live. `RS_Imagery -> LandCover/LST` — raster models are plain imports with no ingestion/derivation code. `LandCover -> Infiltration` — `AvailableFreshWater.infiltrationRate_cm_h` is flat (see existing TODO). `New_Units -> LandCover` — `calculate_new_units()` never touches LandCover.
+
+**urban_heat** — the whole `DSM -> SVF -> Tmrt/PET`, `LST -> PET`, `Tmrt -> UTCI`, `Canyon_Aspect -> DSM`, `Vegetation_Coverage -> DSM`, `Streets -> Canyon_Aspect` chain is unimplemented: SVF/Tmrt/PET/UTCI/LST models are `RasterField` containers with no `save()`; `calculate_urban_morphology()`/`get_thermal_indices()` only compute *statistics over* existing rasters, they don't derive one raster from another (these are expected to come pre-computed from SOLWEIG externally). `PET -> NBS` — `calculate_nbs_coverage()` counts NBS geometries but never reads PET values.
+
+**builtup / housing** — No `Accessibility` model exists anywhere, so `Facilities/Streets/Green_Area -> Accessibility -> Property` has no implementation (`Building.connectivity` is the closest analog, still under its own TODO). `Zoning_Status -> Property`, `Property -> House_Price_Index/Mortgage` — none of `Property`/`Mortgage`/`HousePriceIndex` have `save()` logic; the `calculations.py` functions only average pre-existing stored values. `HousingAffordability.save()` computes `affordabilityIndex` only from its own stored fields — it never pulls from `Mortgage`, `Rentals`, or watersupply tariff data, so `Rent/Mortgage/Water_Tariff_Afford -> Income_Expenses -> Affordability_Stress` and `Credit_Supply -> Mortgage` are unimplemented. `NumberUsers -> Water_Tariff_Afford` — no `NumberUsers` model; `MeteredResidential.userAffordability_PCT` is a flat input.
+
+**watersupply** — `Supply_Security -> Service_Time`: `service_time_hours` is flat, not derived from `supply_security_pct`. `Network -> Real_Losses`: `NonRevenueWater` records are entered directly, not linked to `PipeNetwork`. `OPEX.save()` only aggregates `ExtractionWater.opex_EUR_m3 * extraction_volume_m3` (note: `extraction_volume_m3` isn't an actual field on `ExtractionWater` — likely a latent bug worth checking) plus `MeteredResidential.Recovery_EUR`; it never references `TotalWaterProduction`, `WaterTreatment` cost, `PipeNetwork` maintenance, or `ImportedWater` price, so `Total_Water_Prod/Energy_Consumption/WT_Cost/Network/Imported_Water -> OPEX` are all unimplemented. `calculate_collection_ratio()` ignores `userAffordability_PCT` and acceptance rate despite its docstring. `calculate_opex_recovery()` computes directly from stored totals rather than calling `calculate_collection_ratio()` or referencing NRW. `calculate_water_quality()`'s `acceptance_rate` is `Avg('acceptanceRate')`, unrelated to computed compliance — so `Samples_WQ -> User_Acceptance_WS` is unimplemented. `WaterTreatment` has no `save()`, so `WT_Efficiency -> WT_Cost` is unimplemented. `NonRevenueWater.save()` only computes ILI in the real-loss branch — apparent losses never contribute, so `Apparent_Losses -> ILI` is unimplemented.
 
 ### Domain Apps
 
@@ -133,10 +145,6 @@ Tests use `PostGISTestRunner` (`DigitalTwin/test_runner.py`) which creates the t
 - The GeoJSON API transforms to EPSG:4326 at query time via `ST_Transform`
 - Frontend CSS uses Tailwind with crispy-tailwind for forms
 
-## Known Issues
-
-- **Registry case mismatch**: `core/utils.py` lists `'Housing'` (capital H) in `allowed_apps`, but the Django app name is `'housing'` (lowercase in `apps.py` and `INSTALLED_APPS`). Housing models won't appear in `MODEL_REGISTRY` or as map layers until this is fixed. The `calculations.py` and `views.py` work via direct imports and are unaffected.
-
 ## TODOs
 
 Collected from inline `#TODO` comments across the codebase:
@@ -166,6 +174,3 @@ Collected from inline `#TODO` comments across the codebase:
 
 ### urban_heat
 - Add measurement method, source, and metadata fields to raster models: MRT, UTCI, SVF, LST (`urban_heat/models.py`)
-
-### Energy
-- Populate `EnergyEfficiencyLabels` with standard descriptions and connect to labels (`Energy/models.py`)

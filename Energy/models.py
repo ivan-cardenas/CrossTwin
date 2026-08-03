@@ -26,7 +26,7 @@ class EnergyEfficiencyLabels(models.Model):
     id = models.AutoField(primary_key=True)
     label = models.CharField(max_length=10, choices=[('A+++', 'A+++'),('A++', 'A++'), ('A+', 'A+'), ('A', 'A'), ('B', 'B'), ('C', 'C'), ('D', 'D'), ('E', 'E'), ('F', 'F'), ('G', 'G')],
                              help_text="Energy efficiency label (e.g., A++, A+, B, C, etc.)")
-    description = models.TextField(help_text="Detailed description of the energy efficiency label.") #TODO: Populate with standard descriptions and connect to labels.
+    description = models.TextField(help_text="Detailed description of the energy efficiency label.")
     
     def __str__(self):
         return self.label
