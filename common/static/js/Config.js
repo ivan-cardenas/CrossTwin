@@ -14,7 +14,7 @@ let cityNameTimeout;
 // Configuration (set from Django template via initializeUrbanTwinMap)
 let CONFIG = {
   mapboxToken: '{{ mapbox_access_token }}',
-  layersApiUrl: '../api/layers/',
+  layersApiUrl: '/api/layers/',
   initialCenter: [6.895, 52.219],
   initialZoom: 16,
   initialPitch: 60,
@@ -31,7 +31,7 @@ const BASEMAPS = {
 };
 
 const TOOL_CATEGORIES = {
-  overview:    ['common', 'temperature', 'weather', 'urban_heat', 'builtup', 'Energy', 'housing', 'green', 'vegetation', 'trees', 'Park', 'LandCover', 'watersupply', 'water', 'groundwater'],
+  overview:    ['common', 'urbanHeat', 'watersupply', 'weather', 'builtup', 'Energy', 'housing', 'nature', 'groundwater'],
   common:      ['common'],
   temperature: ['temperature', 'heat', 'weather', 'urban_heat,'],
   builtup:     ['builtup'],

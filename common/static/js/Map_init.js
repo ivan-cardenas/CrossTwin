@@ -44,9 +44,10 @@ function initializeUrbanTwinMap(config) {
 
   map.on('load', () => {
     console.log('Map loaded successfully');
-    add3DBuildings();
+    
     addExternalLayers();
     fetchAvailableLayers();
+    add3DBuildings();
     updateCityName();
 
     map.on('moveend', () => {
@@ -136,7 +137,7 @@ function add3DBuildings() {
         ],
         'fill-extrusion-opacity': [
           'interpolate', ['linear'], ['zoom'],
-          5, 1, 20, 0.4 
+          5, 1, 20, 0.7 
         ]
       }
     }, labelLayerId);

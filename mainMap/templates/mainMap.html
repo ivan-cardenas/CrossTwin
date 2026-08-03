@@ -306,19 +306,10 @@
 </div>
 
 <script>
-  // Initialize with Django context
-  window.CONFIG = {
-    mapboxToken: "{{ mapbox_access_token }}",
-    layersApiUrl: "/map/api/layers/",
-    initialCenter: [6.895, 52.219], // Enschede
-    initialZoom: 13,
-    initialPitch: 60,
-    initialBearing: -35,
-  };
-
-  // Initialize the Urban Twin map
+  // Initialize the Urban Twin map — only pass server-side values here;
+  // all other defaults live in Config.js
   document.addEventListener("DOMContentLoaded", () => {
-    initializeUrbanTwinMap(window.CONFIG);
+    initializeUrbanTwinMap({ mapboxToken: "{{ mapbox_access_token }}" });
   });
 
 

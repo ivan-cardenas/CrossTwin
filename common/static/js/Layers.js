@@ -44,7 +44,7 @@ async function fetchAvailableLayers() {
       await addLayer(layer);
     }
 
-    zoomToAllVisible();
+    // zoomToAllVisible();
   } catch (error) {
     console.error('Error fetching layers:', error);
     const container = document.getElementById('layer-list');
@@ -60,7 +60,7 @@ async function fetchAvailableLayers() {
  * Add a layer to the map (vector, raster, or WMS)
  */
 async function addLayer(layerConfig) {
-  const { key, url, color, geometry_type, display_name, layer_type, app_label, model_name, raster_id } = layerConfig;
+  const { key, url, color, geometry_type, display_name, layer_type, app_label, model_name, raster_id, style_layers } = layerConfig;
 
   if (loadedLayers[key]) return;
 
@@ -82,7 +82,21 @@ async function addLayer(layerConfig) {
 
     const layerIds = [];
 
-    if (geometry_type === 'point') {
+    if (style_layers && style_layers.length > 0) {
+      // Use explicit Mapbox layer definitions from the API
+      style_layers.forEach((def, i) => {
+        const layerId = `${key}-custom-${i}`;
+        map.addLayer({
+          id: layerId,
+          type: def.type,
+          source: key,
+          paint: def.paint || {},
+          layout: def.layout || {},
+        });
+        layerIds.push(layerId);
+      });
+
+    } else if (geometry_type === 'point') {
       map.addLayer({
         id: `${key}-points`, type: 'circle', source: key,
         paint: {
