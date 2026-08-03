@@ -31,7 +31,7 @@ const BASEMAPS = {
 };
 
 const TOOL_CATEGORIES = {
-  overview:    null,
+  overview:    ['common', 'temperature', 'weather', 'urban_heat', 'builtup', 'Energy', 'housing', 'green', 'vegetation', 'trees', 'Park', 'LandCover', 'watersupply', 'water', 'groundwater'],
   common:      ['common'],
   temperature: ['temperature', 'heat', 'weather', 'urban_heat,'],
   builtup:     ['builtup'],
