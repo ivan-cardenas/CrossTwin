@@ -72,6 +72,17 @@ def _field_metadata(model) -> dict:
 
 
 
+def _display_field(related_model):
+    """Pick the field on a related model that best represents it in a popup:
+    the first plain CharField (e.g. cityName, districtName), falling back to the PK."""
+    for mf in related_model._meta.get_fields():
+        if not hasattr(mf, 'column') or mf.is_relation or mf.primary_key:
+            continue
+        if mf.get_internal_type() == 'CharField':
+            return mf
+    return related_model._meta.pk
+
+
 def map_view(request):
     """Display the map page."""
     context = {
@@ -104,29 +115,46 @@ def model_geojson(request, app_label, model_name):
     
     # Get all non-geometry fields for properties (use db_column if available)
     # EXCLUDE ManyToMany and reverse relations
+    table_name = model._meta.db_table
     property_fields = []
     for f in model._meta.get_fields():
         # Skip if it's a geometry field
         if isinstance(f, gis_models.GeometryField):
             continue
-        
+
         # Skip ManyToMany fields and reverse relations
         if f.many_to_many or f.one_to_many:
             continue
-        
+
         # Only include fields that have actual database columns
-        if hasattr(f, 'column'):
+        if not hasattr(f, 'column'):
+            continue
+
+        if f.is_relation and f.many_to_one:
+            # FK fields: show the related object's name instead of its raw id
+            related_model = f.related_model
+            related_field = _display_field(related_model)
+            related_table = related_model._meta.db_table
+            expr = (
+                f'(SELECT "{related_field.column}" FROM "{related_table}" '
+                f'WHERE "{related_table}"."{related_model._meta.pk.column}" = '
+                f'"{table_name}"."{f.column}")'
+            )
+            property_fields.append({'name': f.name, 'expr': expr})
+        else:
             property_fields.append({
                 'name': f.name,
                 'column': f.column  # Actual database column name
             })
-    
-    # Build the SQL query using PostGIS
-    table_name = model._meta.db_table
-    
+
     # Build properties JSON object with quoted column names
     if property_fields:
-        props_sql = ", ".join([f"'{f['name']}', \"{f['column']}\"" for f in property_fields])
+        parts = [
+            f"'{pf['name']}', {pf['expr']}" if 'expr' in pf
+            else f"'{pf['name']}', \"{pf['column']}\""
+            for pf in property_fields
+        ]
+        props_sql = ", ".join(parts)
         props_expr = f"json_build_object({props_sql})"
     else:
         props_expr = "'{}'::json"
@@ -143,7 +171,7 @@ def model_geojson(request, app_label, model_name):
                 )
             ), '[]'::json)
         )
-        FROM {table_name}
+        FROM "{table_name}"
     """
     
     with connection.cursor() as cursor:

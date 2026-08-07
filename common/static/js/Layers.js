@@ -128,6 +128,8 @@ async function addLayer(layerConfig) {
 
     loadedLayers[key] = { layerIds, geojson, config: layerConfig };
 
+    if (typeof onAdminLayerLoaded === 'function') onAdminLayerLoaded(key, layerIds);
+
     // Popup on click
     const clickLayerId = layerIds[0];
     map.on('click', clickLayerId, (e) => {

@@ -12,7 +12,7 @@
 
   <header>
     <span class="label-tag">CrossTwin · Urban Heat Intelligence</span>
-    <h1>{{ Province.ProvinceName }}</h1>
+    <h1>{{ location }}</h1>
   </header>
 
   <!-- Vegetation slider — outside the swap target so it persists -->
@@ -43,7 +43,7 @@
           name="vegetation_pct"
           min="0" max="60" step="0.5"
           value="{{ indicators.vegetation_pct }}"
-          hx-get="{% url 'urban_heat:recalculate_indicators' Province.ProvinceName %}"
+          hx-get="{% url 'urban_heat:recalculate_indicators' level location %}"
           hx-trigger="input changed delay:200ms"
           hx-target="#indicators-grid"
           hx-include="this"

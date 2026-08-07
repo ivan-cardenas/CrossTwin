@@ -54,7 +54,7 @@
 
       <button class="tool-button" data-tool="temperature"
         data-panel-title="URBAN HEAT"
-        hx-get="{% url 'urban_heat:heat_indicators' location='Demo' %}"
+        hx-get="{% url 'urban_heat:heat_indicators' level='province' location='Demo' %}"
         hx-target="#panel-body"
         hx-indicator="#map-loader"
         hx-swap="innerHTML">
@@ -67,7 +67,7 @@
       </button>
       <button class="tool-button" data-tool="water"
         data-panel-title="WATER SUPPLY"
-        hx-get="{% url 'watersupply:water_indicators' location='Demo' year=2025 %}"
+        hx-get="{% url 'watersupply:water_indicators' level='province' location='Demo' year=2025 %}"
         hx-target="#panel-body"
         hx-indicator="#map-loader"
         hx-swap="innerHTML">
@@ -350,15 +350,11 @@ document.querySelectorAll('.year-btn').forEach(btn => {
     window.ACTIVE_YEAR = parseInt(btn.dataset.year);
 
     // Update panel button URLs with new year
-    const waterBtn = document.querySelector('[data-tool="water"]');
-    waterBtn.setAttribute(
-      'hx-get',
-      `/watersupply/indicators/${window.ACTIVE_PROVINCE}/${window.ACTIVE_YEAR}/`
-    );
-    htmx.process(waterBtn);
+    syncWaterBtn();
     syncHeatBtn();
 
     // If an HTMX panel is already open, reload it with new context
+    const waterBtn = document.querySelector('[data-tool="water"]');
     const panelTitle = document.getElementById('panel-title');
     if (panelTitle?.textContent === 'WATER SUPPLY') {
       htmx.trigger(waterBtn, 'click');
@@ -509,9 +505,11 @@ document.body.addEventListener('htmx:afterSwap', function(evt) {
 function syncWaterBtn() {
   const waterBtn = document.querySelector('[data-tool="water"]');
   if (!waterBtn) return;
+  const level = window.ACTIVE_LEVEL || 'province';
+  const location = window.ACTIVE_LOCATION || 'Demo';
   waterBtn.setAttribute(
     'hx-get',
-    `/watersupply/indicators/${window.ACTIVE_PROVINCE}/${window.ACTIVE_YEAR}/`
+    `/watersupply/indicators/${level}/${location}/${window.ACTIVE_YEAR}/`
   );
   htmx.process(waterBtn);
 }
@@ -519,8 +517,9 @@ function syncWaterBtn() {
 function syncHeatBtn() {
   const heatBtn = document.querySelector('[data-tool="temperature"]');
   if (!heatBtn) return;
-  const province = window.ACTIVE_PROVINCE || 'Demo';
-  heatBtn.setAttribute('hx-get', `/urban_heat/indicators/${province}/`);
+  const level = window.ACTIVE_LEVEL || 'province';
+  const location = window.ACTIVE_LOCATION || 'Demo';
+  heatBtn.setAttribute('hx-get', `/urban_heat/indicators/${level}/${location}/`);
   htmx.process(heatBtn);
 }
 

@@ -33,9 +33,12 @@ def calculate_green_area(province):
     for kw in green_keywords:
         green_filter |= Q(land_cover_type__class_name__icontains=kw)
 
+    # NOTE: percentage is stored relative to the *Province* total area
+    # (see CLAUDE.md TODO on LandCoverVector.percentage), so this stays
+    # province-relative even when `province` here is a smaller unit.
     green_lc_pct = (
         LandCoverVector.objects
-        .filter(green_filter, Province=province)
+        .filter(green_filter, geom__intersects=province.geom)
         .aggregate(total=Sum('percentage'))['total'] or 0
     )
 

@@ -9,7 +9,7 @@
       Water Supply Indicators
     </div>
     <div style="font-family:'Syne',sans-serif; font-size:1.1rem; font-weight:700;">
-      {{ Province.ProvinceName }}
+      {{ location }}
       <span style="color:rgba(232,244,255,0.4); font-size:0.85rem;">· {{ year }}</span>
     </div>
   </div>
@@ -39,7 +39,7 @@
                name="consumption"
                min="50" max="300" step="1"
                value="{{ indicators.consumption_capita }}"
-               hx-get="{% url 'watersupply:recalculate_indicators' Province.ProvinceName year %}"
+               hx-get="{% url 'watersupply:recalculate_indicators' level location year %}"
                hx-trigger="input changed delay:200ms"
                hx-target="#indicators-grid"
                hx-include="this"/>

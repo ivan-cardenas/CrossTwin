@@ -52,10 +52,10 @@ class Province(models.Model):
 class City(models.Model):
     id = models.AutoField(primary_key=True)
     province = models.ForeignKey(Province, on_delete=models.CASCADE, help_text="Province code from common.Province")
-    cityName = models.CharField(max_length=100)
-    currentPopulation = models.IntegerField(help_text="Total current population in the city") 
+    cityName = models.CharField(max_length=100, verbose_name="City Name", help_text="Name of the city")
+    currentPopulation = models.IntegerField(help_text="Total current population in the city", verbose_name="Current Population") 
     area_km2 = models.FloatField(null=True, help_text="Area in square kilometers")
-    populationDensity = models.FloatField(null=True, help_text="Population density in people per square kilometer") # people/km2
+    populationDensity = models.FloatField(null=True, help_text="Population density in people per square kilometer", verbose_name="Population Density") # people/km2
     populationDate = models.DateField(null=True)
     popGrowthRate = models.FloatField(null=True , help_text="Growth rate in % per year") # %
     urbanizationRate = models.FloatField(null=True, help_text="Urbanization rate in % per year") # %
@@ -92,11 +92,11 @@ class City(models.Model):
 class District(models.Model):
     id = models.CharField(primary_key=True)
     city = models.ForeignKey(City, on_delete=models.DO_NOTHING, help_text="City code from common.City")
-    districtName = models.CharField(max_length=100, help_text="Name of the district")
+    districtName = models.CharField(max_length=100, help_text="Name of the district", verbose_name="District Name")
     currentPopulation = models.IntegerField(null=True, blank=True, help_text="Current population in the district")
     populationDate = models.DateField(null=True)
     area_km2 = models.FloatField(null=True, blank=True, help_text="Area in square kilometers")
-    populationDensity = models.FloatField(null=True, blank=True, help_text="Population density in people per square kilometer")
+    populationDensity = models.FloatField(null=True, blank=True, help_text="Population density in people per square kilometer", verbose_name="Population Density")
     geom = models.MultiPolygonField(srid=CoordinateSystem)
     last_updated = models.DateTimeField(default=timezone.now)
     
@@ -117,11 +117,11 @@ class District(models.Model):
 class Neighborhood(models.Model):
     id = models.CharField(primary_key=True)
     district = models.ForeignKey(District, on_delete=models.DO_NOTHING, help_text="City code from common.City", null=True, blank=True)
-    neighborhoodName = models.CharField(max_length=100, help_text="Name of the neighborhood")
-    currentPopulation = models.IntegerField(null=True, blank=True, help_text="Current population in the neighborhood")
+    neighborhoodName = models.CharField(max_length=100, help_text="Name of the neighborhood", verbose_name="Neighborhood Name")
+    currentPopulation = models.IntegerField(null=True, blank=True, help_text="Current population in the neighborhood", verbose_name="Current Population")
     populationDate = models.DateField(null=True)
     area_km2 = models.FloatField(null=True, blank=True, help_text="Area in square kilometers")
-    populationDensity = models.FloatField(null=True, blank=True, help_text="Population density in people per square kilometer")
+    populationDensity = models.FloatField(null=True, blank=True, help_text="Population density in people per square kilometer", verbose_name="Population Density")
     geom = models.MultiPolygonField(srid=CoordinateSystem)
     last_updated = models.DateTimeField(default=timezone.now)
     

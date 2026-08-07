@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from django.db.models import Avg
 
-from common.models import Province as PM
+from common.admin_units import resolve_admin_unit
 from .calculations import (
     calculate_vegetation_coverage,
     calculate_urban_morphology,
@@ -19,11 +19,10 @@ MAX_PET  = 41       # extreme heat stress threshold
 MAX_LST  = 50       # upper display bound for LST gauge
 
 # ── shared helper ─────────────────────────────────────────────────────
-def _get_province_data(location):
-    """Fetch all urban-heat-related data for a province. Returns a dict."""
-    try:
-        province = PM.objects.get(ProvinceName=location)
-    except PM.DoesNotExist:
+def _get_province_data(level, location):
+    """Fetch all urban-heat-related data for an administrative unit. Returns a dict."""
+    province = resolve_admin_unit(level, location)
+    if province is None:
         return None
 
     vegetation = calculate_vegetation_coverage(province)
@@ -171,18 +170,20 @@ def _build_indicators(data):
 
 
 # ── views ─────────────────────────────────────────────────────────────
-def heat_indicators(request, location):
+def heat_indicators(request, level, location):
     """Main urban heat dashboard view.
 
     Serves the full page on normal requests, or just the panel
     partial on HTMX requests (for embedding in the main map sidebar).
     """
-    data = _get_province_data(location)
+    data = _get_province_data(level, location)
     if data is None:
         data = MOCK_DATA
 
     context = {
         'Province': data['province'],
+        'level': level,
+        'location': location,
         'indicators': _build_indicators(data),
     }
 
@@ -191,12 +192,12 @@ def heat_indicators(request, location):
     return render(request, 'urban_heat/heat_indicators.html', context)
 
 
-def recalculate_indicators(request, location):
+def recalculate_indicators(request, level, location):
     """HTMX endpoint: recalculate with optional vegetation override.
 
     This allows what-if analysis: "what if vegetation coverage were X%?"
     """
-    data = _get_province_data(location)
+    data = _get_province_data(level, location)
     if data is None:
         data = MOCK_DATA
 

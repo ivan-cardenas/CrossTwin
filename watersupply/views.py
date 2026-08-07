@@ -7,7 +7,7 @@ from django.db.models import Sum, Avg
 from django.apps import apps
 
 from .models import *
-from common.models import Province as PM
+from common.admin_units import resolve_admin_unit
 from .calculations import (
     _get_consumption_capita,
     calculate_supply_security,
@@ -32,11 +32,10 @@ MAX_OPEX_EUR      = 10_000_000
 MAX_CONSUMPTION   = 300
 
 # ── shared helper ─────────────────────────────────────────────────────
-def _get_province_data(location, year):
-    """Fetch all fixed DB values for a province/year. Returns a dict."""
-    try:
-        province = PM.objects.get(ProvinceName=location)
-    except PM.DoesNotExist:
+def _get_province_data(level, location, year):
+    """Fetch all fixed DB values for an administrative unit/year. Returns a dict."""
+    province = resolve_admin_unit(level, location)
+    if province is None:
         return None
 
     imported_water_m3_yr = (
@@ -91,7 +90,7 @@ def _get_province_data(location, year):
 
     return {
         'province':             province,
-        'population':           province.currentPopulation,
+        'population':           province.currentPopulation or 0,
         'consumption_capita':   _get_consumption_capita(province, year),
         'demand_m3_d':          demand_m3_d,
         'supply_m3_d':          supply_m3_d,
@@ -227,13 +226,15 @@ def _build_indicators(data, consumption_override=None):
 
 
 # ── views ─────────────────────────────────────────────────────────────
-def water_indicators(request, location, year):
-    data = _get_province_data(location, year)
+def water_indicators(request, level, location, year):
+    data = _get_province_data(level, location, year)
     if data is None:
         data = MOCK_DATA
 
     context = {
         'Province':   data['province'],
+        'level':      level,
+        'location':   location,
         'year':       year,
         'indicators': _build_indicators(data),
     }
@@ -243,9 +244,9 @@ def water_indicators(request, location, year):
     return render(request, 'watersupply/water_indicators.html', context)
 
 
-def recalculate_indicators(request, location, year):
+def recalculate_indicators(request, level, location, year):
     consumption = float(request.GET.get('consumption', 120))
-    data = _get_province_data(location, year)
+    data = _get_province_data(level, location, year)
     if data is None:
         data = MOCK_DATA
 

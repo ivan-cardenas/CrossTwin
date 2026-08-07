@@ -8,13 +8,14 @@ from .models import (
     TotalWaterProduction,
 )
 from common.models import City, Province, Neighborhood
+from common.admin_units import cities_within, neighborhoods_within
 
 
 # ── Consumption & Demand ─────────────────────────────────────────────
 
 def _get_consumption_capita(province, year):
-    """Return per-capita consumption (L/person/day) for a province and year."""
-    cities = City.objects.filter(province=province)
+    """Return per-capita consumption (L/person/day) for an admin unit and year."""
+    cities = cities_within(province)
     record = (
         ConsumptionCapita.objects
         .filter(city__in=cities, year=year)
@@ -24,8 +25,8 @@ def _get_consumption_capita(province, year):
 
 
 def calculate_total_demand(province, year):
-    """Total water demand in m³/day across all cities in a province."""
-    cities = City.objects.filter(province=province)
+    """Total water demand in m³/day across all cities in an admin unit."""
+    cities = cities_within(province)
     consumption = _get_consumption_capita(province, year)
     population = province.currentPopulation or 0
     # L/person/day → m³/day
@@ -76,7 +77,7 @@ def calculate_supply_security(province):
                 Total_Water_Prod   → Supply_Security
     Returns (demand_m3_d, production_m3_d, security_ratio).
     """
-    cities = City.objects.filter(province=province)
+    cities = cities_within(province)
     demand = (
         TotalWaterDemand.objects.filter(city__in=cities)
         .aggregate(total=Sum('demandDay'))['total'] or 0
@@ -184,9 +185,7 @@ def calculate_collection_ratio(province):
                 User_Acceptance_WS     → CollectionRatio
                 Water_Tariff_Afford    → CollectionRatio
     """
-    neighborhoods = Neighborhood.objects.filter(
-        district__city__province=province,
-    )
+    neighborhoods = neighborhoods_within(province)
     user_locs = UsersLocation.objects.filter(neighborhood__in=neighborhoods)
     meters = MeteredResidential.objects.filter(userLocation__in=user_locs)
 
@@ -207,9 +206,7 @@ def calculate_opex_recovery(year, province):
                 CollectionRatio  → OPEX_Recovery
                 NRW              → OPEX_Recovery
     """
-    neighborhoods = Neighborhood.objects.filter(
-        district__city__province=province,
-    )
+    neighborhoods = neighborhoods_within(province)
     user_locs = UsersLocation.objects.filter(neighborhood__in=neighborhoods)
     revenue = (
         MeteredResidential.objects
@@ -243,7 +240,7 @@ def calculate_coverage(province):
                 CityArea  → Coverage_WS_Area
                 NumberUsers → Coverage_WS
     """
-    cities = City.objects.filter(province=province)
+    cities = cities_within(province)
     coverage_records = CoverageWaterSupply.objects.filter(city__in=cities)
 
     if not coverage_records.exists():
@@ -328,7 +325,7 @@ def calculate_drought_area(province, year):
     from .models import AreaAffectedDrought
 
     records = AreaAffectedDrought.objects.filter(
-        Province=province, year=year,
+        geom__intersects=province.geom, year=year,
     )
     if not records.exists():
         return {'total_area_km2': 0, 'max_sensibility': 0}

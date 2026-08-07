@@ -4,10 +4,10 @@ from . import views
 app_name = "urban_heat"
 
 urlpatterns = [
-    path('indicators/<str:location>/',
+    path('indicators/<str:level>/<str:location>/',
          views.heat_indicators,
          name='heat_indicators'),
-    path('indicators/<str:location>/recalculate/',
+    path('indicators/<str:level>/<str:location>/recalculate/',
          views.recalculate_indicators,
          name='recalculate_indicators'),
 ]

@@ -3,6 +3,49 @@
 // Depends on: config.js
 // ============================================================
 
+// Maps each admin-hierarchy layer's registry key to the GeoJSON property
+// (from mainMap/views.py:model_geojson) holding its display name, and the
+// URL segment used to drive the watersupply/urban_heat indicator panels.
+const ADMIN_LEVELS = {
+  'common.Province':    { level: 'province',     nameField: 'ProvinceName' },
+  'common.City':         { level: 'city',         nameField: 'cityName' },
+  'common.District':     { level: 'district',     nameField: 'districtName' },
+  'common.Neighborhood': { level: 'neighborhood', nameField: 'neighborhoodName' },
+};
+
+/**
+ * Called by layers.js once an admin-hierarchy layer's real Mapbox layer
+ * IDs are known, so we never hardcode an ID that a LAYER_STYLES override
+ * might have renamed.
+ */
+function onAdminLayerLoaded(key, layerIds) {
+  const cfg = ADMIN_LEVELS[key];
+  if (!cfg) return;
+
+  map.on('click', layerIds[0], (e) => {
+    const props = e.features[0].properties;
+    window.ACTIVE_LEVEL = cfg.level;
+    window.ACTIVE_LOCATION = props[cfg.nameField];
+
+    syncWaterBtn();
+    syncHeatBtn();
+
+    // Fetch the panel directly via htmx.ajax rather than waterBtn.click():
+    // a real click bubbles into the #toolbar delegated listener (events.js),
+    // which treats it as a tool switch and re-filters every layer's
+    // visibility via activateToolLayers() — wiping out whatever visibility
+    // the user had set manually. htmx.ajax() only fetches + swaps content.
+    const waterBtn = document.querySelector('[data-tool="water"]');
+    if (waterBtn) {
+      htmx.ajax('GET', waterBtn.getAttribute('hx-get'), {
+        target: '#panel-body',
+        swap: 'innerHTML',
+        source: waterBtn,
+      });
+    }
+  });
+}
+
 /**
  * Initialize the Urban Twin map
  * @param {object} config - Configuration from Django template
@@ -60,21 +103,9 @@ function initializeUrbanTwinMap(config) {
     console.error('Map error:', e.error);
   });
 
-  window.ACTIVE_PROVINCE = 'Demo';
-  window.ACTIVE_YEAR = 2025;
-
-  map.on('click', 'common.Province-fill', (e) => {
-    const props = e.features[0].properties;
-    window.ACTIVE_PROVINCE = props.ProvinceName;
-
-    const waterBtn = document.querySelector('[data-tool="water"]');
-    waterBtn.setAttribute(
-      'hx-get',
-      `/watersupply/indicators/${window.ACTIVE_PROVINCE}/${window.ACTIVE_YEAR}/`
-    );
-    htmx.process(waterBtn);
-    waterBtn.click();
-  });
+  window.ACTIVE_LEVEL = 'province'; /* For demo purposes, set a default level */
+  window.ACTIVE_LOCATION = 'Demo'; /* For demo purposes, set a default location */
+  window.ACTIVE_YEAR = 2025; /* For demo purposes, set a default year */
 
   initializeUI();
   return map;

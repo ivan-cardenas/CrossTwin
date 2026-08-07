@@ -14,7 +14,7 @@
 
   <header>
     <span class="label-tag">CrossTwin · Water Supply Intelligence</span>
-    <h1>{{ Province.ProvinceName }}</h1>
+    <h1>{{ location }}</h1>
     <div class="year-badge">{{ year }}</div>
   </header>
 
@@ -47,7 +47,7 @@
           name="consumption"
           min="50" max="300" step="1"
           value="{{ consumption_capita_base }}"
-          hx-get="{% url 'watersupply:recalculate_indicators' Province.ProvinceName year %}"
+          hx-get="{% url 'watersupply:recalculate_indicators' level location year %}"
           hx-trigger="input changed delay:200ms"
           hx-target="#indicators-grid"
           hx-include="this"
