@@ -163,8 +163,8 @@ def _build_indicators(data, consumption_override=None):
     supply_Mm3_yr  = supply_m3_d  * 365 / 1_000_000
 
     service_time = (
-        SERVICE_HOURS_MAX if supply_m3_d >= demand_m3_d
-        else round(SERVICE_HOURS_MAX * supply_m3_d / demand_m3_d, 1)
+        SERVICE_HOURS_MAX if supply_m3_d > demand_m3_d
+        else round(SERVICE_HOURS_MAX * supply_m3_d / demand_m3_d, 1) if demand_m3_d else 0
     )
 
     # NRW as percentage of supply
@@ -192,7 +192,7 @@ def _build_indicators(data, consumption_override=None):
         'service_time':          service_time,
         'service_time_percent':  round(service_time / SERVICE_HOURS_MAX * 100, 1),
         'network_length':        data['network_length'],
-        'opex':                  opex_total,
+        'opex':                  f"{opex_total:,.0f}",
         'opex_percent':          min(opex_total / MAX_OPEX_EUR * 100, 100),
         'nrw_m3_d':              round(nrw_m3_d, 1),
         'nrw_percent':           nrw_percent,
