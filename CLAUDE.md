@@ -149,8 +149,6 @@ Tests use `PostGISTestRunner` (`DigitalTwin/test_runner.py`) which creates the t
 
 Collected from inline `#TODO` comments across the codebase:
 
-### core
-- Add H3 hexagon configuration for spatial aggregation (`core/utils.py`)
 
 ### common
 - Auto-calculate `LandCoverVector.percentage` from geom area vs Province total area (`common/models.py`)

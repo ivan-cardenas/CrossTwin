@@ -27,22 +27,16 @@ function onAdminLayerLoaded(key, layerIds) {
     window.ACTIVE_LEVEL = cfg.level;
     window.ACTIVE_LOCATION = props[cfg.nameField];
 
-    syncWaterBtn();
-    syncHeatBtn();
-
-    // Fetch the panel directly via htmx.ajax rather than waterBtn.click():
-    // a real click bubbles into the #toolbar delegated listener (events.js),
-    // which treats it as a tool switch and re-filters every layer's
-    // visibility via activateToolLayers() — wiping out whatever visibility
-    // the user had set manually. htmx.ajax() only fetches + swaps content.
-    const waterBtn = document.querySelector('[data-tool="water"]');
-    if (waterBtn) {
-      htmx.ajax('GET', waterBtn.getAttribute('hx-get'), {
-        target: '#panel-body',
-        swap: 'innerHTML',
-        source: waterBtn,
-      });
-    }
+    // syncPanelBtns/refreshActivePanel (defined in mainMap.html, driven by
+    // the ADMIN_PANEL_TOOLS registry) update every admin-unit-driven panel's
+    // URL and refresh whichever one is currently open — 'water' is only a
+    // fallback for when no panel is open yet. Refreshing via htmx.ajax
+    // rather than a real button click avoids bubbling into the #toolbar
+    // delegated listener (events.js), which would treat it as a tool switch
+    // and re-filter every layer's visibility via activateToolLayers() —
+    // wiping out whatever visibility the user had set manually.
+    syncPanelBtns();
+    refreshActivePanel('water');
   });
 }
 

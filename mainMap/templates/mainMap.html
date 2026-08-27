@@ -350,17 +350,10 @@ document.querySelectorAll('.year-btn').forEach(btn => {
     window.ACTIVE_YEAR = parseInt(btn.dataset.year);
 
     // Update panel button URLs with new year
-    syncWaterBtn();
-    syncHeatBtn();
+    syncPanelBtns();
 
-    // If an HTMX panel is already open, reload it with new context
-    const waterBtn = document.querySelector('[data-tool="water"]');
-    const panelTitle = document.getElementById('panel-title');
-    if (panelTitle?.textContent === 'WATER SUPPLY') {
-      htmx.trigger(waterBtn, 'click');
-    } else if (panelTitle?.textContent === 'URBAN HEAT') {
-      htmx.trigger(document.querySelector('[data-tool="temperature"]'), 'click');
-    }
+    // If an admin-unit-driven panel is already open, reload it with new context
+    refreshActivePanel();
   });
 });
 
@@ -502,26 +495,56 @@ document.body.addEventListener('htmx:afterSwap', function(evt) {
   }
 });
 
-function syncWaterBtn() {
-  const waterBtn = document.querySelector('[data-tool="water"]');
-  if (!waterBtn) return;
+// Registry of toolbar panels driven by the selected administrative unit
+// (level/location[/year]). Add an entry here when wiring up a new
+// indicator panel (e.g. housing, energy) to admin-unit selection —
+// syncPanelBtns/refreshActivePanel then handle it automatically, no other
+// changes needed in Map_init.js.
+const ADMIN_PANEL_TOOLS = {
+  water: (level, location) =>
+    `/watersupply/indicators/${level}/${location}/${window.ACTIVE_YEAR}/`,
+  temperature: (level, location) =>
+    `/urban_heat/indicators/${level}/${location}/`,
+};
+
+function syncPanelBtns() {
   const level = window.ACTIVE_LEVEL || 'province';
   const location = window.ACTIVE_LOCATION || 'Demo';
-  waterBtn.setAttribute(
-    'hx-get',
-    `/watersupply/indicators/${level}/${location}/${window.ACTIVE_YEAR}/`
-  );
-  htmx.process(waterBtn);
+  for (const [tool, urlBuilder] of Object.entries(ADMIN_PANEL_TOOLS)) {
+    const btn = document.querySelector(`[data-tool="${tool}"]`);
+    if (!btn) continue;
+    btn.setAttribute('hx-get', urlBuilder(level, location));
+    htmx.process(btn);
+  }
 }
 
-function syncHeatBtn() {
-  const heatBtn = document.querySelector('[data-tool="temperature"]');
-  if (!heatBtn) return;
-  const level = window.ACTIVE_LEVEL || 'province';
-  const location = window.ACTIVE_LOCATION || 'Demo';
-  heatBtn.setAttribute('hx-get', `/urban_heat/indicators/${level}/${location}/`);
-  htmx.process(heatBtn);
+// Finds which registered admin-panel tool (if any) is the currently
+// selected toolbar tool (the button with the 'active' class, set by
+// events.js on every toolbar click). This reflects which layer/tool the
+// user is actually in, regardless of whether the side panel has finished
+// (re)opening yet — matching on panel-title text instead was a race: it
+// only reflected reality after that tool's own htmx swap had completed.
+function findActiveAdminTool() {
+  const activeTool = document.querySelector('.tool-button.active')?.dataset.tool;
+  return activeTool && ADMIN_PANEL_TOOLS[activeTool] ? activeTool : null;
 }
+
+// Refreshes whichever admin-panel-driven panel is currently open. Pass
+// fallbackTool to open one when none is open yet (e.g. first map click);
+// omit it to no-op when the open panel isn't admin-unit-driven.
+function refreshActivePanel(fallbackTool = null) {
+  const tool = findActiveAdminTool() || fallbackTool;
+  const btn = tool && document.querySelector(`[data-tool="${tool}"]`);
+  if (!btn) return;
+  htmx.ajax('GET', btn.getAttribute('hx-get'), {
+    target: '#panel-body',
+    swap: 'innerHTML',
+    source: btn,
+  });
+}
+
+window.syncPanelBtns = syncPanelBtns;
+window.refreshActivePanel = refreshActivePanel;
 
 </script>
 {% endblock content %}

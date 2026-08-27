@@ -358,7 +358,7 @@ function filterLayersByTool(toolId) {
   const panelTitle = document.querySelector('.layers-panel-title');
   if (panelTitle) {
     const toolNames = {
-      overview: 'All Layers', layers: 'All Layers',
+      overview: 'All Layers',
       temperature: 'Urban Heat Layers', green: 'Green and Park Layers',
       water: 'Water supply Layers', groundwater: 'Groundwater Layers',
     };

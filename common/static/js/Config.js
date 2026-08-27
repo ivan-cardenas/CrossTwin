@@ -40,7 +40,7 @@ const TOOL_CATEGORIES = {
   builtup:     ['common', 'builtup'],
   energy:      ['common', 'Energy'],
   housing:     ['common', 'housing'],
-  green:       ['common', 'green', 'vegetation', 'trees', 'Park', 'LandCover'],
+  green:       ['common', 'nature', 'green', 'vegetation', 'trees', 'Park', 'LandCover'],
   water:       ['common', 'watersupply'],
   groundwater: ['common', 'groundwater'],
   satellite:   null,

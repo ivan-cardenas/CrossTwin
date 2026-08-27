@@ -60,11 +60,11 @@ FIELD_MAPPINGS = {
     "pdok_buildings": {
         "__geometry__": "geom",
         "__unique__": "identificatie",
-        "__unique_field__": "bag_id",
-        "identificatie": "bag_id",
+        "__unique_field__": "id",
+        "identificatie": "id",
         "bouwjaar": "construction_year",
         "status": "status",
-        "oppervlakte": "area_m2",
+        'aantal_verblijsobjecten': "numberUnits",
     },
     "pdok_streets": {
         "__geometry__": "geom",
