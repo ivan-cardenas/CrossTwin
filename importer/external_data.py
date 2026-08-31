@@ -212,9 +212,15 @@ class PDOKImporter:
             
             geojson = response.json()
             features = geojson.get("features", [])
-            
+
             if not features:
                 return ImportResult("success", "No features found in the specified area.", 0)
+
+            from django.db import connection as _dbg_conn
+            logger.warning(
+                f"[DEBUG {dataset['key']}] fetched {len(features)} features, "
+                f"identificatie values: {[f.get('properties', {}).get('identificatie') for f in features]}"
+            )
             
             # Import features to database
             geom_field = mapping.get("__geometry__", "geom")
@@ -238,9 +244,9 @@ class PDOKImporter:
                         f"Import the parent records first.",
                     )
 
-            with transaction.atomic():
-                for feat in features:
-                    try:
+            for feat in features:
+                try:
+                    with transaction.atomic():
                         props = feat.get("properties", {})
                         geom_json = feat.get("geometry")
                         
@@ -313,11 +319,11 @@ class PDOKImporter:
                             Model.objects.create(**field_values)
                             created_count += 1
                             
-                    except Exception as e:
-                        errors.append(str(e))
-                        if len(errors) > 10:
-                            break  # Stop after too many errors
-            
+                except Exception as e:
+                    errors.append(str(e))
+                    if len(errors) > 10:
+                        break  # Stop after too many errors
+
             # Build result message
             msg_parts = []
             if created_count:
@@ -505,18 +511,20 @@ class CBSImporter:
     @staticmethod
     def fetch(
     dataset: Dict,
-    date_from: Optional[str] = None,   # e.g. "2020"
-    date_to: Optional[str] = None,     # e.g. "2023"
-    bbox: Optional[list] = None,       # accepted for interface consistency, ignored
+    date_from: Optional[str] = None,   # ISO date or year, e.g. "2020-01-01" or "2020"
+    date_to: Optional[str] = None,     # ISO date or year, e.g. "2023-12-31" or "2023"
+    bbox: Optional[list] = None,       # [xmin, ymin, xmax, ymax] in WGS84
     ) -> ImportResult:
         """
         Fetch tabular data from CBS OData API and import to Django model.
 
         Args:
             dataset:   Catalog entry dict
-            date_from: Start year as string, e.g. "2020"
-            date_to:   End year as string, e.g. "2023"
-            bbox:      Ignored (CBS data is tabular, not spatial)
+            date_from: Start date/year, e.g. "2020-01-01" or "2020"
+            date_to:   End date/year, e.g. "2023-12-31" or "2023"
+            bbox:      WGS84 bounding box; used to restrict results to municipalities
+                       (RegioS) whose City geometry intersects it. CBS data is tabular,
+                       so this filters by administrative region rather than clipping geometry.
         """
         try:
             table_id    = dataset["table_id"]
@@ -544,17 +552,47 @@ class CBSImporter:
                 filter_parts.append(dataset_filter)
 
             # CBS annual period codes look like "2023JJ00"
-            # Use startswith on the year prefix for a safe range filter
-            if date_from and date_to:
+            # Use startswith on the year prefix for a safe range filter.
+            # date_from/date_to arrive as full ISO dates (e.g. "2026-08-01") from the
+            # date-range picker, so only the leading 4-digit year is relevant to CBS.
+            year_from = date_from[:4] if date_from else None
+            year_to = date_to[:4] if date_to else None
+
+            if year_from and year_to:
                 year_filters = " or ".join(
                     f"startswith(Perioden,'{y}')"
-                    for y in range(int(date_from), int(date_to) + 1)
+                    for y in range(int(year_from), int(year_to) + 1)
                 )
                 filter_parts.append(f"({year_filters})")
-            elif date_from:
-                filter_parts.append(f"startswith(Perioden,'{date_from}')")
-            elif date_to:
-                filter_parts.append(f"startswith(Perioden,'{date_to}')")
+            elif year_from:
+                filter_parts.append(f"startswith(Perioden,'{year_from}')")
+            elif year_to:
+                filter_parts.append(f"startswith(Perioden,'{year_to}')")
+
+            # Restrict to municipalities intersecting the selected bbox, if provided.
+            # CBS RegioS codes are "GM" + the gemeente number, and City.pk is that
+            # same gemeente number (see the RegioS -> City FK resolution below).
+            if bbox:
+                from common.models import City
+
+                bbox_geom = Polygon.from_bbox(bbox)
+                bbox_geom.srid = 4326
+                bbox_geom.transform(coordinate_system)
+                # Reprojecting a WGS84 rectangle's corners into EPSG:28992 doesn't yield an
+                # exact axis-aligned box, so a city extent that is nominally "within" the
+                # original bbox can end up a hair outside it. A small buffer (meters, since
+                # we're in a projected CRS) absorbs that reprojection noise.
+                bbox_geom = bbox_geom.buffer(1)
+                print(f"Filtering CBS data to cities within bbox {bbox_geom.extent} (EPSG:{coordinate_system})")
+
+                city_pks = list(
+                    City.objects.filter(geom__intersects=bbox_geom).values_list("pk", flat=True)
+                )
+                if not city_pks:
+                    return ImportResult("success", "No cities found within the selected area.", 0)
+
+                region_filters = " or ".join(f"startswith(RegioS,'GM{pk:04d}')" for pk in city_pks)
+                filter_parts.append(f"({region_filters})")
 
             params = {"$format": "json"}
             if filter_parts:
