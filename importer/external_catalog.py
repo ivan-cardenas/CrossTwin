@@ -11,6 +11,8 @@ coordinate_system = settings.COORDINATE_SYSTEM
 # Special keys:
 #   "__geometry__" → the geometry field name in the model
 #   "__unique__"   → the WFS property used for update_or_create lookup
+#   "__static__"   → dict of {model_field: constant_value} applied to every
+#                    feature in this dataset, regardless of WFS properties
 
 FIELD_MAPPINGS = {
     "pdok_provinces": {
@@ -64,23 +66,21 @@ FIELD_MAPPINGS = {
         "bouwjaar": "constructionYear",
         # "status": "status",
         'gebruiksdoel': "usageFunction",
-        'aantal_verblijsobjecten': "numberUnits",
+        'aantal_verblijfsobjecten': "numberUnits",
     },
     "pdok_streets": {
         "__geometry__": "geom",
-        "__unique__": "identificatie",
-        "__unique_field__": "identification",
-        "identificatie": "identification",
-        "openbareruimtenaam": "name",
-        "type": "street_type",
+        "__unique__": "gmlId",
+        "__unique_field__": "inspireID",
+        "text": "name",
     },
+    
     "pdok_natura2000": {
         "__geometry__": "geom",
-        "__unique__": "naam",
-        "__unique_field__": "name",
-        "naam": "name",
-        "sitecode": "site_code",
-        "type": "protection_type",
+        "__unique__": "gmlID",
+        "__unique_field__": "inspireID",
+        "__static__": {"protection_type": "N2K"},
+        "text": "name",
     },
     "pdok_water_bodies": {
         "__geometry__": "geom",
@@ -210,7 +210,7 @@ EXTERNAL_DATA_CATALOG = [
         "source": "pdok",
         "category": "Built environment",
         "name": "Buildings (BAG Panden)",
-        "description": "All buildings from the Basisregistratie Adressen en Gebouwen (BAG). Large dataset — requires bounding box.",
+        "description": "All buildings from the Basisregistratie Adressen en Gebouwen (BAG). Large dataset — requires bounding box. WARNING: this may take a long time to load.",
         "target_model": "builtup.Building",
         "url": "https://service.pdok.nl/lv/bag/wfs/v2_0",
         "layer": "bag:pand",
@@ -223,11 +223,11 @@ EXTERNAL_DATA_CATALOG = [
         "key": "pdok_streets",
         "source": "pdok",
         "category": "Built environment",
-        "name": "Streets (Openbare Ruimten)",
-        "description": "Named public spaces (streets, squares) from BAG.",
+        "name": "Road Network (Vervoersnetwerken)",
+        "description": "General Road network from Inspire.",
         "target_model": "builtup.Street",
-        "url": "https://service.pdok.nl/lv/bag/wfs/v2_0",
-        "layer": "bag:openbareruimte",
+        "url": "https://service.pdok.nl/rws/vervoersnetwerken-wegen-netwerk/wfs/v1_0",
+        "layer": "vervoersnetwerken:road_link",
         "format": "wfs",
         "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "requires_bbox": True,

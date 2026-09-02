@@ -15,6 +15,7 @@ class ProtectedArea(models.Model):
         
 
     id = models.AutoField(primary_key=True)
+    inspireID = models.CharField(max_length=100, unique=True, help_text="Unique identifier for the protected area from INSPIRE dataset")
     name = models.CharField(max_length=200)
     protection_type = models.CharField(
         max_length=3, choices=ProtectionType.choices

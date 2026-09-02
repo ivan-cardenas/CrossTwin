@@ -1,5 +1,6 @@
 from django.utils import timezone
 from django.contrib.gis.db import models
+from django.contrib.postgres.fields import ArrayField
 from django.db.models import Sum
 from common.models import City, Neighborhood, SurfaceMaterialProperties, WallMaterialProperties
 from Energy.models import EnergyEfficiencyLabels
@@ -28,6 +29,7 @@ class ZoningArea(models.Model):
 
 class Street(models.Model):
     id = models.AutoField(primary_key=True)
+    inspireID = models.CharField(max_length=100, unique=True, help_text="Unique identifier for the street from INSPIRE dataset")
     name = models.CharField(max_length=100, help_text="Name of the street")
     surfaceMaterial = models.ForeignKey(SurfaceMaterialProperties, verbose_name="Surface Material", on_delete=models.DO_NOTHING, null=True, blank=True)
     classification = models.CharField(max_length=50, choices=[('primary', 'Primary'), ('secondary', 'Secondary'), ('residential', 'Residential')], help_text="Street classification (e.g., primary, secondary, residential)")
@@ -106,13 +108,17 @@ class Building(models.Model):
         'celfunctie': 'institutional',
     }
 
-    id = models.BigIntegerField(primary_key=True)
-    name = models.CharField(max_length=100, help_text="Name or identifier of the building")
-    address = models.CharField(max_length=200, help_text="Address of the building")
+    id = models.BigIntegerField(primary_key=True, help_text="Unique identifier for the building (e.g., BAG ID)")
+    name = models.CharField(max_length=100, help_text="Name or identifier of the building", null=True, blank=True)
+    address = models.CharField(max_length=200, help_text="Address of the building", blank=True, null=True)
     neighborhood = models.ForeignKey(Neighborhood, verbose_name="Neighborhood", on_delete=models.DO_NOTHING, null=True, blank=True)
     ZoningArea = models.ForeignKey(ZoningArea, verbose_name="Zoning Area", on_delete=models.DO_NOTHING, null=True, blank=True)
     numberUnits = models.IntegerField(null=True, blank=True, help_text="Number of housing or commercial units in the building")
-    usageFunction = models.CharField(max_length=50, choices=BAG_USAGE_FUNCTIONS, null=True, blank=True, help_text="BAG gebruiksdoel (usage function) of the building, where known")
+    usageFunction = ArrayField(
+        models.CharField(max_length=100, choices=[(label, label) for _, label in BAG_USAGE_FUNCTIONS] + [("Undefined", "Undefined")]),
+        null=True, blank=True, default=list,
+        help_text="BAG gebruiksdoel (usage function(s)) of the building, where known, stored as human-readable labels; a Pand can have more than one, or 'Undefined' when BAG reports no usage function",
+    )
     buildingType = models.CharField(max_length=100, choices=[('residential', 'Residential'), ('commercial', 'Commercial'), ('industrial', 'Industrial'), ('institutional', 'Institutional'), ('mixed', 'Mixed Use')], help_text="Coarse building category, derived from usageFunction when set; use 'mixed' for buildings combining multiple usage functions (e.g. a Pand with several Verblijfsobjecten)")
     roofMaterial = models.ForeignKey(SurfaceMaterialProperties, verbose_name="Roof Material", on_delete=models.DO_NOTHING, null=True, blank=True)
     wallMaterial = models.ForeignKey(WallMaterialProperties, verbose_name="Wall Material", on_delete=models.DO_NOTHING, null=True, blank=True)
@@ -128,13 +134,37 @@ class Building(models.Model):
     geom = models.MultiPolygonField(srid=CoordinateSystem)
     
     def save(self, *args, **kwargs):
+        if self.usageFunction == "":
+            # BAG reports some Pand records with no gebruiksdoel at all (empty
+            # string, not missing). An empty string can't be stored in the
+            # ArrayField as-is, so treat it the same as "no data" but keep it
+            # visible rather than silently dropping the building's function.
+            self.usageFunction = "Undefined"
         if self.usageFunction:
-            self.buildingType = self.BAG_TO_BUILDING_TYPE.get(self.usageFunction, self.buildingType)
-        super().save(*args, **kwargs)
+            # WFS delivers a comma-separated string for multi-function buildings
+            # (e.g. "winkelfunctie,woonfunctie"); a re-save of an already-converted
+            # instance instead hands back a list of labels. Normalize both to a
+            # list of raw BAG codes before deriving buildingType / labels from them.
+            
+            if isinstance(self.usageFunction, str):
+                raw_functions = [f.strip() for f in self.usageFunction.split(",") if f.strip()]
+            else:
+                raw_functions = list(self.usageFunction)
+
+            code_to_label = dict(self.BAG_USAGE_FUNCTIONS)
+            label_to_code = {label: code for code, label in self.BAG_USAGE_FUNCTIONS}
+            codes = [label_to_code.get(f, f) for f in raw_functions]
+
+            building_types = {self.BAG_TO_BUILDING_TYPE[c] for c in codes if c in self.BAG_TO_BUILDING_TYPE}
+            if len(building_types) > 1:
+                self.buildingType = "mixed"
+            elif building_types:
+                self.buildingType = building_types.pop()
+
+            self.usageFunction = [code_to_label.get(c, c) for c in codes]
         if self.geom:
             self.area_sqm = self.geom.area
             self.neighborhood = Neighborhood.objects.filter(geom__contains=self.geom.centroid).first()
-            
         super().save(*args, **kwargs)
 
     def __str__(self):

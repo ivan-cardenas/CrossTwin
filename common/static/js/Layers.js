@@ -40,9 +40,9 @@ async function fetchAvailableLayers() {
     renderLayerList();
     updateIndicators();
 
-    for (const layer of availableLayers) {
-      await addLayer(layer);
-    }
+    // for (const layer of availableLayers) {
+    //   await addLayer(layer);
+    // }
 
     // zoomToAllVisible();
   } catch (error) {

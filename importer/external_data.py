@@ -25,7 +25,7 @@ from datetime import datetime, timedelta
 import requests
 from pyproj import Transformer
 from django.apps import apps
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.contrib.gis.geos import GEOSGeometry, Polygon, MultiPolygon
 from django.conf import settings
 from django.utils import timezone
@@ -154,7 +154,7 @@ class PDOKImporter:
     """Import handler for PDOK datasets - imports directly to Django models."""
     
     @staticmethod
-    def fetch_wfs(dataset: Dict, bbox: Optional[list] = None, max_features: int = 10000) -> ImportResult:
+    def fetch_wfs(dataset: Dict, bbox: Optional[list] = None, max_features: int = 1000000) -> ImportResult:
         """
         Fetch vector data from PDOK WFS service and import directly to Django model.
         
@@ -188,9 +188,8 @@ class PDOKImporter:
                 "typeName": layer,
                 "outputFormat": "application/json",
                 "srsName": dataset["params"].get("srsName", "EPSG:28992"),
-                "count": max_features,
             }
-            
+
             # Add bbox filter if provided (bbox arrives in WGS84 from frontend)
             if bbox:
                 target_srs = dataset["params"].get("srsName", "EPSG:28992")
@@ -201,32 +200,76 @@ class PDOKImporter:
                     x2, y2 = tx.transform(bbox[2], bbox[3])
                     bbox = [x1, y1, x2, y2]
                 params["bbox"] = f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]},urn:ogc:def:crs:EPSG::{target_epsg}"
-            
+
             # Add CQL filter if specified
             if "cql_filter" in dataset.get("params", {}):
                 params["cql_filter"] = dataset["params"]["cql_filter"]
-            
+
+            # PDOK's GeoServer instances silently cap a single GetFeature response
+            # at 1000 features regardless of the requested count, so anything past
+            # that would otherwise be dropped with no error. Page through the full
+            # result set with startIndex, stopping once a page comes back short
+            # (the reliable "last page" signal — numberMatched/numberReturned
+            # aren't consistently present across PDOK layers).
+            page_size = min(max_features, 1000)
+            all_features = []
+            start_index = 0
+            max_pages = 50  # safety cap against a server that ignores startIndex
             logger.info(f"Fetching WFS: {url} layer={layer}")
-            response = requests.get(url, params=params, timeout=120)
-            response.raise_for_status()
-            
-            geojson = response.json()
-            features = geojson.get("features", [])
+            for page in range(max_pages):
+                params["count"] = page_size
+                params["startIndex"] = start_index
+                response = requests.get(url, params=params, timeout=120)
+                response.raise_for_status()
+                geojson = response.json()
+                features = geojson.get("features", [])
+                all_features.extend(features)
+
+                if len(features) < page_size or len(all_features) >= max_features:
+                    break
+                start_index += len(features)
+            else:
+                logger.warning(f"[{dataset_key}] hit the {max_pages}-page safety cap while paginating")
+
+            all_features = all_features[:max_features]
+            logger.info(f"Fetched {len(all_features)} feature(s) from {layer} across {page + 1} page(s)")
+            features = all_features
 
             if not features:
                 return ImportResult("success", "No features found in the specified area.", 0)
 
-            from django.db import connection as _dbg_conn
-            logger.warning(
-                f"[DEBUG {dataset['key']}] fetched {len(features)} features, "
-                f"identificatie values: {[f.get('properties', {}).get('identificatie') for f in features]}"
-            )
-            
             # Import features to database
             geom_field = mapping.get("__geometry__", "geom")
             unique_wfs_prop = mapping.get("__unique__")
             unique_model_field = mapping.get("__unique_field__")
-            
+
+            # PDOK/GeoServer WFS layers (bag:pand in particular) can return the same
+            # feature — same identificatie — more than once in a single GetFeature
+            # response (e.g. a pand that straddles an internal tile boundary). Since
+            # __unique_field__ is often the model's actual primary key (see
+            # pdok_buildings), two rows for the same identificatie both attempting an
+            # INSERT with the same pk trips "duplicate key value violates unique
+            # constraint", even against an empty table. Deduplicate up front, keeping
+            # the first occurrence, so each unique id is only ever create()'d once.
+            if unique_wfs_prop:
+                seen_keys = set()
+                deduped = []
+                duplicate_count = 0
+                for feat in features:
+                    key = feat.get("properties", {}).get(unique_wfs_prop)
+                    if key is not None and key in seen_keys:
+                        duplicate_count += 1
+                        continue
+                    if key is not None:
+                        seen_keys.add(key)
+                    deduped.append(feat)
+                if duplicate_count:
+                    logger.warning(
+                        f"[{dataset['key']}] dropped {duplicate_count} duplicate feature(s) "
+                        f"sharing an existing '{unique_wfs_prop}' value before import."
+                    )
+                features = deduped
+
             created_count = 0
             updated_count = 0
             errors = []
@@ -285,6 +328,12 @@ class PDOKImporter:
                             if wfs_prop in props and props[wfs_prop] is not None:
                                 field_values[model_field] = props[wfs_prop]
 
+                        # __static__ fields aren't sourced from WFS properties at
+                        # all (e.g. every feature in the natura2000 dataset is by
+                        # definition a Natura 2000 area) -- always applied last so
+                        # they win over anything a WFS property might otherwise map.
+                        field_values.update(mapping.get("__static__", {}))
+
                         # Resolve spatial FK: find the parent whose geometry contains this feature's centroid
                         if spatial_fk_conf and parent_objects:
                             centroid = geom.centroid
@@ -305,11 +354,23 @@ class PDOKImporter:
                         if unique_wfs_prop and unique_model_field and unique_wfs_prop in props:
                             lookup = {unique_model_field: props[unique_wfs_prop]}
                             defaults = {k: v for k, v in field_values.items() if k != unique_model_field}
-                            
-                            obj, was_created = Model.objects.update_or_create(
-                                **lookup,
-                                defaults=defaults
-                            )
+
+                            try:
+                                with transaction.atomic():
+                                    obj, was_created = Model.objects.update_or_create(
+                                        **lookup,
+                                        defaults=defaults
+                                    )
+                            except IntegrityError:
+                                existing = Model.objects.filter(**lookup).first()
+                                if existing is None:
+                                    raise
+                                for field_name, value in defaults.items():
+                                    setattr(existing, field_name, value)
+                                existing.save()
+                                obj = existing
+                                was_created = False
+
                             if was_created:
                                 created_count += 1
                             else:
