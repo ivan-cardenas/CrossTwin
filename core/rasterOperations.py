@@ -181,7 +181,12 @@ def export_raster_to_cog(instance):
     cog_subdir = os.path.join(COG_DIRECTORY, app_label)
     os.makedirs(cog_subdir, exist_ok=True)
     
-    cog_path = os.path.join(cog_subdir, f"{instance.__class__.__name__}_{instance.id}_{instance.date}.tif")
+    # Not every raster model has a `date` field (e.g. common.LandCoverRaster uses
+    # `year` instead), so fall back through the identifiers that do exist rather
+    # than assuming `date` and raising AttributeError before the COG is written.
+    label = getattr(instance, 'date', None) or getattr(instance, 'date_time', None) or getattr(instance, 'year', None) or instance.id
+    safe_label = str(label).replace(":", "-").replace(" ", "_")
+    cog_path = os.path.join(cog_subdir, f"{instance.__class__.__name__}_{instance.id}_{safe_label}.tif")
     
     output_profile = cog_profiles.get("DEFLATE")
     
@@ -203,7 +208,7 @@ def export_raster_to_cog(instance):
     instance.cog_path = cog_path.replace("\\", "/")
     instance.save(update_fields=['cog_path'])
     
-    print(f"✓ {instance.__class__.__name__} id={instance.id} → {cog_path}")
+    print(f"[export_raster_to_cog] {instance.__class__.__name__} id={instance.id} -> {cog_path}")
     return cog_path
 
 def export_all_rasters():
@@ -220,6 +225,6 @@ def export_all_rasters():
     for raster_layer in pending:
         try:
             path = export_raster_to_cog(raster_layer)
-            print(f"  ✓ Done: {raster_layer.name} → {path}\n")
+            print(f"  Done: {raster_layer.name} -> {path}\n")
         except Exception as e:
-            print(f"  ✗ Failed: {raster_layer.name} → {e}\n")
+            print(f"  Failed: {raster_layer.name} -> {e}\n")

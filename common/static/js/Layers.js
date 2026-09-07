@@ -23,35 +23,59 @@ function showLoader(show) {
 // ---- Fetch & render ---------------------------------------------------
 
 /**
- * Fetch available layers from Django API
+ * Fetch available layers from Django API.
+ *
+ * /api/layers/ costs at least one DB query per registered model (a full
+ * .objects.all() for WMS/raster entries), so asking for the whole registry
+ * up front was the main contributor to slow map init. Load the small,
+ * always-needed 'common' admin-hierarchy layers (province/city/district/
+ * neighborhood — these drive the city-click handlers and indicator panels)
+ * first so the map UI is usable immediately, then fetch every other app's
+ * layers in the background and merge them in once they arrive.
  */
 async function fetchAvailableLayers() {
   try {
-    const response = await fetch(CONFIG.layersApiUrl);
-    if (!response.ok) throw new Error('Failed to fetch layers');
-
-    const data = await response.json();
-    availableLayers = data.layers;
-
-    availableLayers.forEach(layer => {
-      layerVisibility[layer.key] = true;
-    });
-
-    renderLayerList();
-    updateIndicators();
-
-    // for (const layer of availableLayers) {
-    //   await addLayer(layer);
-    // }
-
-    // zoomToAllVisible();
+    await loadLayerCatalog('common');
   } catch (error) {
     console.error('Error fetching layers:', error);
     const container = document.getElementById('layer-list');
     if (container) {
       container.innerHTML = '<div class="no-layers">Error loading layers. Check API connection.</div>';
     }
+    return;
   }
+
+  loadLayerCatalog().catch(error => {
+    console.error('Error fetching remaining layers:', error);
+  });
+}
+
+/**
+ * Fetch one batch of the layer catalog and merge it into availableLayers.
+ * @param {string} [appLabels] - comma-separated app_labels to restrict to; omit for everything.
+ */
+async function loadLayerCatalog(appLabels) {
+  const url = appLabels
+    ? `${CONFIG.layersApiUrl}?app_labels=${encodeURIComponent(appLabels)}`
+    : CONFIG.layersApiUrl;
+
+  const response = await fetch(url);
+  if (!response.ok) throw new Error('Failed to fetch layers');
+  const data = await response.json();
+
+  // Merge rather than replace — a later batch (e.g. the unfiltered
+  // background fetch) re-includes 'common' layers already loaded, and
+  // must not clobber their loadedLayers/visibility state.
+  const existingKeys = new Set(availableLayers.map(l => l.key));
+  for (const layer of data.layers) {
+    if (!existingKeys.has(layer.key)) {
+      availableLayers.push(layer);
+      layerVisibility[layer.key] = true;
+    }
+  }
+
+  renderLayerList();
+  updateIndicators();
 }
 
 // ---- Add layers -------------------------------------------------------

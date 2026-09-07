@@ -29,7 +29,7 @@ class ZoningArea(models.Model):
 
 class Street(models.Model):
     id = models.AutoField(primary_key=True)
-    inspireID = models.CharField(max_length=100, unique=True, help_text="Unique identifier for the street from INSPIRE dataset")
+    inspireID = models.CharField(max_length=100, unique=True, help_text="Unique identifier for the street from INSPIRE dataset", null=True, blank=True)
     name = models.CharField(max_length=100, help_text="Name of the street")
     surfaceMaterial = models.ForeignKey(SurfaceMaterialProperties, verbose_name="Surface Material", on_delete=models.DO_NOTHING, null=True, blank=True)
     classification = models.CharField(max_length=50, choices=[('primary', 'Primary'), ('secondary', 'Secondary'), ('residential', 'Residential')], help_text="Street classification (e.g., primary, secondary, residential)")
@@ -122,7 +122,16 @@ class Building(models.Model):
     buildingType = models.CharField(max_length=100, choices=[('residential', 'Residential'), ('commercial', 'Commercial'), ('industrial', 'Industrial'), ('institutional', 'Institutional'), ('mixed', 'Mixed Use')], help_text="Coarse building category, derived from usageFunction when set; use 'mixed' for buildings combining multiple usage functions (e.g. a Pand with several Verblijfsobjecten)")
     roofMaterial = models.ForeignKey(SurfaceMaterialProperties, verbose_name="Roof Material", on_delete=models.DO_NOTHING, null=True, blank=True)
     wallMaterial = models.ForeignKey(WallMaterialProperties, verbose_name="Wall Material", on_delete=models.DO_NOTHING, null=True, blank=True)
-    energyLabel = models.ForeignKey(EnergyEfficiencyLabels, verbose_name="Energy Label", on_delete=models.DO_NOTHING, null=True, blank=True)
+    # Matches EnergyEfficiencyLabels.label's own choices so the two stay in sync;
+    # plain CharFields (not FKs) because these are populated straight from WFS
+    # property values by the generic importer (importer/external_data.py),
+    # which assigns feature properties to model fields directly and has no
+    # natural-key FK resolution.
+    _ENERGY_LABEL_CHOICES = EnergyEfficiencyLabels._meta.get_field('label').choices
+    energyLabel = models.CharField(max_length=10, choices=_ENERGY_LABEL_CHOICES, null=True, blank=True, help_text="Dominant registered energy label for this building (RVO EP-Online register, via RIVM's rvo_energielabels WFS)")
+    energyLabelHighest = models.CharField(max_length=10, choices=_ENERGY_LABEL_CHOICES, null=True, blank=True, help_text="Best registered label among this building's units (RVO EP-Online register, via RIVM's rvo_energielabels WFS)")
+    energyLabelLowest = models.CharField(max_length=10, choices=_ENERGY_LABEL_CHOICES, null=True, blank=True, help_text="Worst registered label among this building's units (RVO EP-Online register, via RIVM's rvo_energielabels WFS)")
+    energyLabelCount = models.IntegerField(null=True, blank=True, help_text="Number of registered energy labels found for this building (RVO EP-Online register, via RIVM's rvo_energielabels WFS)")
     height_m = models.FloatField(help_text="Height of the building in meters", null=True, blank=True)
     area_sqm = models.FloatField(help_text="Footprint area of the building in square meters", null=True, blank=True)
     constructionYear = models.IntegerField(null=True, blank=True, help_text="Year the building was constructed")
@@ -173,7 +182,26 @@ class Building(models.Model):
     class Meta:
         verbose_name = "Building"
         verbose_name_plural = "Buildings"
-        
+
+
+class BuildingEnergyLabel(Building):
+    """
+    Proxy onto Building, filed under the Energy app so the energy-label
+    fields (populated from RIVM's rvo_energielabels WFS, see
+    importer/external_catalog.py's "rivm_energy_labels" entry) get their own
+    entry in the Energy map/layer catalog without a second table or an
+    import-time write to two places. Same rows, same columns, same save()
+    logic as builtup.Building — this only changes which app_label/registry
+    key the model is organized under (core/utils.py's build_model_registry
+    keys models by app_label, not by the module they're defined in, so a
+    proxy can live in builtup/models.py and still register as "Energy.*").
+    """
+
+    class Meta:
+        proxy = True
+        app_label = "Energy"
+        verbose_name = "Building Energy Label"
+        verbose_name_plural = "Building Energy Labels"
 
 
 class Property(models.Model):

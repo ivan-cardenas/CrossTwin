@@ -63,6 +63,13 @@ SECRET_KEY = os.environ.get("SECRET_KEY")
 MAPBOX_ACCESS_TOKEN = os.environ.get("MAPBOX_ACCESS_TOKEN")
 TITILER_BASE_URL = os.environ.get("TITILER_BASE_URL")
 
+# Default Copernicus Data Space (openEO) service credentials, used by the
+# Sentinel-2 importer (importer/external_data.py) when a request doesn't
+# supply its own client_id/client_secret. Falls back to asking the user
+# for their own if these fail to authenticate.
+SENTINEL_CLIENT_ID = os.environ.get("SENTINEL_CLIENT_ID")
+SENTINEL_CLIENT_SECRET = os.environ.get("SENTINEL_CLIENT_SECRET")
+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
 ALLOWED_HOSTS = []

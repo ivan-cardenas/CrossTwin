@@ -18,6 +18,8 @@ Each catalog entry specifies:
 
 import json
 import logging
+import os
+import time
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple, List
 from datetime import datetime, timedelta
@@ -26,7 +28,7 @@ import requests
 from pyproj import Transformer
 from django.apps import apps
 from django.db import transaction, IntegrityError
-from django.contrib.gis.geos import GEOSGeometry, Polygon, MultiPolygon
+from django.contrib.gis.geos import GEOSGeometry, Point, Polygon, MultiPolygon
 from django.conf import settings
 from django.utils import timezone
 
@@ -43,12 +45,16 @@ logger = logging.getLogger(__name__)
 
 class ImportResult:
     """Result object for import operations."""
-    def __init__(self, status: str, message: str, records_created: int = 0, records_updated: int = 0, file_path: str = None):
+    def __init__(self, status: str, message: str, records_created: int = 0, records_updated: int = 0, file_path: str = None, needs_credentials: bool = False):
         self.status = status  # 'success', 'error', 'skipped', 'pending'
         self.message = message
         self.records_created = records_created
         self.records_updated = records_updated
         self.file_path = file_path
+        # True when this failure specifically means "the caller's (or default)
+        # credentials didn't authenticate" — the frontend uses this to know
+        # when to surface a credentials input rather than just showing an error.
+        self.needs_credentials = needs_credentials
 
     def to_dict(self):
         return {
@@ -57,6 +63,7 @@ class ImportResult:
             "records_created": self.records_created,
             "records_updated": self.records_updated,
             "file_path": self.file_path,
+            "needs_credentials": self.needs_credentials,
         }
 
 
@@ -78,6 +85,122 @@ def get_model_class(model_path: str):
         return apps.get_model(model_path)
     except LookupError:
         raise ValueError(f"Model not found: {model_path}")
+
+
+def load_raster_into_target_model(
+    filepath: str,
+    dataset: Dict,
+    bbox: Optional[list] = None,
+    date_to: Optional[str] = None,
+) -> Tuple[bool, str]:
+    """
+    Load a downloaded raster file into its catalog entry's target_model.
+
+    The WCS/openEO fetchers previously stopped once the .tif landed on disk,
+    which meant no model row (and therefore no post_save signal) was ever
+    created — core/signals.py's auto_export_cog only fires on save(), so the
+    raster never became a COG and TiTiler had nothing to serve. This mirrors
+    importer/views.py::_raster_import (the file-upload path, which already
+    works) so external imports go through the same save() -> signal -> COG
+    pipeline, generalized to resolve Province/year metadata from bbox/date
+    when the target model requires them (e.g. common.LandCoverRaster).
+    """
+    from django.contrib.gis.gdal import GDALRaster
+    from core.rasterOperations import get_raster_field_name
+    import rasterio
+    from rasterio.warp import calculate_default_transform, reproject, Resampling
+    import tempfile
+    import shutil
+
+    model_path = dataset["target_model"]
+    try:
+        Model = get_model_class(model_path)
+        field_name = get_raster_field_name(Model)
+    except (ValueError, LookupError) as e:
+        return False, f"Downloaded, but cannot load into {model_path}: {e}"
+
+    model_srid = Model._meta.get_field(field_name).srid
+
+    temp_reprojected = None
+    writable_file = None
+    gdal_raster = None
+    try:
+        with rasterio.open(filepath) as src:
+            src_epsg = src.crs.to_epsg() if src.crs else None
+
+        raster_to_load = filepath
+        if src_epsg and src_epsg != model_srid:
+            fd, temp_reprojected = tempfile.mkstemp(suffix=".tif")
+            os.close(fd)
+            with rasterio.open(filepath) as src:
+                dst_crs = f"EPSG:{model_srid}"
+                transform, width, height = calculate_default_transform(
+                    src.crs, dst_crs, src.width, src.height, *src.bounds
+                )
+                kwargs = src.meta.copy()
+                kwargs.update({"crs": dst_crs, "transform": transform, "width": width, "height": height})
+                with rasterio.open(temp_reprojected, "w", **kwargs) as dst:
+                    for i in range(1, src.count + 1):
+                        reproject(
+                            source=rasterio.band(src, i),
+                            destination=rasterio.band(dst, i),
+                            src_transform=src.transform,
+                            src_crs=src.crs,
+                            dst_transform=transform,
+                            dst_crs=dst_crs,
+                            resampling=Resampling.bilinear,
+                        )
+            raster_to_load = temp_reprojected
+
+        # GDALRaster in write mode needs its own file handle, separate from
+        # whatever we just read with rasterio above.
+        fd, writable_file = tempfile.mkstemp(suffix=".tif")
+        os.close(fd)
+        shutil.copy2(raster_to_load, writable_file)
+        gdal_raster = GDALRaster(writable_file, write=True)
+
+        model_field_names = {f.name for f in Model._meta.get_fields()}
+        field_values = {field_name: gdal_raster}
+        lookup_keys = []
+
+        if "Province" in model_field_names and bbox:
+            from common.models import Province
+
+            centroid = Point((bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2, srid=4326)
+            centroid.transform(coordinate_system)
+            province = Province.objects.filter(geom__intersects=centroid).first()
+            if province:
+                field_values["Province"] = province
+                lookup_keys.append("Province")
+
+        if "year" in model_field_names:
+            year_str = (date_to or "")[:4]
+            field_values["year"] = int(year_str) if year_str.isdigit() else datetime.now().year
+            lookup_keys.append("year")
+
+        if lookup_keys:
+            lookup = {k: field_values[k] for k in lookup_keys}
+            defaults = {k: v for k, v in field_values.items() if k not in lookup_keys}
+            obj, created = Model.objects.update_or_create(**lookup, defaults=defaults)
+        else:
+            obj = Model.objects.create(**field_values)
+            created = True
+
+        return True, f"Loaded into {model_path} ({'created' if created else 'updated'} id={obj.id})."
+
+    except Exception as e:
+        logger.exception(f"Failed to load raster '{filepath}' into {model_path}")
+        return False, f"Downloaded, but failed to load into {model_path}: {e}"
+
+    finally:
+        if gdal_raster is not None:
+            del gdal_raster
+        for tmp in (temp_reprojected, writable_file):
+            if tmp and os.path.exists(tmp):
+                try:
+                    os.unlink(tmp)
+                except Exception as e:
+                    logger.warning(f"Could not delete temp file {tmp}: {e}")
 
 
 class GEEAuthManager:
@@ -443,15 +566,17 @@ class PDOKImporter:
             
             with open(filepath, 'wb') as f:
                 f.write(response.content)
-            
+
+            loaded, load_msg = load_raster_into_target_model(str(filepath), dataset, bbox)
+
             return ImportResult(
                 "success",
-                f"Downloaded raster from {layer} ({len(response.content) / 1024:.1f} KB).",
+                f"Downloaded raster from {layer} ({len(response.content) / 1024:.1f} KB). {load_msg}",
                 1,
                 0,
                 str(filepath)
             )
-            
+
         except requests.RequestException as e:
             return ImportResult("error", f"WCS request failed: {e}")
         except Exception as e:
@@ -795,50 +920,20 @@ class CBSImporter:
 
 class Sentinel2Importer:
     """Import handler for Sentinel-2 datasets."""
-    
-    # Evalscript templates for Process API
-    EVALSCRIPTS = {
-        "NDVI": """
-//VERSION=3
-function setup() {
-  return { input: ["B04", "B08"], output: { bands: 1 } };
-}
-function evaluatePixel(sample) {
-  let ndvi = (sample.B08 - sample.B04) / (sample.B08 + sample.B04);
-  return [ndvi];
-}
-""",
-        "NDWI": """
-//VERSION=3
-function setup() {
-  return { input: ["B03", "B08"], output: { bands: 1 } };
-}
-function evaluatePixel(sample) {
-  let ndwi = (sample.B03 - sample.B08) / (sample.B03 + sample.B08);
-  return [ndwi];
-}
-""",
-        "MOISTURE_INDEX": """
-//VERSION=3
-function setup() {
-  return { input: ["B8A", "B11"], output: { bands: 1 } };
-}
-function evaluatePixel(sample) {
-  let moisture = (sample.B8A - sample.B11) / (sample.B8A + sample.B11);
-  return [moisture];
-}
-""",
-        "TRUE_COLOR": """
-//VERSION=3
-function setup() {
-  return { input: ["B04", "B03", "B02"], output: { bands: 3 } };
-}
-function evaluatePixel(sample) {
-  return [sample.B04 * 2.5, sample.B03 * 2.5, sample.B02 * 2.5];
-}
-""",
+
+    # Band sets for each spectral index/composite, fetched from the
+    # SENTINEL2_L2A collection and combined in fetch_openeo(). These replace
+    # the old Sentinel Hub Process API evalscripts (Sentinel Hub's on-demand
+    # processing is now a paid tier) with equivalent openEO band math run on
+    # the Copernicus Data Space Ecosystem's free openEO backend — see
+    # https://documentation.dataspace.copernicus.eu/APIs/openEO/Python_Client/Python.html
+    OPENEO_BANDS = {
+        "NDVI": ["B04", "B08"],
+        "NDWI": ["B03", "B08"],
+        "MOISTURE_INDEX": ["B8A", "B11"],
+        "TRUE_COLOR": ["B04", "B03", "B02"],
     }
-    
+
     @staticmethod
     def fetch_wcs(dataset: Dict, bbox: list) -> ImportResult:
         """Fetch raster from Sentinel-2 WCS (e.g., WorldCover)."""
@@ -871,104 +966,161 @@ function evaluatePixel(sample) {
             
             with open(filepath, 'wb') as f:
                 f.write(response.content)
-            
+
+            loaded, load_msg = load_raster_into_target_model(str(filepath), dataset, bbox)
+
             return ImportResult(
                 "success",
-                f"Downloaded {layer} ({len(response.content) / 1024:.1f} KB).",
+                f"Downloaded {layer} ({len(response.content) / 1024:.1f} KB). {load_msg}",
                 1,
                 0,
                 str(filepath)
             )
-            
+
         except Exception as e:
             logger.exception(f"Sentinel-2 WCS error for {dataset['key']}")
             return ImportResult("error", f"WCS request failed: {e}")
 
     @staticmethod
-    def fetch_process_api(
+    def fetch_openeo(
         dataset: Dict,
         bbox: list,
         date_from: str = None,
         date_to: str = None,
-        token: str = None
+        client_id: str = None,
+        client_secret: str = None,
     ) -> ImportResult:
         """
-        Fetch processed imagery via Sentinel Hub Process API.
+        Fetch processed Sentinel-2 imagery via the Copernicus Data Space
+        Ecosystem's openEO backend. Replaces the (now paid) Sentinel Hub
+        Process API — auth is a CDSE OIDC client_id/client_secret pair
+        (client-credentials grant), not a single bearer token; see
+        https://documentation.dataspace.copernicus.eu/APIs/openEO/authentication/client_credentials.html
         """
         try:
-            if not token:
-                return ImportResult("error", "Sentinel Hub Process API requires authentication token.")
-            
-            evalscript_key = dataset.get("evalscript", "TRUE_COLOR")
-            evalscript = Sentinel2Importer.EVALSCRIPTS.get(evalscript_key)
-            
-            if not evalscript:
-                return ImportResult("error", f"Unknown evalscript: {evalscript_key}")
-            
-            # Default date range: last 30 days
-            if not date_from:
-                date_from = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-            if not date_to:
-                date_to = datetime.now().strftime("%Y-%m-%d")
-            
-            # Build request payload
-            payload = {
-                "input": {
-                    "bounds": {
-                        "bbox": bbox,
-                        "properties": {"crs": "http://www.opengis.net/def/crs/EPSG/0/4326"}
-                    },
-                    "data": [{
-                        "type": "sentinel-2-l2a",
-                        "dataFilter": {
-                            "timeRange": {
-                                "from": f"{date_from}T00:00:00Z",
-                                "to": f"{date_to}T23:59:59Z"
-                            },
-                            "mosaickingOrder": "leastCC"
-                        }
-                    }]
-                },
-                "output": {
-                    "width": 512,
-                    "height": 512,
-                    "responses": [{"identifier": "default", "format": {"type": "image/tiff"}}]
-                },
-                "evalscript": evalscript
-            }
-            
-            headers = {
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json"
-            }
-            
-            url = dataset["url"]
-            logger.info(f"Fetching Sentinel-2 Process API: {evalscript_key}")
-            
-            response = requests.post(url, json=payload, headers=headers, timeout=120)
-            response.raise_for_status()
-            
+            import openeo
+        except ImportError:
+            return ImportResult("error", "openeo package not installed. Run: pip install openeo")
+
+        # Fall back to the default CDSE service credentials from .env
+        # (SENTINEL_CLIENT_ID/SENTINEL_CLIENT_SECRET) when the caller didn't
+        # supply its own — most requests shouldn't need to ask the user for
+        # anything. Only if those defaults fail to authenticate do we tell the
+        # caller to prompt for personal credentials instead.
+        used_default_credentials = False
+        if not client_id or not client_secret:
+            client_id = client_id or settings.SENTINEL_CLIENT_ID
+            client_secret = client_secret or settings.SENTINEL_CLIENT_SECRET
+            used_default_credentials = True
+
+        if not client_id or not client_secret:
+            return ImportResult(
+                "error",
+                "openEO requires a Copernicus Data Space client_id and client_secret.",
+                needs_credentials=True,
+            )
+
+        index_key = dataset.get("openeo_process", "TRUE_COLOR")
+        bands = Sentinel2Importer.OPENEO_BANDS.get(index_key)
+        if not bands:
+            return ImportResult("error", f"Unknown openEO process: {index_key}")
+
+        # Default date range: last 30 days
+        if not date_from:
+            date_from = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+        if not date_to:
+            date_to = datetime.now().strftime("%Y-%m-%d")
+
+        try:
+            connection = openeo.connect(dataset.get("url", "https://openeo.dataspace.copernicus.eu"))
+            connection.authenticate_oidc_client_credentials(client_id=client_id, client_secret=client_secret)
+        except Exception as e:
+            logger.warning(f"openEO authentication failed for {dataset['key']} (default_creds={used_default_credentials}): {e}")
+            if used_default_credentials:
+                return ImportResult(
+                    "error",
+                    "The default Copernicus Data Space credentials failed to authenticate. "
+                    "Please enter your own openEO client ID and client secret.",
+                    needs_credentials=True,
+                )
+            return ImportResult("error", f"openEO authentication failed: {e}", needs_credentials=True)
+
+        try:
+            datacube = connection.load_collection(
+                "SENTINEL2_L2A",
+                spatial_extent={"west": bbox[0], "south": bbox[1], "east": bbox[2], "north": bbox[3]},
+                temporal_extent=[date_from, date_to],
+                bands=bands,
+                max_cloud_cover=85,
+            )
+
+            if index_key == "NDVI":
+                red, nir = datacube.band("B04"), datacube.band("B08")
+                result_cube = (nir - red) / (nir + red)
+            elif index_key == "NDWI":
+                green, nir = datacube.band("B03"), datacube.band("B08")
+                result_cube = (green - nir) / (green + nir)
+            elif index_key == "MOISTURE_INDEX":
+                nir_narrow, swir = datacube.band("B8A"), datacube.band("B11")
+                result_cube = (nir_narrow - swir) / (nir_narrow + swir)
+            else:  # TRUE_COLOR
+                result_cube = datacube * 2.5
+
+            # Composite the time series down to a single raster — mirrors the
+            # old Process API's leastCC mosaicking closely enough for a preview layer.
+            result_cube = result_cube.reduce_dimension(dimension="t", reducer="mean")
+
             temp_dir = Path(settings.MEDIA_ROOT) / "imports" / "sentinel2"
             temp_dir.mkdir(parents=True, exist_ok=True)
-            
+
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"{dataset['key']}_{timestamp}.tif"
             filepath = temp_dir / filename
-            
-            with open(filepath, 'wb') as f:
-                f.write(response.content)
-            
+
+            logger.info(f"Fetching Sentinel-2 via openEO: {index_key}")
+
+            # The synchronous /result download is a single long-lived request
+            # while CDSE computes the whole thing server-side, and its gateway
+            # will sometimes reset the connection mid-response with no HTTP
+            # error at all (requests.exceptions.ConnectionError /
+            # RemoteDisconnected) — this is a known flaky-gateway behavior, not
+            # a sign the request itself is wrong, so retry a few times before
+            # giving up.
+            max_attempts = 3
+            last_error = None
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    result_cube.download(str(filepath))
+                    last_error = None
+                    break
+                except Exception as e:
+                    last_error = e
+                    if attempt < max_attempts:
+                        logger.warning(
+                            f"[{dataset['key']}] openEO download attempt {attempt}/{max_attempts} "
+                            f"failed ({e}); retrying..."
+                        )
+                        time.sleep(5 * attempt)
+            if last_error:
+                raise last_error
+
+            loaded, load_msg = load_raster_into_target_model(str(filepath), dataset, bbox, date_to)
+
             return ImportResult(
                 "success",
-                f"Downloaded {evalscript_key} for {date_from} to {date_to} ({len(response.content) / 1024:.1f} KB).",
+                f"Downloaded {index_key} for {date_from} to {date_to} via openEO. {load_msg}",
                 1,
                 0,
                 str(filepath)
             )
-            
+
         except Exception as e:
-            logger.exception(f"Sentinel-2 Process API error for {dataset['key']}")
-            return ImportResult("error", f"Process API request failed: {e}")
+            logger.exception(f"Sentinel-2 openEO error for {dataset['key']}")
+            return ImportResult(
+                "error",
+                f"openEO request failed after retries: {e}. The CDSE backend may be under load — try again, "
+                f"or narrow the bounding box / date range.",
+            )
 
     @staticmethod
     def register_wms(dataset: Dict) -> ImportResult:
@@ -1081,19 +1233,21 @@ def import_dataset(
     date_from: str = None,
     date_to: str = None,
     gee_credentials: str = None,
-    sentinel_token: str = None,
+    openeo_client_id: str = None,
+    openeo_client_secret: str = None,
 ) -> ImportResult:
     """
     Main dispatcher for importing a dataset.
-    
+
     Args:
         dataset_key: Key from EXTERNAL_DATA_CATALOG
         bbox: Bounding box [xmin, ymin, xmax, ymax]
         date_from: Start date for temporal datasets
         date_to: End date for temporal datasets
         gee_credentials: GEE service account JSON (for GEE sources)
-        sentinel_token: Copernicus access token (for Sentinel Process API)
-    
+        openeo_client_id: CDSE OIDC client id (for Sentinel-2 openEO datasets)
+        openeo_client_secret: CDSE OIDC client secret (for Sentinel-2 openEO datasets)
+
     Returns:
         ImportResult with status and details
     """
@@ -1124,7 +1278,7 @@ def import_dataset(
     fmt = dataset.get("format", "wfs")
     
     print(f"[DISPATCH] import_dataset: dataset_key={dataset_key} bbox={bbox} date_from={date_from} date_to={date_to}")
-    if source == "pdok" or (source == "CBS" and fmt == "wfs"):
+    if source in ("pdok", "rivm") or (source == "CBS" and fmt == "wfs"):
 
         if fmt == "wfs":
             return PDOKImporter.fetch_wfs(dataset, bbox)
@@ -1141,9 +1295,9 @@ def import_dataset(
     elif source == "sentinel2":
         if fmt == "wcs":
             return Sentinel2Importer.fetch_wcs(dataset, bbox)
-        elif fmt == "process_api":
-            return Sentinel2Importer.fetch_process_api(
-                dataset, bbox, date_from, date_to, sentinel_token
+        elif fmt == "openeo":
+            return Sentinel2Importer.fetch_openeo(
+                dataset, bbox, date_from, date_to, openeo_client_id, openeo_client_secret
             )
         elif fmt == "wms":
             return Sentinel2Importer.register_wms(dataset)

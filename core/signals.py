@@ -6,13 +6,16 @@ from core.rasterOperations import export_raster_to_cog
 
 def auto_export_cog(sender, instance, created, **kwargs):
     """Automatically create a COG when a new raster is added."""
-    print(f"🔔 Signal fired! created={created}, sender={sender.__name__}")
-    if not instance.cog_path:
+    # Plain ASCII only: this runs inside post_save, so an exception here
+    # (e.g. UnicodeEncodeError printing an emoji on a Windows cp1252 console)
+    # propagates out of save() itself and rolls back the object being saved.
+    print(f"[auto_export_cog] signal fired: created={created}, sender={sender.__name__}")
+    if not getattr(instance, 'cog_path', None):
         try:
             export_raster_to_cog(instance)
-            print(f"✅ COG exported for {instance}")
+            print(f"[auto_export_cog] COG exported for {instance}")
         except Exception as e:
-            print(f"⚠️ Warning: COG export failed for {instance}: {e}")
+            print(f"[auto_export_cog] WARNING: COG export failed for {instance}: {e}")
 
 
 # Connect the signal to EVERY raster model in the registry

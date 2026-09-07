@@ -96,6 +96,36 @@
         </div>
     </div>
 
+    <!-- Sentinel-2 openEO Credentials Panel (shown when an openEO dataset is selected) -->
+    <div id="sentinel-token-panel" class="hidden flex-1 min-w-[280px] glass rounded-xl overflow-hidden">
+        <div class="px-5 py-3 border-b border-white/5 flex items-center gap-3">
+            <div class="flex-shrink-0 h-7 w-7 rounded-lg bg-sky-500/15 border border-sky-500/25 flex items-center justify-center">
+                <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                </svg>
+            </div>
+            <div>
+                <h3 class="text-sm font-medium text-slate-400">Copernicus Data Space (openEO) Credentials</h3>
+                <p class="text-xs text-slate-400">Optional — Sentinel-2 index/true color datasets try the server's default credentials first; fill this in only if that fails</p>
+            </div>
+        </div>
+        <div class="px-5 py-4 space-y-3">
+            <p id="sentinel-token-panel-notice" class="hidden text-xs text-rose-300 bg-rose-500/10 border border-rose-500/25 rounded-lg px-3 py-2"></p>
+            <input type="text" id="openeo-client-id-input"
+                   placeholder="Client ID (leave blank to use the server default)"
+                   class="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200 placeholder-sky-300/50 font-mono focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/50 focus:outline-none">
+            <input type="password" id="openeo-client-secret-input"
+                   placeholder="Client Secret (leave blank to use the server default)"
+                   class="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200 placeholder-sky-300/50 font-mono focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/50 focus:outline-none">
+            <p class="text-xs text-slate-250">
+                <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                Register your own OAuth client at <span class="text-sky-300">shapps.dataspace.copernicus.eu/dashboard</span> (client-credentials grant) if the default account runs out of quota or stops working.
+            </p>
+        </div>
+    </div>
+
     <!-- Date Range Panel (shown when temporal datasets selected) -->
     <div id="date-range-panel" class="hidden flex-1 min-w-[280px] glass rounded-xl overflow-hidden">
         <div class="px-5 py-3 border-b border-white/5 flex items-center gap-3">
@@ -256,7 +286,7 @@
                             <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 text-[10px] font-semibold uppercase tracking-wider">WMS</span>
                             {% elif ds.format == "wfs" %}
                             <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300 text-[10px] font-semibold uppercase tracking-wider">WFS</span>
-                            {% elif ds.format == "wcs" or ds.format == "atom" or ds.format == "process_api" or ds.format == "raster" %}
+                            {% elif ds.format == "wcs" or ds.format == "atom" or ds.format == "openeo" or ds.format == "raster" %}
                             <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 text-[10px] font-semibold uppercase tracking-wider">raster</span>
                             <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-500/15 text-slate-400 text-[10px] font-semibold uppercase tracking-wider">tiff</span>
                             {% endif %}
@@ -311,6 +341,9 @@ document.addEventListener('DOMContentLoaded', function () {
     const countEl = document.getElementById('count-number');
     const geeCredentialsPanel = document.getElementById('gee-credentials-panel');
     const geeCredentialsInput = document.getElementById('gee-credentials-input');
+    const sentinelTokenPanel = document.getElementById('sentinel-token-panel');
+    const openeoClientIdInput = document.getElementById('openeo-client-id-input');
+    const openeoClientSecretInput = document.getElementById('openeo-client-secret-input');
     const dateRangePanel = document.getElementById('date-range-panel');
     const dateFromInput = document.getElementById('date-from');
     const dateToInput = document.getElementById('date-to');
@@ -560,6 +593,12 @@ document.addEventListener('DOMContentLoaded', function () {
         const needsGeeAuth = selected.some(k => catalog[k] && catalog[k].source === 'gee');
         geeCredentialsPanel.classList.toggle('hidden', !needsGeeAuth);
 
+        // Show openEO credentials panel if any Sentinel-2 openEO dataset is selected
+        // (Sentinel-2 also has WMS/WCS datasets that don't need credentials — only
+        // requires_auth ones do, mirroring the same flag used for the "auth" badge)
+        const needsSentinelAuth = selected.some(k => catalog[k] && catalog[k].source === 'sentinel2' && catalog[k].requires_auth);
+        sentinelTokenPanel.classList.toggle('hidden', !needsSentinelAuth);
+
         // Show date range panel if any temporal dataset is selected
         const needsDateRange = selected.some(k => catalog[k] && catalog[k].requires_date_range);
         dateRangePanel.classList.toggle('hidden', !needsDateRange);
@@ -602,6 +641,16 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
+        // openEO (CDSE) datasets try the server's default credentials first
+        // (see importer/external_data.py:fetch_openeo), so an empty panel is
+        // fine — only complain about a half-filled pair, which is almost
+        // certainly a mistake rather than "use the default".
+        if (openeoClientIdInput.value.trim() ? !openeoClientSecretInput.value.trim() : openeoClientSecretInput.value.trim()) {
+            alert('Please enter both the openEO client ID and client secret, or leave both blank to use the server default.');
+            (openeoClientIdInput.value.trim() ? openeoClientSecretInput : openeoClientIdInput).focus();
+            return;
+        }
+
         // Validate GEE credentials JSON if provided
         let geeCredentials = null;
         if (geeCredentialsInput.value.trim()) {
@@ -614,6 +663,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 return;
             }
         }
+
+        // Clear any stale credentials-failure notice from a previous attempt
+        document.getElementById('sentinel-token-panel-notice').classList.add('hidden');
 
         // Disable button, show loading
         importBtn.disabled = true;
@@ -661,6 +713,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 payload.gee_credentials = geeCredentials;
             }
 
+            if (openeoClientIdInput.value.trim() && openeoClientSecretInput.value.trim()) {
+                payload.openeo_client_id = openeoClientIdInput.value.trim();
+                payload.openeo_client_secret = openeoClientSecretInput.value.trim();
+            }
+
             const resp = await fetch("{% url 'importer:start_external_import' %}", {
                 method: 'POST',
                 headers: {
@@ -675,6 +732,20 @@ document.addEventListener('DOMContentLoaded', function () {
             if (data.error) {
                 alert(data.error);
                 return;
+            }
+
+            // The server tries its default openEO credentials first (see
+            // importer/external_data.py:fetch_openeo); a result only sets
+            // needs_credentials when that default failed to authenticate, so
+            // surface the (until now optional) credentials panel and ask the
+            // user to fill it in and retry the affected dataset(s).
+            const credentialFailures = Object.values(data.results || {}).filter(r => r.needs_credentials);
+            if (credentialFailures.length) {
+                sentinelTokenPanel.classList.remove('hidden');
+                const notice = document.getElementById('sentinel-token-panel-notice');
+                notice.textContent = credentialFailures[0].message;
+                notice.classList.remove('hidden');
+                openeoClientIdInput.focus();
             }
 
             // Update status icons

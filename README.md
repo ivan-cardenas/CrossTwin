@@ -43,6 +43,7 @@ A Django-based digital twin mapping application for visualizing and managing geo
 - [Project Structure](#project-structure)
 - [Key Concepts](#key-concepts)
 - [Usage](#usage)
+- [External Data Import](#external-data-import)
 - [Data Models](#data-models)
 - [API Endpoints](#api-endpoints)
 - [Troubleshooting](#troubleshooting)
@@ -57,15 +58,10 @@ A Django-based digital twin mapping application for visualizing and managing geo
 - Node.js (for frontend tooling, optional)
 
 ### Python Dependencies
-```
-Django==5.x
-psycopg2-binary
-geopandas
-shapely
-fiona
-pyproj
-djangorestframework
-```
+The exact, pinned list lives in `requirements.txt` — install from there rather than hand-picking packages. Notable ones beyond the Django/GDAL/GeoPandas stack:
+- `earthengine-api` — Google Earth Engine imports (External Data Import page)
+- `openeo` — Sentinel-2 imports via the Copernicus Data Space Ecosystem (see [External Data Import](#external-data-import))
+- `titiler-*` — raster tile serving (see `tiler.py`, run as its own server)
 
 ### PostGIS Version Compatibility
 - Ensure PostGIS version matches between system and Python environment
@@ -134,8 +130,19 @@ DATABASE_PASSWORD=your_db_password
 DATABASE_HOST=localhost
 DATABASE_PORT=5432
 MAPBOX_ACCESS_TOKEN=your_mapbox_token
+TITILER_BASE_URL=http://localhost:8001 # where the TiTiler server (step 8) is reachable from Django
 
 COORDINATE_SYSTEM=28992 # EPSG code for Dutch RD New
+
+# Default credentials for the Sentinel-2 (openEO) source on the External
+# Data Import page (/importer/external/) — optional. Without them, users
+# importing NDVI/NDWI/moisture/true-color datasets must paste their own
+# Copernicus Data Space client ID/secret in the UI each time; with them set,
+# imports use these by default and only fall back to asking the user if
+# they fail to authenticate. Register an OAuth client (client-credentials
+# grant) at https://shapps.dataspace.copernicus.eu/dashboard
+SENTINEL_CLIENT_ID=your-cdse-client-id
+SENTINEL_CLIENT_SECRET=your-cdse-client-secret
 ```
 
 ### 6. Run Migrations
@@ -150,9 +157,12 @@ python manage.py createsuperuser
 ```
 
 ### 8. Run Development Server
+CrossTwin runs as **two servers**: Django (the main app) and TiTiler (raster tile serving, used by imported COG layers and TiTiler-backed raster imports from the External Data page). Run both, in separate terminals:
 ```bash
-python manage.py runserver
+python manage.py runserver 8000
+uvicorn tiler:app --port 8001 --reload
 ```
+(or use `start.bat` on Windows, which starts both.)
 
 Visit `http://localhost:8000` to access the application.
 
@@ -170,6 +180,23 @@ To change the default SRID:
 1. Obtain a Mapbox access token from https://www.mapbox.com/
 2. Add the token to your `.env` file
 3. Update the Mapbox style URL in templates if using custom styles
+
+### Map Style Configuration
+
+To change the style of layers on the map, update the `LAYER_STYLES` dictionary in `mainMap/views.py`. It follows the configuration set by Mapbox Layering Style specifications. For a complete list, refer to the [Mapbox Style Reference](https://docs.mapbox.com/help/troubleshooting/mapbox-style-specification/).
+
+Example:
+
+```html
+LAYER_STYLES = {
+  'builtup.Property': {
+        'color': '#ef5350',
+        'layers': [
+            {'type': 'circle', 'paint': {'circle-radius': 5, 'circle-color': '#ef5350', 'circle-stroke-width': 1, 'circle-stroke-color': '#ffffff'}},
+        ],
+    },
+}
+```
 
 ## 📁 Project Structure
 
@@ -304,6 +331,7 @@ Confirm and import. The system will:
 ```bash
 curl http://localhost:8000/api/layers/
 ```
+Add `?app_labels=common,builtup` to restrict the response to specific apps — each entry costs at least one DB query, so the map's own initial load only asks for `common` and fetches the rest in the background (see `common/static/js/Layers.js`).
 
 #### Get Specific Layer Data
 ```bash
@@ -323,6 +351,25 @@ Response format:
   ]
 }
 ```
+
+## 🛰️ External Data Import
+
+Beyond uploading your own files, `/importer/external/` catalogs ready-to-import datasets from external sources and fetches them directly into the database (`importer/external_catalog.py` defines the catalog, `importer/external_data.py` runs the actual fetch/import for each entry):
+
+| Source | What it provides | Auth |
+|---|---|---|
+| **PDOK** | Dutch national geospatial data — admin boundaries, BAG buildings, roads, water bodies, elevation, etc. (WFS/WCS/WMS/ATOM) | None |
+| **RIVM** | Per-building registered energy labels (`rvo_energielabels` WFS), written onto `builtup.Building` — import PDOK's BAG Panden dataset first so there are buildings to attach labels to | None |
+| **CBS** | Dutch national statistics (housing stock, etc.) via OData | None |
+| **Sentinel-2** | Land cover (WCS/WMS via Terrascope) and spectral indices/true color (NDVI, NDWI, moisture, true color) computed via **openEO** on the Copernicus Data Space Ecosystem | `SENTINEL_CLIENT_ID`/`SENTINEL_CLIENT_SECRET` (see below) |
+| **Google Earth Engine** | Arbitrary GEE image/collection assets, exported as GeoTIFF | Service account JSON, pasted into the UI per import |
+
+### Sentinel-2 credentials
+
+The NDVI/NDWI/moisture/true-color datasets run on openEO (the Sentinel Hub Process API this used to use is now a paid tier). Auth is a Copernicus Data Space OIDC client ID/secret pair, not a single token — register one (client-credentials grant) at [shapps.dataspace.copernicus.eu/dashboard](https://shapps.dataspace.copernicus.eu/dashboard).
+
+- If `SENTINEL_CLIENT_ID`/`SENTINEL_CLIENT_SECRET` are set in `.env`, imports use them automatically — most users never need to enter anything.
+- If those defaults are missing or fail to authenticate, the import fails with `needs_credentials: true` and the UI reveals a Client ID/Secret panel so the user can supply their own for that request.
 
 ## 🗄️ Data Models
 
@@ -420,6 +467,14 @@ class WaterSupplyLine(models.Model):
 2. API endpoint returns valid GeoJSON
 3. Layer extent matches map viewport
 4. Layer visibility toggle state
+
+### Sentinel-2 (openEO) Import Fails / Asks for Credentials
+**Symptom**: NDVI/NDWI/moisture/true-color import returns an error with `needs_credentials: true`, or the External Data page pops open a Client ID/Secret panel
+
+**Check**:
+1. `SENTINEL_CLIENT_ID`/`SENTINEL_CLIENT_SECRET` are set in `.env` and the server was restarted after adding them
+2. The CDSE OAuth client still exists and hasn't been revoked at [shapps.dataspace.copernicus.eu/dashboard](https://shapps.dataspace.copernicus.eu/dashboard)
+3. If the default account is out of quota, paste a personal client ID/secret into the panel — it's used for that import only, not saved
 
 ## 📝 Development Notes
 

@@ -203,10 +203,22 @@ class LandCoverRaster(models.Model):
     Province = models.ForeignKey(Province, on_delete=models.DO_NOTHING, help_text="Province code from common.Province")
     year = models.IntegerField()
     raster = models.RasterField(srid=CoordinateSystem, null=True, blank=True, help_text="Raster file containing land cover classification values")
+    cog_path = models.CharField(max_length=500, null=True, blank=True, help_text="Path to the exported Cloud-Optimized GeoTIFF served by TiTiler")
     last_updated = models.DateTimeField(default=timezone.now)
-    
+
     def __str__(self):
         return f"{self.Province} - {self.year}: Land Cover Raster"
+    
+class SatelliteImagery(models.Model):
+    id = models.AutoField(primary_key=True)
+    Province = models.ForeignKey(Province, on_delete=models.DO_NOTHING, help_text="Province code from common.Province")
+    year = models.IntegerField()
+    raster = models.RasterField(srid=CoordinateSystem, null=True, blank=True, help_text="Raster file containing satellite imagery")
+    cog_path = models.CharField(max_length=500, null=True, blank=True, help_text="Path to the exported Cloud-Optimized GeoTIFF served by TiTiler")
+    last_updated = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return f"{self.Province} - {self.year}: Satellite Imagery"
     
 class LandCoverWMS(models.Model):
     name = models.CharField(max_length=200)
@@ -231,8 +243,9 @@ class DigitalElevationModel(models.Model):
     Province = models.ForeignKey(Province, on_delete=models.DO_NOTHING, help_text="Province code from common.Province")
     year = models.IntegerField()
     dem_raster = models.RasterField(srid=CoordinateSystem, null=True, blank=True, help_text="Raster file containing elevation values")
+    cog_path = models.CharField(max_length=500, null=True, blank=True, help_text="Path to the exported Cloud-Optimized GeoTIFF served by TiTiler")
     last_updated = models.DateTimeField(default=timezone.now)
-    
+
     def __str__(self):
         return f"{self.Province} - {self.year}: Digital Elevation Model"
     
@@ -258,8 +271,9 @@ class DigitalSurfaceModel(models.Model):
     Province = models.ForeignKey(Province, on_delete=models.DO_NOTHING, help_text="Province code from common.Province")
     year = models.IntegerField()
     dsm_raster = models.RasterField(srid=CoordinateSystem, null=True, blank=True, help_text="Raster file containing surface elevation values")
+    cog_path = models.CharField(max_length=500, null=True, blank=True, help_text="Path to the exported Cloud-Optimized GeoTIFF served by TiTiler")
     last_updated = models.DateTimeField(default=timezone.now)
-    
+
     def __str__(self):
         return f"{self.Province} - {self.year}: Digital Surface Model"
     

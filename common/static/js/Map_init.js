@@ -40,6 +40,47 @@ function onAdminLayerLoaded(key, layerIds) {
   });
 }
 
+// sessionStorage (not localStorage) on purpose: camera position should
+// follow the user across page navigations within the same browsing
+// session — e.g. leaving for the watersupply dashboard and coming back —
+// but a fresh tab/session should still land on CONFIG's configured default.
+const CAMERA_STORAGE_KEY = 'crosstwin_map_camera';
+
+/**
+ * Persist the current camera position so it survives a navigation away
+ * from the map page (a real Django page load, not a client-side route —
+ * an in-memory JS variable wouldn't survive that).
+ */
+function saveCameraState() {
+  if (!map) return;
+  try {
+    const center = map.getCenter();
+    sessionStorage.setItem(CAMERA_STORAGE_KEY, JSON.stringify({
+      center: [center.lng, center.lat],
+      zoom: map.getZoom(),
+      pitch: map.getPitch(),
+      bearing: map.getBearing(),
+    }));
+  } catch (e) {
+    // sessionStorage unavailable (private browsing, etc.) — camera just won't persist
+  }
+}
+
+/**
+ * Read back a previously saved camera position, if any.
+ */
+function getSavedCameraState() {
+  try {
+    const raw = sessionStorage.getItem(CAMERA_STORAGE_KEY);
+    if (!raw) return null;
+    const state = JSON.parse(raw);
+    if (!Array.isArray(state.center) || state.center.length !== 2) return null;
+    return state;
+  } catch (e) {
+    return null;
+  }
+}
+
 /**
  * Initialize the Urban Twin map
  * @param {object} config - Configuration from Django template
@@ -48,13 +89,18 @@ function initializeUrbanTwinMap(config) {
   CONFIG = { ...CONFIG, ...config };
   mapboxgl.accessToken = CONFIG.mapboxToken;
 
+  // Resume wherever the user left the camera last time, instead of always
+  // resetting to the configured default view.
+  const savedCamera = getSavedCameraState();
+  if (savedCamera) tilted = savedCamera.pitch > 0;
+
   map = new mapboxgl.Map({
     container: 'map',
     style: BASEMAPS[activeBasemap],
-    center: CONFIG.initialCenter,
-    zoom: CONFIG.initialZoom,
-    pitch: CONFIG.initialPitch,
-    bearing: CONFIG.initialBearing
+    center: savedCamera ? savedCamera.center : CONFIG.initialCenter,
+    zoom: savedCamera ? savedCamera.zoom : CONFIG.initialZoom,
+    pitch: savedCamera ? savedCamera.pitch : CONFIG.initialPitch,
+    bearing: savedCamera ? savedCamera.bearing : CONFIG.initialBearing
   });
 
   map.addControl(new mapboxgl.NavigationControl(), 'top-right');
@@ -90,6 +136,7 @@ function initializeUrbanTwinMap(config) {
     map.on('moveend', () => {
       clearTimeout(cityNameTimeout);
       cityNameTimeout = setTimeout(updateCityName, 500);
+      saveCameraState();
     });
   });
 

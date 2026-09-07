@@ -32,7 +32,7 @@ def get_external_data(request):
     catalog_grouped = get_catalog_grouped()
 
     sources = []
-    for src_key in ["pdok", "CBS", "sentinel2", "gee"]:
+    for src_key in ["pdok", "CBS", "sentinel2", "gee", "rivm"]:
         info = SOURCE_INFO[src_key]
         categories = []
         for cat_name, datasets in catalog_grouped.get(src_key, {}).items():
@@ -111,7 +111,8 @@ def start_external_import(request):
     selected_keys = body.get("datasets", [])
     bbox = body.get("bbox", None)
     gee_credentials = body.get("gee_credentials", None)
-    sentinel_token = body.get("sentinel_token", None)
+    openeo_client_id = body.get("openeo_client_id", None)
+    openeo_client_secret = body.get("openeo_client_secret", None)
     date_from = body.get("date_from", None)
     date_to = body.get("date_to", None)
 
@@ -150,7 +151,8 @@ def start_external_import(request):
             date_from=date_from,
             date_to=date_to,
             gee_credentials=gee_credentials,
-            sentinel_token=sentinel_token,
+            openeo_client_id=openeo_client_id,
+            openeo_client_secret=openeo_client_secret,
         )
         results[key] = result.to_dict()
 

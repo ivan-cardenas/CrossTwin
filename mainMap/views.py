@@ -295,6 +295,21 @@ LAYER_STYLES = {
         ],
     },
 
+    # ── Energy ─────────────────────────────────────────────────────────────
+    'Energy.BuildingEnergyLabel': {
+        'color': '#66bb6a',
+        'layers': [
+            {'type': 'fill', 'paint': {'fill-color': [
+                'match', ['get', 'energyLabel'],
+                'A+++', '#00441b', 'A++', '#00622a', 'A+', '#037f39',
+                'A', '#1a9850', 'B', '#66bd63', 'C', '#a6d96a',
+                'D', '#fee08b', 'E', '#fdae61', 'F', '#f46d43', 'G', '#d73027',
+                '#9e9e9e',
+            ], 'fill-opacity': 0.65}},
+            {'type': 'line', 'paint': {'line-color': '#37474f', 'line-width': 0.5}},
+        ],
+    },
+
     # ── housing ────────────────────────────────────────────────────────────
     'housing.HousingProject': {
         'color': '#ec407a',
@@ -312,12 +327,20 @@ LAYER_STYLES = {
             {'type': 'line', 'paint': {'line-color': '#1b5e20', 'line-width': 1.5}},
         ],
     },
-    'nature.WaterWays': {
+    'nature.WaterWaysLN': {
         'color': '#1e88e5',
         'layers': [
             {'type': 'line', 'paint': {'line-color': '#1e88e5', 'line-width': 2}},
         ],
     },
+    'nature.WaterWaysPG': {
+        'color': '#039be5',
+        'layers': [
+            {'type': 'fill', 'paint': {'fill-color': '#039be5', 'fill-opacity': 0.35}},
+            {'type': 'line', 'paint': {'line-color': '#0277bd', 'line-width': 1}},
+        ],
+    },
+    
     'nature.WaterBodies': {
         'color': '#039be5',
         'layers': [
@@ -375,16 +398,28 @@ def available_layers(request):
     """
     Returns a list of all available layers (models with geometry fields).
     URL: /api/layers/
+    Optional ?app_labels=common,builtup restricts the response to those
+    apps. Every entry costs at least one model.objects.count() (WMS/raster
+    entries cost a full .objects.all() query too), so computing the whole
+    registry on every call is the main reason map init used to be slow —
+    the frontend now asks for just 'common' first and fetches the rest of
+    the catalog in the background (see Layers.js:fetchAvailableLayers).
     """
     layers = []
 
     color_index = 0
-        
+
+    app_labels_param = request.GET.get('app_labels')
+    allowed_app_labels = set(app_labels_param.split(',')) if app_labels_param else None
+
     for key, model in VECTOR_REGISTRY.items():
+        if allowed_app_labels is not None and key.split('.')[0] not in allowed_app_labels:
+            continue
+
         # Find geometry field
         geom_field = None
         geom_type = None
-        
+
         for field in model._meta.get_fields():
             if isinstance(field, gis_models.GeometryField):
                 geom_field = field.name
@@ -424,6 +459,9 @@ def available_layers(request):
             color_index += 1
     
     for key, model in WMS_REGISTRY.items() if WMS_REGISTRY else []:
+        if allowed_app_labels is not None and key.split('.')[0] not in allowed_app_labels:
+            continue
+
         wms_instances = model.objects.all()
         
         for wms in wms_instances:
@@ -444,6 +482,9 @@ def available_layers(request):
     # Raster Registry
     for key, model in RASTER_REGISTRY.items():
         app_label, model_name = key.split('.')
+        if allowed_app_labels is not None and app_label not in allowed_app_labels:
+            continue
+
         raster_instances = model.objects.all()
         
         for raster in raster_instances:
