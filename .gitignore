@@ -177,6 +177,10 @@ cython_debug/
 .vscode/
 temp_uploads/
 
+# Graphify
 graphify-out/manifest.json    
 graphify-out/cost.json        
 graphify-out/cache/       
+
+# Rasters ignore for data volume handling
+*.tif
