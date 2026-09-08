@@ -357,6 +357,7 @@ EXTERNAL_DATA_CATALOG = [
         "format": "atom",
         "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "requires_bbox": True,
+        "resolution_m": 0.5,
         "enabled": True,
     },
     {
@@ -383,6 +384,7 @@ EXTERNAL_DATA_CATALOG = [
         "format": "atom",
         "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "requires_bbox": True,
+        "resolution_m": 0.5,
         "enabled": True,
     },
     {
@@ -413,6 +415,7 @@ EXTERNAL_DATA_CATALOG = [
         "format": "wcs",
         "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "requires_bbox": True,
+        "resolution_m": 5.0,
         "enabled": True,
     },
 
@@ -434,6 +437,8 @@ EXTERNAL_DATA_CATALOG = [
         "format": "wcs",
         "params": {"srsName": "EPSG:4326"},
         "requires_bbox": True,
+        "resolution_m": 10.0,
+        "satellite_type": "Sentinel-2",
         "enabled": True,
     },
     {
@@ -471,6 +476,8 @@ EXTERNAL_DATA_CATALOG = [
         "requires_bbox": True,
         "requires_date_range": True,
         "requires_auth": True,
+        "resolution_m": 10.0,
+        "satellite_type": "Sentinel-2",
         "enabled": True,
     },
     {
@@ -487,6 +494,8 @@ EXTERNAL_DATA_CATALOG = [
         "requires_bbox": True,
         "requires_date_range": True,
         "requires_auth": True,
+        "resolution_m": 10.0,
+        "satellite_type": "Sentinel-2",
         "enabled": True,
     },
     {
@@ -503,6 +512,8 @@ EXTERNAL_DATA_CATALOG = [
         "requires_bbox": True,
         "requires_date_range": True,
         "requires_auth": True,
+        "resolution_m": 10.0,
+        "satellite_type": "Sentinel-2",
         "enabled": True,
     },
     {
@@ -519,6 +530,8 @@ EXTERNAL_DATA_CATALOG = [
         "requires_bbox": True,
         "requires_date_range": True,
         "requires_auth": True,
+        "resolution_m": 10.0,
+        "satellite_type": "Sentinel-2",
         "enabled": True,
     },
 
@@ -555,6 +568,8 @@ EXTERNAL_DATA_CATALOG = [
         "params": {"srsName": "EPSG:4326"},
         "requires_bbox": True,
         "requires_auth": True,
+        "resolution_m": 30.0,
+        "satellite_type": "Landsat",
         "enabled": True,
     },
 
@@ -587,6 +602,8 @@ EXTERNAL_DATA_CATALOG = [
         "params": {"srsName": "EPSG:4326"},
         "requires_bbox": True,
         "requires_auth": True,
+        "resolution_m": 30.0,
+        "satellite_type": "Landsat",
         "enabled": True,
     },
     {
@@ -602,6 +619,8 @@ EXTERNAL_DATA_CATALOG = [
         "params": {"srsName": "EPSG:4326"},
         "requires_bbox": True,
         "requires_auth": True,
+        "resolution_m": 30.0,
+        "satellite_type": "Landsat",
         "enabled": True,
     },
 
@@ -670,6 +689,8 @@ EXTERNAL_DATA_CATALOG = [
         "requires_bbox": True,
         "requires_date_range": True,
         "requires_auth": True,
+        "resolution_m": 10.0,
+        "satellite_type": "Sentinel-2",
         "enabled": True,
     },
     {
@@ -686,6 +707,8 @@ EXTERNAL_DATA_CATALOG = [
         "requires_bbox": True,
         "requires_date_range": True,
         "requires_auth": True,
+        "resolution_m": 9000.0,
+        "satellite_type": "SMAP",
         "enabled": True,
     },
 
@@ -703,6 +726,7 @@ EXTERNAL_DATA_CATALOG = [
         "params": {"srsName": "EPSG:4326"},
         "requires_bbox": True,
         "requires_auth": True,
+        "resolution_m": 100.0,
         "enabled": True,
     },
     {
@@ -719,6 +743,8 @@ EXTERNAL_DATA_CATALOG = [
         "requires_bbox": True,
         "requires_date_range": True,
         "requires_auth": True,
+        "resolution_m": 500.0,
+        "satellite_type": "VIIRS",
         "enabled": True,
     },
 ]

@@ -186,39 +186,47 @@ class WallMaterialProperties(models.Model):
 
 class LandCoverVector(models.Model):
     id = models.AutoField(primary_key=True)
-    Province = models.ForeignKey(Province, on_delete=models.DO_NOTHING, help_text="Province code from common.Province")
+    city = models.ForeignKey(City, on_delete=models.DO_NOTHING, help_text="City code from common.City", null=True, blank=True)
     year = models.IntegerField()
     land_cover_type = models.ForeignKey(LandCoverClasses, on_delete=models.DO_NOTHING, help_text="Type of land cover (e.g., 'Urban', 'Forest', 'Agriculture', etc.)")
     land_use = models.CharField(max_length=100, help_text="Land use type (e.g., 'Residential', 'Commercial', 'Industrial', 'Park', etc.)")
     geom = models.MultiPolygonField(srid=CoordinateSystem)
-    percentage = models.FloatField(help_text="Percentage of the Province covered by this land cover type") #TODO: Calculate this percentage based on the area of the geom and the total area of the Province. #TODO: Vegetation Coverage and Builtup Coverage as additional fields?
+    percentage = models.FloatField(help_text="Percentage of the City covered by this land cover type") #TODO: Calculate this percentage based on the area of the geom and the total area of the Province. #TODO: Vegetation Coverage and Builtup Coverage as additional fields?
     material = models.ForeignKey(SurfaceMaterialProperties, on_delete=models.DO_NOTHING, help_text="Material properties of the land cover type")
     last_updated = models.DateTimeField(default=timezone.now)
     
     def __str__(self):
-        return f"{self.Province} - {self.year}: {self.land_cover_type} ({self.percentage}%)"
+        return f"{self.City} - {self.year}: {self.land_cover_type} ({self.percentage}%)"
     
 class LandCoverRaster(models.Model):
     id = models.AutoField(primary_key=True)
-    Province = models.ForeignKey(Province, on_delete=models.DO_NOTHING, help_text="Province code from common.Province")
+    city = models.ForeignKey(City, on_delete=models.DO_NOTHING, help_text="City code from common.City", null=True, blank=True)
     year = models.IntegerField()
+    date = models.DateTimeField(null=True, blank=True, help_text="Acquisition/generation date of the raster")
+    source = models.CharField(max_length=100, null=True, blank=True, help_text="Data provider of the raster (e.g., 'PDOK', 'Sentinel-2', 'Google Earth Engine')")
+    index = models.CharField(max_length=100, null=True, blank=True, help_text="Dataset or index represented by the raster (e.g., 'LGN2021', 'WORLDCOVER_2021_MAP', 'NDVI', 'lossyear')")
+    resolution = models.FloatField(null=True, blank=True, help_text="Spatial resolution of the raster in meters")
     raster = models.RasterField(srid=CoordinateSystem, null=True, blank=True, help_text="Raster file containing land cover classification values")
     cog_path = models.CharField(max_length=500, null=True, blank=True, help_text="Path to the exported Cloud-Optimized GeoTIFF served by TiTiler")
     last_updated = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
-        return f"{self.Province} - {self.year}: Land Cover Raster"
+        return f"{self.city} - {self.year}: Land Cover Raster ({self.index or 'n/a'})"
     
 class SatelliteImagery(models.Model):
     id = models.AutoField(primary_key=True)
-    Province = models.ForeignKey(Province, on_delete=models.DO_NOTHING, help_text="Province code from common.Province")
+    city = models.ForeignKey(City, on_delete=models.DO_NOTHING, help_text="City code from common.City", null=True, blank=True)
     year = models.IntegerField()
+    date = models.DateTimeField(null=True, blank=True, help_text="Acquisition date/time of the satellite imagery")
+    satellite_type = models.CharField(max_length=100, null=True, blank=True, help_text="Satellite or sensor that captured the imagery (e.g., 'Sentinel-2', 'Landsat', 'MODIS', etc.)")
+    index = models.CharField(max_length=100, null=True, blank=True, help_text="Type of satellite imagery index/product (e.g., 'TrueColor', 'NDVI', 'EVI', 'NDWI', etc.)")
+    resolution = models.FloatField(null=True, blank=True, help_text="Spatial resolution of the imagery in meters")
     raster = models.RasterField(srid=CoordinateSystem, null=True, blank=True, help_text="Raster file containing satellite imagery")
     cog_path = models.CharField(max_length=500, null=True, blank=True, help_text="Path to the exported Cloud-Optimized GeoTIFF served by TiTiler")
     last_updated = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
-        return f"{self.Province} - {self.year}: Satellite Imagery"
+        return f"{self.city} - {self.year}: {self.satellite_type or 'Satellite Imagery'} ({self.index or 'n/a'})"
     
 class LandCoverWMS(models.Model):
     name = models.CharField(max_length=200)
@@ -240,21 +248,24 @@ class LandCoverWMS(models.Model):
 
 class DigitalElevationModel(models.Model):
     id = models.AutoField(primary_key=True)
-    Province = models.ForeignKey(Province, on_delete=models.DO_NOTHING, help_text="Province code from common.Province")
+    city = models.ForeignKey(City, on_delete=models.DO_NOTHING, help_text="City code from common.City", null=True, blank=True)
     year = models.IntegerField()
+    date = models.DateTimeField(null=True, blank=True, help_text="Acquisition/generation date of the elevation model")
+    source = models.CharField(max_length=100, null=True, blank=True, help_text="Data provider of the raster (e.g., 'AHN4 (PDOK)')")
+    resolution = models.FloatField(null=True, blank=True, help_text="Spatial resolution of the raster in meters")
     dem_raster = models.RasterField(srid=CoordinateSystem, null=True, blank=True, help_text="Raster file containing elevation values")
     cog_path = models.CharField(max_length=500, null=True, blank=True, help_text="Path to the exported Cloud-Optimized GeoTIFF served by TiTiler")
     last_updated = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
-        return f"{self.Province} - {self.year}: Digital Elevation Model"
+        return f"{self.city} - {self.year}: Digital Elevation Model"
     
 class DigitalElevationModelWMS(models.Model):
     name = models.CharField(max_length=200)
     display_name = models.CharField(max_length=200)
     url = models.URLField(max_length=500, help_text="Base WMS endpoint URL")
     layers_param = models.CharField(max_length=200, help_text="WMS layers parameter")
-    color = models.CharField(max_length=7, default='#4a90d9')
+    color = models.CharField(max_length=7, default="#272727")
     legend_url = models.URLField(max_length=500, blank=True, null=True)
     opacity = models.FloatField(default=0.7)
     is_active = models.BooleanField(default=True)
@@ -268,14 +279,17 @@ class DigitalElevationModelWMS(models.Model):
     
 class DigitalSurfaceModel(models.Model):
     id = models.AutoField(primary_key=True)
-    Province = models.ForeignKey(Province, on_delete=models.DO_NOTHING, help_text="Province code from common.Province")
+    city = models.ForeignKey(City, on_delete=models.DO_NOTHING, help_text="City code from common.City", null=True, blank=True)
     year = models.IntegerField()
+    date = models.DateTimeField(null=True, blank=True, help_text="Acquisition/generation date of the surface model")
+    source = models.CharField(max_length=100, null=True, blank=True, help_text="Data provider of the raster (e.g., 'AHN4 (PDOK)')")
+    resolution = models.FloatField(null=True, blank=True, help_text="Spatial resolution of the raster in meters")
     dsm_raster = models.RasterField(srid=CoordinateSystem, null=True, blank=True, help_text="Raster file containing surface elevation values")
     cog_path = models.CharField(max_length=500, null=True, blank=True, help_text="Path to the exported Cloud-Optimized GeoTIFF served by TiTiler")
     last_updated = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
-        return f"{self.Province} - {self.year}: Digital Surface Model"
+        return f"{self.city} - {self.year}: Digital Surface Model"
     
 class DigitalSurfaceModelWMS(models.Model):
     name = models.CharField(max_length=200)

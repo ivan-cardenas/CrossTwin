@@ -53,8 +53,11 @@ class MeanRadiantTemperature(models.Model):
     """Mean Radiant Temperature (MRT) measurements"""
     raster = models.RasterField(srid=settings.COORDINATE_SYSTEM, null=True, blank=True, verbose_name="Tmrt Raster", help_text="Raster file containing Mean Radiant Temperature values in degrees Celsius.")
     date_time = models.DateTimeField(default=timezone.now)
-    #TODO: Add additional info such as measurement method, source, etc.
-    
+    source = models.CharField(max_length=100, null=True, blank=True, help_text="Origin of the raster (e.g., 'SOLWEIG model output')")
+    measurement_method = models.CharField(max_length=100, null=True, blank=True, help_text="Method used to derive the values (e.g., 'SOLWEIG', 'field measurement')")
+    resolution = models.FloatField(null=True, blank=True, help_text="Spatial resolution of the raster in meters")
+    cog_path = models.CharField(max_length=500, null=True, blank=True, help_text="Path to the exported Cloud-Optimized GeoTIFF served by TiTiler")
+
     def __str__(self):
         return f"MRT Measurement at {self.date_time.strftime('%Y-%m-%d %H:%M:%S')}"
     
@@ -67,8 +70,11 @@ class UTCI(models.Model):
     raster = models.RasterField(srid=settings.COORDINATE_SYSTEM, null=True, blank=True, verbose_name="UTCI Raster", help_text="Raster file containing Universal Thermal Climate Index values in degrees Celsius.")
     category = models.ForeignKey(StressCategory, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="UTCI Category", help_text="Thermal stress category based on UTCI values (e.g., 'No Thermal Stress', 'Moderate Heat Stress', etc.)")
     date_time = models.DateTimeField(default=timezone.now)
-    #TODO: Add additional info such as measurement method, source, etc.
-    
+    source = models.CharField(max_length=100, null=True, blank=True, help_text="Origin of the raster (e.g., 'SOLWEIG model output')")
+    measurement_method = models.CharField(max_length=100, null=True, blank=True, help_text="Method used to derive the values (e.g., 'SOLWEIG', 'field measurement')")
+    resolution = models.FloatField(null=True, blank=True, help_text="Spatial resolution of the raster in meters")
+    cog_path = models.CharField(max_length=500, null=True, blank=True, help_text="Path to the exported Cloud-Optimized GeoTIFF served by TiTiler")
+
     def __str__(self):
         return f"UTCI Measurement at {self.date_time.strftime('%Y-%m-%d %H:%M:%S')}"
     
@@ -80,8 +86,11 @@ class SkyViewFactor(models.Model):
     """Sky View Factor (SVF) measurements"""
     raster = models.RasterField(srid=settings.COORDINATE_SYSTEM, null=True, blank=True, verbose_name="SVF Raster", help_text="Raster file containing Sky View Factor values (0 to 1).")
     date_time = models.DateTimeField(default=timezone.now)
-    #TODO: Add additional info such as measurement method, source, etc.
-    
+    source = models.CharField(max_length=100, null=True, blank=True, help_text="Origin of the raster (e.g., 'SOLWEIG model output')")
+    measurement_method = models.CharField(max_length=100, null=True, blank=True, help_text="Method used to derive the values (e.g., 'SOLWEIG', 'field measurement')")
+    resolution = models.FloatField(null=True, blank=True, help_text="Spatial resolution of the raster in meters")
+    cog_path = models.CharField(max_length=500, null=True, blank=True, help_text="Path to the exported Cloud-Optimized GeoTIFF served by TiTiler")
+
     def __str__(self):
         return f"SVF Measurement at {self.date_time.strftime('%Y-%m-%d %H:%M:%S')}"
     
@@ -94,7 +103,11 @@ class PET(models.Model):
     raster = models.RasterField(srid=settings.COORDINATE_SYSTEM, null=True, blank=True, verbose_name="PET Raster", help_text="Raster file containing Physiological Equivalent Temperature values in degrees Celsius.")
     category = models.ForeignKey(StressCategory, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="PET Category", help_text="Thermal comfort category based on PET values (e.g., 'Cold Stress', 'Comfortable', 'Heat Stress', etc.)")
     date_time = models.DateTimeField(default=timezone.now)
-    
+    source = models.CharField(max_length=100, null=True, blank=True, help_text="Origin of the raster (e.g., 'SOLWEIG model output')")
+    measurement_method = models.CharField(max_length=100, null=True, blank=True, help_text="Method used to derive the values (e.g., 'SOLWEIG', 'field measurement')")
+    resolution = models.FloatField(null=True, blank=True, help_text="Spatial resolution of the raster in meters")
+    cog_path = models.CharField(max_length=500, null=True, blank=True, help_text="Path to the exported Cloud-Optimized GeoTIFF served by TiTiler")
+
     def __str__(self):
         return f"PET Measurement at {self.date_time.strftime('%Y-%m-%d %H:%M:%S')}"
     
@@ -106,16 +119,25 @@ class LandSurfaceTemperature(models.Model):
     """Land Surface Temperature (LST) measurements"""
     raster = models.RasterField(srid=settings.COORDINATE_SYSTEM, null=True, blank=True, verbose_name="LST Raster", help_text="Raster file containing Land Surface Temperature values in degrees Celsius.")
     date_time = models.DateTimeField(default=timezone.now)
-    #TODO: Add additional info such as measurement method, source, etc.
-    
-    def __str__(self):      return f"LST Measurement at {self.date_time.strftime('%Y-%m-%d %H:%M:%S')}"
+    source = models.CharField(max_length=100, null=True, blank=True, help_text="Origin of the raster (e.g., 'Landsat 8/9', 'Sentinel-3', 'MODIS')")
+    satellite_type = models.CharField(max_length=100, null=True, blank=True, help_text="Satellite or sensor that captured the thermal imagery (e.g., 'Landsat', 'Sentinel', 'MODIS', etc.)")
+    measurement_method = models.CharField(max_length=100, null=True, blank=True, help_text="Method used to derive LST (e.g., 'Split-Window Algorithm', 'Single-Channel Algorithm')")
+    resolution = models.FloatField(null=True, blank=True, help_text="Spatial resolution of the raster in meters")
+    cog_path = models.CharField(max_length=500, null=True, blank=True, help_text="Path to the exported Cloud-Optimized GeoTIFF served by TiTiler")
+
+    def __str__(self):
+        return f"LST Measurement at {self.date_time.strftime('%Y-%m-%d %H:%M:%S')}"
     
 class SurfaceUrbanHeatIslandIntensity(models.Model):
     """Surface Urban Heat Island Intensity (SUHII)) measurements"""
     raster = models.RasterField(srid=settings.COORDINATE_SYSTEM, null=True, blank=True, verbose_name="SUHII Raster", help_text="Raster file containing Surface Urban Heat Island Intensity values in degrees Celsius.")
     category = models.ForeignKey(StressCategory, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="SUHII Category", help_text="Thermal stress category based on SUHII values (e.g., 'No Heat Island Effect', 'Moderate Heat Island Effect', etc.)")
     date_time = models.DateTimeField(default=timezone.now)
-    
+    source = models.CharField(max_length=100, null=True, blank=True, help_text="Origin of the raster (e.g., derived from LandSurfaceTemperature)")
+    measurement_method = models.CharField(max_length=100, null=True, blank=True, help_text="Method used to compute SUHII (e.g., 'urban-rural LST differential')")
+    resolution = models.FloatField(null=True, blank=True, help_text="Spatial resolution of the raster in meters")
+    cog_path = models.CharField(max_length=500, null=True, blank=True, help_text="Path to the exported Cloud-Optimized GeoTIFF served by TiTiler")
+
     def __str__(self):
         return f"SUHII Measurement at {self.date_time.strftime('%Y-%m-%d %H:%M:%S')}"
     

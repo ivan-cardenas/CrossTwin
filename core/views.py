@@ -1,5 +1,6 @@
 from django.http import JsonResponse
 from .utils import RASTER_REGISTRY
+from .rasterStyles import resolve_raster_style, colormap_legend_stops
 from django.conf import settings
 from urllib.parse import quote
 import requests
@@ -70,19 +71,34 @@ def get_raster_tiles(request, app_label, layer_name):
     
     # Step 3: Build the TiTiler tile URL
     cog_url = f"file://{instance.cog_path}"
-    encoded_url = quote(cog_url, safe="/:") 
-    
+    encoded_url = quote(cog_url, safe="/:")
+
+    style = resolve_raster_style(instance, registry_key)
+
     tile_url = (
         f"{settings.TITILER_BASE_URL}/cog/tiles/WebMercatorQuad/{{z}}/{{x}}/{{y}}.png"
         f"?url={encoded_url}"
-        f"&colormap_name={getattr(instance, 'colormap', 'viridis')}"
-        f"&rescale={getattr(instance, 'rescale', '0,40')}"
     )
-    
-    
+
+    legend = None
+    if style["colormap"]:
+        tile_url += f"&colormap_name={style['colormap']}"
+        if style["rescale"]:
+            vmin, vmax = style["rescale"]
+            tile_url += f"&rescale={vmin},{vmax}"
+            legend = {
+                "label": style["label"],
+                "unit": style["unit"],
+                "min": vmin,
+                "max": vmax,
+                "categorical": style["categorical"],
+                "stops": colormap_legend_stops(style["colormap"], style["rescale"]),
+            }
+
     return JsonResponse({
         "name": registry_key,
         "tile_url": tile_url,
+        "legend": legend,
     })
 
 

@@ -6,6 +6,7 @@ from django.contrib.gis.geos import Point
 from django.conf import settings
 
 import os
+import re
 import tempfile
 import rasterio
 from rasterio.io import MemoryFile
@@ -105,6 +106,40 @@ def interpolate_raster(input_points, values, bounds, resolution, method='linear'
     return temp_path, driver
 
 
+def _cog_filename(instance):
+    """
+    Build a COG filename from whatever satellite/process metadata the raster
+    model carries, e.g. NDVI_Sentinel2_20260908_42.tif, so files on disk are
+    identifiable by what produced them instead of just a class name and id.
+    Falls back to the model's class name for models with no such metadata
+    (e.g. weather's interpolated rasters). The trailing id always stays, since
+    two records can share the same index/source/date (re-imports, different
+    cities on the same day) and must not overwrite each other's COG.
+    """
+    parts = []
+
+    index = getattr(instance, 'index', None)
+    if index:
+        parts.append(str(index))
+
+    provenance = getattr(instance, 'satellite_type', None) or getattr(instance, 'source', None)
+    if provenance:
+        parts.append(str(provenance))
+
+    date_value = getattr(instance, 'date', None) or getattr(instance, 'date_time', None)
+    if date_value:
+        parts.append(date_value.strftime('%Y%m%d'))
+    elif getattr(instance, 'year', None):
+        parts.append(str(instance.year))
+
+    if not parts:
+        parts.append(instance.__class__.__name__)
+
+    safe_parts = [p for p in (re.sub(r'[^A-Za-z0-9]+', '', str(part)) for part in parts) if p]
+    safe_parts.append(str(instance.id))
+    return "_".join(safe_parts) + ".tif"
+
+
 def export_raster_to_cog(instance):
     """
     Export any model instance with a RasterField to a COG.
@@ -180,13 +215,8 @@ def export_raster_to_cog(instance):
     
     cog_subdir = os.path.join(COG_DIRECTORY, app_label)
     os.makedirs(cog_subdir, exist_ok=True)
-    
-    # Not every raster model has a `date` field (e.g. common.LandCoverRaster uses
-    # `year` instead), so fall back through the identifiers that do exist rather
-    # than assuming `date` and raising AttributeError before the COG is written.
-    label = getattr(instance, 'date', None) or getattr(instance, 'date_time', None) or getattr(instance, 'year', None) or instance.id
-    safe_label = str(label).replace(":", "-").replace(" ", "_")
-    cog_path = os.path.join(cog_subdir, f"{instance.__class__.__name__}_{instance.id}_{safe_label}.tif")
+
+    cog_path = os.path.join(cog_subdir, _cog_filename(instance))
     
     output_profile = cog_profiles.get("DEFLATE")
     

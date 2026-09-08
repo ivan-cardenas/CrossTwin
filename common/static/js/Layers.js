@@ -211,25 +211,27 @@ function addWmsLegend(key, title, legendUrl) {
 
   const legend = document.createElement('div');
   legend.id = `legend-${key}`;
-  legend.className = 'map-legend';
+  legend.className = 'map-legend dynamic-legend';
   legend.innerHTML = `
     <div class="legend-title">${title}</div>
     <img src="${legendUrl}" alt="${title} legend" />
   `;
   document.querySelector('.map-wrapper').appendChild(legend);
+  repositionDynamicLegends();
 }
 
 // ---- Raster (TiTiler) layers -----------------------------------------
 
 async function addRasterLayerFromConfig(layerConfig) {
-  const { key, app_label, model_name, raster_id, opacity } = layerConfig;
+  const { key, app_label, model_name, raster_id, opacity, display_name } = layerConfig;
   try {
-    await addRasterLayer(map, app_label, model_name, raster_id, opacity);
+    const legend = await addRasterLayer(map, app_label, model_name, raster_id, opacity);
     loadedLayers[key] = {
       layerIds: [`raster-layer-${model_name}-${raster_id}`],
       geojson: { features: [] },
       config: layerConfig
     };
+    if (legend) addRasterLegend(key, display_name, legend);
     console.log(`Raster layer "${key}" added`);
     updateIndicators();
   } catch (error) {
@@ -277,12 +279,62 @@ async function addRasterLayer(map, appLabel, modelName, rasterID, opacity = 0.7)
     map.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 50, duration: 1000 });
 
     console.log(`✅ Raster layer "${tilesData.name}" loaded and zoomed to bounds`);
+    return tilesData.legend || null;
   } catch (error) {
     console.error(`❌ Error loading raster layer "${appLabel}.${modelName}":`, error);
     throw error;
   } finally {
     showLoader(false);
   }
+}
+
+// ---- Raster legend ------------------------------------------------------
+
+/**
+ * Render a color-range legend for an active raster layer: a gradient bar
+ * sampled server-side from the exact colormap TiTiler used to paint the
+ * tiles (core/rasterStyles.py::colormap_legend_stops), plus min/max labels.
+ * Categorical products (land cover classes) still get a gradient over their
+ * value range rather than a per-class key, which is a reasonable stand-in
+ * given there's no class-label metadata to draw from yet.
+ */
+function addRasterLegend(key, title, legend) {
+  const existing = document.getElementById(`legend-${key}`);
+  if (existing) existing.remove();
+
+  const stops = legend.stops || [];
+  if (!stops.length) return;
+
+  const gradientCss = `linear-gradient(to right, ${stops.map(s => s.color).join(', ')})`;
+  const unitSuffix = legend.unit ? ` ${legend.unit}` : '';
+
+  const legendEl = document.createElement('div');
+  legendEl.id = `legend-${key}`;
+  legendEl.className = 'map-legend dynamic-legend';
+  legendEl.innerHTML = `
+    <div class="legend-title">${legend.label || title}</div>
+    <div class="legend-gradient" style="background: ${gradientCss}"></div>
+    <div class="legend-range">
+      <span>${legend.min}${unitSuffix}</span>
+      <span>${legend.max}${unitSuffix}</span>
+    </div>
+  `;
+  document.querySelector('.map-wrapper').appendChild(legendEl);
+  repositionDynamicLegends();
+}
+
+/**
+ * Dynamic legends (raster + WMS) share the same fixed corner via .map-legend's
+ * CSS, so with more than one visible at once they'd render stacked exactly on
+ * top of each other. Space them out vertically instead, skipping the static
+ * #legend-groundwater block which manages its own position.
+ */
+function repositionDynamicLegends() {
+  const legends = Array.from(document.querySelectorAll('.map-legend.dynamic-legend'))
+    .filter(el => el.style.display !== 'none');
+  legends.forEach((el, i) => {
+    el.style.bottom = `${66 + i * 92}px`;
+  });
 }
 
 // ---- Visibility & zoom ------------------------------------------------
@@ -292,6 +344,7 @@ function toggleLayerVisibility(key, visible) {
 
   const legendEl = document.getElementById(`legend-${key}`);
   if (legendEl) legendEl.style.display = visible ? 'block' : 'none';
+  repositionDynamicLegends();
 
   if (visible && !loadedLayers[key]) {
     const config = availableLayers.find(l => l.key === key);

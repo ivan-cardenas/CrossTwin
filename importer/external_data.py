@@ -163,20 +163,39 @@ def load_raster_into_target_model(
         field_values = {field_name: gdal_raster}
         lookup_keys = []
 
-        if "Province" in model_field_names and bbox:
-            from common.models import Province
+        if "city" in model_field_names and bbox:
+            from common.models import City
 
             centroid = Point((bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2, srid=4326)
             centroid.transform(coordinate_system)
-            province = Province.objects.filter(geom__intersects=centroid).first()
-            if province:
-                field_values["Province"] = province
-                lookup_keys.append("Province")
+            city = City.objects.filter(geom__intersects=centroid).first()
+            if city:
+                field_values["city"] = city
+                lookup_keys.append("city")
 
         if "year" in model_field_names:
             year_str = (date_to or "")[:4]
             field_values["year"] = int(year_str) if year_str.isdigit() else datetime.now().year
             lookup_keys.append("year")
+
+        # Carry the catalog entry's satellite/process metadata onto the model
+        # row so LandCoverRaster/SatelliteImagery/DigitalElevationModel/
+        # DigitalSurfaceModel records reflect what actually produced them,
+        # instead of only holding a bare raster + cog_path.
+        if "date" in model_field_names:
+            acquisition_date = date_to or datetime.now().strftime("%Y-%m-%d")
+            field_values["date"] = datetime.strptime(acquisition_date[:10], "%Y-%m-%d")
+        if "source" in model_field_names:
+            source_labels = {"pdok": "PDOK", "sentinel2": "Sentinel-2 / Copernicus", "gee": "Google Earth Engine"}
+            field_values["source"] = source_labels.get(dataset.get("source"), dataset.get("source"))
+        if "satellite_type" in model_field_names and dataset.get("satellite_type"):
+            field_values["satellite_type"] = dataset["satellite_type"]
+        if "index" in model_field_names:
+            index_value = dataset.get("openeo_process") or dataset.get("layer") or dataset.get("band") or dataset.get("name")
+            if index_value:
+                field_values["index"] = index_value
+        if "resolution" in model_field_names and dataset.get("resolution_m") is not None:
+            field_values["resolution"] = dataset["resolution_m"]
 
         if lookup_keys:
             lookup = {k: field_values[k] for k in lookup_keys}
@@ -337,7 +356,7 @@ class PDOKImporter:
             page_size = min(max_features, 1000)
             all_features = []
             start_index = 0
-            max_pages = 50  # safety cap against a server that ignores startIndex
+            max_pages = 100  # safety cap against a server that ignores startIndex
             logger.info(f"Fetching WFS: {url} layer={layer}")
             for page in range(max_pages):
                 params["count"] = page_size
@@ -1211,15 +1230,17 @@ class GEEImporter:
             
             with open(filepath, 'wb') as f:
                 f.write(response.content)
-            
+
+            loaded, load_msg = load_raster_into_target_model(str(filepath), dataset, bbox, date_to)
+
             return ImportResult(
                 "success",
-                f"Downloaded {band or asset_id} ({len(response.content) / 1024:.1f} KB).",
+                f"Downloaded {band or asset_id} ({len(response.content) / 1024:.1f} KB). {load_msg}",
                 1,
                 0,
                 str(filepath)
             )
-            
+
         except ImportError:
             return ImportResult("error", "earthengine-api not installed.")
         except Exception as e:

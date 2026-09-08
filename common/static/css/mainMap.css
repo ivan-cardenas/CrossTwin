@@ -1181,6 +1181,21 @@
     border-radius: 3px;
 }
 
+.map-legend .legend-gradient {
+    width: 160px;
+    height: 12px;
+    border-radius: 3px;
+    border: 1px solid var(--border-ui);
+}
+
+.map-legend .legend-range {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 4px;
+    font-size: 10px;
+    color: var(--text-tertiary);
+}
+
 /* ============================================================
    MAP LOADER
    ============================================================ */
