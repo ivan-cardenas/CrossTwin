@@ -18,11 +18,13 @@ Each catalog entry specifies:
 
 import json
 import logging
+import math
 import os
 import time
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple, List
 from datetime import datetime, timedelta
+from urllib.parse import urlencode
 
 import requests
 from pyproj import Transformer
@@ -87,11 +89,87 @@ def get_model_class(model_path: str):
         raise ValueError(f"Model not found: {model_path}")
 
 
+def _legend_url_from_capabilities(base_url: str, layer: str) -> Optional[str]:
+    """
+    Look up a layer's <LegendURL><OnlineResource xlink:href="..."/> from the
+    WMS GetCapabilities document — the standards-correct way to discover a
+    legend, since a server can (and PDOK's LGN service does) publish a
+    static legend image per layer without supporting the dynamic
+    GetLegendGraphic request at all.
+    """
+    from xml.etree import ElementTree as ET
+
+    try:
+        resp = requests.get(
+            base_url,
+            params={"service": "WMS", "version": "1.3.0", "request": "GetCapabilities"},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        root = ET.fromstring(resp.content)
+    except Exception as e:
+        logger.warning(f"Could not fetch/parse GetCapabilities for legend lookup ({base_url}): {e}")
+        return None
+
+    def local(tag: str) -> str:
+        return tag.rsplit('}', 1)[-1]
+
+    for layer_el in root.iter():
+        if local(layer_el.tag) != "Layer":
+            continue
+        name_el = next((c for c in layer_el if local(c.tag) == "Name"), None)
+        if name_el is None or name_el.text != layer:
+            continue
+        for legend_el in layer_el.iter():
+            if local(legend_el.tag) != "LegendURL":
+                continue
+            for res_el in legend_el:
+                if local(res_el.tag) != "OnlineResource":
+                    continue
+                href = next((v for k, v in res_el.attrib.items() if local(k) == "href"), None)
+                if href:
+                    return href
+    return None
+
+
+def default_wms_legend_url(base_url: str, layer: str) -> Optional[str]:
+    """
+    Resolve a legend image URL for a WMS layer, used as a fallback when a
+    catalog entry doesn't specify its own `legend_url`. Tries the server's
+    own advertised <LegendURL> from GetCapabilities first (correct and free
+    of guesswork), then falls back to constructing a GetLegendGraphic
+    request for servers that support the operation but don't advertise a
+    static legend.
+
+    A server that supports neither returns a WMS ServiceExceptionReport
+    (XML) with a 200 status rather than a clean error, which would
+    otherwise get stored and rendered as a broken image in the map legend —
+    so the GetLegendGraphic fallback is actually fetched and only returned
+    if the response is really an image.
+    """
+    legend_url = _legend_url_from_capabilities(base_url, layer)
+    if legend_url:
+        return legend_url
+
+    # SLD_VERSION isn't part of the WMS spec's required params, but PDOK's
+    # MapServer-backed services (e.g. AHN) reject GetLegendGraphic with
+    # MissingParameterValue without it.
+    url = f"{base_url}?{urlencode({'service': 'WMS', 'version': '1.3.0', 'request': 'GetLegendGraphic', 'format': 'image/png', 'layer': layer, 'SLD_VERSION': '1.1.0'})}"
+    try:
+        resp = requests.get(url, timeout=10)
+        if resp.ok and resp.headers.get("content-type", "").startswith("image/"):
+            return url
+    except requests.RequestException as e:
+        logger.warning(f"GetLegendGraphic check failed for layer={layer}: {e}")
+    return None
+
+
 def load_raster_into_target_model(
     filepath: str,
     dataset: Dict,
     bbox: Optional[list] = None,
     date_to: Optional[str] = None,
+    acquisition_date: Optional[datetime] = None,
 ) -> Tuple[bool, str]:
     """
     Load a downloaded raster file into its catalog entry's target_model.
@@ -106,7 +184,7 @@ def load_raster_into_target_model(
     when the target model requires them (e.g. common.LandCoverRaster).
     """
     from django.contrib.gis.gdal import GDALRaster
-    from core.rasterOperations import get_raster_field_name
+    from core.rasterOperations import get_raster_field_name, export_geotiff_to_cog
     import rasterio
     from rasterio.warp import calculate_default_transform, reproject, Resampling
     import tempfile
@@ -119,49 +197,61 @@ def load_raster_into_target_model(
     except (ValueError, LookupError) as e:
         return False, f"Downloaded, but cannot load into {model_path}: {e}"
 
+    # Models flagged SKIP_RASTER_DB_STORAGE (common.DigitalElevationModel/
+    # DigitalSurfaceModel) never get their raster written into Postgres at
+    # all — nothing queries it with server-side PostGIS raster SQL, so a
+    # RasterField blob there is a large, purely redundant write. It's also
+    # the actual failure mode for city-scale imports: a multi-hundred-MB
+    # mosaic sent as a single query parameter can crash the Postgres backend
+    # outright ("server closed the connection unexpectedly") rather than
+    # erroring cleanly. Skip straight to a COG built from the source file.
+    skip_db_storage = getattr(Model, "SKIP_RASTER_DB_STORAGE", False)
+
     model_srid = Model._meta.get_field(field_name).srid
 
     temp_reprojected = None
     writable_file = None
     gdal_raster = None
     try:
-        with rasterio.open(filepath) as src:
-            src_epsg = src.crs.to_epsg() if src.crs else None
-
-        raster_to_load = filepath
-        if src_epsg and src_epsg != model_srid:
-            fd, temp_reprojected = tempfile.mkstemp(suffix=".tif")
-            os.close(fd)
-            with rasterio.open(filepath) as src:
-                dst_crs = f"EPSG:{model_srid}"
-                transform, width, height = calculate_default_transform(
-                    src.crs, dst_crs, src.width, src.height, *src.bounds
-                )
-                kwargs = src.meta.copy()
-                kwargs.update({"crs": dst_crs, "transform": transform, "width": width, "height": height})
-                with rasterio.open(temp_reprojected, "w", **kwargs) as dst:
-                    for i in range(1, src.count + 1):
-                        reproject(
-                            source=rasterio.band(src, i),
-                            destination=rasterio.band(dst, i),
-                            src_transform=src.transform,
-                            src_crs=src.crs,
-                            dst_transform=transform,
-                            dst_crs=dst_crs,
-                            resampling=Resampling.bilinear,
-                        )
-            raster_to_load = temp_reprojected
-
-        # GDALRaster in write mode needs its own file handle, separate from
-        # whatever we just read with rasterio above.
-        fd, writable_file = tempfile.mkstemp(suffix=".tif")
-        os.close(fd)
-        shutil.copy2(raster_to_load, writable_file)
-        gdal_raster = GDALRaster(writable_file, write=True)
-
         model_field_names = {f.name for f in Model._meta.get_fields()}
-        field_values = {field_name: gdal_raster}
+        field_values = {}
         lookup_keys = []
+
+        if not skip_db_storage:
+            with rasterio.open(filepath) as src:
+                src_epsg = src.crs.to_epsg() if src.crs else None
+
+            raster_to_load = filepath
+            if src_epsg and src_epsg != model_srid:
+                fd, temp_reprojected = tempfile.mkstemp(suffix=".tif")
+                os.close(fd)
+                with rasterio.open(filepath) as src:
+                    dst_crs = f"EPSG:{model_srid}"
+                    transform, width, height = calculate_default_transform(
+                        src.crs, dst_crs, src.width, src.height, *src.bounds
+                    )
+                    kwargs = src.meta.copy()
+                    kwargs.update({"crs": dst_crs, "transform": transform, "width": width, "height": height})
+                    with rasterio.open(temp_reprojected, "w", **kwargs) as dst:
+                        for i in range(1, src.count + 1):
+                            reproject(
+                                source=rasterio.band(src, i),
+                                destination=rasterio.band(dst, i),
+                                src_transform=src.transform,
+                                src_crs=src.crs,
+                                dst_transform=transform,
+                                dst_crs=dst_crs,
+                                resampling=Resampling.bilinear,
+                            )
+                raster_to_load = temp_reprojected
+
+            # GDALRaster in write mode needs its own file handle, separate from
+            # whatever we just read with rasterio above.
+            fd, writable_file = tempfile.mkstemp(suffix=".tif")
+            os.close(fd)
+            shutil.copy2(raster_to_load, writable_file)
+            gdal_raster = GDALRaster(writable_file, write=True)
+            field_values[field_name] = gdal_raster
 
         if "city" in model_field_names and bbox:
             from common.models import City
@@ -182,9 +272,20 @@ def load_raster_into_target_model(
         # row so LandCoverRaster/SatelliteImagery/DigitalElevationModel/
         # DigitalSurfaceModel records reflect what actually produced them,
         # instead of only holding a bare raster + cog_path.
-        if "date" in model_field_names:
-            acquisition_date = date_to or datetime.now().strftime("%Y-%m-%d")
-            field_values["date"] = datetime.strptime(acquisition_date[:10], "%Y-%m-%d")
+        if "date" in model_field_names and acquisition_date:
+            # `acquisition_date` is a real timestamp looked up from the
+            # actual satellite catalog (Copernicus Data Space's OData API
+            # for Sentinel-2 — see Sentinel2Importer._lookup_acquisition_date
+            # — or the source ImageCollection's own system:time_start for
+            # GEE, inline in GEEImporter.export_raster), not the requested
+            # search window or the import time. openEO/GEE composites carry
+            # no acquisition timestamp in the downloaded file itself
+            # (confirmed empty GDAL tags on a real openEO TrueColor
+            # download), so previously this fell back to date_to or
+            # datetime.now() — both are guesses, not real satellite data, so
+            # the field is left unset when no real date could be found
+            # rather than stamping it with an invented one.
+            field_values["date"] = acquisition_date
         if "source" in model_field_names:
             source_labels = {"pdok": "PDOK", "sentinel2": "Sentinel-2 / Copernicus", "gee": "Google Earth Engine"}
             field_values["source"] = source_labels.get(dataset.get("source"), dataset.get("source"))
@@ -204,6 +305,12 @@ def load_raster_into_target_model(
         else:
             obj = Model.objects.create(**field_values)
             created = True
+
+        if skip_db_storage:
+            # The post_save signal (core/signals.py::auto_export_cog) is a
+            # no-op for these models — cog_path is produced directly from
+            # the source file here instead of read back out of Postgres.
+            export_geotiff_to_cog(filepath, obj)
 
         return True, f"Loaded into {model_path} ({'created' if created else 'updated'} id={obj.id})."
 
@@ -548,49 +655,138 @@ class PDOKImporter:
             logger.exception(f"WFS import error for {dataset['key']}")
             return ImportResult("error", f"Import failed: {e}")
 
+    # PDOK's mapserver-backed WCS endpoints cap a single GetCoverage response at
+    # MAXSIZE=4000 pixels per dimension. AHN's 0.5m DEM/DSM coverages hit this on
+    # anything bigger than a ~2km square, so a bbox that would exceed it gets
+    # split into a grid of sub-requests and mosaicked back together below. Kept
+    # a bit under 4000 as a safety margin for rounding.
+    MAX_WCS_TILE_PIXELS = 3800
+
+    # A mosaic bigger than this (total pixels across all tiles) reliably
+    # crashes the local Postgres connection when GDALRaster sends it as a
+    # single query parameter — observed: 16 tiles / ~230M px / ~285MB failed
+    # with "server closed the connection unexpectedly"; 2 tiles / ~6.6M px /
+    # ~15MB succeeded. Reject up front, before fetching anything, rather than
+    # downloading the whole mosaic only to have the database connection die
+    # on load.
+    MAX_WCS_TOTAL_PIXELS = 16_000_000
+
+    @staticmethod
+    def _wcs_grid_edges(min_v: float, max_v: float, resolution_m: float) -> List[float]:
+        """
+        Split [min_v, max_v] into evenly-sized segments, each no larger than
+        MAX_WCS_TILE_PIXELS at the given resolution, returning the tile
+        boundary coordinates (n+1 edges for n tiles).
+        """
+        span = max_v - min_v
+        pixel_count = span / resolution_m
+        tile_count = max(1, math.ceil(pixel_count / PDOKImporter.MAX_WCS_TILE_PIXELS))
+        step = span / tile_count
+        return [min_v + i * step for i in range(tile_count + 1)]
+
     @staticmethod
     def fetch_wcs(dataset: Dict, bbox: list, resolution: float = 5.0) -> ImportResult:
         """
-        Fetch raster data from PDOK WCS service.
-        For rasters, we still save to file since they're not directly storable in typical models.
+        Fetch raster data from PDOK WCS service, tiling the request when the
+        area would exceed the service's per-request pixel cap and mosaicking
+        the tiles back into a single GeoTIFF.
         """
         try:
             url = dataset.get("wcs_url", dataset["url"])
             layer = dataset["layer"]
-            
-            # Build WCS GetCoverage request
-            params = {
-                "service": "WCS",
-                "version": "2.0.1",
-                "request": "GetCoverage",
-                "CoverageId": layer,
-                "format": "image/tiff",
-                "subset": [
-                    f"x({bbox[0]},{bbox[2]})",
-                    f"y({bbox[1]},{bbox[3]})",
-                ],
-            }
-            
-            logger.info(f"Fetching WCS: {url} coverage={layer}")
-            response = requests.get(url, params=params, timeout=300)
-            response.raise_for_status()
-            
-            # Save raster to temp file
+
+            # bbox arrives in WGS84 from the frontend (city extent or a drawn
+            # rectangle — see importer/views_external.py::get_cities_geojson).
+            # The subset below has no CRS declaration, so WCS 2.0.1 interprets
+            # it in the coverage's native CRS; for a CRS like AHN's RD New
+            # (EPSG:28992), passing raw lon/lat numbers lands nowhere near the
+            # actual coverage extent and PDOK returns an ExtentError. Reproject
+            # to the coverage's CRS first, the same way fetch_wfs already does.
+            request_bbox = bbox
+            target_srs = dataset.get("params", {}).get("srsName", "EPSG:28992")
+            target_epsg = int(target_srs.split(":")[-1])
+            if target_epsg != 4326:
+                tx = Transformer.from_crs("EPSG:4326", f"EPSG:{target_epsg}", always_xy=True)
+                x1, y1 = tx.transform(bbox[0], bbox[1])
+                x2, y2 = tx.transform(bbox[2], bbox[3])
+                request_bbox = [x1, y1, x2, y2]
+
+            resolution_m = dataset.get("resolution_m") or resolution
+            x_edges = PDOKImporter._wcs_grid_edges(request_bbox[0], request_bbox[2], resolution_m)
+            y_edges = PDOKImporter._wcs_grid_edges(request_bbox[1], request_bbox[3], resolution_m)
+
+            total_width_px = (request_bbox[2] - request_bbox[0]) / resolution_m
+            total_height_px = (request_bbox[3] - request_bbox[1]) / resolution_m
+            total_pixels = total_width_px * total_height_px
+            if total_pixels > PDOKImporter.MAX_WCS_TOTAL_PIXELS:
+                max_side_km = (PDOKImporter.MAX_WCS_TOTAL_PIXELS ** 0.5) * resolution_m / 1000
+                return ImportResult(
+                    "error",
+                    f"Selected area is too large for {layer} at {resolution_m}m resolution "
+                    f"({len(x_edges) - 1}x{len(y_edges) - 1} tiles, ~{total_pixels / 1e6:.0f}M pixels). "
+                    f"Please draw a smaller area — roughly {max_side_km:.1f}km x {max_side_km:.1f}km or less.",
+                )
+
             temp_dir = Path(settings.MEDIA_ROOT) / "imports" / "pdok" / "rasters"
             temp_dir.mkdir(parents=True, exist_ok=True)
-            
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"{dataset['key']}_{timestamp}.tif"
-            filepath = temp_dir / filename
-            
-            with open(filepath, 'wb') as f:
-                f.write(response.content)
 
-            loaded, load_msg = load_raster_into_target_model(str(filepath), dataset, bbox)
+            tile_paths = []
+            total_bytes = 0
+            for i in range(len(x_edges) - 1):
+                for j in range(len(y_edges) - 1):
+                    tile_bbox = [x_edges[i], y_edges[j], x_edges[i + 1], y_edges[j + 1]]
+                    params = {
+                        "service": "WCS",
+                        "version": "2.0.1",
+                        "request": "GetCoverage",
+                        "CoverageId": layer,
+                        "format": "image/tiff",
+                        "subset": [
+                            f"x({tile_bbox[0]},{tile_bbox[2]})",
+                            f"y({tile_bbox[1]},{tile_bbox[3]})",
+                        ],
+                    }
+                    logger.info(f"Fetching WCS tile ({i},{j}) of {len(x_edges)-1}x{len(y_edges)-1}: {url} coverage={layer}")
+                    response = requests.get(url, params=params, timeout=300)
+                    response.raise_for_status()
 
+                    tile_path = temp_dir / f"{dataset['key']}_{timestamp}_tile{i}_{j}.tif"
+                    with open(tile_path, 'wb') as f:
+                        f.write(response.content)
+                    tile_paths.append(tile_path)
+                    total_bytes += len(response.content)
+
+            filepath = temp_dir / f"{dataset['key']}_{timestamp}.tif"
+            if len(tile_paths) == 1:
+                tile_paths[0].rename(filepath)
+            else:
+                import rasterio
+                from rasterio.merge import merge as rio_merge
+
+                sources = [rasterio.open(p) for p in tile_paths]
+                try:
+                    mosaic, out_transform = rio_merge(sources)
+                    out_meta = sources[0].meta.copy()
+                    out_meta.update({
+                        "height": mosaic.shape[1],
+                        "width": mosaic.shape[2],
+                        "transform": out_transform,
+                    })
+                    with rasterio.open(filepath, "w", **out_meta) as dst:
+                        dst.write(mosaic)
+                finally:
+                    for src in sources:
+                        src.close()
+                    for p in tile_paths:
+                        p.unlink(missing_ok=True)
+
+            load_ok, load_msg = load_raster_into_target_model(str(filepath), dataset, bbox)
+
+            tile_note = f", mosaicked from {len(tile_paths)} tiles" if len(tile_paths) > 1 else ""
             return ImportResult(
-                "success",
-                f"Downloaded raster from {layer} ({len(response.content) / 1024:.1f} KB). {load_msg}",
+                "success" if load_ok else "error",
+                f"Downloaded raster from {layer}{tile_note} ({total_bytes / 1024:.1f} KB). {load_msg}",
                 1,
                 0,
                 str(filepath)
@@ -694,17 +890,38 @@ class PDOKImporter:
     @staticmethod
     def register_wms(dataset: Dict) -> ImportResult:
         """
-        Register a WMS layer (no data download, just configuration).
+        Register a WMS layer by creating/updating its row in the target WMS
+        model. This used to just return a fake "success" message without
+        writing anything — the map only shows a WMS layer if a row exists
+        for it (mainMap/views.py::available_layers queries WMS_REGISTRY
+        models via .objects.all()), so no WMS dataset selected in the
+        importer ever actually appeared on the map.
         """
         layer = dataset.get("layer", "unknown")
         url = dataset["url"]
-        
-        # For WMS, we typically just store the configuration
-        # The actual rendering happens via TiTiler or direct WMS calls
+        model_path = dataset["target_model"]
+
+        try:
+            Model = get_model_class(model_path)
+        except ValueError as e:
+            return ImportResult("error", str(e))
+
+        obj, created = Model.objects.update_or_create(
+            name=dataset["key"],
+            defaults={
+                "display_name": dataset.get("name", layer),
+                "url": url,
+                "layers_param": layer,
+                "legend_url": dataset.get("legend_url") or default_wms_legend_url(url, layer),
+                "is_active": True,
+            },
+        )
+
         return ImportResult(
             "success",
-            f"WMS layer registered: {layer}. URL: {url}",
-            1
+            f"WMS layer {'registered' if created else 'updated'}: {layer}.",
+            1,
+            0,
         )
 
 class CBSImporter:
@@ -951,7 +1168,50 @@ class Sentinel2Importer:
         "NDWI": ["B03", "B08"],
         "MOISTURE_INDEX": ["B8A", "B11"],
         "TRUE_COLOR": ["B04", "B03", "B02"],
+         ## -------- CONSIDER ADDING MORE INDICES HERE --------
+                    ## -------- CONSIDER ADDING FUNCTIONS OF EXTERNAL PROCESSING LIBRARIES (e.g., scikit-image, landcover ML, RF, etc) --------
     }
+
+    @staticmethod
+    def _lookup_acquisition_date(bbox: list, date_from: str, date_to: str, max_cloud_cover: float = 85.0) -> Optional[datetime]:
+        """
+        Look up the real acquisition timestamp of the most recent Sentinel-2
+        L2A scene matching the requested area/date range/cloud filter, via
+        Copernicus Data Space's public OData catalog (no auth needed for
+        search). The openEO composite downloaded in fetch_openeo() carries
+        no acquisition timestamp of its own — confirmed empty GDAL tags on a
+        real download — so without this, imports were dated by the search
+        window or the import time instead of when the satellite actually
+        captured the data.
+        """
+        try:
+            poly = (
+                f"POLYGON(({bbox[0]} {bbox[1]},{bbox[2]} {bbox[1]},"
+                f"{bbox[2]} {bbox[3]},{bbox[0]} {bbox[3]},{bbox[0]} {bbox[1]}))"
+            )
+            filter_str = (
+                "Collection/Name eq 'SENTINEL-2' "
+                f"and OData.CSC.Intersects(area=geography'SRID=4326;{poly}') "
+                f"and ContentDate/Start gt {date_from}T00:00:00.000Z "
+                f"and ContentDate/Start lt {date_to}T23:59:59.999Z "
+                "and contains(Name,'MSIL2A') "
+                "and Attributes/OData.CSC.DoubleAttribute/any("
+                f"att:att/Name eq 'cloudCover' and att/OData.CSC.DoubleAttribute/Value lt {max_cloud_cover})"
+            )
+            resp = requests.get(
+                "https://catalogue.dataspace.copernicus.eu/odata/v1/Products",
+                params={"$filter": filter_str, "$orderby": "ContentDate/Start desc", "$top": 1},
+                timeout=20,
+            )
+            resp.raise_for_status()
+            products = resp.json().get("value", [])
+            if not products:
+                return None
+            start = products[0]["ContentDate"]["Start"]  # e.g. "2026-09-06T10:46:21.025000Z"
+            return datetime.strptime(start[:19], "%Y-%m-%dT%H:%M:%S")
+        except Exception as e:
+            logger.warning(f"Could not look up Sentinel-2 acquisition date for bbox={bbox}: {e}")
+            return None
 
     @staticmethod
     def fetch_wcs(dataset: Dict, bbox: list) -> ImportResult:
@@ -1082,6 +1342,8 @@ class Sentinel2Importer:
             elif index_key == "MOISTURE_INDEX":
                 nir_narrow, swir = datacube.band("B8A"), datacube.band("B11")
                 result_cube = (nir_narrow - swir) / (nir_narrow + swir)
+            ## -------- CONSIDER ADDING MORE INDICES HERE --------
+            ## -------- CONSIDER ADDING FUNCTIONS OF EXTERNAL PROCESSING LIBRARIES (e.g., scikit-image, landcover ML, RF, etc) --------
             else:  # TRUE_COLOR
                 result_cube = datacube * 2.5
 
@@ -1123,7 +1385,10 @@ class Sentinel2Importer:
             if last_error:
                 raise last_error
 
-            loaded, load_msg = load_raster_into_target_model(str(filepath), dataset, bbox, date_to)
+            acquisition_date = Sentinel2Importer._lookup_acquisition_date(bbox, date_from, date_to)
+            loaded, load_msg = load_raster_into_target_model(
+                str(filepath), dataset, bbox, date_to, acquisition_date=acquisition_date
+            )
 
             return ImportResult(
                 "success",
@@ -1143,14 +1408,36 @@ class Sentinel2Importer:
 
     @staticmethod
     def register_wms(dataset: Dict) -> ImportResult:
-        """Register a Sentinel-2 WMS layer."""
+        """
+        Register a Sentinel-2 WMS layer by creating/updating its row in the
+        target WMS model — see PDOKImporter.register_wms for why this needs
+        to actually write to the DB rather than just report success.
+        """
         layer = dataset.get("layer", "unknown")
         url = dataset["url"]
-        
+        model_path = dataset["target_model"]
+
+        try:
+            Model = get_model_class(model_path)
+        except ValueError as e:
+            return ImportResult("error", str(e))
+
+        obj, created = Model.objects.update_or_create(
+            name=dataset["key"],
+            defaults={
+                "display_name": dataset.get("name", layer),
+                "url": url,
+                "layers_param": layer,
+                "legend_url": dataset.get("legend_url") or default_wms_legend_url(url, layer),
+                "is_active": True,
+            },
+        )
+
         return ImportResult(
             "success",
-            f"WMS layer registered: {layer}. URL: {url}",
-            1
+            f"WMS layer {'registered' if created else 'updated'}: {layer}.",
+            1,
+            0,
         )
 
 
@@ -1183,20 +1470,35 @@ class GEEImporter:
             region = ee.Geometry.Rectangle(bbox)
             
             # Load image or image collection
+            acquisition_date = None
             try:
                 # Try as ImageCollection first
                 collection = ee.ImageCollection(asset_id)
-                
+
                 # Apply date filter if needed
                 if date_from and date_to:
                     collection = collection.filterDate(date_from, date_to)
-                
+
                 # Filter by region
                 collection = collection.filterBounds(region)
-                
+
+                # Real acquisition timestamp of the most recent scene that
+                # actually contributes to the composite below, rather than
+                # the requested search window or the import time — GEE
+                # already carries this on every image (system:time_start),
+                # so no extra catalog lookup is needed, just one lightweight
+                # getInfo() call for the scalar value.
+                try:
+                    latest = collection.sort('system:time_start', False).first()
+                    millis = latest.get('system:time_start').getInfo()
+                    if millis:
+                        acquisition_date = datetime.utcfromtimestamp(millis / 1000)
+                except Exception as e:
+                    logger.warning(f"Could not look up GEE acquisition date for {asset_id}: {e}")
+
                 # Composite (mean)
                 image = collection.mean()
-                
+
             except Exception:
                 # Fall back to single Image
                 image = ee.Image(asset_id)
@@ -1231,7 +1533,9 @@ class GEEImporter:
             with open(filepath, 'wb') as f:
                 f.write(response.content)
 
-            loaded, load_msg = load_raster_into_target_model(str(filepath), dataset, bbox, date_to)
+            loaded, load_msg = load_raster_into_target_model(
+                str(filepath), dataset, bbox, date_to, acquisition_date=acquisition_date
+            )
 
             return ImportResult(
                 "success",

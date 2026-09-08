@@ -331,7 +331,7 @@ Confirm and import. The system will:
 ```bash
 curl http://localhost:8000/api/layers/
 ```
-Add `?app_labels=common,builtup` to restrict the response to specific apps — each entry costs at least one DB query, so the map's own initial load only asks for `common` and fetches the rest in the background (see `common/static/js/Layers.js`).
+Add `?app_labels=common.builtup` to restrict the response to specific apps — each entry costs at least one DB query, so the map's own initial load only asks for `common` and fetches the rest in the background (see `common/static/js/Layers.js`).
 
 #### Get Specific Layer Data
 ```bash
@@ -370,6 +370,19 @@ The NDVI/NDWI/moisture/true-color datasets run on openEO (the Sentinel Hub Proce
 
 - If `SENTINEL_CLIENT_ID`/`SENTINEL_CLIENT_SECRET` are set in `.env`, imports use them automatically — most users never need to enter anything.
 - If those defaults are missing or fail to authenticate, the import fails with `needs_credentials: true` and the UI reveals a Client ID/Secret panel so the user can supply their own for that request.
+
+
+### Google Earth Engine credentials
+
+1. In your Cloud project, go to IAM & Admin > Service Accounts.
+2. Select Create Service Account.
+3. Assign it a clear name (for example, digital-twin).
+4. Grant it the Earth Engine User (or equivalent) role, and also grant the Service Usage Consumer role — without it, the service account can authenticate but its API calls are rejected since it can't be billed against the project's enabled services.
+5. Click Done.
+6. Open the newly created service account and click Keys > Add Key > Create New Key.
+7. Choose JSON format, then download the key file.
+
+Keep this JSON file secure — you will paste its contents into CrossTwin.
 
 ## 🗄️ Data Models
 

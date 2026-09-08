@@ -247,6 +247,15 @@ class LandCoverWMS(models.Model):
 
 
 class DigitalElevationModel(models.Model):
+    # Nothing queries dem_raster with server-side PostGIS raster SQL, so the
+    # importer skips loading it into Postgres at all (see
+    # importer/external_data.py::load_raster_into_target_model and
+    # core/rasterOperations.py::export_geotiff_to_cog) — only cog_path gets
+    # populated. Storing the raw raster as a RasterField blob is a large,
+    # redundant write that can crash Postgres outright on city-scale imports
+    # (0.5m AHN data covering a whole city easily reaches hundreds of MB).
+    SKIP_RASTER_DB_STORAGE = True
+
     id = models.AutoField(primary_key=True)
     city = models.ForeignKey(City, on_delete=models.DO_NOTHING, help_text="City code from common.City", null=True, blank=True)
     year = models.IntegerField()
@@ -278,6 +287,9 @@ class DigitalElevationModelWMS(models.Model):
         return self.display_name
     
 class DigitalSurfaceModel(models.Model):
+    # See DigitalElevationModel.SKIP_RASTER_DB_STORAGE — same reasoning.
+    SKIP_RASTER_DB_STORAGE = True
+
     id = models.AutoField(primary_key=True)
     city = models.ForeignKey(City, on_delete=models.DO_NOTHING, help_text="City code from common.City", null=True, blank=True)
     year = models.IntegerField()

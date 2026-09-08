@@ -217,6 +217,7 @@ function addWmsLegend(key, title, legendUrl) {
     <img src="${legendUrl}" alt="${title} legend" />
   `;
   document.querySelector('.map-wrapper').appendChild(legend);
+  legend.querySelector('img').addEventListener('load', repositionDynamicLegends);
   repositionDynamicLegends();
 }
 
@@ -324,16 +325,21 @@ function addRasterLegend(key, title, legend) {
 }
 
 /**
- * Dynamic legends (raster + WMS) share the same fixed corner via .map-legend's
- * CSS, so with more than one visible at once they'd render stacked exactly on
- * top of each other. Space them out vertically instead, skipping the static
- * #legend-groundwater block which manages its own position.
+ * All legends (dynamic raster/WMS ones, plus the static #legend-groundwater
+ * block) share the same fixed corner via .map-legend's CSS, so with more than
+ * one visible at once they'd render stacked exactly on top of each other.
+ * Stack them vertically by their actual rendered height instead of a guessed
+ * fixed height — WMS legend images vary a lot in size, so a fixed offset
+ * either leaves gaps or overlaps depending on which legend is involved.
  */
 function repositionDynamicLegends() {
-  const legends = Array.from(document.querySelectorAll('.map-legend.dynamic-legend'))
+  const legends = Array.from(document.querySelectorAll('.map-legend'))
     .filter(el => el.style.display !== 'none');
-  legends.forEach((el, i) => {
-    el.style.bottom = `${66 + i * 92}px`;
+  const gap = 10;
+  let bottom = 66;
+  legends.forEach(el => {
+    el.style.bottom = `${bottom}px`;
+    bottom += el.offsetHeight + gap;
   });
 }
 
@@ -413,6 +419,7 @@ function toggleGroundwaterLayer() {
     map.setLayoutProperty(layerId, 'visibility', 'visible');
     if (legendEl) legendEl.style.display = 'block';
   }
+  repositionDynamicLegends();
 }
 
 // ---- Tool-based filtering ---------------------------------------------

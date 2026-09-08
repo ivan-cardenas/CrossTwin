@@ -11,6 +11,7 @@ from django.apps import apps
 from django.conf import settings
 
 from core.utils import VECTOR_REGISTRY, WMS_REGISTRY, RASTER_REGISTRY, MODEL_REGISTRY
+from core.rasterStyles import raster_display_name
 
 
 # Ordered from most specific to least — first match wins
@@ -459,16 +460,17 @@ def available_layers(request):
             color_index += 1
     
     for key, model in WMS_REGISTRY.items() if WMS_REGISTRY else []:
-        if allowed_app_labels is not None and key.split('.')[0] not in allowed_app_labels:
+        wms_app_label = key.split('.')[0]
+        if allowed_app_labels is not None and wms_app_label not in allowed_app_labels:
             continue
 
         wms_instances = model.objects.all()
-        
+
         for wms in wms_instances:
             layers.append({
                 'key': f'wms-{wms.name}',
                 'display_name': wms.display_name,
-                'app_label': wms.app_label,  # groups it under watersupply
+                'app_label': wms_app_label,  # groups it under watersupply
                 'geometry_type': 'raster',
                 'color': wms.color,
                 'count': 'WMS',
@@ -491,9 +493,10 @@ def available_layers(request):
             if not raster.cog_path:
                 continue
                 
+            fallback_name = getattr(raster, 'name', None) or f'{model._meta.verbose_name} {raster.id}'
             layers.append({
                 'key': f'raster-{app_label}-{model_name}-{raster.id}',
-                'display_name': getattr(raster, 'name', None) or f'{model._meta.verbose_name} {raster.id}',
+                'display_name': raster_display_name(raster, key, fallback_name),
                 'app_label': app_label,
                 'model_name': model_name,
                 'layer_type': 'raster',

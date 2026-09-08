@@ -80,12 +80,19 @@ def get_raster_tiles(request, app_label, layer_name):
         f"?url={encoded_url}"
     )
 
+    # rescale applies whenever the raster's values aren't already in a
+    # directly-displayable 0-255 range — including multi-band RGB composites
+    # (e.g. Sentinel-2 true color, which downloads as float reflectance-like
+    # values in the thousands) that have no colormap at all. A colormap-only
+    # legend only makes sense for single-band data, so it's built separately.
+    if style["rescale"]:
+        vmin, vmax = style["rescale"]
+        tile_url += f"&rescale={vmin},{vmax}"
+
     legend = None
     if style["colormap"]:
         tile_url += f"&colormap_name={style['colormap']}"
         if style["rescale"]:
-            vmin, vmax = style["rescale"]
-            tile_url += f"&rescale={vmin},{vmax}"
             legend = {
                 "label": style["label"],
                 "unit": style["unit"],

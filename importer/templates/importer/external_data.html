@@ -63,7 +63,36 @@
             <span>Import Selected</span>
         </button>
     </div>
-    
+
+    <!-- Explore toolbar: search, source filters, slow toggle -->
+    <div class="w-full flex flex-col gap-3 glass rounded-xl px-5 py-4">
+        <div>
+            <div class="flex items-center gap-2">
+                <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z"/>
+                </svg>
+                <input type="search" id="dataset-search" placeholder="Search datasets…"
+                       class="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 focus:outline-none">
+            </div>
+            <span id="visible-count" class="block mt-1.5 ml-6 text-xs text-slate-250"></span>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+            <div id="source-filter-chips" class="flex flex-wrap items-center gap-1.5">
+                {% for s in all_sources %}
+                <button type="button" class="source-chip px-2.5 py-1 rounded-lg text-[11px] font-medium border border-white/10 bg-white/5 text-slate-300 hover:border-cyan-500/40 transition-colors"
+                        data-source-key="{{ s.key }}">
+                    {{ s.info.name }}
+                </button>
+                {% endfor %}
+            </div>
+            <label class="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer select-none ml-2">
+                <input type="checkbox" id="hide-slow-toggle"
+                       class="h-3.5 w-3.5 rounded border-white/20 bg-white/5 text-rose-500 focus:ring-rose-500/50 focus:ring-offset-0 cursor-pointer">
+                Hide slow imports
+            </label>
+        </div>
+    </div>
+
     </div><!-- end header -->
 
     <!-- Panels (max 2 columns via flex-wrap) -->
@@ -206,53 +235,22 @@
 
     </div><!-- end flex panels -->
 
-    <!-- Source sections -->
-    <div class="flex flex-wrap gap-6">
-    {% for source in sources %}
-    <div class="flex-1 flex-col space-y-4 gap-6">
-        <!-- Source header -->
-        <div class="flex items-center gap-3">
-            {% if source.info.color == "cyan" %}
-            
-            <div class="flex-shrink-0 h-9 w-9 rounded-lg bg-cyan-500/15 border border-cyan-500/25 flex items-center justify-center">
-                <svg class="w-5 h-5 text-cyan-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-            </div>
-
-            {% elif source.info.color == "indigo" %}
-            <div class="flex-shrink-0 h-9 w-9 rounded-lg bg-indigo-500/15 border border-indigo-500/25 flex items-center justify-center">
-                <svg fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 text-indigo-100">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6" />
-                </svg>
-            </div>
-
-            {% elif source.info.color == "violet" %}
-            <div class="flex-shrink-0 h-9 w-9 rounded-lg bg-violet-500/15 border border-violet-500/25 flex items-center justify-center">
-                <svg class="w-5 h-5 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
-                </svg>
-            </div>
-            {% elif source.info.color == "amber" %}
-            <div class="flex-shrink-0 h-9 w-9 rounded-lg bg-amber-500/15 border border-amber-500/25 flex items-center justify-center">
-                <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"/>
-                </svg>
-            </div>
-            {% endif %}
-            <div>
-                <h2 class="text-lg font-semibold text-slate-50">{{ source.info.name }}</h2>
-                <p class="text-sm text-slate-400">{{ source.info.description }}</p>
-            </div>
-            <span class="ml-auto text-xs text-slate-250 tabular-nums">{{ source.dataset_count }} dataset{{ source.dataset_count|pluralize }}</span>
+    <!-- Category sections -->
+    <div class="space-y-8">
+    {% for category in categories %}
+    <div class="category-block" data-category="{{ category.name|lower }}">
+        <!-- Category header (click to expand/collapse) -->
+        <div class="category-toggle flex items-center gap-3 mb-4 cursor-pointer select-none">
+            <svg class="category-chevron w-4 h-4 text-slate-400 transition-transform flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
+            <h2 class="text-lg font-semibold text-slate-50">{{ category.name }}</h2>
+            <span class="ml-auto text-xs text-slate-250 tabular-nums">{{ category.dataset_count }} dataset{{ category.dataset_count|pluralize }}</span>
         </div>
 
-        <!-- Categories & datasets -->
-        {% for category in source.categories %}
-        <div class="glass rounded-xl overflow-hidden">
-            <div class="px-5 py-3 border-b border-white/5">
-                <h3 class="text-sm font-medium text-slate-400 uppercase tracking-wide">{{ category.name }}</h3>
-            </div>
+        <!-- Datasets (flat — source shown per-row below, not as a grouping level) -->
+        <div class="category-body hidden">
+            <div class="glass rounded-xl overflow-hidden">
             <div class="divide-y divide-white/5">
                 {% for ds in category.datasets %}
                 <label class="dataset-row flex items-start gap-4 px-5 py-4 cursor-pointer hover:bg-white/[0.03] transition-colors {% if not ds.enabled %}opacity-50{% endif %}"
@@ -261,7 +259,9 @@
                        data-enabled="{{ ds.enabled|yesno:'true,false' }}"
                        data-requires-bbox="{{ ds.requires_bbox|default_if_none:False|yesno:'true,false' }}"
                        data-requires-auth="{{ ds.requires_auth|default_if_none:False|yesno:'true,false' }}"
-                       data-requires-date-range="{{ ds.requires_date_range|default_if_none:False|yesno:'true,false' }}">
+                       data-requires-date-range="{{ ds.requires_date_range|default_if_none:False|yesno:'true,false' }}"
+                       data-slow="{{ ds.slow|default_if_none:False|yesno:'true,false' }}"
+                       data-search-text="{{ ds.name|lower }} {{ ds.description|lower }}">
                     <div class="pt-0.5">
                         <input type="checkbox"
                                name="datasets"
@@ -292,7 +292,16 @@
                             {% endif %}
                         </div>
                         <p class="text-xs text-slate-400 leading-relaxed">{{ ds.description }}</p>
+                        {% if ds.slow %}
+                        <div class="flex items-start gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/40 text-red-300 text-[11px] leading-relaxed">
+                            <svg class="w-3.5 h-3.5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                            </svg>
+                            <span><strong class="font-semibold">Slow:</strong> {{ ds.slow_reason|default:"This import can take several minutes." }}</span>
+                        </div>
+                        {% endif %}
                         <div class="flex items-center gap-3 text-[11px] text-slate-250">
+                            <span>Source: {{ ds.source_label }}</span>
                             <span>Target: <code class="px-1 py-0.5 rounded bg-white/5 text-slate-400">{{ ds.target_model }}</code></span>
                         </div>
                     </div>
@@ -323,11 +332,11 @@
                 </label>
                 {% endfor %}
             </div>
+            </div>
         </div>
-        {% endfor %}
     </div>
     {% endfor %}
-    </div><!-- end source sections flex -->
+    </div><!-- end category sections -->
 
 </div>
 
@@ -617,6 +626,87 @@ document.addEventListener('DOMContentLoaded', function () {
         checkboxes.forEach(cb => cb.checked = false);
         updateUI();
     });
+
+    // ── Explore/declutter: search, source filters, slow toggle, collapse ──
+    // Hiding a row is purely visual (CSS `hidden`) — the checkbox stays in
+    // the DOM and keeps its checked state, so filtering never affects what
+    // Select all / the selection count / Import Selected actually act on.
+
+    const searchInput = document.getElementById('dataset-search');
+    const visibleCountEl = document.getElementById('visible-count');
+    const hideSlowToggle = document.getElementById('hide-slow-toggle');
+    const sourceChips = Array.from(document.querySelectorAll('.source-chip'));
+    const categoryBlocks = Array.from(document.querySelectorAll('.category-block'));
+    const activeSources = new Set(sourceChips.map(chip => chip.dataset.sourceKey));
+
+    function setChipActive(chip, active) {
+        // Uses `ring` (box-shadow) rather than another `border-*`/`bg-*`
+        // utility so it never competes with the chip's base border/background
+        // classes for the same CSS property — those stay constant either way.
+        chip.classList.toggle('ring-1', active);
+        chip.classList.toggle('ring-cyan-500/50', active);
+        chip.classList.toggle('opacity-40', !active);
+    }
+
+    function expand(body, chevron) {
+        body.classList.remove('hidden');
+        chevron.classList.add('rotate-90');
+    }
+
+    function applyExploreFilters() {
+        const term = searchInput.value.trim().toLowerCase();
+        const hideSlow = hideSlowToggle.checked;
+        let totalVisible = 0;
+        let totalRows = 0;
+
+        categoryBlocks.forEach(catBlock => {
+            let categoryHasMatch = false;
+
+            catBlock.querySelectorAll('.dataset-row').forEach(row => {
+                totalRows++;
+                const sourceActive = activeSources.has(row.dataset.source);
+                const matchesSearch = !term || (row.dataset.searchText || '').includes(term);
+                const matchesSlow = !hideSlow || row.dataset.slow !== 'true';
+                const visible = sourceActive && matchesSearch && matchesSlow;
+                row.classList.toggle('hidden', !visible);
+                if (visible) { categoryHasMatch = true; totalVisible++; }
+            });
+
+            catBlock.classList.toggle('hidden', !categoryHasMatch);
+            // A live search term auto-expands a category with a match; an
+            // empty term leaves manual expand/collapse state alone.
+            if (term && categoryHasMatch) {
+                expand(catBlock.querySelector('.category-body'), catBlock.querySelector('.category-chevron'));
+            }
+        });
+
+        visibleCountEl.textContent = `Showing ${totalVisible} of ${totalRows} datasets`;
+    }
+
+    searchInput.addEventListener('input', applyExploreFilters);
+    hideSlowToggle.addEventListener('change', applyExploreFilters);
+
+    sourceChips.forEach(chip => {
+        setChipActive(chip, true);
+        chip.addEventListener('click', () => {
+            const key = chip.dataset.sourceKey;
+            if (activeSources.has(key)) activeSources.delete(key); else activeSources.add(key);
+            setChipActive(chip, activeSources.has(key));
+            applyExploreFilters();
+        });
+    });
+
+    document.querySelectorAll('.category-toggle').forEach(toggle => {
+        toggle.addEventListener('click', () => {
+            const body = toggle.closest('.category-block').querySelector('.category-body');
+            const chevron = toggle.querySelector('.category-chevron');
+            const willShow = body.classList.contains('hidden');
+            body.classList.toggle('hidden', !willShow);
+            chevron.classList.toggle('rotate-90', willShow);
+        });
+    });
+
+    applyExploreFilters();
 
     // ── Import handler ────────────────────────────────────────────────
     importBtn.addEventListener('click', async function () {

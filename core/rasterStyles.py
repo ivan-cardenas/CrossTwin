@@ -34,7 +34,13 @@ INDEX_STYLES = {
     "NDVI": ("rdylgn", (-1, 1), "NDVI (Vegetation Index)", ""),
     "NDWI": ("rdbu", (-1, 1), "NDWI (Water Index)", ""),
     "MOISTURE_INDEX": ("ylgnbu", (-1, 1), "Moisture Index", ""),
-    "TRUE_COLOR": (None, None, "True Color", ""),  # multi-band RGB composite — no colormap
+    # Multi-band RGB composite — no colormap, but it still needs a rescale:
+    # openEO's TRUE_COLOR download is float32 reflectance-like DNs (observed
+    # range ~700-20000 after the *2.5 brightening in fetch_openeo), not the
+    # 0-255 a renderer expects, so without this every tile request came back
+    # essentially blank/black — this was the actual cause of "downloads fine
+    # but isn't visible on the map".
+    "TRUE_COLOR": (None, (0, 8000), "True Color", ""),
     "LGN2021": ("tab20", None, "Land Cover (LGN2021)", ""),
     "WORLDCOVER_2021_MAP": ("tab20", None, "ESA WorldCover", ""),
     "SEASONALITY": ("blues", (0, 12), "Water Seasonality", "months/yr"),
@@ -66,6 +72,35 @@ MODEL_STYLES = {
 DEFAULT_STYLE = ("viridis", None, "Value", "")
 
 
+def _lookup_style(instance, registry_key):
+    """Shared index/model lookup used by both the tile colormap and the
+    display name, so a raster is labeled the same way everywhere."""
+    index_value = (getattr(instance, "index", None) or "").strip().upper()
+    style = INDEX_STYLES.get(index_value)
+    categorical = index_value in CATEGORICAL_INDICES
+    if style is None:
+        style = MODEL_STYLES.get(registry_key, DEFAULT_STYLE)
+    return style, categorical
+
+
+def raster_display_name(instance, registry_key, fallback=None):
+    """
+    Build a display name matching the legend label plus the acquisition
+    date as MM-YY, e.g. 'NDVI (Vegetation Index) - 09-26', instead of the
+    generic '<Model verbose name> <id>' (e.g. 'Land Cover Raster 4') used
+    when a raster has no `name` field of its own.
+    """
+    style, _ = _lookup_style(instance, registry_key)
+    label = style[2]
+    if label == DEFAULT_STYLE[2] and fallback:
+        label = fallback
+
+    date_value = getattr(instance, "date", None) or getattr(instance, "date_time", None)
+    if date_value:
+        return f"{label} - {date_value.strftime('%m-%y')}"
+    return label
+
+
 def _cog_statistics(cog_path):
     """Fetch band-1 min/max from TiTiler for products with no fixed range."""
     try:
@@ -92,13 +127,7 @@ def resolve_raster_style(instance, registry_key):
     (e.g. true-color imagery), where TiTiler renders the bands directly and
     a colormap would be meaningless.
     """
-    index_value = (getattr(instance, "index", None) or "").strip().upper()
-    style = INDEX_STYLES.get(index_value)
-    categorical = index_value in CATEGORICAL_INDICES
-
-    if style is None:
-        style = MODEL_STYLES.get(registry_key, DEFAULT_STYLE)
-
+    style, categorical = _lookup_style(instance, registry_key)
     colormap, rescale, label, unit = style
 
     if colormap is not None and rescale is None:

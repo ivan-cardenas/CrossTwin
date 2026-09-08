@@ -10,6 +10,15 @@ def auto_export_cog(sender, instance, created, **kwargs):
     # (e.g. UnicodeEncodeError printing an emoji on a Windows cp1252 console)
     # propagates out of save() itself and rolls back the object being saved.
     print(f"[auto_export_cog] signal fired: created={created}, sender={sender.__name__}")
+
+    # Models flagged SKIP_RASTER_DB_STORAGE never get a raster written into
+    # Postgres in the first place (see importer/external_data.py::
+    # load_raster_into_target_model) — export_raster_to_cog would read a
+    # NULL raster column here and always fail. Those models' COG is produced
+    # directly from the source file by export_geotiff_to_cog instead.
+    if getattr(sender, 'SKIP_RASTER_DB_STORAGE', False):
+        return
+
     if not getattr(instance, 'cog_path', None):
         try:
             export_raster_to_cog(instance)

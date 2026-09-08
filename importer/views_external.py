@@ -30,26 +30,37 @@ def get_external_data(request):
     Users tick datasets they want, then POST to start the import.
     """
     catalog_grouped = get_catalog_grouped()
+    source_order = ["pdok", "CBS", "sentinel2", "gee", "rivm"]
 
-    sources = []
-    for src_key in ["pdok", "CBS", "sentinel2", "gee", "rivm"]:
-        info = SOURCE_INFO[src_key]
-        categories = []
-        for cat_name, datasets in catalog_grouped.get(src_key, {}).items():
-            categories.append({
-                "name": cat_name,
-                "datasets": datasets,
-            })
-        categories.sort(key=lambda c: c["name"])
-        sources.append({
-            "key": src_key,
-            "info": info,
-            "categories": categories,
-            "dataset_count": sum(len(c["datasets"]) for c in categories),
+    sources_present = {ds["source"] for datasets in catalog_grouped.values() for ds in datasets}
+    all_sources = [
+        {"key": src_key, "info": SOURCE_INFO[src_key]}
+        for src_key in source_order
+        if src_key in sources_present
+    ]
+
+    # Datasets keep the source's display name and icon alongside them (used
+    # to be a separate per-source sub-section; now it's just a line on the
+    # dataset row — see the template) rather than mutating the catalog's own
+    # dicts, which are shared module-level state reused across requests.
+    def with_source_info(ds):
+        return {**ds, "source_label": SOURCE_INFO[ds["source"]]["name"], "source_icon": SOURCE_INFO[ds["source"]]["icon"]}
+
+    categories = []
+    for cat_name in sorted(catalog_grouped.keys()):
+        datasets = sorted(
+            catalog_grouped[cat_name],
+            key=lambda ds: source_order.index(ds["source"]) if ds["source"] in source_order else len(source_order),
+        )
+        categories.append({
+            "name": cat_name,
+            "datasets": [with_source_info(ds) for ds in datasets],
+            "dataset_count": len(datasets),
         })
 
     context = {
-        "sources": sources,
+        "categories": categories,
+        "all_sources": all_sources,
         "mapbox_access_token": settings.MAPBOX_ACCESS_TOKEN,
         "coordinate_system": settings.COORDINATE_SYSTEM,
         "catalog_json": json.dumps(
@@ -62,6 +73,8 @@ def get_external_data(request):
                 "requires_auth": d.get("requires_auth", False),
                 "requires_date_range": d.get("requires_date_range", False),
                 "enabled": d.get("enabled", True),
+                "slow": d.get("slow", False),
+                "slow_reason": d.get("slow_reason", ""),
             } for d in EXTERNAL_DATA_CATALOG}
         ),
     }

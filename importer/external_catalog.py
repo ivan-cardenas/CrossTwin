@@ -351,13 +351,17 @@ EXTERNAL_DATA_CATALOG = [
         "source": "pdok",
         "category": "Elevation & Terrain",
         "name": "Digital Elevation Model (AHN4 DTM)",
-        "description": "High-resolution terrain model from AHN4. Downloads GeoTIFF tiles via ATOM feed.",
+        "description": "High-resolution terrain model from AHN4 via WCS.",
         "target_model": "common.DigitalElevationModel",
-        "url": "https://service.pdok.nl/rws/ahn/atom/v1_0/dtm_05m.xml",
-        "format": "atom",
+        "url": "https://service.pdok.nl/rws/actueel-hoogtebestand-nederland/wcs/v1_0",
+        "wcs_url": "https://service.pdok.nl/rws/actueel-hoogtebestand-nederland/wcs/v1_0",
+        "layer": "dtm_05m",
+        "format": "wcs",
         "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "requires_bbox": True,
         "resolution_m": 0.5,
+        "slow": True,
+        "slow_reason": "0.5m resolution means large areas are split into many tiled WCS requests and mosaicked — a whole city can take several minutes.",
         "enabled": True,
     },
     {
@@ -378,13 +382,17 @@ EXTERNAL_DATA_CATALOG = [
         "source": "pdok",
         "category": "Elevation & Terrain",
         "name": "Digital Surface Model (AHN4 DSM)",
-        "description": "High-resolution surface model (including buildings/trees) from AHN4.",
+        "description": "High-resolution surface model (including buildings/trees) from AHN4 via WCS.",
         "target_model": "common.DigitalSurfaceModel",
-        "url": "https://service.pdok.nl/rws/ahn/atom/v1_0/dsm_05m.xml",
-        "format": "atom",
+        "url": "https://service.pdok.nl/rws/actueel-hoogtebestand-nederland/wcs/v1_0",
+        "wcs_url": "https://service.pdok.nl/rws/actueel-hoogtebestand-nederland/wcs/v1_0",
+        "layer": "dsm_05m",
+        "format": "wcs",
         "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "requires_bbox": True,
         "resolution_m": 0.5,
+        "slow": True,
+        "slow_reason": "0.5m resolution means large areas are split into many tiled WCS requests and mosaicked — a whole city can take several minutes.",
         "enabled": True,
     },
     {
@@ -405,14 +413,13 @@ EXTERNAL_DATA_CATALOG = [
     {
         "key": "pdok_landcover_lgn",
         "source": "pdok",
-        "category": "Land Cover",
-        "name": "Land Cover (LGN2021)",
-        "description": "Dutch national land use map at 5m resolution via WCS.",
-        "target_model": "common.LandCoverRaster",
-        "url": "https://service.pdok.nl/rvo/lgn/wcs/v1_0",
-        "wcs_url": "https://service.pdok.nl/rvo/lgn/wcs/v1_0",
-        "layer": "lgn2021",
-        "format": "wcs",
+        "category": "Imagery / Spectral Indices",
+        "name": "Land Cover (LGN2025) WMS",
+        "description": "Dutch national land use map at 5m resolution via WMS.",
+        "target_model": "common.LandCoverWMS",
+        "url": "https://service.pdok.nl/wur/landelijk-grondgebruik-nederland/wms/v1_0",
+        "layer": "lgn-actueel",
+        "format": "wms",
         "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "requires_bbox": True,
         "resolution_m": 5.0,
@@ -427,7 +434,7 @@ EXTERNAL_DATA_CATALOG = [
     {
         "key": "sentinel2_worldcover_raster",
         "source": "sentinel2",
-        "category": "Land Cover",
+        "category": "Imagery / Spectral Indices",
         "name": "ESA WorldCover 10m (2021)",
         "description": "Global 10m land cover from Sentinel-2 via WCS.",
         "target_model": "common.LandCoverRaster",
@@ -444,7 +451,7 @@ EXTERNAL_DATA_CATALOG = [
     {
         "key": "sentinel2_worldcover_wms",
         "source": "sentinel2",
-        "category": "Land Cover",
+        "category": "Imagery / Spectral Indices",
         "name": "ESA WorldCover 10m (WMS)",
         "description": "WMS visualization of global land cover.",
         "target_model": "common.LandCoverWMS",
@@ -465,7 +472,7 @@ EXTERNAL_DATA_CATALOG = [
     {
         "key": "sentinel2_ndvi_raster",
         "source": "sentinel2",
-        "category": "Spectral Indices",
+        "category": "Imagery / Spectral Indices",
         "name": "NDVI (Vegetation Index)",
         "description": "Normalized Difference Vegetation Index computed from Sentinel-2 bands via openEO.",
         "target_model": "common.LandCoverRaster",
@@ -478,12 +485,14 @@ EXTERNAL_DATA_CATALOG = [
         "requires_auth": True,
         "resolution_m": 10.0,
         "satellite_type": "Sentinel-2",
+        "slow": True,
+        "slow_reason": "Runs as a single long-lived server-side computation on Copernicus Data Space's openEO backend — typically takes a few minutes.",
         "enabled": True,
     },
     {
         "key": "sentinel2_true_color_raster",
         "source": "sentinel2",
-        "category": "Imagery",
+        "category": "Imagery / Spectral Indices",
         "name": "True Color (RGB)",
         "description": "Natural color composite from Sentinel-2 visible bands via openEO.",
         "target_model": "common.SatelliteImagery",
@@ -496,12 +505,14 @@ EXTERNAL_DATA_CATALOG = [
         "requires_auth": True,
         "resolution_m": 10.0,
         "satellite_type": "Sentinel-2",
+        "slow": True,
+        "slow_reason": "Runs as a single long-lived server-side computation on Copernicus Data Space's openEO backend — typically takes a few minutes.",
         "enabled": True,
     },
     {
         "key": "sentinel2_ndwi_raster",
         "source": "sentinel2",
-        "category": "Spectral Indices",
+        "category": "Imagery / Spectral Indices",
         "name": "NDWI (Water Index)",
         "description": "Normalized Difference Water Index for water body detection via openEO.",
         "target_model": "common.LandCoverRaster",
@@ -514,12 +525,14 @@ EXTERNAL_DATA_CATALOG = [
         "requires_auth": True,
         "resolution_m": 10.0,
         "satellite_type": "Sentinel-2",
+        "slow": True,
+        "slow_reason": "Runs as a single long-lived server-side computation on Copernicus Data Space's openEO backend — typically takes a few minutes.",
         "enabled": True,
     },
     {
         "key": "sentinel2_moisture_raster",
         "source": "sentinel2",
-        "category": "Spectral Indices",
+        "category": "Imagery / Spectral Indices",
         "name": "Moisture Index",
         "description": "Normalized Difference Moisture Index for vegetation water content via openEO.",
         "target_model": "common.LandCoverRaster",
@@ -532,6 +545,8 @@ EXTERNAL_DATA_CATALOG = [
         "requires_auth": True,
         "resolution_m": 10.0,
         "satellite_type": "Sentinel-2",
+        "slow": True,
+        "slow_reason": "Runs as a single long-lived server-side computation on Copernicus Data Space's openEO backend — typically takes a few minutes.",
         "enabled": True,
     },
 
@@ -543,7 +558,7 @@ EXTERNAL_DATA_CATALOG = [
     {
         "key": "gee_global_surface_water",
         "source": "gee",
-        "category": "Water",
+        "category": "Nature & Environment",
         "name": "Global Surface Water Occurrence",
         "description": "JRC Global Surface Water dataset showing water occurrence frequency (1984-2021).",
         "target_model": "nature.WaterBodies",
@@ -558,7 +573,7 @@ EXTERNAL_DATA_CATALOG = [
     {
         "key": "gee_water_seasonality",
         "source": "gee",
-        "category": "Water",
+        "category": "Nature & Environment",
         "name": "Water Seasonality",
         "description": "Number of months per year with water presence.",
         "target_model": "common.LandCoverRaster",
@@ -577,7 +592,7 @@ EXTERNAL_DATA_CATALOG = [
     {
         "key": "gee_forest_cover",
         "source": "gee",
-        "category": "Forests",
+        "category": "Nature & Environment",
         "name": "Global Forest Cover (2000)",
         "description": "Hansen Global Forest Change - tree cover percentage in year 2000.",
         "target_model": "nature.Forests",
@@ -592,7 +607,7 @@ EXTERNAL_DATA_CATALOG = [
     {
         "key": "gee_forest_loss",
         "source": "gee",
-        "category": "Forests",
+        "category": "Nature & Environment",
         "name": "Forest Loss Year",
         "description": "Year of forest loss event (2001-2023).",
         "target_model": "common.LandCoverRaster",
@@ -609,7 +624,7 @@ EXTERNAL_DATA_CATALOG = [
     {
         "key": "gee_forest_gain",
         "source": "gee",
-        "category": "Forests",
+        "category": "Nature & Environment",
         "name": "Forest Gain (2000-2012)",
         "description": "Areas of forest gain between 2000-2012.",
         "target_model": "common.LandCoverRaster",
@@ -639,6 +654,8 @@ EXTERNAL_DATA_CATALOG = [
         "requires_bbox": True,
         "requires_date_range": True,
         "requires_auth": True,
+        "slow": True,
+        "slow_reason": "Server-side compositing across an image collection on Google Earth Engine can take a while, especially over a wide date range.",
         "enabled": True,
     },
     {
@@ -655,6 +672,8 @@ EXTERNAL_DATA_CATALOG = [
         "requires_bbox": True,
         "requires_date_range": True,
         "requires_auth": True,
+        "slow": True,
+        "slow_reason": "Server-side compositing across an image collection on Google Earth Engine can take a while, especially over a wide date range.",
         "enabled": True,
     },
     {
@@ -671,6 +690,8 @@ EXTERNAL_DATA_CATALOG = [
         "requires_bbox": True,
         "requires_date_range": True,
         "requires_auth": True,
+        "slow": True,
+        "slow_reason": "Server-side compositing across an image collection on Google Earth Engine can take a while, especially over a wide date range.",
         "enabled": True,
     },
 
@@ -678,7 +699,7 @@ EXTERNAL_DATA_CATALOG = [
     {
         "key": "gee_dynamic_world",
         "source": "gee",
-        "category": "Land Cover",
+        "category": "Imagery / Spectral Indices",
         "name": "Dynamic World (Near Real-Time)",
         "description": "Google/WRI 10m land cover classification. Requires date range.",
         "target_model": "common.LandCoverRaster",
@@ -691,12 +712,14 @@ EXTERNAL_DATA_CATALOG = [
         "requires_auth": True,
         "resolution_m": 10.0,
         "satellite_type": "Sentinel-2",
+        "slow": True,
+        "slow_reason": "Server-side compositing across an image collection on Google Earth Engine can take a while, especially over a wide date range.",
         "enabled": True,
     },
     {
         "key": "gee_soil_moisture",
         "source": "gee",
-        "category": "Land Cover",
+        "category": "Imagery / Spectral Indices",
         "name": "Soil Moisture (SMAP)",
         "description": "NASA SMAP soil moisture data. Requires date range.",
         "target_model": "common.LandCoverRaster",
@@ -709,6 +732,8 @@ EXTERNAL_DATA_CATALOG = [
         "requires_auth": True,
         "resolution_m": 9000.0,
         "satellite_type": "SMAP",
+        "slow": True,
+        "slow_reason": "Server-side compositing across an image collection on Google Earth Engine can take a while, especially over a wide date range.",
         "enabled": True,
     },
 
@@ -745,6 +770,8 @@ EXTERNAL_DATA_CATALOG = [
         "requires_auth": True,
         "resolution_m": 500.0,
         "satellite_type": "VIIRS",
+        "slow": True,
+        "slow_reason": "Server-side compositing across an image collection on Google Earth Engine can take a while, especially over a wide date range.",
         "enabled": True,
     },
 ]
@@ -802,12 +829,17 @@ SOURCE_INFO = {
 
 def get_catalog_grouped():
     """
-    Return the catalog grouped by source, then by category.
-    Structure: { source_key: { category: [datasets] } }
+    Return the catalog grouped by category.
+    Structure: { category: [datasets] }
+
+    Datasets used to also be sub-grouped by source, each with its own
+    icon/description sub-header — but with 5 sources spread across a
+    category, that added a layer of visual nesting that didn't carry much
+    information on its own. The source is still shown, just as a line on
+    each dataset row (see importer/views_external.py) instead of a
+    structural grouping level.
     """
     grouped = {}
     for ds in EXTERNAL_DATA_CATALOG:
-        src = ds["source"]
-        cat = ds["category"]
-        grouped.setdefault(src, {}).setdefault(cat, []).append(ds)
+        grouped.setdefault(ds["category"], []).append(ds)
     return grouped
