@@ -59,6 +59,8 @@ FIELD_MAPPINGS = {
         "VergundeNieuwbouw_2": "demand_units",
     },
     
+    # -------------------------------- Infrastructure / Built Environment -------------------------------
+    
     "pdok_buildings": {
         "__geometry__": "geom",
         "__unique__": "identificatie",
@@ -68,12 +70,26 @@ FIELD_MAPPINGS = {
         'gebruiksdoel': "usageFunction",
         'aantal_verblijfsobjecten': "numberUnits",
     },
+    "pdok_properties": {
+        "__geometry__": "geom",
+        "__unique__": "identificatie",
+        "__unique_field__": "id",
+        "oppervlakte": "grossArea",
+        "gebruiksdoel": "usageFunction",
+        "openbare_ruimte": "name",
+        "huisnummer": "houseNumber",
+        "postcode": "PostalCode",
+    },
+        
+    
     "pdok_streets": {
         "__geometry__": "geom",
         "__unique__": "gmlId",
         "__unique_field__": "inspireID",
         "text": "name",
     },
+    
+    # -------------------------------- Nature & Environment -------------------------------
     
     "pdok_natura2000": {
         "__geometry__": "geom",
@@ -224,15 +240,34 @@ EXTERNAL_DATA_CATALOG = [
         "source": "pdok",
         "category": "Built environment",
         "name": "Buildings (BAG Panden)",
-        "description": "All buildings from the Basisregistratie Adressen en Gebouwen (BAG). Large dataset — requires bounding box. WARNING: this may take a long time to load.",
+        "description": "All buildings from the Basisregistratie Adressen en Gebouwen (BAG).",
         "target_model": "builtup.Building",
         "url": "https://service.pdok.nl/lv/bag/wfs/v2_0",
         "layer": "bag:pand",
         "format": "wfs",
         "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "requires_bbox": True,
+        "slow": True,
+        "slow_reason": "BAG Panden is a very large dataset; even with a bounding box, it may take several minutes to load.",
         "enabled": True,
     },
+    {
+        "key": "pdok_properties",
+        "source": "pdok",
+        "category": "Built environment",
+        "name": "Properties (BAG Verblijfsobjecten)",
+        "description": "All properties from the Basisregistratie Adressen en Gebouwen (BAG).",
+        "target_model": "builtup.Property",
+        "url": "https://service.pdok.nl/lv/bag/wfs/v2_0",
+        "layer": "bag:verblijfsobject",
+        "format": "wfs",
+        "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
+        "requires_bbox": True,
+        "slow": True,
+        "slow_reason": "BAG Verblijfsobjecten is a very large dataset; even with a bounding box, it may take several minutes to load.",
+        "enabled": True,
+    },
+    
     {
         "key": "pdok_streets",
         "source": "pdok",

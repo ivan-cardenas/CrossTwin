@@ -207,21 +207,30 @@ class BuildingEnergyLabel(Building):
 class Property(models.Model):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=100, help_text="Name of the property")
+    houseNumber = models.CharField(max_length=5, help_text="House number of the property")
     building = models.ForeignKey(Building, verbose_name="Building", on_delete=models.DO_NOTHING)
     grossArea = models.FloatField(help_text="Area of the property in square meters")
-    livingArea = models.FloatField(help_text="Living area of the property in square meters")
-    greenVisibility = models.FloatField(help_text="Green visibility index of the property")  #TODO: Define green visibility index and calculation method
-    bedrooms = models.IntegerField(help_text="Number of bedrooms in the property")
-    bathrooms = models.IntegerField(help_text="Number of bathrooms in the property")
+    livingArea = models.FloatField(help_text="Living area of the property in square meters", null=True, blank=True)
+    greenVisibility = models.FloatField(help_text="Green visibility index of the property", null=True, blank=True)  #TODO: Define green visibility index and calculation method
+    bedrooms = models.IntegerField(help_text="Number of bedrooms in the property", null=True, blank=True)
+    bathrooms = models.IntegerField(help_text="Number of bathrooms in the property", null=True, blank=True)
     
-    listingPrice_EUR = models.FloatField(help_text="Listing price of the property in EUR")
-    salePrice_EUR = models.FloatField(help_text="Sale price of the property in EUR")
-    unitaryPrice_EUR_per_sqm = models.FloatField(help_text="Unitary price in EUR per square meter")
+    listingPrice_EUR = models.FloatField(help_text="Listing price of the property in EUR", null=True, blank=True)
+    salePrice_EUR = models.FloatField(help_text="Sale price of the property in EUR", null=True, blank=True)
+    unitaryPrice_EUR_per_sqm = models.FloatField(help_text="Unitary price in EUR per square meter", null=True, blank=True)
     last_updated = models.DateTimeField(default=timezone.now)
     geom = models.PointField(srid=CoordinateSystem)
     
     def __str__(self):
         return self.name
+    
+    def save(self, *args, **kwargs):
+        self.last_updated = timezone.now()
+        self.building = Building.objects.filter(geom__contains=self.geom).first()
+        # Calculate unitary price
+        if self.grossArea and self.listingPrice_EUR:
+            self.unitaryPrice_EUR_per_sqm = self.listingPrice_EUR / self.grossArea
+        super().save(*args, **kwargs)
     
     class Meta:
         verbose_name = "Property"
