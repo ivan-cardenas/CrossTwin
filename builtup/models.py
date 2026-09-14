@@ -13,7 +13,14 @@ CoordinateSystem = settings.COORDINATE_SYSTEM
 class ZoningArea(models.Model):
     id = models.AutoField(primary_key=True)
     neighborhood = models.ForeignKey(Neighborhood, verbose_name="Neighborhood", on_delete=models.DO_NOTHING)
-    zone_type = models.CharField(max_length=100, choices=[('residential', 'Residential'), ('commercial', 'Commercial'), ('industrial', 'Industrial'), ('mixed', 'Mixed Use')], help_text="Type of zoning area")
+
+    zone_type = models.CharField(max_length=100, null=True, blank=True, choices=[('residential', 'Residential'), ('commercial', 'Commercial'), ('industrial', 'Industrial'), ('mixed', 'Mixed Use')], help_text="Type of zoning area, where known")
+    # Dutch legal plan instrument from INSPIRE Planned Land Use's
+    # planTypeName codelist (e.g. 'bestemmingsplan', 'wijzigingsplan',
+    # 'omgevingsvergunning') — populated by the pdok_landcover_kadaster
+    # import.
+    plan_type = models.CharField(max_length=100, null=True, blank=True, help_text="Dutch legal plan instrument (e.g. 'bestemmingsplan'), where the zoning geometry comes from a legal spatial plan")
+    valid_from = models.DateField(null=True, blank=True, help_text="Date the legal plan took effect, where known")
     description = models.TextField(null=True, blank=True, help_text="Detailed description of the zoning area")
     area = models.FloatField(help_text="Area of the zoning area in square meters")
     benchmarkPrice_per_sqm = models.FloatField(null=True, blank=True, help_text="Benchmark price per square meter in EUR")
@@ -21,6 +28,11 @@ class ZoningArea(models.Model):
     
     def __str__(self):
         return f"Zoning Area {self.id} ({self.zone_type})"
+    
+    def save(self, *args, **kwargs):
+        if self.geom:
+            self.area = self.geom.area
+        super().save(*args, **kwargs)
     
     class Meta:
         verbose_name = "Zoning Area"
@@ -207,7 +219,7 @@ class BuildingEnergyLabel(Building):
 class Property(models.Model):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=100, help_text="Name of the property")
-    houseNumber = models.CharField(max_length=5, help_text="House number of the property")
+    houseNumber = models.CharField(max_length=5, null=True, blank=True, help_text="House number of the property")
     building = models.ForeignKey(Building, verbose_name="Building", on_delete=models.DO_NOTHING)
     grossArea = models.FloatField(help_text="Area of the property in square meters")
     livingArea = models.FloatField(help_text="Living area of the property in square meters", null=True, blank=True)

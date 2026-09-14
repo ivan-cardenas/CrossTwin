@@ -40,7 +40,7 @@
 
 ## TODOS
 
-1.  CHECK FOR IMPROVING AND ADDING INDICES FROM NEW RESEARCH EXAMPLE NDWI - I know there are betters.
+1. CHECK FOR IMPROVING AND ADDING INDICES FROM NEW RESEARCH EXAMPLE NDWI - I know there are betters.
 2. Have overview of active layers
 3. on nature/models/Park, Import parks
 3. on builtup/models/Property, add Define green visibility index and calculation method

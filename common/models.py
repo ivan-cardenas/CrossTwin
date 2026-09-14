@@ -191,8 +191,17 @@ class LandCoverVector(models.Model):
     land_cover_type = models.ForeignKey(LandCoverClasses, on_delete=models.DO_NOTHING, help_text="Type of land cover (e.g., 'Urban', 'Forest', 'Agriculture', etc.)")
     land_use = models.CharField(max_length=100, help_text="Land use type (e.g., 'Residential', 'Commercial', 'Industrial', 'Park', etc.)")
     geom = models.MultiPolygonField(srid=CoordinateSystem)
-    percentage = models.FloatField(help_text="Percentage of the City covered by this land cover type") #TODO: Calculate this percentage based on the area of the geom and the total area of the Province. #TODO: Vegetation Coverage and Builtup Coverage as additional fields?
-    material = models.ForeignKey(SurfaceMaterialProperties, on_delete=models.DO_NOTHING, help_text="Material properties of the land cover type")
+    # Calculated at import time for WFS sources via FIELD_MAPPINGS'
+    # __percentage_of_parent__ (see pdok_landcover_brt in external_catalog.py):
+    # this polygon's area as a percentage of its City's area_km2. Rows created
+    # any other way still need it set explicitly. #TODO: Vegetation Coverage and Builtup Coverage as additional fields?
+    percentage = models.FloatField(help_text="Percentage of the City covered by this land cover type")
+    # Nullable: not every land-cover source can tell us a surface material.
+    # PDOK's BRT Bodemgebruik WFS (pdok_landcover_brt) only classifies land
+    # cover (landCoverObservationClass), it carries no material/albedo/
+    # thermal-property data, so those rows leave this unset rather than
+    # guessing a material.
+    material = models.ForeignKey(SurfaceMaterialProperties, on_delete=models.DO_NOTHING, null=True, blank=True, help_text="Material properties of the land cover type, where known")
     last_updated = models.DateTimeField(default=timezone.now)
     
     def __str__(self):

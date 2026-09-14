@@ -88,7 +88,50 @@ FIELD_MAPPINGS = {
         "__unique_field__": "inspireID",
         "text": "name",
     },
-    
+    "pdok_landcover_kadaster": {
+        "__geometry__": "geom",
+        "__spatial_fk__": {"field": "neighborhood", "model": "common.Neighborhood", "required": True},
+        # Keys here are synthesized properties built in
+        # PDOKImporter._import_atom_gml_features (officialTitle, plan-type
+        # codelist value, validFrom), not raw GML element names.
+        # plu:SpatialPlan (INSPIRE Planned Land Use) is a legal spatial plan,
+        # not a classified zoning function -- there's no source field for
+        # zone_type (that would need the separate plu:ZoningElement feature
+        # type, absent from this feed), so it's deliberately left unmapped
+        # and stays null. plan_type/valid_from carry what the feed actually
+        # has instead of forcing a fake zone_type.
+        "title": "description",
+        "plan_type": "plan_type",
+        "valid_from": "valid_from",
+    },
+    "pdok_landcover_brt": {
+        "__geometry__": "geom",
+        "__spatial_fk__": {"field": "city", "model": "common.City", "required": True},
+        # landCoverObservationClass is a small bounded codelist (~11 values
+        # seen: "urban fabric", "arable land", "pastures", "broad-leaved
+        # forest", ...) -- get_or_create a common.LandCoverClasses row the
+        # first time each value is seen rather than requiring them to be
+        # pre-populated, since this is a classification lookup table, not an
+        # administrative hierarchy like __spatial_fk__ parents.
+        "__fk_lookup__": [{
+            "field": "land_cover_type",
+            "model": "common.LandCoverClasses",
+            "source_property": "landCoverObservationClass",
+            "lookup_field": "class_name",
+            "defaults": {"description": "Auto-created from PDOK BRT Bodemgebruik (pdok_landcover_brt) import."},
+        }],
+        # observationDate is a full ISO timestamp; LandCoverVector.year is a
+        # plain IntegerField.
+        "__year_from_date__": "observationDate",
+        # LandCoverVector.percentage = this polygon's area as % of its City's
+        # area_km2 (resolved by __spatial_fk__ above).
+        "__percentage_of_parent__": {"parent_field": "city", "parent_area_attr": "area_km2"},
+        "landCoverObservationClass": "land_use",
+        # material has no source in this WFS (classification only, no
+        # surface/albedo data) -- left unmapped, common.LandCoverVector.material
+        # is nullable for exactly this reason.
+    },
+
     # -------------------------------- Nature & Environment -------------------------------
     
     "pdok_natura2000": {
@@ -132,6 +175,8 @@ FIELD_MAPPINGS = {
         "id": "source_id",
         "naam": "name",
     },
+  
+    
     "rivm_energy_labels": {
         "__geometry__": "geom",
         "__unique__": "identificatie",
@@ -461,26 +506,43 @@ EXTERNAL_DATA_CATALOG = [
         "enabled": True,
     },
 
+    # ── Land Cover (Vector) ──────────────────────────────────────────────────
+    {
+        "key": "pdok_landcover_brt",
+        "source": "pdok",
+        "category": "Imagery / Spectral Indices",
+        "name": "Bodemgebruik - Land Cover (INSPIRE harmonised) WFS",
+        "description": "Classified Dutch land cover polygons (BRT/Top10NL-derived) from Kadaster, INSPIRE harmonised.",
+        "target_model": "common.LandCoverVector",
+        "url": "https://service.pdok.nl/kadaster/brt-bodemgebruik/wfs/v1_0",
+        "layer": "lc:landcoverunit",
+        "format": "wfs",
+        "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
+        "requires_bbox": True,
+        "enabled": True,
+    },
+
     # ══════════════════════════════════════════════════════════════════════════
     # Sentinel-2 - Copernicus Earth Observation
     # ══════════════════════════════════════════════════════════════════════════
     
     # ── Land Cover (Raster) ──────────────────────────────────────────────────
     {
-        "key": "sentinel2_worldcover_raster",
-        "source": "sentinel2",
-        "category": "Imagery / Spectral Indices",
-        "name": "ESA WorldCover 10m (2021)",
-        "description": "Global 10m land cover from Sentinel-2 via WCS.",
-        "target_model": "common.LandCoverRaster",
-        "url": "https://services.terrascope.be/wcs/v2",
-        "wcs_url": "https://services.terrascope.be/wcs/v2",
-        "layer": "WORLDCOVER_2021_MAP",
-        "format": "wcs",
+        "key": "pdok_landcover_kadaster",
+        "source": "pdok",
+        "category": "Built environment",
+        "name": "Planned Land Use / Zoning Plans (INSPIRE harmonised) ATOM Feed",
+        # This is an INSPIRE Planned Land Use (plu:SpatialPlan) feed of Dutch
+        # zoning plans (bestemmingsplannen) from Kadaster's ruimtelijkeplannen.nl,
+        # not a classified land-cover raster/vector — it has no land-cover-type
+        # or surface-material attribute, so it targets builtup.ZoningArea rather
+        # than common.LandCoverVector.
+        "description": "Dutch zoning plans (bestemmingsplannen) from Kadaster's Ruimtelijkeplannen register.",
+        "target_model": "builtup.ZoningArea",
+        "url": "https://service.pdok.nl/kadaster/ruimtelijke-plannen-gepland-landgebruik/atom/index.xml",
+        "format": "atom",
         "params": {"srsName": "EPSG:4326"},
         "requires_bbox": True,
-        "resolution_m": 10.0,
-        "satellite_type": "Sentinel-2",
         "enabled": True,
     },
     {

@@ -89,6 +89,129 @@ def get_model_class(model_path: str):
         raise ValueError(f"Model not found: {model_path}")
 
 
+# INSPIRE Planned Land Use namespaces used by Kadaster's "Gepland Landgebruik"
+# Atom download -- the only GML feature schema PDOKImporter._import_atom_gml_features
+# currently understands. A different Atom dataset with its own feature type
+# would need its own tag/namespace handling added there.
+_PLU_NS = {
+    "plu": "{http://inspire.ec.europa.eu/schemas/plu/4.0}",
+    "base": "{http://inspire.ec.europa.eu/schemas/base/3.3}",
+    "gml": "{http://www.opengis.net/gml/3.2}",
+    "xlink": "{http://www.w3.org/1999/xlink}",
+    "xsi": "{http://www.w3.org/2001/XMLSchema-instance}",
+}
+
+
+def _import_atom_gml_features(href: str, bbox_polygon: Polygon, Model, mapping: Dict) -> Tuple[int, List[str]]:
+    """
+    Stream a plu:SpatialPlan GML file (INSPIRE Planned Land Use) over HTTP and
+    import only the features whose extent intersects bbox_polygon, directly
+    into Model using the same FIELD_MAPPINGS pattern fetch_wfs uses.
+
+    This dataset ships as a single national file with no per-tile split (tens
+    of GB), so there is no cheap way to fetch "just the bbox" -- GML has no
+    random access, so any client (ogr2ogr included) has to scan the remote
+    file sequentially regardless. iterparse does that same sequential scan
+    but discards each feature immediately after testing it against the bbox,
+    so memory stays bounded to one feature at a time.
+    """
+    from xml.etree import ElementTree as ET
+
+    plu, base, gml, xlink, xsi = (_PLU_NS[k] for k in ("plu", "base", "gml", "xlink", "xsi"))
+
+    geom_field = mapping.get("__geometry__", "geom")
+    spatial_fk_conf = mapping.get("__spatial_fk__")
+    parent_objects = []
+    if spatial_fk_conf:
+        ParentModel = get_model_class(spatial_fk_conf["model"])
+        parent_objects = list(ParentModel.objects.all())
+        if not parent_objects and spatial_fk_conf.get("required", True):
+            return 0, [
+                f"No {spatial_fk_conf['model']} records found — cannot resolve "
+                f"'{spatial_fk_conf['field']}' FK. Import the parent records first."
+            ]
+
+    created = 0
+    errors = []
+
+    with requests.get(href, stream=True, timeout=600) as r:
+        r.raise_for_status()
+        r.raw.decode_content = True
+        for _event, elem in ET.iterparse(r.raw, events=("end",)):
+            if elem.tag != f"{plu}SpatialPlan":
+                continue
+            try:
+                pos_lists = [p.text for p in elem.findall(f".//{gml}posList") if p.text]
+                polygons = []
+                for text in pos_lists:
+                    coords = [float(c) for c in text.split()]
+                    # GML posList for EPSG:4258 is lat lon pairs -> swap to lon lat
+                    pts = [(coords[i + 1], coords[i]) for i in range(0, len(coords), 2)]
+                    if len(pts) >= 4:
+                        polygons.append(Polygon(pts, srid=4326))
+                if not polygons:
+                    continue
+
+                geom = MultiPolygon(*polygons, srid=4326)
+                if not bbox_polygon.intersects(geom):
+                    continue
+
+                local_id_el = elem.find(f".//{base}localId")
+                title_el = elem.find(f"{plu}officialTitle")
+                valid_from_el = elem.find(f"{plu}validFrom")
+                plan_type_el = elem.find(f"{plu}planTypeName")
+
+                title = title_el.text.strip() if title_el is not None and title_el.text else None
+                if title is None:
+                    title = local_id_el.text if local_id_el is not None else None
+                valid_from = (
+                    valid_from_el.text
+                    if valid_from_el is not None and valid_from_el.get(f"{xsi}nil") != "true"
+                    else None
+                )
+                plan_type = None
+                if plan_type_el is not None:
+                    href_val = plan_type_el.get(f"{xlink}href")
+                    if href_val:
+                        plan_type = href_val.rsplit("/", 1)[-1]
+
+                geom.transform(28992)
+
+                field_values = {geom_field: geom, "area": geom.area}
+                props = {"title": title, "plan_type": plan_type, "valid_from": valid_from}
+                for src_key, model_field in mapping.items():
+                    if src_key.startswith("__"):
+                        continue
+                    if props.get(src_key) is not None:
+                        field_values[model_field] = props[src_key]
+                field_values.update(mapping.get("__static__", {}))
+
+                if spatial_fk_conf:
+                    centroid = geom.centroid
+                    parent = next((p for p in parent_objects if p.geom.contains(centroid)), None)
+                    if parent is None:
+                        parent = next((p for p in parent_objects if p.geom.intersects(centroid)), None)
+                    if parent:
+                        field_values[spatial_fk_conf["field"]] = parent
+                    elif spatial_fk_conf.get("required", True):
+                        errors.append(
+                            f"No parent {spatial_fk_conf['model']} found for "
+                            f"'{local_id_el.text if local_id_el is not None else '?'}' — skipped."
+                        )
+                        continue
+
+                with transaction.atomic():
+                    Model.objects.create(**field_values)
+                created += 1
+
+            except Exception as e:
+                errors.append(f"Feature import failed: {e}")
+            finally:
+                elem.clear()
+
+    return created, errors
+
+
 def _legend_url_from_capabilities(base_url: str, layer: str) -> Optional[str]:
     """
     Look up a layer's <LegendURL><OnlineResource xlink:href="..."/> from the
@@ -522,6 +645,7 @@ class PDOKImporter:
             created_count = 0
             updated_count = 0
             errors = []
+            fk_lookup_cache = {}  # {model_field: {source_value: model_instance}}, shared across all features in this batch
 
             # Pre-load parent model objects for spatial FK resolution (done once per batch)
             spatial_fk_conf = mapping.get("__spatial_fk__")
@@ -577,11 +701,53 @@ class PDOKImporter:
                             if wfs_prop in props and props[wfs_prop] is not None:
                                 field_values[model_field] = props[wfs_prop]
 
+                        # __year_from_date__: some WFS properties are a full ISO
+                        # timestamp (e.g. "2015-12-31T23:00:00Z") where the model
+                        # field is a plain year IntegerField -- pull just the year
+                        # rather than failing the int() coercion on the full string.
+                        year_from_date_prop = mapping.get("__year_from_date__")
+                        if year_from_date_prop and props.get(year_from_date_prop):
+                            try:
+                                field_values["year"] = int(str(props[year_from_date_prop])[:4])
+                            except (TypeError, ValueError):
+                                pass
+
                         # __static__ fields aren't sourced from WFS properties at
                         # all (e.g. every feature in the natura2000 dataset is by
                         # definition a Natura 2000 area) -- always applied last so
                         # they win over anything a WFS property might otherwise map.
                         field_values.update(mapping.get("__static__", {}))
+
+                        # __fk_lookup__: resolve a plain (non-spatial) FK by
+                        # get_or_create-ing a parent row keyed on a WFS property
+                        # value -- e.g. mapping a land-cover classification string
+                        # straight onto common.LandCoverClasses.class_name,
+                        # creating the category the first time it's seen. Unlike
+                        # __spatial_fk__, the parent rows don't need to already
+                        # exist, since the target is a small classification
+                        # lookup table rather than an administrative hierarchy.
+                        skip_feature = False
+                        for fk_conf in mapping.get("__fk_lookup__", []):
+                            src_val = props.get(fk_conf["source_property"])
+                            if src_val is None:
+                                if fk_conf.get("required", True):
+                                    errors.append(
+                                        f"Missing '{fk_conf['source_property']}' for FK lookup "
+                                        f"'{fk_conf['field']}' — skipped."
+                                    )
+                                    skip_feature = True
+                                break
+                            cache = fk_lookup_cache.setdefault(fk_conf["field"], {})
+                            if src_val not in cache:
+                                LookupModel = get_model_class(fk_conf["model"])
+                                obj, _ = LookupModel.objects.get_or_create(
+                                    **{fk_conf["lookup_field"]: src_val},
+                                    defaults=fk_conf.get("defaults", {}),
+                                )
+                                cache[src_val] = obj
+                            field_values[fk_conf["field"]] = cache[src_val]
+                        if skip_feature:
+                            continue
 
                         # Resolve spatial FK: find the parent whose geometry contains this feature's centroid
                         if spatial_fk_conf and parent_objects:
@@ -598,6 +764,22 @@ class PDOKImporter:
                                     f"'{props.get(unique_wfs_prop, '?')}' — skipped."
                                 )
                                 continue
+
+                        # __percentage_of_parent__: express this feature's geometry
+                        # area as a percentage of an already-resolved parent's own
+                        # area field (e.g. LandCoverVector.percentage = this
+                        # polygon's share of its City's area_km2). Requires the
+                        # parent FK to already be in field_values, so this runs
+                        # after spatial FK resolution above.
+                        pct_conf = mapping.get("__percentage_of_parent__")
+                        if pct_conf and pct_conf["parent_field"] in field_values:
+                            parent_obj = field_values[pct_conf["parent_field"]]
+                            parent_area_km2 = getattr(parent_obj, pct_conf["parent_area_attr"], None)
+                            if parent_area_km2:
+                                # geom is in EPSG:28992 (meters) by this point -> area is m^2
+                                field_values["percentage"] = round(
+                                    (geom.area / (parent_area_km2 * 1_000_000)) * 100, 6
+                                )
 
                         # Use update_or_create if unique field is defined
                         if unique_wfs_prop and unique_model_field and unique_wfs_prop in props:
@@ -800,92 +982,135 @@ class PDOKImporter:
 
     @staticmethod
     def fetch_atom(dataset: Dict, bbox: list, max_tiles: int = 4) -> ImportResult:
-        """
-        Download raster tiles from PDOK ATOM feed.
-        """
+        from xml.etree import ElementTree as ET
+
+        ns = {
+            'atom': 'http://www.w3.org/2005/Atom',
+            'georss': 'http://www.georss.org/georss',
+        }
+
+        def fetch_feed(url):
+            resp = requests.get(url, timeout=60)
+            resp.raise_for_status()
+            return ET.fromstring(resp.content)
+
+        atom_url = dataset["url"]
+        logger.info(f"Fetching ATOM feed: {atom_url}")
+
         try:
-            from xml.etree import ElementTree as ET
-            
-            atom_url = dataset["url"]
-            
-            logger.info(f"Fetching ATOM feed: {atom_url}")
-            response = requests.get(atom_url, timeout=60)
-            response.raise_for_status()
-            
-            # Parse ATOM XML
-            root = ET.fromstring(response.content)
-            ns = {'atom': 'http://www.w3.org/2005/Atom', 'georss': 'http://www.georss.org/georss'}
-            
-            # Find entries with download links
+            root = fetch_feed(atom_url)
             entries = root.findall('.//atom:entry', ns)
-            
             if not entries:
                 return ImportResult("error", "No entries found in ATOM feed.")
-            
-            # Filter by bbox intersection
-            bbox_polygon = Polygon.from_bbox(bbox)
-            matching_tiles = []
-            
+
+            # PDOK's top-level index.xml entries can point either straight at
+            # data (type=gml/json/...) or at a second, dataset-level Atom feed
+            # (type="application/atom+xml") that itself lists the real
+            # download links -- follow one level down when we hit the latter,
+            # otherwise the "xml" in "application/atom+xml" would previously
+            # get misidentified as vector data and handed to ogr2ogr.
+            data_entries = []
             for entry in entries:
                 link_el = entry.find('atom:link[@rel="alternate"]', ns)
                 if link_el is None:
                     continue
-                
-                tile_url = link_el.get('href')
-                
-                # Try to get georss:polygon or georss:box
-                georss_box = entry.find('georss:box', ns)
-                if georss_box is not None:
-                    coords = georss_box.text.split()
-                    if len(coords) == 4:
-                        tile_bbox = [float(c) for c in coords]
-                        tile_polygon = Polygon.from_bbox([tile_bbox[1], tile_bbox[0], tile_bbox[3], tile_bbox[2]])
-                        if bbox_polygon.intersects(tile_polygon):
-                            matching_tiles.append(tile_url)
+                if link_el.get('type') == 'application/atom+xml':
+                    data_entries.extend(fetch_feed(link_el.get('href')).findall('.//atom:entry', ns))
                 else:
-                    # No georss info, include tile (can't filter)
-                    matching_tiles.append(tile_url)
-            
-            if not matching_tiles:
-                return ImportResult("success", "No tiles intersect the specified bounding box.", 0)
-            
-            # Limit number of tiles
-            tiles_to_download = matching_tiles[:max_tiles]
-            
-            # Download tiles
-            temp_dir = Path(settings.MEDIA_ROOT) / "imports" / "pdok" / "rasters"
-            temp_dir.mkdir(parents=True, exist_ok=True)
-            
-            downloaded = []
-            for tile_url in tiles_to_download:
-                try:
-                    tile_response = requests.get(tile_url, timeout=300)
-                    tile_response.raise_for_status()
-                    
-                    tile_filename = tile_url.split('/')[-1]
-                    tile_path = temp_dir / tile_filename
-                    
-                    with open(tile_path, 'wb') as f:
-                        f.write(tile_response.content)
-                    
-                    downloaded.append(str(tile_path))
-                except Exception as e:
-                    logger.warning(f"Failed to download tile {tile_url}: {e}")
-            
-            if not downloaded:
-                return ImportResult("error", "Failed to download any tiles.")
-            
+                    data_entries.append(entry)
+
+            if not data_entries:
+                return ImportResult("error", "No downloadable entries found in ATOM feed.")
+
+            bbox_polygon = Polygon.from_bbox(bbox)
+            matching = []
+
+            for entry in data_entries:
+                link_el = entry.find('atom:link[@rel="alternate"]', ns)
+                if link_el is None or link_el.get('type') == 'application/atom+xml':
+                    continue
+
+                href = link_el.get('href')
+                content_type = link_el.get('type', '')
+
+                # Spatial filter (polygon or box)
+                georss_poly = entry.find('georss:polygon', ns)
+                georss_box = entry.find('georss:box', ns)
+
+                tile_polygon = None
+                if georss_poly is not None:
+                    coords = [float(c) for c in georss_poly.text.split()]
+                    # georss:polygon is lat lon pairs → swap to lon lat
+                    points = [(coords[i+1], coords[i]) for i in range(0, len(coords), 2)]
+                    tile_polygon = Polygon(points)
+                elif georss_box is not None:
+                    c = [float(x) for x in georss_box.text.split()]
+                    tile_polygon = Polygon.from_bbox([c[1], c[0], c[3], c[2]])
+
+                # Entries without spatial metadata can't be checked against
+                # the bbox — skip them rather than downloading blind.
+                if tile_polygon is None:
+                    logger.warning(f"ATOM entry has no georss extent, skipping: {href}")
+                    continue
+
+                if bbox_polygon.intersects(tile_polygon):
+                    matching.append({'href': href, 'type': content_type})
+
+            if not matching:
+                return ImportResult("success", "No entries intersect the bounding box.", 0)
+
+            model_path = dataset["target_model"]
+            try:
+                Model = get_model_class(model_path)
+            except ValueError as e:
+                return ImportResult("error", str(e))
+
+            loaded = 0
+            errors = []
+            for item in matching[:max_tiles]:
+                href = item['href']
+                content_type = item['type']
+
+                if 'gml' in content_type:
+                    mapping = FIELD_MAPPINGS.get(dataset["key"])
+                    if not mapping:
+                        return ImportResult("error", f"No field mapping defined for {dataset['key']}")
+                    n, errs = _import_atom_gml_features(href, bbox_polygon, Model, mapping)
+                    loaded += n
+                    errors.extend(errs)
+                elif content_type.startswith('image/') or content_type in ('application/octet-stream',):
+                    # Raster tile — stream to disk safely
+                    temp_dir = Path(settings.MEDIA_ROOT) / "imports" / "pdok" / "rasters"
+                    temp_dir.mkdir(parents=True, exist_ok=True)
+                    tile_path = temp_dir / href.split('/')[-1]
+
+                    with requests.get(href, stream=True, timeout=300) as r:
+                        r.raise_for_status()
+                        with open(tile_path, 'wb') as f:
+                            for chunk in r.iter_content(chunk_size=1024 * 1024):
+                                f.write(chunk)
+                    loaded += 1
+                else:
+                    errors.append(f"Unsupported ATOM content type '{content_type}' for {href} — skipped.")
+
+            message = f"Imported {loaded} feature(s)/tile(s) within the bounding box."
+            if errors:
+                message += f" {len(errors)} error(s), e.g.: {errors[0]}"
+
             return ImportResult(
-                "success",
-                f"Downloaded {len(downloaded)} of {len(matching_tiles)} tiles ({max_tiles} max).",
-                len(downloaded),
+                "success" if loaded else "error",
+                message,
+                loaded,
                 0,
-                downloaded[0] if len(downloaded) == 1 else str(temp_dir)
             )
-            
+
+        except requests.RequestException as e:
+            return ImportResult("error", f"ATOM request failed: {e}")
+        except ET.ParseError as e:
+            return ImportResult("error", f"Failed to parse ATOM feed: {e}")
         except Exception as e:
             logger.exception(f"ATOM import error for {dataset['key']}")
-            return ImportResult("error", f"ATOM import failed: {e}")
+            return ImportResult("error", f"Import failed: {e}")
 
     @staticmethod
     def register_wms(dataset: Dict) -> ImportResult:
