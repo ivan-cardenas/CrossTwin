@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from django.http import JsonResponse
 
-from common.models import Province as PM
+from administrative.models import Province as PM
 from .calculations import (
     calculate_supply_demand_province,
     calculate_new_units_province,

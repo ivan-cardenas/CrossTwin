@@ -11,7 +11,7 @@ range.
 
 This module picks a colormap and value range from the satellite/process
 metadata added onto the raster models (`index`, `satellite_type`/`source` —
-see common/models.py, urban_heat/models.py), falling back to per-model
+see physicalEnv/models.py, urban_heat/models.py), falling back to per-model
 defaults, and to live statistics from TiTiler when no fixed range is known
 for the data (e.g. population density, nighttime lights).
 """
@@ -65,8 +65,8 @@ MODEL_STYLES = {
     "urban_heat.pet": ("rdylbu_r", (4, 41), "PET", "°C"),
     "urban_heat.landsurfacetemperature": ("inferno", (0, 50), "Land Surface Temperature", "°C"),
     "urban_heat.surfaceurbanheatislandintensity": ("rdylbu_r", (-2, 8), "SUHII", "°C"),
-    "common.digitalelevationmodel": ("terrain", None, "Elevation", "m"),
-    "common.digitalsurfacemodel": ("terrain", None, "Surface Height", "m"),
+    "physicalenv.digitalelevationmodel": ("terrain", None, "Elevation", "m"),
+    "physicalenv.digitalsurfacemodel": ("terrain", None, "Surface Height", "m"),
 }
 
 DEFAULT_STYLE = ("viridis", None, "Value", "")

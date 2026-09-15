@@ -331,7 +331,7 @@ Confirm and import. The system will:
 ```bash
 curl http://localhost:8000/api/layers/
 ```
-Add `?app_labels=common.builtup` to restrict the response to specific apps — each entry costs at least one DB query, so the map's own initial load only asks for `common` and fetches the rest in the background (see `common/static/js/Layers.js`).
+Add `?app_labels=administrative,builtup` to restrict the response to specific apps — each entry costs at least one DB query, so the map's own initial load only asks for `administrative` and fetches the rest in the background (see `core/static/js/Layers.js`).
 
 #### Get Specific Layer Data
 ```bash

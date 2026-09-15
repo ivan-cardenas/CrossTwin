@@ -2,7 +2,7 @@ import os
 from django.contrib.gis.db import models
 from django.utils import timezone
 from django.core.exceptions import ValidationError
-from common.models import Province, City, Neighborhood
+from administrative.models import Province, City, Neighborhood
 from django.conf import settings
 
 from core.rasterOperations import interpolate_raster
@@ -115,7 +115,7 @@ class InterpolatedRasterBase(models.Model):
         help_text="Interpolated raster data (stored in PostGIS)"
     )
     Province = models.ForeignKey(
-        'common.Province',
+        'administrative.Province',
         on_delete=models.CASCADE,
         null=True,
         blank=True,

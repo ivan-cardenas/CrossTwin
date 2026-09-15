@@ -30,20 +30,20 @@ const BASEMAPS = {
   outdoors:  'mapbox://styles/mapbox/outdoors-v12'
 };
 
-// 'common' (Province/City/District/Neighborhood) is included in every
-// tool's categories so the administrative boundaries used to select a
+// 'administrative' (Province/City/District/Neighborhood) is included in
+// every tool's categories so the administrative boundaries used to select a
 // unit for the indicator panels stay clickable no matter which tool is active.
 const TOOL_CATEGORIES = {
-  overview:    ['common', 'urbanHeat', 'watersupply', 'weather', 'builtup', 'Energy', 'housing', 'nature', 'groundwater'],
-  common:      ['common'],
-  temperature: ['common', 'temperature', 'heat', 'weather', 'urban_heat,'],
-  builtup:     ['common', 'builtup'],
-  energy:      ['common', 'Energy'],
-  housing:     ['common', 'housing'],
-  green:       ['common', 'nature', 'green', 'vegetation', 'trees', 'Park', 'LandCover'],
-  water:       ['common', 'watersupply'],
-  groundwater: ['common', 'groundwater'],
-  satellite:   null,
+  overview:      ['administrative', 'urbanHeat', 'watersupply', 'weather', 'builtup', 'Energy', 'housing', 'nature', 'groundwater'],
+  administrative:['administrative'],
+  temperature:   ['administrative', 'temperature', 'heat', 'weather', 'urban_heat,'],
+  builtup:       ['administrative', 'builtup'],
+  energy:        ['administrative', 'Energy'],
+  housing:       ['administrative', 'housing'],
+  green:         ['administrative', 'physicalEnv', 'nature', 'green', 'vegetation', 'trees', 'Park', 'LandCover'],
+  water:         ['administrative', 'watersupply'],
+  groundwater:   ['administrative', 'groundwater'],
+  satellite:     null,
 };
 
 const TOOL_CONTENT = {

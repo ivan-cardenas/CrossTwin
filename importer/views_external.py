@@ -83,12 +83,12 @@ def get_external_data(request):
 
 def get_neighborhoods_geojson(request):
     """
-    Return all neighborhoods from common.Neighborhood as a GeoJSON FeatureCollection
+    Return all neighborhoods from administrative.Neighborhood as a GeoJSON FeatureCollection
     in WGS84. Used by the external data import map so the user can click one or more
     neighborhoods to set the area of interest (bbox) instead of drawing a rectangle
     manually.
     """
-    from common.models import Neighborhood
+    from administrative.models import Neighborhood
 
     features = []
     for neighborhood in Neighborhood.objects.only('id', 'neighborhoodName', 'geom'):

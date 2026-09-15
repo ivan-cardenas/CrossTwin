@@ -1,6 +1,7 @@
 # water/tests/factories.py
+import uuid
 from django.contrib.gis.geos import Point, MultiPoint, MultiPolygon, Polygon
-from common.models import Province, City, Neighborhood
+from administrative.models import Province, City, District, Neighborhood
 from watersupply.models import (
     UsersLocation, MeteredResidential,
     ConsumptionCapita, ExtractionWater,
@@ -31,9 +32,26 @@ def make_city(province=None, **kwargs):
     defaults.update(kwargs)
     return City.objects.create(**defaults)
 
-def make_neighborhood(city=None, **kwargs):
+def make_district(city=None, **kwargs):
     city = city or make_city()
-    defaults = dict(neighborhoodName="Test Neighborhood", city=city, geom=make_polygon(), currentPopulation=1200)
+    defaults = dict(
+        id=f"test-district-{uuid.uuid4().hex[:8]}",
+        districtName="Test District",
+        city=city,
+        geom=make_polygon(),
+    )
+    defaults.update(kwargs)
+    return District.objects.create(**defaults)
+
+def make_neighborhood(city=None, district=None, **kwargs):
+    district = district or make_district(city=city)
+    defaults = dict(
+        id=f"test-neighborhood-{uuid.uuid4().hex[:8]}",
+        neighborhoodName="Test Neighborhood",
+        district=district,
+        geom=make_polygon(),
+        currentPopulation=1200,
+    )
     defaults.update(kwargs)
     return Neighborhood.objects.create(**defaults)
 

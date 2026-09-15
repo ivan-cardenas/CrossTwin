@@ -264,7 +264,7 @@ def export_geotiff_to_cog(source_tiff_path, instance):
     """
     Convert a GeoTIFF already on disk directly to a COG, without ever loading
     it into Postgres. Used for models flagged `SKIP_RASTER_DB_STORAGE = True`
-    (e.g. common.DigitalElevationModel/DigitalSurfaceModel) where nothing
+    (e.g. physicalEnv.DigitalElevationModel/DigitalSurfaceModel) where nothing
     queries the raster with server-side PostGIS raster SQL, so storing the
     raw raster as a RasterField blob is a large, purely redundant write —
     the actual failure mode for city-scale imports (a multi-hundred-MB

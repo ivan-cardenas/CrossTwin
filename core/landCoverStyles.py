@@ -1,5 +1,5 @@
 """
-Color scheme for LandCoverVector.land_cover_type (common.LandCoverClasses).
+Color scheme for LandCoverVector.land_cover_type (physicalEnv.LandCoverClasses).
 
 Unlike the raster colormaps in core/rasterStyles.py, LandCoverClasses rows
 aren't a fixed enum — pdok_landcover_brt get_or_creates one per distinct
@@ -88,13 +88,13 @@ def get_landcover_color(class_name: str) -> str:
 def build_landcover_style_and_legend():
     """
     Build a Mapbox `match` fill-color expression plus a legend for every
-    class_name actually present on common.LandCoverVector rows.
+    class_name actually present on physicalEnv.LandCoverVector rows.
 
     Returns (style_layers, legend) where style_layers is the LAYER_STYLES
-    'layers' list for common.LandCoverVector and legend is a list of
+    'layers' list for physicalEnv.LandCoverVector and legend is a list of
     {label, color} dicts sorted alphabetically for display.
     """
-    from common.models import LandCoverVector
+    from physicalEnv.models import LandCoverVector
 
     class_names = sorted(
         LandCoverVector.objects

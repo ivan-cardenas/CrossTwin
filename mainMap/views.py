@@ -184,36 +184,36 @@ def model_geojson(request, app_label, model_name):
 
 
 LAYER_STYLES = {
-    # ── common — administrative hierarchy ──────────────────────────────────
-    'common.Province': {
+    # ── administrative hierarchy ────────────────────────────────────────────
+    'administrative.Province': {
         'color': '#37474f',
         'layers': [
             {'type': 'fill',   'paint': {'fill-color': '#37474f', 'fill-opacity': 0.08}},
             {'type': 'line',   'paint': {'line-color': '#37474f', 'line-width': 2.5}},
         ],
     },
-    'common.City': {
+    'administrative.City': {
         'color': '#1565c0',
         'layers': [
             {'type': 'fill', 'paint': {'fill-color': '#1565c0', 'fill-opacity': 0.1}},
             {'type': 'line', 'paint': {'line-color': '#1565c0', 'line-width': 2}},
         ],
     },
-    'common.District': {
+    'administrative.District': {
         'color': '#1976d2',
         'layers': [
             {'type': 'fill', 'paint': {'fill-color': '#1976d2', 'fill-opacity': 0.12}},
             {'type': 'line', 'paint': {'line-color': '#1976d2', 'line-width': 1.5, 'line-dasharray': [4, 2]}},
         ],
     },
-    'common.Neighborhood': {
+    'administrative.Neighborhood': {
         'color': '#42a5f5',
         'layers': [
             {'type': 'fill', 'paint': {'fill-color': '#42a5f5', 'fill-opacity': 0.15}},
             {'type': 'line', 'paint': {'line-color': '#42a5f5', 'line-width': 1, 'line-dasharray': [3, 2]}},
         ],
     },
-    'common.LandCoverVector': {
+    'physicalEnv.LandCoverVector': {
         'color': '#558b2f',
     },
 
@@ -447,7 +447,7 @@ def available_layers(request):
             style_layers = LAYER_STYLES.get(key, {}).get('layers')
             legend = None
 
-            if key == 'common.LandCoverVector':
+            if key == 'physicalEnv.LandCoverVector':
                 # Categorical color-per-class_name — computed per-request
                 # (not baked into LAYER_STYLES) since LandCoverClasses rows
                 # are get_or_create'd from source data and grow over time.

@@ -26,17 +26,12 @@ COORDINATE_SYSTEM = settings.COORDINATE_SYSTEM
 
 # Optional, tiny per-model overrides (only what can't be inferred)
 MODEL_OVERRIDES = {
-    'common.City': {
+    'administrative.City': {
         'upsert_keys': ['cityName'],           # otherwise we try unique/unique_together
         'geometry_field': 'geom',              # which field stores geometry
         'target_srid_default': COORDINATE_SYSTEM,
     },
-    'common.Region': {
-        'upsert_keys': ['regionName'],
-        'geometry_field': 'geom',
-        'target_srid_default': COORDINATE_SYSTEM,
-    },
-    'common.Neighborhood': {
+    'administrative.Neighborhood': {
         'upsert_keys': ['neighborhoodName'],
         'geometry_field': 'geom',
         'target_srid_default': COORDINATE_SYSTEM,
@@ -509,7 +504,7 @@ def _generic_import(gdf, target_label, colmap, dry_run=True, target_srid=None):
                         None
                     )
                     if city_field and 'city' not in lookup and 'city' not in defaults:
-                        from common.models import City
+                        from administrative.models import City
                         centroid = geos.centroid
                         city = City.objects.filter(geom__contains=centroid).first()
                         if city:

@@ -304,7 +304,7 @@ def load_raster_into_target_model(
     importer/views.py::_raster_import (the file-upload path, which already
     works) so external imports go through the same save() -> signal -> COG
     pipeline, generalized to resolve Province/year metadata from bbox/date
-    when the target model requires them (e.g. common.LandCoverRaster).
+    when the target model requires them (e.g. physicalEnv.LandCoverRaster).
     """
     from django.contrib.gis.gdal import GDALRaster
     from core.rasterOperations import get_raster_field_name, export_geotiff_to_cog
@@ -320,7 +320,7 @@ def load_raster_into_target_model(
     except (ValueError, LookupError) as e:
         return False, f"Downloaded, but cannot load into {model_path}: {e}"
 
-    # Models flagged SKIP_RASTER_DB_STORAGE (common.DigitalElevationModel/
+    # Models flagged SKIP_RASTER_DB_STORAGE (physicalEnv.DigitalElevationModel/
     # DigitalSurfaceModel) never get their raster written into Postgres at
     # all — nothing queries it with server-side PostGIS raster SQL, so a
     # RasterField blob there is a large, purely redundant write. It's also
@@ -377,7 +377,7 @@ def load_raster_into_target_model(
             field_values[field_name] = gdal_raster
 
         if "city" in model_field_names and bbox:
-            from common.models import City
+            from administrative.models import City
 
             centroid = Point((bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2, srid=4326)
             centroid.transform(coordinate_system)
@@ -663,7 +663,7 @@ def _import_geojson_features(features: List[Dict], dataset: Dict, Model, mapping
                 # __fk_lookup__: resolve a plain (non-spatial) FK by
                 # get_or_create-ing a parent row keyed on a source property
                 # value -- e.g. mapping a land-cover classification string
-                # straight onto common.LandCoverClasses.class_name,
+                # straight onto physicalEnv.LandCoverClasses.class_name,
                 # creating the category the first time it's seen. Unlike
                 # __spatial_fk__, the parent rows don't need to already
                 # exist, since the target is a small classification
@@ -1379,7 +1379,7 @@ class CBSImporter:
             # CBS RegioS codes are "GM" + the gemeente number, and City.pk is that
             # same gemeente number (see the RegioS -> City FK resolution below).
             if bbox:
-                from common.models import City
+                from administrative.models import City
 
                 bbox_geom = Polygon.from_bbox(bbox)
                 bbox_geom.srid = 4326

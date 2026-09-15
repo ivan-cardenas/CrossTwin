@@ -7,10 +7,10 @@
 // (from mainMap/views.py:model_geojson) holding its display name, and the
 // URL segment used to drive the watersupply/urban_heat indicator panels.
 const ADMIN_LEVELS = {
-  'common.Province':    { level: 'province',     nameField: 'ProvinceName' },
-  'common.City':         { level: 'city',         nameField: 'cityName' },
-  'common.District':     { level: 'district',     nameField: 'districtName' },
-  'common.Neighborhood': { level: 'neighborhood', nameField: 'neighborhoodName' },
+  'administrative.Province':    { level: 'province',     nameField: 'ProvinceName' },
+  'administrative.City':         { level: 'city',         nameField: 'cityName' },
+  'administrative.District':     { level: 'district',     nameField: 'districtName' },
+  'administrative.Neighborhood': { level: 'neighborhood', nameField: 'neighborhoodName' },
 };
 
 /**

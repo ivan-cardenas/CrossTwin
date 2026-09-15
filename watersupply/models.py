@@ -2,7 +2,8 @@ from django.contrib.gis.db import models
 from django.db.models import Sum, F, ExpressionWrapper, FloatField
 from django.utils import timezone
 from django.core.exceptions import ValidationError
-from common.models import Province, City, Neighborhood, EnvironmentalCosts
+from administrative.models import Province, City, Neighborhood
+from physicalEnv.models import EnvironmentalCosts
 from django.conf import settings
 
 COORDINATE_SYSTEM = settings.COORDINATE_SYSTEM
@@ -28,7 +29,7 @@ class WMSLayer(models.Model):
 # Create your models here.
 class ConsumptionCapita(models.Model):
     id=models.AutoField(primary_key=True)
-    city = models.ForeignKey(City, on_delete=models.CASCADE, help_text="City code from common.City")
+    city = models.ForeignKey(City, on_delete=models.CASCADE, help_text="City code from administrative.City")
     year = models.IntegerField()
     consumption_capita_L_d = models.FloatField( help_text="in liters per person per day") # L/person/day
     total_consumption_m3_yr = models.FloatField( help_text="in cubic meters per year", null=True, blank=True)  # m3/year
@@ -48,7 +49,7 @@ class ConsumptionCapita(models.Model):
         verbose_name_plural = "Consumption Capita"
     
 class TotalWaterDemand(models.Model):
-    city = models.ForeignKey(City, on_delete=models.CASCADE , help_text="City code from common.City")
+    city = models.ForeignKey(City, on_delete=models.CASCADE , help_text="City code from administrative.City")
     year = models.IntegerField()
     demandDay = models.FloatField( help_text="in Million cubic meters per day") # Mm3/day
     demandYR = models.FloatField(null=True, help_text="in Million cubic meters per year")  # Mm3/year
@@ -67,7 +68,7 @@ class TotalWaterDemand(models.Model):
         verbose_name_plural = "Total Water Demand Records"
     
 class SupplySecurity(models.Model):
-    city = models.ForeignKey(City, on_delete=models.CASCADE, help_text="City code from common.City")
+    city = models.ForeignKey(City, on_delete=models.CASCADE, help_text="City code from administrative.City")
     year = models.IntegerField()
     supply_security_pct = models.FloatField(help_text="in percent")   # %
     security_goal_pct = models.FloatField(help_text="in percent") # %
@@ -84,7 +85,7 @@ class SupplySecurity(models.Model):
 
 class UsersLocation(models.Model):
     id = models.AutoField(primary_key=True)
-    neighborhood = models.ForeignKey(Neighborhood, on_delete=models.DO_NOTHING, help_text="Neighborhood code from common.Neighborhood") #TODO: Change to City or make per point?
+    neighborhood = models.ForeignKey(Neighborhood, on_delete=models.DO_NOTHING, help_text="Neighborhood code from administrative.Neighborhood") #TODO: Change to City or make per point?
     usersTotal = models.IntegerField(help_text="Total number of users in the neighborhood")
     ResidentialUsers = models.IntegerField(null=True, help_text="Number of residential users")
     CommercialUsers = models.IntegerField(null=True, help_text="Number of commercial users")
@@ -100,7 +101,7 @@ class UsersLocation(models.Model):
     
 class MeteredResidential(models.Model):
     id = models.AutoField(primary_key=True)
-    userLocation = models.ForeignKey(UsersLocation, on_delete=models.DO_NOTHING, help_text="UsersLocation ID from common.UsersLocation")
+    userLocation = models.ForeignKey(UsersLocation, on_delete=models.DO_NOTHING, help_text="UsersLocation ID from watersupply.UsersLocation")
     installed_meters = models.IntegerField(help_text="Number of installed meters")
     functional_meters = models.IntegerField(help_text="Number of functional meters")
     collected_meters = models.IntegerField(help_text="Number of collected meters")
@@ -118,7 +119,7 @@ class MeteredResidential(models.Model):
     last_updated = models.DateTimeField(default=timezone.now)
     
     def save(self, *args, **kwargs):
-        city = self.userLocation.neighborhood.city
+        city = self.userLocation.neighborhood.district.city
         # Get most recent record for this city, not filtered by current year
         consumption_record = ConsumptionCapita.objects.filter(
             city=city
@@ -165,7 +166,7 @@ class Watershed(models.Model):
 class AvailableFreshWater(models.Model):
     id=models.AutoField(primary_key=True)
     SourceName = models.CharField(max_length=100, help_text="Name of the water source. Corresponds to the Balance Area ")
-    watershed = models.ForeignKey(Watershed, on_delete=models.DO_NOTHING, null=True, help_text="Watershed code from common.Watershed. ")
+    watershed = models.ForeignKey(Watershed, on_delete=models.DO_NOTHING, null=True, help_text="Watershed code from watersupply.Watershed. ")
     geom = models.MultiPolygonField(srid=COORDINATE_SYSTEM)
     infiltrationRate_cm_h = models.FloatField(help_text="Infiltration rate in centimeters per hour") #TODO: this should be calculated from land cover and soil type
     infiltrationDepth_cm = models.FloatField(help_text="Infiltration depth in centimeters")
@@ -338,7 +339,7 @@ class PipeNetwork(models.Model):
     geom = models.MultiLineStringField(srid=COORDINATE_SYSTEM)
     maitenanceCost_EUR_km = models.FloatField(null=True, help_text="in EUR per kilometer")
     origin = models.ForeignKey(ExtractionWater, on_delete=models.DO_NOTHING, help_text="ExtractionWater ID from watersupply.ExtractionWater", null=True) # type: ignore
-    destination = models.ForeignKey(UsersLocation, on_delete=models.DO_NOTHING, help_text="UsersLocation ID from common.UsersLocation", null=True) # type: ignore
+    destination = models.ForeignKey(UsersLocation, on_delete=models.DO_NOTHING, help_text="UsersLocation ID from watersupply.UsersLocation", null=True) # type: ignore
     last_updated = models.DateTimeField(default=timezone.now)
     
     def __str__(self):
@@ -361,7 +362,7 @@ class PipeNetwork(models.Model):
 
 class CoverageWaterSupply(models.Model):
     id = models.AutoField(primary_key=True)
-    city = models.ForeignKey(City, on_delete=models.DO_NOTHING, null=True, help_text="City code from common.City")
+    city = models.ForeignKey(City, on_delete=models.DO_NOTHING, null=True, help_text="City code from administrative.City")
     year = models.IntegerField()
     buffer_m = models.FloatField(default=500, help_text="Buffer distance around pipes in meters")
     coveredArea_km2 = models.FloatField(help_text="Covered area in square kilometers")

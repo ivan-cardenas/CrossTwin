@@ -3,7 +3,7 @@ from django.dispatch import receiver
 from django.db.models import Sum, F, FloatField, Case, When, Value, ExpressionWrapper
 from django.utils import timezone
 from .models import ConsumptionCapita
-from common.models import City, Province
+from administrative.models import City, Province
 
 
 @receiver(post_save, sender=City)

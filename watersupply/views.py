@@ -7,7 +7,7 @@ from django.db.models import Sum, Avg
 from django.apps import apps
 
 from .models import *
-from common.admin_units import resolve_admin_unit
+from administrative.admin_units import resolve_admin_unit
 from .calculations import (
     _get_consumption_capita,
     calculate_supply_security,

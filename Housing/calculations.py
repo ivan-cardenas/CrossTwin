@@ -5,7 +5,7 @@ from .models import (
     CreditSupplyConditions, Mortgage, Rentals, HousePriceIndex,
     HousingAffordability,
 )
-from common.models import City, Neighborhood
+from administrative.models import City, Neighborhood
 from builtup.models import Property, ZoningArea, Building
 
 

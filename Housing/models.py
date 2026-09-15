@@ -10,8 +10,8 @@ AFFORDABILITY_STRESS_LEVELS = [('low', 'Low'), ('moderate', 'Moderate'), ('high'
 # Create your models here.
 class HousingSupplyDemand(models.Model):
     id = models.AutoField(primary_key=True)
-    city = models.ForeignKey("common.City", verbose_name="City", on_delete=models.DO_NOTHING, null=True, blank=True)
-    neighborhood = models.ForeignKey("common.Neighborhood", verbose_name="Neighborhood", on_delete=models.DO_NOTHING, null=True, blank=True)
+    city = models.ForeignKey("administrative.City", verbose_name="City", on_delete=models.DO_NOTHING, null=True, blank=True)
+    neighborhood = models.ForeignKey("administrative.Neighborhood", verbose_name="Neighborhood", on_delete=models.DO_NOTHING, null=True, blank=True)
     year = models.IntegerField(help_text="Year of the housing supply/demand data")
     supply_units = models.IntegerField(help_text="Number of housing units supplied")
     demand_units = models.IntegerField(help_text="Number of housing units demanded")
@@ -26,7 +26,7 @@ class HousingSupplyDemand(models.Model):
           
 class HousingProject(models.Model):
     id=models.AutoField(primary_key=True)
-    neighborhood = models.ForeignKey("common.Neighborhood", verbose_name="Neighborhood", on_delete=models.DO_NOTHING)
+    neighborhood = models.ForeignKey("administrative.Neighborhood", verbose_name="Neighborhood", on_delete=models.DO_NOTHING)
     year = models.IntegerField(help_text="Year of the housing project data")
     year_expected_completion = models.IntegerField(help_text="Year of expected completion of the housing project")
     project_name = models.CharField(max_length=100, help_text="Name of the housing project")
@@ -45,7 +45,7 @@ class HousingProject(models.Model):
         
 class CentralBankPolicy(models.Model):
     id = models.AutoField(primary_key=True)
-    province = models.ForeignKey("common.Province", verbose_name="Province", on_delete=models.DO_NOTHING)
+    province = models.ForeignKey("administrative.Province", verbose_name="Province", on_delete=models.DO_NOTHING)
     year = models.IntegerField(help_text="Year of the policy data")
     interest_rate = models.FloatField(help_text="Central bank interest rate in percentage (%)")
     LTV_limit = models.FloatField(help_text="Loan-to-Value limit in percentage (%)")
@@ -62,7 +62,7 @@ class CentralBankPolicy(models.Model):
 
 class CreditSupplyConditions(models.Model):
     id = models.AutoField(primary_key=True)
-    province = models.ForeignKey("common.Province", verbose_name="Province", on_delete=models.DO_NOTHING)
+    province = models.ForeignKey("administrative.Province", verbose_name="Province", on_delete=models.DO_NOTHING)
     year = models.IntegerField(help_text="Year of the credit supply conditions data")
     mortgageRate = models.FloatField(help_text="Mortgage rate in percentage (%)")
     mortgage_approval_rate = models.FloatField(help_text="Mortgage approval rate in percentage (%)")
@@ -115,7 +115,7 @@ class Rentals(models.Model):
               
 class HousePriceIndex(models.Model):
     id = models.AutoField(primary_key=True)
-    neighborhood = models.ForeignKey("common.Neighborhood", verbose_name="Neighborhood", on_delete=models.DO_NOTHING)
+    neighborhood = models.ForeignKey("administrative.Neighborhood", verbose_name="Neighborhood", on_delete=models.DO_NOTHING)
     year = models.IntegerField(help_text="Year of the house price index data")
     index_value = models.FloatField(help_text="Value of the house price index (base year = 100)")
     last_updated = models.DateTimeField(default=timezone.now)
@@ -130,7 +130,7 @@ class HousePriceIndex(models.Model):
 
 class HousingAffordability(models.Model):
     id = models.AutoField(primary_key=True)
-    neighborhood = models.ForeignKey("common.Neighborhood", verbose_name="Neighborhood", on_delete=models.DO_NOTHING)
+    neighborhood = models.ForeignKey("administrative.Neighborhood", verbose_name="Neighborhood", on_delete=models.DO_NOTHING)
     year = models.IntegerField(help_text="Year of the housing affordability data")
     medianIncome = models.FloatField(help_text="Median household income in EUR")
     medianExpenditure = models.FloatField(help_text="Median household expenditure in EUR") #TODO: check how to connect with the expenditure data from the water and electricity models

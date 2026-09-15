@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from django.db.models import Avg
 
-from common.admin_units import resolve_admin_unit
+from administrative.admin_units import resolve_admin_unit
 from .calculations import (
     calculate_vegetation_coverage,
     calculate_urban_morphology,

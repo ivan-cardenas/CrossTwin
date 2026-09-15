@@ -42,7 +42,7 @@ python manage.py export_cogs
 
 ### Model Registry System (`core/utils.py`)
 
-The central architectural pattern. `build_model_registry()` scans a hardcoded list of allowed apps (`common`, `urbanHeat`, `watersupply`, `weather`, `builtup`, `Energy`, `housing`, `nature`) and builds four registries:
+The central architectural pattern. `build_model_registry()` scans a hardcoded list of allowed apps (`administrative`, `physicalEnv`, `urbanHeat`, `watersupply`, `weather`, `builtup`, `Energy`, `housing`, `nature`) and builds four registries:
 
 - **`MODEL_REGISTRY`** — all models from allowed apps
 - **`VECTOR_REGISTRY`** — models with GeometryField (no RasterField)
@@ -51,17 +51,19 @@ The central architectural pattern. `build_model_registry()` scans a hardcoded li
 
 These registries power generic API endpoints, the map layer catalog, and the importer. When adding a new domain app, it must be added to the `allowed_apps` list in `core/utils.py` and to `INSTALLED_APPS` in `settings.py`.
 
-### DPSIR Causal Network (`common/DAG.dot`)
+### DPSIR Causal Network (`core/DAG.dot`)
 
-The project follows the **DPSIR framework** (Driver → Pressure → State → Impact → Response) to model causal relationships between urban systems. The full causal graph is defined in `common/DAG.dot` (Graphviz format). Each domain app's `calculations.py` documents which DAG edges its functions implement via comments like `# DAG edges: Central_Bank -> Mortgage`.
+The project follows the **DPSIR framework** (Driver → Pressure → State → Impact → Response) to model causal relationships between urban systems. The full causal graph is defined in `core/DAG.dot` (Graphviz format). Each domain app's `calculations.py` documents which DAG edges its functions implement via comments like `# DAG edges: Central_Bank -> Mortgage`.
 
 When adding new calculations, trace the relevant DAG edges and document them in the function docstring to maintain traceability between the causal model and code.
 
 #### DAG Edge Coverage Gaps
 
-Of the 102 edges in `common/DAG.dot`, only 28 are backed by real derivation logic (a `save()` method or a `calculations.py` function that actually reads the source field, not just a docstring claiming the edge). The rest are either flat stored fields with no computation, or `calculations.py` functions whose docstring claims a DAG edge the code doesn't actually implement. Verified gaps, by app:
+Of the 102 edges in `core/DAG.dot`, only 28 are backed by real derivation logic (a `save()` method or a `calculations.py` function that actually reads the source field, not just a docstring claiming the edge). The rest are either flat stored fields with no computation, or `calculations.py` functions whose docstring claims a DAG edge the code doesn't actually implement. Verified gaps, by app:
 
-**common** — `Population_Growth -> Total_Population/Urbanization`: `City.popGrowthRate`/`urbanizationRate` are flat fields, never used to project `currentPopulation` (only summed from children via `signals.py`). No `Urbanization` model exists, so `Urbanization -> CityArea/Buildings/Streets/LandCover` has nowhere to live. `RS_Imagery -> LandCover/LST` — raster models are plain imports with no ingestion/derivation code. `LandCover -> Infiltration` — `AvailableFreshWater.infiltrationRate_cm_h` is flat (see existing TODO). `New_Units -> LandCover` — `calculate_new_units()` never touches LandCover.
+**administrative** — `Population_Growth -> Total_Population/Urbanization`: `City.popGrowthRate`/`urbanizationRate` are flat fields, never used to project `currentPopulation` (only summed from children via `signals.py`). No `Urbanization` model exists, so `Urbanization -> CityArea/Buildings/Streets/LandCover` has nowhere to live.
+
+**physicalEnv** — `RS_Imagery -> LandCover/LST` — raster models are plain imports with no ingestion/derivation code. `LandCover -> Infiltration` — `AvailableFreshWater.infiltrationRate_cm_h` is flat (see existing TODO). `New_Units -> LandCover` — `calculate_new_units()` never touches LandCover.
 
 **urban_heat** — the whole `DSM -> SVF -> Tmrt/PET`, `LST -> PET`, `Tmrt -> UTCI`, `Canyon_Aspect -> DSM`, `Vegetation_Coverage -> DSM`, `Streets -> Canyon_Aspect` chain is unimplemented: SVF/Tmrt/PET/UTCI/LST models are `RasterField` containers with no `save()`; `calculate_urban_morphology()`/`get_thermal_indices()` only compute *statistics over* existing rasters, they don't derive one raster from another (these are expected to come pre-computed from SOLWEIG externally). `PET -> NBS` — `calculate_nbs_coverage()` counts NBS geometries but never reads PET values.
 
@@ -73,7 +75,8 @@ Of the 102 edges in `common/DAG.dot`, only 28 are backed by real derivation logi
 
 Each domain app contains spatial models related to a topic:
 
-- **`common`** — Administrative hierarchy: Province > City > District > Neighborhood. Also: LandCover, DEM, DSM, material properties, environmental costs. Population cascades upward via signals.
+- **`administrative`** — Administrative hierarchy: Province > City > District > Neighborhood. Population cascades upward via signals.
+- **`physicalEnv`** — LandCover (vector + raster), DEM, DSM, satellite imagery, surface/wall material properties, environmental costs.
 - **`watersupply`** — Water infrastructure: extraction, treatment, pipe networks, coverage, NRW (non-revenue water), OPEX. Has `calculations.py` (pure query functions) + `views.py` (indicator assembly + HTMX recalculation).
 - **`urban_heat`** — Thermal comfort rasters (UTCI, PET, MRT, LST, SVF, SUHII) and Nature-Based Solutions.
 - **`housing`** — Supply/demand, mortgages, rentals, HPI, affordability stress. Has `calculations.py` + `views.py` following the same pattern as watersupply.
@@ -91,7 +94,7 @@ Domain dashboards follow a three-layer pattern:
 
 ### Signal-Driven Computations
 
-- **`common/signals.py`** — When a Neighborhood is saved/deleted, population and density cascade up through District > City > Province using `_recompute_population()`. Uses `update()` (not `save()`) to avoid infinite loops.
+- **`administrative/signals.py`** — When a Neighborhood is saved/deleted, population and density cascade up through District > City > Province using `_recompute_population()`. Uses `update()` (not `save()`) to avoid infinite loops.
 - **`core/signals.py`** — `post_save` on every RASTER_REGISTRY model auto-exports to COG via `export_raster_to_cog()`.
 
 ### Importer System (`importer/`)
@@ -126,7 +129,6 @@ Two import paths:
 | `/api/raster/<app>/<model>/tiles/` | TiTiler tile URL for raster |
 | `/api/raster/<app>/<model>/info/` | Raster metadata |
 | `/importer/` | File upload import |
-| `/common/` | External data import + CBS importer |
 | `/watersupply/` | Water supply indicators dashboard |
 | `/urban_heat/` | Urban heat views |
 | `/housing/` | Housing indicators dashboard |
@@ -150,9 +152,9 @@ Tests use `PostGISTestRunner` (`DigitalTwin/test_runner.py`) which creates the t
 Collected from inline `#TODO` comments across the codebase:
 
 
-### common
-- Auto-calculate `LandCoverVector.percentage` from geom area vs Province total area (`common/models.py`)
-- Add Vegetation Coverage and Builtup Coverage as additional fields on `LandCoverVector` (`common/models.py`)
+### physicalEnv
+- Auto-calculate `LandCoverVector.percentage` from geom area vs Province total area (`physicalEnv/models.py`)
+- Add Vegetation Coverage and Builtup Coverage as additional fields on `LandCoverVector` (`physicalEnv/models.py`)
 
 ### builtup
 - Define connectivity index and calculation method for `Building.connectivity` (`builtup/models.py`)

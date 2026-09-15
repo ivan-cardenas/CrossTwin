@@ -40,6 +40,8 @@
 
 14. Green spaces and parks are saved in two models, should I merge them into one? Probably only green spaces
 
+14. is there a table or map of infiltration capacity?
+
 ## TODOS
 
 1. CHECK FOR IMPROVING AND ADDING INDICES FROM NEW RESEARCH EXAMPLE NDWI - I know there are betters.
@@ -66,6 +68,8 @@
 3. on nature/models/Park, Import parks --- where to store?
 3. on builtup/models/facilities, How to import from OSM or GoogleMaps?
 3. on builtup/models/Property, add Define green visibility index and calculation method
+3. on landcoverVector how to get the albedo using the same satellite info or how to calculate from different bands in the raster?
+
 3. define where to store zoning data and how to import
 3. Add policy options and restriction in pop up
 3. verify functions of water supply to render HTMX

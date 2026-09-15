@@ -7,8 +7,8 @@ from .models import (
     WaterTreatment, MeteredResidential, UsersLocation, OPEX,
     TotalWaterProduction,
 )
-from common.models import City, Province, Neighborhood
-from common.admin_units import cities_within, neighborhoods_within
+from administrative.models import City, Province, Neighborhood
+from administrative.admin_units import cities_within, neighborhoods_within
 
 
 # ── Consumption & Demand ─────────────────────────────────────────────

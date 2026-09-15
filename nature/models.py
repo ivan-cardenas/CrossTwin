@@ -1,5 +1,5 @@
 from django.contrib.gis.db import models
-from common.models import City
+from administrative.models import City
 from django.conf import settings
 
 COORDINATE_SYSTEM = settings.COORDINATE_SYSTEM
@@ -102,7 +102,7 @@ class GreenSpaces(models.Model):
     name = models.CharField(max_length=200)
     type = models.CharField(max_length=100, help_text="Type of green space (e.g., park, garden, etc.)", null=True, blank=True)
     city = models.ForeignKey(
-        'common.City',
+        'administrative.City',
         on_delete=models.DO_NOTHING,
         null=True,
         blank=True,

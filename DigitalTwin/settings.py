@@ -92,15 +92,16 @@ INSTALLED_APPS = [
     'core.apps.CoreConfig',
     'django.contrib.humanize',
     "importer",
-        
-    "common",
+
+    "administrative",
+    "physicalEnv",
     "urban_heat",
     "watersupply",
     "weather",
     "Energy",
     "housing",
     "builtup",
-    "nature",   
+    "nature",
     
     "mainMap",
     
@@ -134,7 +135,7 @@ TEMPLATES = [
 ]
 
 TEMPLATES[0]['OPTIONS']['context_processors'] += [
-    'common.version.version_context',
+    'core.version.version_context',
 ]
 
 WSGI_APPLICATION = "DigitalTwin.wsgi.application"
@@ -191,7 +192,7 @@ COORDINATE_SYSTEM = int(os.environ.get("COORDINATE_SYSTEM", 28992))  # Amersfoor
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = "common/static/"
+STATIC_URL = "core/static/"
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

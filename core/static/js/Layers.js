@@ -28,14 +28,14 @@ function showLoader(show) {
  * /api/layers/ costs at least one DB query per registered model (a full
  * .objects.all() for WMS/raster entries), so asking for the whole registry
  * up front was the main contributor to slow map init. Load the small,
- * always-needed 'common' admin-hierarchy layers (province/city/district/
+ * always-needed 'administrative' admin-hierarchy layers (province/city/district/
  * neighborhood — these drive the city-click handlers and indicator panels)
  * first so the map UI is usable immediately, then fetch every other app's
  * layers in the background and merge them in once they arrive.
  */
 async function fetchAvailableLayers() {
   try {
-    await loadLayerCatalog('common');
+    await loadLayerCatalog('administrative');
   } catch (error) {
     console.error('Error fetching layers:', error);
     const container = document.getElementById('layer-list');
@@ -64,7 +64,7 @@ async function loadLayerCatalog(appLabels) {
   const data = await response.json();
 
   // Merge rather than replace — a later batch (e.g. the unfiltered
-  // background fetch) re-includes 'common' layers already loaded, and
+  // background fetch) re-includes 'administrative' layers already loaded, and
   // must not clobber their loadedLayers/visibility state.
   const existingKeys = new Set(availableLayers.map(l => l.key));
   for (const layer of data.layers) {

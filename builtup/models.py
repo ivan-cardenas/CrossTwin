@@ -2,7 +2,8 @@ from django.utils import timezone
 from django.contrib.gis.db import models
 from django.contrib.postgres.fields import ArrayField
 from django.db.models import Sum
-from common.models import City, Neighborhood, SurfaceMaterialProperties, WallMaterialProperties
+from administrative.models import City, Neighborhood
+from physicalEnv.models import SurfaceMaterialProperties, WallMaterialProperties
 from Energy.models import EnergyEfficiencyLabels
 
 from django.conf import settings
@@ -60,7 +61,7 @@ class Park(models.Model):
     name = models.CharField(max_length=100, help_text="Name of the park")
     area = models.FloatField(help_text="Area of the park in square meters")
     vegetationType = models.CharField(max_length=100, help_text="Type of vegetation in the park (e.g., grass, trees, shrubs)")
-    neighborhood = models.ForeignKey(Neighborhood, on_delete=models.DO_NOTHING, null=True, blank=True, help_text="City code from common.City")
+    neighborhood = models.ForeignKey(Neighborhood, on_delete=models.DO_NOTHING, null=True, blank=True, help_text="City code from administrative.City")
     geom = models.MultiPolygonField(srid=CoordinateSystem)
     
     def __str__(self):
@@ -76,7 +77,7 @@ class Facility(models.Model):
     type = models.CharField(max_length=100, choices=[('school', 'School'), ('hospital', 'Hospital'), ('fire_station', 'Fire Station'), 
                                                      ('police_station', 'Police Station'), ('market', 'Market'), ('transportNode', 'Transport Node')], 
                             help_text="Type of facility")
-    neighborhood = models.ForeignKey(Neighborhood, on_delete=models.DO_NOTHING, null=True, blank=True, help_text="City code from common.City")
+    neighborhood = models.ForeignKey(Neighborhood, on_delete=models.DO_NOTHING, null=True, blank=True, help_text="City code from administrative.City")
     geom = models.PointField(srid=CoordinateSystem)
     
     def __str__(self):

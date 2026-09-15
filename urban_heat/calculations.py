@@ -8,7 +8,8 @@ from .models import (
     NatureBasedSolutionPolygon, NatureBasedSolutionPoint,
     StressCategory,
 )
-from common.models import Province, LandCoverVector, DigitalSurfaceModel
+from administrative.models import Province
+from physicalEnv.models import LandCoverVector, DigitalSurfaceModel
 from builtup.models import Park, Building, Street
 from weather.models import Meteorology
 
