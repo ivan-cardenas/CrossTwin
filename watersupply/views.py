@@ -34,8 +34,8 @@ MAX_CONSUMPTION   = 300
 # ── shared helper ─────────────────────────────────────────────────────
 def _get_province_data(level, location, year):
     """Fetch all fixed DB values for an administrative unit/year. Returns a dict."""
-    province = resolve_admin_unit(level, location)
-    if province is None:
+    adminUnit = resolve_admin_unit(level, location)
+    if adminUnit is None:
         return None
 
     imported_water_m3_yr = (
@@ -43,17 +43,17 @@ def _get_province_data(level, location, year):
         .aggregate(total=Sum('quantity_m3_d'))['total'] or 0
     ) * 365
 
-    available_water_Mm3 = calculate_available_freshwater(province)
+    available_water_Mm3 = calculate_available_freshwater(adminUnit)
 
     network_length = (
         PipeNetwork.objects
-        .filter(geom__intersects=province.geom)
-        .annotate(clipped=Intersection('geom', province.geom))
+        .filter(geom__intersects=adminUnit.geom)
+        .annotate(clipped=Intersection('geom', adminUnit.geom))
         .annotate(clipped_length=Length('clipped'))
         .aggregate(total=Sum('clipped_length'))['total']
     )
 
-    demand_m3_d, supply_m3_d, supply_security = calculate_supply_security(province)
+    demand_m3_d, supply_m3_d, supply_security = calculate_supply_security(adminUnit)
 
     # OPEX: average across active wells
     avg_opex_m3 = (
@@ -67,31 +67,31 @@ def _get_province_data(level, location, year):
     nrw = calculate_nrw(year)
 
     # Energy & emissions (DAG: Total_Extraction → Energy_Consumption, CO2_Emission)
-    energy_kwh_day = calculate_energy_consumption(province)
-    co2_kg_day = calculate_co2_emission(province)
+    energy_kwh_day = calculate_energy_consumption(adminUnit)
+    co2_kg_day = calculate_co2_emission(adminUnit)
 
     # Water quality (DAG: Samples_Taken → Samples_WQ → User_Acceptance_WS)
     water_quality = calculate_water_quality(year)
 
     # Collection ratio (DAG: Metered_Res_Water → CollectionRatio)
-    collection_ratio = calculate_collection_ratio(province)
+    collection_ratio = calculate_collection_ratio(adminUnit)
 
     # OPEX recovery (DAG: OPEX → OPEX_Recovery)
-    opex_recovery = calculate_opex_recovery(year, province)
+    opex_recovery = calculate_opex_recovery(year, adminUnit)
 
     # Coverage (DAG: Network → Coverage_WS_Area → NumberUsers → Coverage_WS)
-    coverage = calculate_coverage(province)
+    coverage = calculate_coverage(adminUnit)
 
     # Drought (DAG: Total_Extraction → Area_Drought)
-    drought = calculate_drought_area(province, year)
+    drought = calculate_drought_area(adminUnit, year)
 
     # Total extraction (DAG: Available_FW → Total_Extraction)
-    extraction_m3_d = calculate_total_extraction(province)
+    extraction_m3_d = calculate_total_extraction(adminUnit)
 
     return {
-        'province':             province,
-        'population':           province.currentPopulation or 0,
-        'consumption_capita':   _get_consumption_capita(province, year),
+        'province':             adminUnit,
+        'population':           adminUnit.currentPopulation or 0,
+        'consumption_capita':   _get_consumption_capita(adminUnit, year),
         'demand_m3_d':          demand_m3_d,
         'supply_m3_d':          supply_m3_d,
         'supply_security':      supply_security,

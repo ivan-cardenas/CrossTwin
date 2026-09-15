@@ -1,234 +1,369 @@
-# Graph Report - .  (2026-05-13)
+# Graph Report - CrossTwin  (2026-09-15)
 
 ## Corpus Check
-- 157 files · ~55,574 words
+- 9 files · ~105,849 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 712 nodes · 999 edges · 114 communities (81 shown, 33 thin omitted)
-- Extraction: 77% EXTRACTED · 23% INFERRED · 0% AMBIGUOUS · INFERRED: 231 edges (avg confidence: 0.54)
-- Token cost: 12,500 input · 3,200 output
+- 1101 nodes · 1678 edges · 164 communities (43 shown, 75 thin omitted)
+- Extraction: 90% EXTRACTED · 10% INFERRED · 0% AMBIGUOUS · INFERRED: 161 edges (avg confidence: 0.91)
+- Token cost: 117,083 input · 0 output
 
 ## Community Hubs (Navigation)
-- [[_COMMUNITY_External Data Catalog & Import|External Data Catalog & Import]]
-- [[_COMMUNITY_Raster Generation & Metadata|Raster Generation & Metadata]]
-- [[_COMMUNITY_Platform Architecture & Dependencies|Platform Architecture & Dependencies]]
-- [[_COMMUNITY_Water Supply Calculations|Water Supply Calculations]]
-- [[_COMMUNITY_Environmental & Economic Models|Environmental & Economic Models]]
-- [[_COMMUNITY_Geospatial Upload Forms|Geospatial Upload Forms]]
-- [[_COMMUNITY_Map Frontend JavaScript|Map Frontend JavaScript]]
-- [[_COMMUNITY_Housing Indicator Calculations|Housing Indicator Calculations]]
-- [[_COMMUNITY_Urban Heat Raster Models|Urban Heat Raster Models]]
-- [[_COMMUNITY_Nature & Thermal Comfort|Nature & Thermal Comfort]]
-- [[_COMMUNITY_Django App Configurations|Django App Configurations]]
-- [[_COMMUNITY_Built Environment Models|Built Environment Models]]
-- [[_COMMUNITY_Housing Finance Models|Housing Finance Models]]
-- [[_COMMUNITY_Elevation & WMS Layers|Elevation & WMS Layers]]
-- [[_COMMUNITY_Water Infrastructure Models|Water Infrastructure Models]]
-- [[_COMMUNITY_Test Factories & Fixtures|Test Factories & Fixtures]]
-- [[_COMMUNITY_COG Export Command|COG Export Command]]
-- [[_COMMUNITY_Administrative & Meteorology Models|Administrative & Meteorology Models]]
-- [[_COMMUNITY_PostGIS Test Infrastructure|PostGIS Test Infrastructure]]
-- [[_COMMUNITY_Nature & Protected Areas|Nature & Protected Areas]]
-- [[_COMMUNITY_Raster Signal Handlers|Raster Signal Handlers]]
-- [[_COMMUNITY_Map API Views|Map API Views]]
-- [[_COMMUNITY_Database Migrations|Database Migrations]]
-- [[_COMMUNITY_Map Configuration State|Map Configuration State]]
-- [[_COMMUNITY_Model Registry & Raster API|Model Registry & Raster API]]
-- [[_COMMUNITY_Version & Git Metadata|Version & Git Metadata]]
-- [[_COMMUNITY_Admin Panel Classes|Admin Panel Classes]]
-- [[_COMMUNITY_Administrative Hierarchy Saves|Administrative Hierarchy Saves]]
-- [[_COMMUNITY_Population Signal Cascade|Population Signal Cascade]]
-- [[_COMMUNITY_Django Entry Point|Django Entry Point]]
-- [[_COMMUNITY_Geospatial Utilities|Geospatial Utilities]]
-- [[_COMMUNITY_Django Settings|Django Settings]]
-- [[_COMMUNITY_Isolated Model Admin|Isolated Model Admin]]
-- [[_COMMUNITY_OPEX Water Model|OPEX Water Model]]
-- [[_COMMUNITY_Pipe Network Model|Pipe Network Model]]
-- [[_COMMUNITY_Water Consumption Signals|Water Consumption Signals]]
-- [[_COMMUNITY_Environmental Costs Migration|Environmental Costs Migration]]
-- [[_COMMUNITY_Neighborhood Schema Migration|Neighborhood Schema Migration]]
-- [[_COMMUNITY_District ID Migration|District ID Migration]]
-- [[_COMMUNITY_ASGI Config|ASGI Config]]
-- [[_COMMUNITY_WSGI Config|WSGI Config]]
-- [[_COMMUNITY_Housing Supply Migration|Housing Supply Migration]]
-- [[_COMMUNITY_Watershed Schema Migration|Watershed Schema Migration]]
-- [[_COMMUNITY_Extraction Water Migration|Extraction Water Migration]]
-- [[_COMMUNITY_Imported Water Migration|Imported Water Migration]]
-- [[_COMMUNITY_Coverage Migration|Coverage Migration]]
-- [[_COMMUNITY_GEE Authentication|GEE Authentication]]
-- [[_COMMUNITY_PDOK WFS Fetch|PDOK WFS Fetch]]
-- [[_COMMUNITY_PDOK WCS Raster Fetch|PDOK WCS Raster Fetch]]
-- [[_COMMUNITY_PDOK ATOM Raster Download|PDOK ATOM Raster Download]]
-- [[_COMMUNITY_WMS Layer Registration|WMS Layer Registration]]
-- [[_COMMUNITY_CBS OData Fetch|CBS OData Fetch]]
-- [[_COMMUNITY_CBS Column Definitions|CBS Column Definitions]]
-- [[_COMMUNITY_Sentinel-2 WCS Fetch|Sentinel-2 WCS Fetch]]
-- [[_COMMUNITY_Sentinel Hub Process API|Sentinel Hub Process API]]
-- [[_COMMUNITY_Sentinel-2 WMS Registration|Sentinel-2 WMS Registration]]
-- [[_COMMUNITY_GEE Raster Export|GEE Raster Export]]
-- [[_COMMUNITY_NRW Loss Factory|NRW Loss Factory]]
-- [[_COMMUNITY_Province Raster Generator|Province Raster Generator]]
-- [[_COMMUNITY_PostGIS Spatial Database|PostGIS Spatial Database]]
+- Housing & Zoning Domain
+- Housing/Builtup Discussion Gaps
+- Water Supply Calculations & Views
+- Map Layer Styling & Metadata
+- Map Layers Frontend (JS)
+- Geodata Upload Forms & Views
+- Architecture Diagrams Overview
+- Urban Heat Calculations & Views
+- Indicator Dashboard Cards
+- Admin Hierarchy & App Registration
+- Map Init & Import Templates
+- Water Supply Infrastructure Models
+- Urban Heat Raster Models
+- Raster Export & COG Pipeline
+- Metered Residential Water Tests
+- Weather Interpolated Raster Base
+- PDOK Geometry Import (Atom/WFS)
+- Nature Domain Models
+- Raster CRS & Reflection Rationale
+- External Data Catalog & Views
+- Graphify Skill Reference Docs
+- Admin Hierarchy & Citations
+- WMS Legend & Import Result
+- Water Supply Infrastructure Models
+- Weather Raster Signals
+- Sentinel-2 Importer
+- PostGIS Test Runner
+- Paper Overview & References
+- Google Earth Engine Auth & Import
+- External Import Pipeline & Requirements
+- Platform Stack & Data Sources
+- Weather Precipitation & Station Models
+- External Data Exceptions & GEE Importer
+- Map Config JS
+- Version & Git Info Utility
+- External Import Discussion & Overrides
+- Non-Revenue Water Losses Model
+- Common Admin Registrations
+- Nature Domain Paper Coverage
+- CBS Importer
+- PDOK WCS Importer
+- Water Supply Infrastructure Models
+- Weather Humidity Raster
+- Weather Temperature Raster
+- Weather Windspeed Raster
+- Common App Config
+- Common Models Digitalelevationmodel
+- Map UI Legend Rendering
+- Core App Config
+- Energy Migration: Populate Labels
+- Manage.py Entrypoint
+- Weather App Config
+- Builtup App Config
+- Builtup Migration: Building ID Resync
+- Common Geo Area Function
+- Django Settings
+- Energy App Config
+- Housing App Config
+- Importer App Config
+- MainMap App Config
+- Nature App Config
+- Urban Heat App Config
+- Watersupply App Config
+- Consumption Per Capita & Signals
+- Builtup Migration
+- Builtup Migration
+- Builtup Migration
+- Builtup Migration
+- Builtup Migration
+- Builtup Migration
+- Builtup Migration
+- Builtup Migration
+- Builtup Migration
+- Builtup Migration
+- Builtup Migration
+- Builtup Migration
+- Builtup Migration
+- Builtup Migration
+- Builtup Migration
+- Builtup Migration
+- Builtup Migration
+- Common Migration
+- Common Migration
+- Common Migration
+- Common Migration
+- Common Migration
+- Common Migration
+- Common Migration
+- Common Migration
+- Common Migration
+- Common Migration
+- Common Models Landcoverclasses
+- Admin Hierarchy & App Registration
+- Digitaltwin Asgi
+- Digitaltwin Wsgi
+- Weather Domain Paper Coverage
+- Energy Migration
+- Energy Migration
+- Housing Migration
+- Housing Migration
+- Nature Migration
+- Nature Migration
+- Nature Migration
+- Nature Migration
+- Nature Migration
+- Urban Migration
+- Urban Migration
+- Urban Migration
+- Watersupply Migration
+- Watersupply Migration
+- Watersupply Migration
+- Watersupply Migration
+- Watersupply Migration
+- Weather Migration
+- Weather Models Interpolatedrasterbase Get Field Name
+- Appconfig
+- Readme Base Spatial Model
+- Todo Md
 
 ## God Nodes (most connected - your core abstractions)
-1. `City` - 54 edges
-2. `Neighborhood` - 54 edges
-3. `Province` - 36 edges
-4. `ElectricityCost` - 26 edges
-5. `EnvironmentalCosts` - 23 edges
+1. `City` - 40 edges
+2. `Neighborhood` - 33 edges
+3. `Province` - 26 edges
+4. `CrossTwin Platform` - 19 edges
+5. `_get_province_data()` - 18 edges
 6. `InterpolatedRasterBase` - 17 edges
-7. `_get_province_data()` - 16 edges
-8. `_get_province_data()` - 13 edges
-9. `import_dataset()` - 13 edges
-10. `EnergyEfficiencyLabels` - 12 edges
+7. `Meta` - 17 edges
+8. `import_dataset()` - 17 edges
+9. `Raster Pipeline` - 16 edges
+10. `Building` - 15 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `DPSIR Causal Framework` --semantically_similar_to--> `Water Indicators Dashboard Template`  [INFERRED] [semantically similar]
-  CLAUDE.md → watersupply/templates/watersupply/water_indicators.html
-- `DPSIR Causal Framework` --semantically_similar_to--> `Urban Heat Indicators Dashboard Template`  [INFERRED] [semantically similar]
-  CLAUDE.md → urban_heat/templates/urban_heat/heat_indicators.html
-- `Water Indicators Panel Partial` --semantically_similar_to--> `Urban Heat Indicators Panel Partial`  [INFERRED] [semantically similar]
-  watersupply/templates/watersupply/partials/indicators_panel.html → urban_heat/templates/urban_heat/partials/indicators_panel.html
-- `ZoningArea` --uses--> `Neighborhood`  [INFERRED]
-  builtup/models.py → common/models.py
-- `Meta` --uses--> `Neighborhood`  [INFERRED]
-  builtup/models.py → common/models.py
+- `Visualization Layer (TiTiler/Mapbox GL)` --semantically_similar_to--> `Raster Pipeline`  [INFERRED] [semantically similar]
+  ImporterArchitecture.html → CLAUDE.md
+- `Processing & Export Zone (COG Conversion)` --semantically_similar_to--> `Raster Pipeline`  [INFERRED] [semantically similar]
+  SystemArchitecuture.html → CLAUDE.md
+- `Full Mapbox Style Per Layer` --shares_data_with--> `available_layers()`  [EXTRACTED]
+  docs/map-layer-system.md → mainMap/views.py
+- `Popup Formatting with Field Metadata` --implements--> `available_layers()`  [EXTRACTED]
+  docs/map-layer-system.md → mainMap/views.py
+- `calculate_green_area()` --rationale_for--> `LandCoverVector.percentage Province-Relative Limitation`  [EXTRACTED]
+  urban_heat/calculations.py → docs/plan_HTMX_ADMIN.md
+
+## Import Cycles
+- None detected.
 
 ## Hyperedges (group relationships)
-- **HTMX Indicator Dashboard Pattern** — rationale_htmx_dashboard, water_indicators_html, water_indicators_grid_html, water_indicators_panel_html, heat_indicators_html, heat_indicators_grid_html, heat_indicators_panel_html [EXTRACTED 0.95]
-- **COG Raster Processing Pipeline** — rationale_raster_pipeline, dep_rasterio, dep_rio_cogeo, dep_titiler [EXTRACTED 1.00]
-- **Importer Upload Workflow** — importer_upload_html, importer_fieldmapping_html, importer_rastermapping_html, importer_upload_result_html, importer_external_data_html [INFERRED 0.85]
+- **External Import Credentials + BBox Selection Flow** — importer_templates_external_data_html, importer_bbox_area_selector_ui, importer_templates_importer_external_data_fetch_openeo, importer_start_external_import_endpoint, importer_neighborhoods_geojson_endpoint [EXTRACTED 1.00]
+- **Layer Catalog Style and Metadata Flow** — mainmap_views_layer_styles, mainmap_views_available_layers, common_static_js_layers_addlayer, common_static_js_layers_createpopupcontent, docs_map_layer_system_extract_unit [EXTRACTED 1.00]
+- **Admin-Unit Click-to-Panel HTMX Flow** — common_static_js_map_init_onadminlayerloaded, mainmap_templates_mainmap_admin_panel_tools_registry, mainmap_templates_mainmap_sync_panel_btns, watersupply_views_get_province_data, common_admin_units_resolve_admin_unit [INFERRED 0.85]
+- **Three-Layer Indicator Dashboard Pattern** — claude_indicator_pattern, claude_dag_gaps_watersupply, claude_dag_gaps_builtup_housing, claude_tasks_watersupply_expansion, claude_tasks_urban_heat_buildout [INFERRED 0.85]
+- **Raster-to-COG Tiling Pipeline Pattern** — claude_raster_pipeline, systemarchitecuture_processing_zone, systemarchitecuture_serving_zone, importerarchitecture_visualization_layer, readme_titiler [INFERRED 0.85]
+- **Central Model-Registry-Driven Architecture** — claude_model_registry_system, readme_model_registry_pattern, claude_domain_apps, claude_signal_driven_computations [INFERRED 0.85]
+- **Reflection-Based Extensibility Pattern** — docs_crosstwin_paper_draft_model_registry, claude_raster_pipeline, docs_crosstwin_paper_draft_external_data_import_pipeline, docs_crosstwin_paper_draft_map_frontend [EXTRACTED 1.00]
+- **Three-Layer Indicator Dashboard Pattern** — docs_crosstwin_paper_draft_watersupply_app, docs_crosstwin_paper_draft_housing_app, docs_crosstwin_paper_draft_calculations_py, docs_crosstwin_paper_draft_views_py [EXTRACTED 1.00]
+- **DPSIR Implementation Gap Evidence** — docs_crosstwin_paper_draft_dpsir_coverage_gaps, docs_crosstwin_paper_draft_accessibility_model_missing, docs_crosstwin_paper_draft_opex_extraction_volume_bug, docs_crosstwin_paper_draft_housingaffordability_thresholds_todo [INFERRED 0.85]
 
-## Communities (114 total, 33 thin omitted)
+## Communities (164 total, 75 thin omitted)
 
-### Community 0 - "External Data Catalog & Import"
-Cohesion: 0.06
-Nodes (36): get_catalog_grouped(), Return the catalog grouped by source, then by category.     Structure: { source, CBSImporter, ensure_multipolygon(), export_raster(), fetch_atom(), fetch_process_api(), fetch_wcs() (+28 more)
+### Community 0 - "Housing & Zoning Domain"
+Cohesion: 0.05
+Nodes (49): Building, BuildingEnergyLabel, Facility, Meta, Park, Property, Proxy onto Building, filed under the Energy app so the energy-label fields…, Street (+41 more)
 
-### Community 1 - "Raster Generation & Metadata"
-Cohesion: 0.06
-Nodes (19): generate_for_Province(), HumidityRaster, InterpolatedRasterBase, PrecipitationRaster, Calculate bounds polygon from the raster's extent, Determine bounds for interpolation, Convert extent tuple to Polygon, Get measurements within time window for a specific field                  Args (+11 more)
+### Community 1 - "Housing/Builtup Discussion Gaps"
+Cohesion: 0.05
+Nodes (54): Missing Accessibility Model, AreaAffectedDrought Model, Building.connectivity Field, builtup App, calculate_collection_ratio() Function, calculations.py Layer, ConsumptionCapita Model, CoverageWaterSupply Model (+46 more)
 
-### Community 2 - "Platform Architecture & Dependencies"
-Cohesion: 0.08
-Nodes (38): Base HTML Template, CrossTwin Platform, Django Web Framework, Google Earth Engine API, FastAPI (TiTiler), GeoPandas, HTMX Library, Mapbox GL JS (+30 more)
-
-### Community 3 - "Water Supply Calculations"
+### Community 2 - "Water Supply Calculations & Views"
 Cohesion: 0.09
-Nodes (34): calculate_available_freshwater(), calculate_co2_emission(), calculate_collection_ratio(), calculate_coverage(), calculate_drought_area(), calculate_energy_consumption(), calculate_nrw(), calculate_opex_recovery() (+26 more)
+Nodes (41): cities_within(), neighborhoods_within(), common/admin_units.py (planned), Look up a Province/City/District/Neighborhood instance by level + name., City queryset covering the given administrative unit, at any level., Neighborhood queryset covering the given administrative unit, at any level., resolve_admin_unit(), calculate_available_freshwater() (+33 more)
 
-### Community 4 - "Environmental & Economic Models"
-Cohesion: 0.12
-Nodes (18): EnvironmentalCosts, Province, ElectricityCost, WMSLayerAdmin, AreaAffectedDrought, AvailableFreshWater, ConsumptionCapita, ImportedWater (+10 more)
-
-### Community 5 - "Geospatial Upload Forms"
-Cohesion: 0.09
-Nodes (28): GeoUploadForm, get_target_model_choices(), MappingForm, Dynamic form for field mapping.     Fields are added dynamically in the view ba, Get choices for target model field., Form for uploading geodata files (GeoJSON or Shapefile)., Validate uploaded file has correct extension., Validate source CRS is a valid EPSG code. (+20 more)
-
-### Community 6 - "Map Frontend JavaScript"
-Cohesion: 0.09
-Nodes (17): fetch(), updateCityName(), initializeUI(), addLayer(), addRasterLayer(), addRasterLayerFromConfig(), addWmsLayer(), addWmsLegend() (+9 more)
-
-### Community 7 - "Housing Indicator Calculations"
-Cohesion: 0.1
-Nodes (28): calculate_affordability(), calculate_house_price_index(), calculate_mortgage_indicators(), calculate_new_units(), calculate_new_units_province(), calculate_property_indicators(), calculate_rent_indicators(), calculate_supply_demand() (+20 more)
-
-### Community 8 - "Urban Heat Raster Models"
+### Community 3 - "Map Layer Styling & Metadata"
 Cohesion: 0.07
-Nodes (18): LandSurfaceTemperature, MeanRadiantTemperature, Meta, NatureBasedSolutionPoint, NatureBasedSolutionPolygon, PET, Land Surface Temperature (LST) measurements, Surface Urban Heat Island Intensity (SUHII)) measurements (+10 more)
+Nodes (34): LandCoverVector, build_landcover_style_and_legend(), get_landcover_color(), Color scheme for LandCoverVector.land_cover_type (common.LandCoverClasses).…, Resolve a stable hex color for a LandCoverClasses.class_name value., Build a Mapbox `match` fill-color expression plus a legend for every class_name…, _cog_statistics(), colormap_legend_stops() (+26 more)
 
-### Community 9 - "Nature & Thermal Comfort"
-Cohesion: 0.11
-Nodes (26): calculate_green_area(), calculate_nbs_coverage(), calculate_urban_morphology(), calculate_vegetation_coverage(), classify_pet(), classify_utci(), get_latest_meteorology(), get_thermal_indices() (+18 more)
+### Community 4 - "Map Layers Frontend (JS)"
+Cohesion: 0.09
+Nodes (35): initializeUI(), activateToolLayers(), addCategoricalLegend(), addCoordinatesToBounds(), addLayer(), addRasterLayer(), addRasterLayerFromConfig(), addRasterLegend() (+27 more)
 
-### Community 10 - "Django App Configurations"
+### Community 5 - "Geodata Upload Forms & Views"
+Cohesion: 0.09
+Nodes (31): atomic, build_model_registry(), Build MODEL_REGISTRY dynamically from specified apps., GeoUploadForm, get_target_model_choices(), MappingForm, Get choices for target model field., Dynamic form for field mapping. Fields are added dynamically in the view based… (+23 more)
+
+### Community 6 - "Architecture Diagrams Overview"
+Cohesion: 0.07
+Nodes (38): API Routes, DAG Edge Coverage Gaps, DAG Gaps: builtup/housing apps, DAG Gaps: common app, DAG Gaps: urban_heat app, DAG Gaps: watersupply app, Domain Apps, DPSIR Causal Network (+30 more)
+
+### Community 7 - "Urban Heat Calculations & Views"
 Cohesion: 0.08
-Nodes (12): AppConfig, BuiltupConfig, CommonConfig, CoreConfig, EnergyConfig, HousingConfig, ImporterConfig, MainmapConfig (+4 more)
+Nodes (31): DigitalSurfaceModel, LandCoverVector.percentage Province-Relative Limitation, calculate_green_area(), calculate_urban_morphology(), calculate_vegetation_coverage(), classify_pet(), classify_utci(), get_latest_meteorology() (+23 more)
 
-### Community 11 - "Built Environment Models"
-Cohesion: 0.19
-Nodes (11): Building, Facility, Meta, Park, Property, Street, ZoningArea, City (+3 more)
+### Community 8 - "Indicator Dashboard Cards"
+Cohesion: 0.06
+Nodes (38): Known Issues Doc, GEE Authentication Failure (Service Usage API), Plan: Admin-Level Map Panel Selection, Mapbox Click Handler Bound to Wrong Layer ID (Province-fill), Questions and Bugs Doc, Should common become Administrative Boundaries, DEM/DSM COG vs Server-Side Raster SQL Trade-off, How to Populate Housing Supply/Demand (+30 more)
 
-### Community 12 - "Housing Finance Models"
-Cohesion: 0.1
-Nodes (9): CentralBankPolicy, CreditSupplyConditions, HousePriceIndex, HousingAffordability, HousingProject, HousingSupplyDemand, Meta, Mortgage (+1 more)
-
-### Community 13 - "Elevation & WMS Layers"
+### Community 9 - "Admin Hierarchy & App Registration"
 Cohesion: 0.11
-Nodes (9): DigitalElevationModel, DigitalElevationModelWMS, DigitalSurfaceModel, DigitalSurfaceModelWMS, LandCoverClasses, LandCoverRaster, LandCoverVector, LandCoverWMS (+1 more)
+Nodes (16): Shared helpers for resolving and aggregating by administrative unit. Lets any…, City, DigitalElevationModelWMS, DigitalSurfaceModelWMS, District, LandCoverWMS, Meta, Province (+8 more)
 
-### Community 14 - "Water Infrastructure Models"
-Cohesion: 0.12
-Nodes (6): CoverageWaterSupply, ExtractionWater, generate_random_event(), MeteredResidential, NonRevenueWater, TotalWaterDemand
+### Community 10 - "Map Init & Import Templates"
+Cohesion: 0.08
+Nodes (27): updateCityName(), add3DBuildings(), addExternalLayers(), ADMIN_LEVELS, changeBasemap(), getSavedCameraState(), initializeUrbanTwinMap(), onAdminLayerLoaded() (+19 more)
 
-### Community 15 - "Test Factories & Fixtures"
-Cohesion: 0.24
-Nodes (11): TestCase, make_city(), make_consumption_capita(), make_metered_residential(), make_neighborhood(), make_polygon(), make_province(), make_users_location() (+3 more)
+### Community 11 - "Water Supply Infrastructure Models"
+Cohesion: 0.08
+Nodes (15): ElectricityCost, WMSLayerAdmin, AreaAffectedDrought, CoverageWaterSupply, ImportedWater, Meta, PipeNetwork, SensibilityChoices (+7 more)
 
-### Community 16 - "COG Export Command"
+### Community 12 - "Urban Heat Raster Models"
+Cohesion: 0.09
+Nodes (18): calculate_nbs_coverage(), NBS coverage area and count. DAG edges: UTCI → NBS PET → NBS, MeanRadiantTemperature, Meta, NatureBasedSolutionPoint, NatureBasedSolutionPolygon, PET, Physiological Equivalent Temperature (PET) measurements (+10 more)
+
+### Community 13 - "Raster Export & COG Pipeline"
 Cohesion: 0.13
-Nodes (12): BaseCommand, Command, export_all_rasters(), export_raster_to_cog(), get_raster_field_name(), interpolate_raster(), Export any model instance with a RasterField to a COG.          instance:  the, Export all rasters that don't have a COG yet. (+4 more)
+Nodes (16): BaseCommand, Command, _cog_filename(), export_all_rasters(), export_geotiff_to_cog(), export_raster_to_cog(), interpolate_raster(), Build a COG filename from whatever satellite/process metadata the raster model… (+8 more)
 
-### Community 17 - "Administrative & Meteorology Models"
-Cohesion: 0.19
-Nodes (7): Neighborhood, WMSLayer, Meta, Meteorology, Time-series weather measurements from stations, WeatherStation, WMSLayer
+### Community 14 - "Metered Residential Water Tests"
+Cohesion: 0.24
+Nodes (12): TestCase, MeteredResidential, make_city(), make_consumption_capita(), make_metered_residential(), make_neighborhood(), make_polygon(), make_province() (+4 more)
 
-### Community 18 - "PostGIS Test Infrastructure"
-Cohesion: 0.25
-Nodes (5): _patched_prepare_database(), PostGISTestRunner, Replace the PostGIS backend's prepare_database so it does NOT try to     CREATE, Return the exact test DB name — respecting explicit TEST.NAME.         Do NOT a, DiscoverRunner
+### Community 15 - "Weather Interpolated Raster Base"
+Cohesion: 0.14
+Nodes (10): InterpolatedRasterBase, Calculate bounds polygon from the raster's extent, Determine bounds for interpolation, Convert extent tuple to Polygon, Get measurements within time window for a specific field Args:…, Extract point data from measurements Args: measurements: QuerySet of…, Generate raster by interpolating measurements Must be implemented by child…, Convenience method to generate raster for a Province Args: Province: Province… (+2 more)
 
-### Community 19 - "Nature & Protected Areas"
+### Community 16 - "PDOK Geometry Import (Atom/WFS)"
+Cohesion: 0.16
+Nodes (13): GEOSGeometry, ensure_multipolygon(), get_model_class(), _import_atom_gml_features(), _import_geojson_features(), Stream a plu:SpatialPlan GML file (INSPIRE Planned Land Use) over HTTP and…, Shared per-feature import engine for any source that hands back GeoJSON Feature…, Convert Polygon to MultiPolygon if needed. (+5 more)
+
+### Community 17 - "Nature Domain Models"
+Cohesion: 0.15
+Nodes (8): Forests, GreenSpaces, Meta, ProtectedArea, ProtectionType, WaterBodies, WaterWaysLN, WaterWaysPG
+
+### Community 18 - "Raster CRS & Reflection Rationale"
+Cohesion: 0.17
+Nodes (16): Raster Pipeline, Cloud-Optimised GeoTIFF (COG), CRS Mismatch Import Complexity (28992 vs 4326), EPSG:28992 (Amersfoort / RD New), EPSG:3857 Reprojection Bug and Fix, EPSG:4326 (WGS84), Extensibility-through-Reflection Design Principle, importer/ App (+8 more)
+
+### Community 19 - "External Data Catalog & Views"
+Cohesion: 0.20
+Nodes (10): get_catalog_grouped(), Return the catalog grouped by category. Structure: { category: [datasets] }…, get_external_data(), get_neighborhoods_geojson(), views_external.py ================= View for the External Data Import page.…, Receives selected dataset keys via POST JSON, fetches data, imports it.…, Render the External Data catalog page. Users tick datasets they want, then POST…, Return all neighborhoods from common.Neighborhood as a GeoJSON… (+2 more)
+
+### Community 20 - "Graphify Skill Reference Docs"
+Cohesion: 0.21
+Nodes (13): graphify Project Rule, graphify Integration Section, /graphify add and --watch, Extra Exports and Benchmark, Confidence Score Rubric, Extraction Subagent Prompt Spec, GitHub Clone and Cross-Repo Merge, Commit Hook and CLAUDE.md Integration (+5 more)
+
+### Community 21 - "Admin Hierarchy & Citations"
+Cohesion: 0.26
+Nodes (13): Administrative Hierarchy (Province>City>District>Neighbourhood), INSPIRE Directive 2007/2/EC, City Model, common App, DigitalElevationModel, District Model, DigitalSurfaceModel, External Data Import Coverage (+5 more)
+
+### Community 22 - "WMS Legend & Import Result"
+Cohesion: 0.17
+Nodes (8): default_wms_legend_url(), ImportResult, _legend_url_from_capabilities(), Register a WMS layer by creating/updating its row in the target WMS model. This…, Register a Sentinel-2 WMS layer by creating/updating its row in the target WMS…, Look up a layer's <LegendURL><OnlineResource xlink:href="..."/> from the WMS…, Resolve a legend image URL for a WMS layer, used as a fallback when a catalog…, Result object for import operations.
+
+### Community 23 - "Water Supply Infrastructure Models"
+Cohesion: 0.17
+Nodes (3): AvailableFreshWater, ConsumptionCapita, OPEX
+
+### Community 24 - "Weather Raster Signals"
+Cohesion: 0.24
+Nodes (11): create_latest_view(), create_raster_view(), delete_raster_view(), on_raster_deleted(), on_raster_saved(), receiver, Create a view that always shows the latest raster, Create a database view for a single raster (+3 more)
+
+### Community 25 - "Sentinel-2 Importer"
+Cohesion: 0.24
+Nodes (8): datetime, load_raster_into_target_model(), Import handler for Sentinel-2 datasets., Look up the real acquisition timestamp of the most recent Sentinel-2 L2A scene…, Fetch raster from Sentinel-2 WCS (e.g., WorldCover)., Fetch processed Sentinel-2 imagery via the Copernicus Data Space Ecosystem's…, Load a downloaded raster file into its catalog entry's target_model. The…, Sentinel2Importer
+
+### Community 26 - "PostGIS Test Runner"
+Cohesion: 0.27
+Nodes (5): _patched_prepare_database(), PostGISTestRunner, Replace the PostGIS backend's prepare_database so it does NOT try to CREATE…, Return the exact test DB name — respecting explicit TEST.NAME. Do NOT add…, DiscoverRunner
+
+### Community 27 - "Paper Overview & References"
+Cohesion: 0.22
+Nodes (11): CrossTwin Paper Draft, Building Model, Bauer et al. 2021 - Digital Revolution of Earth-system Science, Dembski et al. 2020 - Urban Digital Twins for Smart Cities, EEA 1999 - Environmental Indicators Typology and Overview, Ledoux & Meijers 2011 - Topologically Consistent 3D City Models, van der Hoeven & van den Brink 2020 - Towards an Urban Digital Twin, common/DAG.dot Causal Graph (+3 more)
+
+### Community 28 - "Google Earth Engine Auth & Import"
+Cohesion: 0.22
+Nodes (6): GEEAuthManager, import_dataset(), Export raster from GEE to local GeoTIFF., Main dispatcher for importing a dataset. Args: dataset_key: Key from…, Manages Google Earth Engine authentication., Initialize GEE with service account credentials.
+
+### Community 29 - "External Import Pipeline & Requirements"
 Cohesion: 0.18
-Nodes (6): Forests, Meta, ProtectedArea, ProtectionType, WaterBodies, WaterWays
+Nodes (10): django-crispy-forms + crispy-tailwind, Django 5.2.12, earthengine-api 1.7.18, GDAL 3.11.4 (Windows wheel), geopandas 1.1.2, openeo 0.51.0, owslib 0.35.0, rasterio 1.4.4 (+2 more)
 
-### Community 20 - "Raster Signal Handlers"
-Cohesion: 0.25
-Nodes (10): create_latest_view(), create_raster_view(), delete_raster_view(), on_raster_deleted(), on_raster_saved(), Create a view that always shows the latest raster, Create a database view for a single raster, Delete the view when a raster is deleted (+2 more)
+### Community 30 - "Platform Stack & Data Sources"
+Cohesion: 0.22
+Nodes (10): CrossTwin Platform, Django, Energy App, EnergyEfficiencyLabels Model, Google Earth Engine, HTMX, PostGIS, PostgreSQL (+2 more)
 
-### Community 21 - "Map API Views"
-Cohesion: 0.2
-Nodes (8): available_layers(), layer_bounds(), map_view(), model_geojson(), Display the map page., Returns the bounding box extent of a layer.     URL: /api/<app_label>/<model_na, Generic GeoJSON endpoint for any registered model.     URL: /api/<app_label>/<m, Returns a list of all available layers (models with geometry fields).     URL:
+### Community 31 - "Weather Precipitation & Station Models"
+Cohesion: 0.20
+Nodes (5): Meta, PrecipitationRaster, Interpolated precipitation raster layer, WeatherStation, WMSLayer
 
-### Community 23 - "Map Configuration State"
+### Community 32 - "External Data Exceptions & GEE Importer"
+Cohesion: 0.22
+Nodes (8): get_raster_field_name(), Find the name of the RasterField on a model., Exception, GEEImporter, _ImportBlocked, External Data Catalog & Import Logic =====================================…, Import handler for Google Earth Engine datasets., Raised by _import_geojson_features when the whole import can't proceed at all…
+
+### Community 33 - "Map Config JS"
 Cohesion: 0.25
 Nodes (7): availableLayers, BASEMAPS, CONFIG, layerVisibility, loadedLayers, TOOL_CATEGORIES, TOOL_CONTENT
 
-### Community 24 - "Model Registry & Raster API"
-Cohesion: 0.25
-Nodes (6): build_model_registry(), Build MODEL_REGISTRY dynamically from specified apps., get_raster_info(), get_raster_tiles(), Return TiTiler tile URL for a given raster layer., Return raster metadata including bounds.
+### Community 34 - "Version & Git Info Utility"
+Cohesion: 0.32
+Nodes (6): _derive_version(), _get_git_info(), Derive a semver-ish label from the raw commit count. 0–99 → v0.1, 100–199 →…, Inject git info into every template rendered by Django., Run git commands once and cache the result for the process lifetime. In…, version_context()
 
-### Community 25 - "Version & Git Metadata"
-Cohesion: 0.38
-Nodes (6): _derive_version(), _get_git_info(), Derive a semver-ish label from the raw commit count.     0–99   → v0.1,  100–19, Inject git info into every template rendered by Django., Run git commands once and cache the result for the process lifetime.     In dev, version_context()
+### Community 35 - "External Import Discussion & Overrides"
+Cohesion: 0.36
+Nodes (8): CBS (Centraal Bureau voor de Statistiek), Data Freshness and Provenance, EXTERNAL_DATA_CATALOG, External Data Import Pipeline, MODEL_OVERRIDES Dict, Open Data Dependency, PDOK, pdok_cities Bounding-box Exception
 
-### Community 26 - "Admin Panel Classes"
+### Community 36 - "Non-Revenue Water Losses Model"
+Cohesion: 0.29
+Nodes (4): LossesChoices, LossesTypes, NonRevenueWater, Create a random NonRevenueWater loss event. Picks a random LossesChoices,…
+
+### Community 37 - "Common Admin Registrations"
 Cohesion: 0.33
 Nodes (5): CityAdmin, LandCoverClassesAdmin, NeighborhoodAdmin, ProvinceAdmin, SurfaceMaterialPropertiesAdmin
 
-### Community 28 - "Population Signal Cascade"
-Cohesion: 0.53
-Nodes (5): city_changed(), district_changed(), neighborhood_changed(), Recompute currentPopulation and populationDensity for a parent record     by sum, _recompute_population()
+### Community 38 - "Nature Domain Paper Coverage"
+Cohesion: 0.33
+Nodes (6): Forests Model, GreenSpaces Model, nature App, ProtectedArea Model, WaterBodies Model, WaterWays Model
+
+### Community 39 - "CBS Importer"
+Cohesion: 0.33
+Nodes (4): CBSImporter, Import handler for CBS StatLine OData datasets., Fetch tabular data from CBS OData API and import to Django model. Args:…, Fetch column definitions and units for a CBS table. Useful for building field…
+
+### Community 40 - "PDOK WCS Importer"
+Cohesion: 0.40
+Nodes (4): PDOKImporter, Fetch raster data from PDOK WCS service, tiling the request when the area would…, Import handler for PDOK datasets - imports directly to Django models., Split [min_v, max_v] into evenly-sized segments, each no larger than…
+
+### Community 50 - "Manage.py Entrypoint"
+Cohesion: 0.50
+Nodes (3): main(), Run administrative tasks., Django's command-line utility for administrative tasks.
+
+### Community 63 - "Consumption Per Capita & Signals"
+Cohesion: 0.67
+Nodes (3): receiver, Recalculate total_consumption_m3_d for all records of this city whenever the…, update_consumption_on_population_change()
+
+## Ambiguous Edges - Review These
+- `syncHeaderHeight` → `LoadingManager (fetch/XHR interceptor)`  [AMBIGUOUS]
+  Templates/base.html · relation: shares_data_with
 
 ## Knowledge Gaps
-- **172 isolated node(s):** `Run administrative tasks.`, `ProvinceAdmin`, `CityAdmin`, `NeighborhoodAdmin`, `LandCoverClassesAdmin` (+167 more)
-  These have ≤1 connection - possible missing edges or undocumented components.
-- **33 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **145 isolated node(s):** `Migration`, `Migration`, `Migration`, `Migration`, `Migration` (+140 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 554 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **75 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Neighborhood` connect `Administrative & Meteorology Models` to `Isolated Model Admin`, `OPEX Water Model`, `Pipe Network Model`, `Environmental & Economic Models`, `Raster Generation & Metadata`, `Urban Heat Raster Models`, `Built Environment Models`, `Elevation & WMS Layers`, `Water Infrastructure Models`, `Administrative Hierarchy Saves`?**
-  _High betweenness centrality (0.059) - this node is a cross-community bridge._
-- **Why does `City` connect `Built Environment Models` to `Isolated Model Admin`, `OPEX Water Model`, `Pipe Network Model`, `Environmental & Economic Models`, `Raster Generation & Metadata`, `Urban Heat Raster Models`, `Elevation & WMS Layers`, `Water Infrastructure Models`, `Administrative & Meteorology Models`, `Administrative Hierarchy Saves`?**
-  _High betweenness centrality (0.058) - this node is a cross-community bridge._
-- **Why does `InterpolatedRasterBase` connect `Raster Generation & Metadata` to `Administrative & Meteorology Models`, `Built Environment Models`, `Environmental & Economic Models`?**
-  _High betweenness centrality (0.038) - this node is a cross-community bridge._
-- **Are the 51 inferred relationships involving `City` (e.g. with `ZoningArea` and `Meta`) actually correct?**
-  _`City` has 51 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 51 inferred relationships involving `Neighborhood` (e.g. with `ZoningArea` and `Meta`) actually correct?**
-  _`Neighborhood` has 51 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 33 inferred relationships involving `Province` (e.g. with `ElectricityCost` and `Meta`) actually correct?**
-  _`Province` has 33 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 24 inferred relationships involving `ElectricityCost` (e.g. with `Province` and `City`) actually correct?**
-  _`ElectricityCost` has 24 INFERRED edges - model-reasoned connections that need verification._
+- **What is the exact relationship between `syncHeaderHeight` and `LoadingManager (fetch/XHR interceptor)`?**
+  _Edge tagged AMBIGUOUS (relation: shares_data_with) - confidence is low._
+- **Why does `Plan: Admin-Level Map Panel Selection` connect `Indicator Dashboard Cards` to `Water Supply Calculations & Views`, `Map Init & Import Templates`?**
+  _High betweenness centrality (0.191) - this node is a cross-community bridge._
+- **Why does `common/admin_units.py (planned)` connect `Water Supply Calculations & Views` to `Indicator Dashboard Cards`?**
+  _High betweenness centrality (0.180) - this node is a cross-community bridge._
+- **Why does `City` connect `Admin Hierarchy & App Registration` to `Housing & Zoning Domain`, `External Data Exceptions & GEE Importer`, `Water Supply Calculations & Views`, `Geodata Upload Forms & Views`, `CBS Importer`, `Water Supply Infrastructure Models`, `Urban Heat Raster Models`, `Metered Residential Water Tests`, `Nature Domain Models`, `Water Supply Infrastructure Models`, `Sentinel-2 Importer`?**
+  _High betweenness centrality (0.168) - this node is a cross-community bridge._
+- **Are the 22 inferred relationships involving `City` (e.g. with `cities_within()` and `neighborhoods_within()`) actually correct?**
+  _`City` has 22 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 18 inferred relationships involving `Neighborhood` (e.g. with `Building` and `Facility`) actually correct?**
+  _`Neighborhood` has 18 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 12 inferred relationships involving `Province` (e.g. with `cities_within()` and `neighborhoods_within()`) actually correct?**
+  _`Province` has 12 INFERRED edges - model-reasoned connections that need verification._

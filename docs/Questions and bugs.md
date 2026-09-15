@@ -38,11 +38,33 @@
 
 14. should I explore if underground navigation is possible?
 
+14. Green spaces and parks are saved in two models, should I merge them into one? Probably only green spaces
+
 ## TODOS
 
 1. CHECK FOR IMPROVING AND ADDING INDICES FROM NEW RESEARCH EXAMPLE NDWI - I know there are betters.
 2. Have overview of active layers
-3. on nature/models/Park, Import parks
+2. Create an update button to search changes in the database to 
+
+2. -Max 10% cloud coverage-
+
+2. Check from Destination Earth -------- This is 5km scale
+
+2. Climate Atlas -- Check Maps and updates.... 
+
+3. Pre write outputs
+
+4. Howq to create alarmns and messages to give instant things ---
+
+5. Check with Carolina Pereria --- See her appwith climate data. --- This is WBGT only, and quick proxy. Requires getting a CSV and parsing to the stations. Might be easy.
+
+
+5. **See the kind of choices and steps on the development .... Write Methodology for paper --- What are the different steps you do and why?**
+
+5. Work with mila to see how everyone is doing it?? --- Rakibun example
+
+3. on nature/models/Park, Import parks --- where to store?
+3. on builtup/models/facilities, How to import from OSM or GoogleMaps?
 3. on builtup/models/Property, add Define green visibility index and calculation method
 3. define where to store zoning data and how to import
 3. Add policy options and restriction in pop up

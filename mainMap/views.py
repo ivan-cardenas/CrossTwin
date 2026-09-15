@@ -12,6 +12,7 @@ from django.conf import settings
 
 from core.utils import VECTOR_REGISTRY, WMS_REGISTRY, RASTER_REGISTRY, MODEL_REGISTRY
 from core.rasterStyles import raster_display_name
+from core.landCoverStyles import build_landcover_style_and_legend
 
 
 # Ordered from most specific to least — first match wins
@@ -436,14 +437,26 @@ def available_layers(request):
         
         if geom_field:
             app_label, model_name = key.split('.')
-            
+
             # Get record count
             try:
                 count = model.objects.count()
             except Exception:
                 count = 0
-            
-            layers.append({
+
+            style_layers = LAYER_STYLES.get(key, {}).get('layers')
+            legend = None
+
+            if key == 'common.LandCoverVector':
+                # Categorical color-per-class_name — computed per-request
+                # (not baked into LAYER_STYLES) since LandCoverClasses rows
+                # are get_or_create'd from source data and grow over time.
+                try:
+                    style_layers, legend = build_landcover_style_and_legend()
+                except Exception:
+                    legend = None
+
+            layer_entry = {
                 'key': key,
                 'app_label': app_label,
                 'model_name': model_name,
@@ -452,11 +465,14 @@ def available_layers(request):
                 'geometry_type': geom_type,
                 'geometry_field': geom_field,
                 'color': LAYER_STYLES.get(key, {}).get('color', _FALLBACK_COLORS[color_index % len(_FALLBACK_COLORS)]),
-                'style_layers': LAYER_STYLES.get(key, {}).get('layers'),
+                'style_layers': style_layers,
                 'fields': _field_metadata(model),
                 'count': count,
-            })
-            
+            }
+            if legend:
+                layer_entry['legend'] = legend
+            layers.append(layer_entry)
+
             color_index += 1
     
     for key, model in WMS_REGISTRY.items() if WMS_REGISTRY else []:

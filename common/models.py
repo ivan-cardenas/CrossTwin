@@ -140,9 +140,6 @@ class Neighborhood(models.Model):
         verbose_name_plural = "Neighborhoods"
     
 
-
-    
-
 class LandCoverClasses(models.Model):
     id = models.AutoField(primary_key=True)
     class_name = models.CharField(max_length=100, help_text="Name of the land cover class (e.g., 'Urban', 'Forest', 'Agriculture', etc.)")
@@ -333,6 +330,7 @@ class EnvironmentalCosts(models.Model):
     id = models.AutoField(primary_key=True)
     price_EUR_kg_CO2 = models.FloatField()
     price_EUR_price_EUR_droughtDamage_m3 = models.FloatField()
+    last_updated = models.DateTimeField(default=timezone.now)
     
     
     def __str__(self):

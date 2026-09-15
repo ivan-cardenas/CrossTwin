@@ -152,6 +152,10 @@ async function addLayer(layerConfig) {
 
     loadedLayers[key] = { layerIds, geojson, config: layerConfig };
 
+    if (layerConfig.legend && layerConfig.legend.length) {
+      addCategoricalLegend(key, display_name, layerConfig.legend);
+    }
+
     if (typeof onAdminLayerLoaded === 'function') onAdminLayerLoaded(key, layerIds);
 
     // Popup on click
@@ -319,6 +323,39 @@ function addRasterLegend(key, title, legend) {
       <span>${legend.min}${unitSuffix}</span>
       <span>${legend.max}${unitSuffix}</span>
     </div>
+  `;
+  document.querySelector('.map-wrapper').appendChild(legendEl);
+  repositionDynamicLegends();
+}
+
+// ---- Categorical (per-class) legend --------------------------------------
+
+/**
+ * Render a swatch-per-category legend for a vector layer colored by a
+ * `match` expression on some property (e.g. LandCoverVector.land_cover_type
+ * — see core/landCoverStyles.py::build_landcover_style_and_legend), as
+ * opposed to addRasterLegend's continuous gradient bar.
+ * @param {string} key - layer key, used to id/find/remove the legend element.
+ * @param {string} title - legend heading.
+ * @param {Array<{label: string, color: string}>} categories
+ */
+function addCategoricalLegend(key, title, categories) {
+  const existing = document.getElementById(`legend-${key}`);
+  if (existing) existing.remove();
+
+  const items = categories.map(({ label, color }) => `
+    <div class="legend-item">
+      <span class="legend-swatch" style="background:${color}"></span>
+      <span class="legend-label">${label}</span>
+    </div>
+  `).join('');
+
+  const legendEl = document.createElement('div');
+  legendEl.id = `legend-${key}`;
+  legendEl.className = 'map-legend dynamic-legend';
+  legendEl.innerHTML = `
+    <div class="legend-title">${title}</div>
+    <div class="legend-list">${items}</div>
   `;
   document.querySelector('.map-wrapper').appendChild(legendEl);
   repositionDynamicLegends();

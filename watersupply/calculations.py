@@ -13,9 +13,9 @@ from common.admin_units import cities_within, neighborhoods_within
 
 # ── Consumption & Demand ─────────────────────────────────────────────
 
-def _get_consumption_capita(province, year):
+def _get_consumption_capita(adminBund, year):
     """Return per-capita consumption (L/person/day) for an admin unit and year."""
-    cities = cities_within(province)
+    cities = cities_within(adminBund)
     record = (
         ConsumptionCapita.objects
         .filter(city__in=cities, year=year)
@@ -24,38 +24,38 @@ def _get_consumption_capita(province, year):
     return record['avg'] or 0
 
 
-def calculate_total_demand(province, year):
+def calculate_total_demand(adminBund, year):
     """Total water demand in m³/day across all cities in an admin unit."""
-    cities = cities_within(province)
-    consumption = _get_consumption_capita(province, year)
-    population = province.currentPopulation or 0
+    cities = cities_within(adminBund)
+    consumption = _get_consumption_capita(adminBund, year)
+    population = adminBund.currentPopulation or 0
     # L/person/day → m³/day
     return consumption / 1000 * population
 
 
 # ── Extraction & Production ──────────────────────────────────────────
 
-def calculate_total_extraction(province):
-    """Total active extraction in m³/day from wells within the province.
+def calculate_total_extraction(adminBund):
+    """Total active extraction in m³/day from wells within the adminBund.
 
     DAG edges:  Available_FW → Total_Extraction
     """
     wells = ExtractionWater.objects.filter(
         is_active=True,
-        geom__intersects=province.geom,
+        geom__intersects=adminBund.geom,
     )
     total_m3_s = wells.aggregate(total=Sum('pumpflow_m3_s'))['total'] or 0
     return total_m3_s * 86400  # m³/day
 
 
-def calculate_total_production_day(province=None):
+def calculate_total_production_day(adminBund=None):
     """Total water production in m³/day (extraction + imported).
 
     DAG edges:  Total_Extraction → Total_Water_Prod
                 Imported_Water   → Total_Water_Prod
     """
-    if province:
-        extraction_m3_d = calculate_total_extraction(province)
+    if adminBund:
+        extraction_m3_d = calculate_total_extraction(adminBund)
     else:
         total_m3_s = (
             ExtractionWater.objects.filter(is_active=True)
@@ -70,19 +70,19 @@ def calculate_total_production_day(province=None):
     return extraction_m3_d + imported_m3_d
 
 
-def calculate_supply_security(province):
+def calculate_supply_security(adminBund):
     """Supply security: demand vs production.
 
     DAG edges:  Total_Water_Demand → Supply_Security
                 Total_Water_Prod   → Supply_Security
     Returns (demand_m3_d, production_m3_d, security_ratio).
     """
-    cities = cities_within(province)
+    cities = cities_within(adminBund)
     demand = (
         TotalWaterDemand.objects.filter(city__in=cities)
         .aggregate(total=Sum('demandDay'))['total'] or 0
     )
-    production = calculate_total_production_day(province)
+    production = calculate_total_production_day(adminBund)
 
     if demand and production:
         supply_security = production / demand
@@ -94,7 +94,7 @@ def calculate_supply_security(province):
 
 # ── Energy & Emissions ───────────────────────────────────────────────
 
-def calculate_energy_consumption(province):
+def calculate_energy_consumption(adminBund):
     """Total energy consumption from pumping in kWh/day.
 
     DAG edges:  Total_Extraction   → Energy_Consumption
@@ -103,7 +103,7 @@ def calculate_energy_consumption(province):
     """
     wells = ExtractionWater.objects.filter(
         is_active=True,
-        geom__intersects=province.geom,
+        geom__intersects=adminBund.geom,
     )
     total_kwh_day = wells.aggregate(
         total=Sum(
@@ -123,14 +123,14 @@ def calculate_energy_consumption(province):
     return total_kwh_day + wt_energy
 
 
-def calculate_co2_emission(province):
+def calculate_co2_emission(adminBund):
     """Total CO₂ emissions from extraction pumps in kg CO₂/day.
 
     DAG edge:  Total_Extraction → CO2_Emission
     """
     wells = ExtractionWater.objects.filter(
         is_active=True,
-        geom__intersects=province.geom,
+        geom__intersects=adminBund.geom,
         pumpEmission_day_kg_CO2__isnull=False,
     )
     return wells.aggregate(total=Sum('pumpEmission_day_kg_CO2'))['total'] or 0
@@ -178,14 +178,14 @@ def calculate_water_quality(year):
 
 # ── Collection & Revenue Recovery ────────────────────────────────────
 
-def calculate_collection_ratio(province):
+def calculate_collection_ratio(adminBund):
     """Collection ratio: collected meters / installed meters.
 
     DAG edges:  Metered_Res_Water      → CollectionRatio
                 User_Acceptance_WS     → CollectionRatio
                 Water_Tariff_Afford    → CollectionRatio
     """
-    neighborhoods = neighborhoods_within(province)
+    neighborhoods = neighborhoods_within(adminBund)
     user_locs = UsersLocation.objects.filter(neighborhood__in=neighborhoods)
     meters = MeteredResidential.objects.filter(userLocation__in=user_locs)
 
@@ -199,14 +199,14 @@ def calculate_collection_ratio(province):
     return round(collected / installed * 100, 1) if installed else None
 
 
-def calculate_opex_recovery(year, province):
+def calculate_opex_recovery(year, adminBund):
     """OPEX recovery percentage.
 
     DAG edges:  OPEX             → OPEX_Recovery
                 CollectionRatio  → OPEX_Recovery
                 NRW              → OPEX_Recovery
     """
-    neighborhoods = neighborhoods_within(province)
+    neighborhoods = neighborhoods_within(adminBund)
     user_locs = UsersLocation.objects.filter(neighborhood__in=neighborhoods)
     revenue = (
         MeteredResidential.objects
@@ -233,14 +233,14 @@ def calculate_opex_recovery(year, province):
 
 # ── Coverage ─────────────────────────────────────────────────────────
 
-def calculate_coverage(province):
+def calculate_coverage(adminBund):
     """Water supply coverage aggregated across cities.
 
     DAG edges:  Network   → Coverage_WS_Area
                 CityArea  → Coverage_WS_Area
                 NumberUsers → Coverage_WS
     """
-    cities = cities_within(province)
+    cities = cities_within(adminBund)
     coverage_records = CoverageWaterSupply.objects.filter(city__in=cities)
 
     if not coverage_records.exists():
@@ -302,22 +302,22 @@ def calculate_nrw(year):
 
 # ── Available Fresh Water ────────────────────────────────────────────
 
-def calculate_available_freshwater(province):
-    """Total available fresh water within the province.
+def calculate_available_freshwater(adminBund):
+    """Total available fresh water within the adminBund.
 
     DAG edges:  Infiltration → Available_FW
                 Meteorology  → Available_FW
     """
     return (
         AvailableFreshWater.objects
-        .filter(geom__intersects=province.geom)
+        .filter(geom__intersects=adminBund.geom)
         .aggregate(total=Sum('totalQuantity_Mm3'))['total'] or 0
     )
 
 
 # ── Drought ──────────────────────────────────────────────────────────
 
-def calculate_drought_area(province, year):
+def calculate_drought_area(adminBund, year):
     """Area affected by drought.
 
     DAG edge:  Total_Extraction → Area_Drought
@@ -325,7 +325,7 @@ def calculate_drought_area(province, year):
     from .models import AreaAffectedDrought
 
     records = AreaAffectedDrought.objects.filter(
-        geom__intersects=province.geom, year=year,
+        geom__intersects=adminBund.geom, year=year,
     )
     if not records.exists():
         return {'total_area_km2': 0, 'max_sensibility': 0}

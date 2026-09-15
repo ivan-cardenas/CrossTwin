@@ -522,9 +522,248 @@ class GEEAuthManager:
         cls._project_id = None
 
 
+class _ImportBlocked(Exception):
+    """
+    Raised by _import_geojson_features when the whole import can't proceed at
+    all (e.g. a required __spatial_fk__ parent model has zero rows) -- as
+    opposed to a per-feature error, which is just collected and skipped.
+    """
+    pass
+
+
+def _import_geojson_features(features: List[Dict], dataset: Dict, Model, mapping: Dict) -> Tuple[int, int, List[str]]:
+    """
+    Shared per-feature import engine for any source that hands back GeoJSON
+    Feature dicts (WFS's outputFormat=application/json and OGC API Features'
+    default JSON both do) -- used by PDOKImporter.fetch_wfs and
+    PDOKImporter.fetch_ogc_features so the FIELD_MAPPINGS machinery
+    (__geometry__, __unique__, __static__, __fk_lookup__, __spatial_fk__,
+    __percentage_of_parent__, __year_from_date__, __name_template__) only
+    has one implementation to keep in sync across protocols.
+
+    Returns (created_count, updated_count, errors).
+    """
+    geom_field = mapping.get("__geometry__", "geom")
+    unique_wfs_prop = mapping.get("__unique__")
+    unique_model_field = mapping.get("__unique_field__")
+
+    # PDOK/GeoServer WFS layers (bag:pand in particular) can return the same
+    # feature — same identificatie — more than once in a single GetFeature
+    # response (e.g. a pand that straddles an internal tile boundary). Since
+    # __unique_field__ is often the model's actual primary key (see
+    # pdok_buildings), two rows for the same identificatie both attempting an
+    # INSERT with the same pk trips "duplicate key value violates unique
+    # constraint", even against an empty table. Deduplicate up front, keeping
+    # the first occurrence, so each unique id is only ever create()'d once.
+    if unique_wfs_prop:
+        seen_keys = set()
+        deduped = []
+        duplicate_count = 0
+        for feat in features:
+            key = feat.get("properties", {}).get(unique_wfs_prop)
+            if key is not None and key in seen_keys:
+                duplicate_count += 1
+                continue
+            if key is not None:
+                seen_keys.add(key)
+            deduped.append(feat)
+        if duplicate_count:
+            logger.warning(
+                f"[{dataset['key']}] dropped {duplicate_count} duplicate feature(s) "
+                f"sharing an existing '{unique_wfs_prop}' value before import."
+            )
+        features = deduped
+
+    created_count = 0
+    updated_count = 0
+    errors = []
+    fk_lookup_cache = {}  # {model_field: {source_value: model_instance}}, shared across all features in this batch
+
+    # Pre-load parent model objects for spatial FK resolution (done once per batch)
+    spatial_fk_conf = mapping.get("__spatial_fk__")
+    parent_objects = []
+    if spatial_fk_conf:
+        ParentModel = get_model_class(spatial_fk_conf["model"])
+        parent_objects = list(ParentModel.objects.all())
+        if not parent_objects and spatial_fk_conf.get("required", True):
+            raise _ImportBlocked(
+                f"No {spatial_fk_conf['model']} records found — cannot resolve '{spatial_fk_conf['field']}' FK. "
+                f"Import the parent records first."
+            )
+
+    for feat in features:
+        try:
+            with transaction.atomic():
+                props = feat.get("properties", {})
+                geom_json = feat.get("geometry")
+
+                if not geom_json:
+                    continue
+
+                # Parse geometry
+                geom = GEOSGeometry(json.dumps(geom_json))
+
+                # GeoJSON parsing always sets srid=4326 by convention, but
+                # PDOK returns coordinates in the requested srsName CRS
+                # (EPSG:28992 by default). Force the correct SRID so Django
+                # doesn't try to transform RD New meter values as WGS84 degrees.
+                source_srs = dataset.get("params", {}).get("srsName", "EPSG:28992")
+                source_epsg = int(source_srs.split(":")[-1])
+                geom.srid = source_epsg
+
+                # Convert to MultiPolygon if model expects it
+                model_geom_field = Model._meta.get_field(geom_field)
+                if hasattr(model_geom_field, 'geom_type'):
+                    if model_geom_field.geom_type == 'MULTIPOLYGON' and geom.geom_type == 'Polygon':
+                        geom = MultiPolygon(geom)
+                    elif model_geom_field.geom_type == 'MULTILINESTRING' and geom.geom_type == 'LineString':
+                        from django.contrib.gis.geos import MultiLineString
+                        geom = MultiLineString(geom)
+                    elif model_geom_field.geom_type == 'MULTIPOINT' and geom.geom_type == 'Point':
+                        from django.contrib.gis.geos import MultiPoint
+                        geom = MultiPoint(geom)
+
+                # Build field values from mapping
+                field_values = {geom_field: geom}
+
+                for wfs_prop, model_field in mapping.items():
+                    if wfs_prop.startswith("__"):
+                        continue  # Skip special keys
+                    if wfs_prop in props and props[wfs_prop] is not None:
+                        field_values[model_field] = props[wfs_prop]
+
+                # __year_from_date__: some source properties are a full ISO
+                # timestamp (e.g. "2015-12-31T23:00:00Z") where the model
+                # field is a plain year IntegerField -- pull just the year
+                # rather than failing the int() coercion on the full string.
+                year_from_date_prop = mapping.get("__year_from_date__")
+                if year_from_date_prop and props.get(year_from_date_prop):
+                    try:
+                        field_values["year"] = int(str(props[year_from_date_prop])[:4])
+                    except (TypeError, ValueError):
+                        pass
+
+                # __name_template__: some sources have no usable name/title
+                # property at all (e.g. BGT's begroeidterreindeel/
+                # functioneelgebied) -- build one from a str.format()
+                # template against the raw properties instead.
+                name_template = mapping.get("__name_template__")
+                if name_template:
+                    try:
+                        field_values["name"] = name_template.format(**props)
+                    except (KeyError, IndexError):
+                        pass
+
+                # __static__ fields aren't sourced from source properties at
+                # all (e.g. every feature in the natura2000 dataset is by
+                # definition a Natura 2000 area) -- always applied last so
+                # they win over anything a source property might otherwise map.
+                field_values.update(mapping.get("__static__", {}))
+
+                # __fk_lookup__: resolve a plain (non-spatial) FK by
+                # get_or_create-ing a parent row keyed on a source property
+                # value -- e.g. mapping a land-cover classification string
+                # straight onto common.LandCoverClasses.class_name,
+                # creating the category the first time it's seen. Unlike
+                # __spatial_fk__, the parent rows don't need to already
+                # exist, since the target is a small classification
+                # lookup table rather than an administrative hierarchy.
+                skip_feature = False
+                for fk_conf in mapping.get("__fk_lookup__", []):
+                    src_val = props.get(fk_conf["source_property"])
+                    if src_val is None:
+                        if fk_conf.get("required", True):
+                            errors.append(
+                                f"Missing '{fk_conf['source_property']}' for FK lookup "
+                                f"'{fk_conf['field']}' — skipped."
+                            )
+                            skip_feature = True
+                        break
+                    cache = fk_lookup_cache.setdefault(fk_conf["field"], {})
+                    if src_val not in cache:
+                        LookupModel = get_model_class(fk_conf["model"])
+                        obj, _ = LookupModel.objects.get_or_create(
+                            **{fk_conf["lookup_field"]: src_val},
+                            defaults=fk_conf.get("defaults", {}),
+                        )
+                        cache[src_val] = obj
+                    field_values[fk_conf["field"]] = cache[src_val]
+                if skip_feature:
+                    continue
+
+                # Resolve spatial FK: find the parent whose geometry contains this feature's centroid
+                if spatial_fk_conf and parent_objects:
+                    centroid = geom.centroid
+                    parent = next((p for p in parent_objects if p.geom.contains(centroid)), None)
+                    if parent is None:
+                        # Boundary edge case: fall back to intersection
+                        parent = next((p for p in parent_objects if p.geom.intersects(centroid)), None)
+                    if parent:
+                        field_values[spatial_fk_conf["field"]] = parent
+                    elif spatial_fk_conf.get("required", True):
+                        errors.append(
+                            f"No parent {spatial_fk_conf['model']} found for feature "
+                            f"'{props.get(unique_wfs_prop, '?')}' — skipped."
+                        )
+                        continue
+
+                # __percentage_of_parent__: express this feature's geometry
+                # area as a percentage of an already-resolved parent's own
+                # area field (e.g. LandCoverVector.percentage = this
+                # polygon's share of its City's area_km2). Requires the
+                # parent FK to already be in field_values, so this runs
+                # after spatial FK resolution above.
+                pct_conf = mapping.get("__percentage_of_parent__")
+                if pct_conf and pct_conf["parent_field"] in field_values:
+                    parent_obj = field_values[pct_conf["parent_field"]]
+                    parent_area_km2 = getattr(parent_obj, pct_conf["parent_area_attr"], None)
+                    if parent_area_km2:
+                        # geom is in EPSG:28992 (meters) by this point -> area is m^2
+                        field_values["percentage"] = round(
+                            (geom.area / (parent_area_km2 * 1_000_000)) * 100, 6
+                        )
+
+                # Use update_or_create if unique field is defined
+                if unique_wfs_prop and unique_model_field and unique_wfs_prop in props:
+                    lookup = {unique_model_field: props[unique_wfs_prop]}
+                    defaults = {k: v for k, v in field_values.items() if k != unique_model_field}
+
+                    try:
+                        with transaction.atomic():
+                            obj, was_created = Model.objects.update_or_create(
+                                **lookup,
+                                defaults=defaults
+                            )
+                    except IntegrityError:
+                        existing = Model.objects.filter(**lookup).first()
+                        if existing is None:
+                            raise
+                        for field_name, value in defaults.items():
+                            setattr(existing, field_name, value)
+                        existing.save()
+                        obj = existing
+                        was_created = False
+
+                    if was_created:
+                        created_count += 1
+                    else:
+                        updated_count += 1
+                else:
+                    # Just create new records
+                    Model.objects.create(**field_values)
+                    created_count += 1
+
+        except Exception as e:
+            errors.append(str(e))
+            if len(errors) > 10:
+                break  # Stop after too many errors
+
+    return created_count, updated_count, errors
+
+
 class PDOKImporter:
     """Import handler for PDOK datasets - imports directly to Django models."""
-    
+
     @staticmethod
     def fetch_wfs(dataset: Dict, bbox: Optional[list] = None, max_features: int = 1000000) -> ImportResult:
         """
@@ -610,211 +849,10 @@ class PDOKImporter:
             if not features:
                 return ImportResult("success", "No features found in the specified area.", 0)
 
-            # Import features to database
-            geom_field = mapping.get("__geometry__", "geom")
-            unique_wfs_prop = mapping.get("__unique__")
-            unique_model_field = mapping.get("__unique_field__")
-
-            # PDOK/GeoServer WFS layers (bag:pand in particular) can return the same
-            # feature — same identificatie — more than once in a single GetFeature
-            # response (e.g. a pand that straddles an internal tile boundary). Since
-            # __unique_field__ is often the model's actual primary key (see
-            # pdok_buildings), two rows for the same identificatie both attempting an
-            # INSERT with the same pk trips "duplicate key value violates unique
-            # constraint", even against an empty table. Deduplicate up front, keeping
-            # the first occurrence, so each unique id is only ever create()'d once.
-            if unique_wfs_prop:
-                seen_keys = set()
-                deduped = []
-                duplicate_count = 0
-                for feat in features:
-                    key = feat.get("properties", {}).get(unique_wfs_prop)
-                    if key is not None and key in seen_keys:
-                        duplicate_count += 1
-                        continue
-                    if key is not None:
-                        seen_keys.add(key)
-                    deduped.append(feat)
-                if duplicate_count:
-                    logger.warning(
-                        f"[{dataset['key']}] dropped {duplicate_count} duplicate feature(s) "
-                        f"sharing an existing '{unique_wfs_prop}' value before import."
-                    )
-                features = deduped
-
-            created_count = 0
-            updated_count = 0
-            errors = []
-            fk_lookup_cache = {}  # {model_field: {source_value: model_instance}}, shared across all features in this batch
-
-            # Pre-load parent model objects for spatial FK resolution (done once per batch)
-            spatial_fk_conf = mapping.get("__spatial_fk__")
-            parent_objects = []
-            if spatial_fk_conf:
-                ParentModel = get_model_class(spatial_fk_conf["model"])
-                parent_objects = list(ParentModel.objects.all())
-                if not parent_objects and spatial_fk_conf.get("required", True):
-                    return ImportResult(
-                        "error",
-                        f"No {spatial_fk_conf['model']} records found — cannot resolve '{spatial_fk_conf['field']}' FK. "
-                        f"Import the parent records first.",
-                    )
-
-            for feat in features:
-                try:
-                    with transaction.atomic():
-                        props = feat.get("properties", {})
-                        geom_json = feat.get("geometry")
-                        
-                        if not geom_json:
-                            continue
-                        
-                        # Parse geometry
-                        geom = GEOSGeometry(json.dumps(geom_json))
-
-                        # GeoJSON parsing always sets srid=4326 by convention, but
-                        # PDOK returns coordinates in the requested srsName CRS
-                        # (EPSG:28992 by default). Force the correct SRID so Django
-                        # doesn't try to transform RD New meter values as WGS84 degrees.
-                        source_srs = dataset.get("params", {}).get("srsName", "EPSG:28992")
-                        source_epsg = int(source_srs.split(":")[-1])
-                        geom.srid = source_epsg
-                        
-                        # Convert to MultiPolygon if model expects it
-                        model_geom_field = Model._meta.get_field(geom_field)
-                        if hasattr(model_geom_field, 'geom_type'):
-                            if model_geom_field.geom_type == 'MULTIPOLYGON' and geom.geom_type == 'Polygon':
-                                geom = MultiPolygon(geom)
-                            elif model_geom_field.geom_type == 'MULTILINESTRING' and geom.geom_type == 'LineString':
-                                from django.contrib.gis.geos import MultiLineString
-                                geom = MultiLineString(geom)
-                            elif model_geom_field.geom_type == 'MULTIPOINT' and geom.geom_type == 'Point':
-                                from django.contrib.gis.geos import MultiPoint
-                                geom = MultiPoint(geom)
-                        
-                        # Build field values from mapping
-                        field_values = {geom_field: geom}
-
-                        for wfs_prop, model_field in mapping.items():
-                            if wfs_prop.startswith("__"):
-                                continue  # Skip special keys
-                            if wfs_prop in props and props[wfs_prop] is not None:
-                                field_values[model_field] = props[wfs_prop]
-
-                        # __year_from_date__: some WFS properties are a full ISO
-                        # timestamp (e.g. "2015-12-31T23:00:00Z") where the model
-                        # field is a plain year IntegerField -- pull just the year
-                        # rather than failing the int() coercion on the full string.
-                        year_from_date_prop = mapping.get("__year_from_date__")
-                        if year_from_date_prop and props.get(year_from_date_prop):
-                            try:
-                                field_values["year"] = int(str(props[year_from_date_prop])[:4])
-                            except (TypeError, ValueError):
-                                pass
-
-                        # __static__ fields aren't sourced from WFS properties at
-                        # all (e.g. every feature in the natura2000 dataset is by
-                        # definition a Natura 2000 area) -- always applied last so
-                        # they win over anything a WFS property might otherwise map.
-                        field_values.update(mapping.get("__static__", {}))
-
-                        # __fk_lookup__: resolve a plain (non-spatial) FK by
-                        # get_or_create-ing a parent row keyed on a WFS property
-                        # value -- e.g. mapping a land-cover classification string
-                        # straight onto common.LandCoverClasses.class_name,
-                        # creating the category the first time it's seen. Unlike
-                        # __spatial_fk__, the parent rows don't need to already
-                        # exist, since the target is a small classification
-                        # lookup table rather than an administrative hierarchy.
-                        skip_feature = False
-                        for fk_conf in mapping.get("__fk_lookup__", []):
-                            src_val = props.get(fk_conf["source_property"])
-                            if src_val is None:
-                                if fk_conf.get("required", True):
-                                    errors.append(
-                                        f"Missing '{fk_conf['source_property']}' for FK lookup "
-                                        f"'{fk_conf['field']}' — skipped."
-                                    )
-                                    skip_feature = True
-                                break
-                            cache = fk_lookup_cache.setdefault(fk_conf["field"], {})
-                            if src_val not in cache:
-                                LookupModel = get_model_class(fk_conf["model"])
-                                obj, _ = LookupModel.objects.get_or_create(
-                                    **{fk_conf["lookup_field"]: src_val},
-                                    defaults=fk_conf.get("defaults", {}),
-                                )
-                                cache[src_val] = obj
-                            field_values[fk_conf["field"]] = cache[src_val]
-                        if skip_feature:
-                            continue
-
-                        # Resolve spatial FK: find the parent whose geometry contains this feature's centroid
-                        if spatial_fk_conf and parent_objects:
-                            centroid = geom.centroid
-                            parent = next((p for p in parent_objects if p.geom.contains(centroid)), None)
-                            if parent is None:
-                                # Boundary edge case: fall back to intersection
-                                parent = next((p for p in parent_objects if p.geom.intersects(centroid)), None)
-                            if parent:
-                                field_values[spatial_fk_conf["field"]] = parent
-                            elif spatial_fk_conf.get("required", True):
-                                errors.append(
-                                    f"No parent {spatial_fk_conf['model']} found for feature "
-                                    f"'{props.get(unique_wfs_prop, '?')}' — skipped."
-                                )
-                                continue
-
-                        # __percentage_of_parent__: express this feature's geometry
-                        # area as a percentage of an already-resolved parent's own
-                        # area field (e.g. LandCoverVector.percentage = this
-                        # polygon's share of its City's area_km2). Requires the
-                        # parent FK to already be in field_values, so this runs
-                        # after spatial FK resolution above.
-                        pct_conf = mapping.get("__percentage_of_parent__")
-                        if pct_conf and pct_conf["parent_field"] in field_values:
-                            parent_obj = field_values[pct_conf["parent_field"]]
-                            parent_area_km2 = getattr(parent_obj, pct_conf["parent_area_attr"], None)
-                            if parent_area_km2:
-                                # geom is in EPSG:28992 (meters) by this point -> area is m^2
-                                field_values["percentage"] = round(
-                                    (geom.area / (parent_area_km2 * 1_000_000)) * 100, 6
-                                )
-
-                        # Use update_or_create if unique field is defined
-                        if unique_wfs_prop and unique_model_field and unique_wfs_prop in props:
-                            lookup = {unique_model_field: props[unique_wfs_prop]}
-                            defaults = {k: v for k, v in field_values.items() if k != unique_model_field}
-
-                            try:
-                                with transaction.atomic():
-                                    obj, was_created = Model.objects.update_or_create(
-                                        **lookup,
-                                        defaults=defaults
-                                    )
-                            except IntegrityError:
-                                existing = Model.objects.filter(**lookup).first()
-                                if existing is None:
-                                    raise
-                                for field_name, value in defaults.items():
-                                    setattr(existing, field_name, value)
-                                existing.save()
-                                obj = existing
-                                was_created = False
-
-                            if was_created:
-                                created_count += 1
-                            else:
-                                updated_count += 1
-                        else:
-                            # Just create new records
-                            Model.objects.create(**field_values)
-                            created_count += 1
-                            
-                except Exception as e:
-                    errors.append(str(e))
-                    if len(errors) > 10:
-                        break  # Stop after too many errors
+            try:
+                created_count, updated_count, errors = _import_geojson_features(features, dataset, Model, mapping)
+            except _ImportBlocked as e:
+                return ImportResult("error", str(e))
 
             # Build result message
             msg_parts = []
@@ -822,15 +860,15 @@ class PDOKImporter:
                 msg_parts.append(f"created {created_count}")
             if updated_count:
                 msg_parts.append(f"updated {updated_count}")
-            
+
             msg = f"Imported {len(features)} features from {layer}: " + ", ".join(msg_parts) + "."
-            
+
             if errors:
                 msg += f" ({len(errors)} errors)"
                 logger.warning(f"Import errors for {dataset_key}: {errors[:5]}")
-            
+
             return ImportResult("success", msg, created_count, updated_count)
-            
+
         except requests.RequestException as e:
             return ImportResult("error", f"WFS request failed: {e}")
         except Exception as e:
@@ -867,6 +905,126 @@ class PDOKImporter:
         return [min_v + i * step for i in range(tile_count + 1)]
 
     @staticmethod
+    def fetch_ogc_features(dataset: Dict, bbox: list, max_features: int = 1000000) -> ImportResult:
+        """
+        Fetch vector data from an OGC API Features service (PDOK's newer
+        REST/JSON protocol, e.g. BGT -- api.pdok.nl/lv/bgt/ogc/v1) and import
+        directly to a Django model via the same field-mapping engine fetch_wfs
+        uses. Unlike WFS 2.0.0 GetFeature, pagination here follows a "next"
+        link rather than startIndex, and CRS/bbox are separate query params
+        rather than one combined srsName-suffixed bbox string.
+
+        Args:
+            dataset: Catalog entry dict. dataset['url'] is the OGC API base
+                (e.g. ".../ogc/v1", no trailing slash); dataset['collection']
+                is the collection id (e.g. "begroeidterreindeel").
+            bbox: [xmin, ymin, xmax, ymax] in WGS84
+        """
+        try:
+            base_url = dataset["url"]
+            collection = dataset["collection"]
+            dataset_key = dataset["key"]
+            model_path = dataset["target_model"]
+
+            mapping = FIELD_MAPPINGS.get(dataset_key)
+            if not mapping:
+                return ImportResult("error", f"No field mapping defined for {dataset_key}")
+
+            try:
+                Model = get_model_class(model_path)
+            except ValueError as e:
+                return ImportResult("error", str(e))
+
+            target_srs = dataset.get("params", {}).get("srsName", "EPSG:28992")
+            target_epsg = target_srs.split(":")[-1]
+
+            items_url = f"{base_url}/collections/{collection}/items"
+            params = {
+                "f": "json",
+                "limit": min(max_features, 1000),
+                "crs": f"http://www.opengis.net/def/crs/EPSG/0/{target_epsg}",
+            }
+            if bbox:
+                params["bbox"] = f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}"
+                params["bbox-crs"] = "http://www.opengis.net/def/crs/OGC/1.3/CRS84"
+
+            # OGC API Features pages via a "next" relation link in the response
+            # body rather than an offset param the client computes itself.
+            all_features = []
+            next_url = items_url
+            next_params = params
+            max_pages = 100  # safety cap against a server that never stops linking "next"
+            logger.info(f"Fetching OGC API Features: {items_url} collection={collection}")
+            for page in range(max_pages):
+                response = requests.get(next_url, params=next_params, timeout=120)
+                response.raise_for_status()
+                body = response.json()
+                features = body.get("features", [])
+                all_features.extend(features)
+
+                if len(all_features) >= max_features:
+                    break
+                next_link = next(
+                    (l["href"] for l in body.get("links", []) if l.get("rel") == "next"),
+                    None,
+                )
+                if not next_link:
+                    break
+                next_url = next_link
+                next_params = None  # the "next" link already carries its own query string
+            else:
+                logger.warning(f"[{dataset_key}] hit the {max_pages}-page safety cap while paginating")
+
+            features = all_features[:max_features]
+            logger.info(f"Fetched {len(features)} feature(s) from {collection}")
+
+            # __client_filter__: OGC API Features collections here have no
+            # server-side attribute filter reliably usable across PDOK's
+            # implementations, so narrow the feature list to the ones that
+            # actually match the target concept (e.g. begroeidterreindeel's
+            # fysiek_voorkomen in the forest-type values) before importing.
+            filt = mapping.get("__client_filter__")
+            if filt:
+                prop = filt["property"]
+                if "in" in filt:
+                    allowed = set(filt["in"])
+                    features = [f for f in features if f.get("properties", {}).get(prop) in allowed]
+                elif "startswith" in filt:
+                    prefix = filt["startswith"]
+                    features = [
+                        f for f in features
+                        if (f.get("properties", {}).get(prop) or "").startswith(prefix)
+                    ]
+
+            if not features:
+                return ImportResult("success", "No features found in the specified area.", 0)
+
+            try:
+                created_count, updated_count, errors = _import_geojson_features(features, dataset, Model, mapping)
+            except _ImportBlocked as e:
+                return ImportResult("error", str(e))
+
+            msg_parts = []
+            if created_count:
+                msg_parts.append(f"created {created_count}")
+            if updated_count:
+                msg_parts.append(f"updated {updated_count}")
+
+            msg = f"Imported {len(features)} features from {collection}: " + ", ".join(msg_parts) + "."
+
+            if errors:
+                msg += f" ({len(errors)} errors)"
+                logger.warning(f"Import errors for {dataset_key}: {errors[:5]}")
+
+            return ImportResult("success", msg, created_count, updated_count)
+
+        except requests.RequestException as e:
+            return ImportResult("error", f"OGC API Features request failed: {e}")
+        except Exception as e:
+            logger.exception(f"OGC API Features import error for {dataset['key']}")
+            return ImportResult("error", f"Import failed: {e}")
+
+    @staticmethod
     def fetch_wcs(dataset: Dict, bbox: list, resolution: float = 5.0) -> ImportResult:
         """
         Fetch raster data from PDOK WCS service, tiling the request when the
@@ -877,8 +1035,9 @@ class PDOKImporter:
             url = dataset.get("wcs_url", dataset["url"])
             layer = dataset["layer"]
 
-            # bbox arrives in WGS84 from the frontend (city extent or a drawn
-            # rectangle — see importer/views_external.py::get_cities_geojson).
+            # bbox arrives in WGS84 from the frontend (union of selected
+            # neighborhood extents, or a drawn rectangle — see
+            # importer/views_external.py::get_neighborhoods_geojson).
             # The subset below has no CRS declaration, so WCS 2.0.1 interprets
             # it in the coverage's native CRS; for a CRS like AHN's RD New
             # (EPSG:28992), passing raw lon/lat numbers lands nowhere near the
@@ -1398,7 +1557,7 @@ class Sentinel2Importer:
     }
 
     @staticmethod
-    def _lookup_acquisition_date(bbox: list, date_from: str, date_to: str, max_cloud_cover: float = 85.0) -> Optional[datetime]:
+    def _lookup_acquisition_date(bbox: list, date_from: str, date_to: str, max_cloud_cover: float = 10) -> Optional[datetime]:
         """
         Look up the real acquisition timestamp of the most recent Sentinel-2
         L2A scene matching the requested area/date range/cloud filter, via
@@ -1838,6 +1997,8 @@ def import_dataset(
             return PDOKImporter.register_wms(dataset)
         elif fmt == "atom":
             return PDOKImporter.fetch_atom(dataset, bbox)
+        elif fmt == "ogc_api":
+            return PDOKImporter.fetch_ogc_features(dataset, bbox)
 
     elif source == "CBS" and fmt == "odata":
         return CBSImporter.fetch(dataset, date_from, date_to, bbox)

@@ -199,9 +199,9 @@
             </div>
             <div class="flex-1">
                 <h3 class="text-sm font-medium text-slate-400">Area of Interest</h3>
-                <p class="text-xs text-slate-400">Click a city on the map to define the import area</p>
+                <p class="text-xs text-slate-400">Click one or more neighborhoods on the map to define the import area</p>
             </div>
-            <!-- Shown after a city is selected -->
+            <!-- Shown after at least one neighborhood is selected -->
             <div id="city-selected-info" class="hidden flex items-center gap-3">
                 <svg class="w-4 h-4 text-emerald-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
@@ -217,13 +217,13 @@
             <div id="bbox-map" class="h-full w-full min-h-0"></div>
             <!-- Instruction hint -->
             <div id="bbox-hint" class="absolute top-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-lg bg-slate-800/90 border border-white/10 text-xs text-slate-300 shadow-lg z-10 pointer-events-none">
-                Click a city to select it as the area of interest
+                Click a neighborhood to select it as part of the area of interest — click again to deselect
             </div>
             <!-- Draw mode toolbar — hidden until pdok_cities is selected -->
             <div class="hidden absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-1.5 rounded-lg bg-slate-900/90 border border-white/10 shadow-lg z-10">
                 <button id="mode-city-btn" type="button"
                         class="px-3 py-1 rounded-md text-xs font-medium transition-colors bg-white/10 text-slate-200">
-                    Click city
+                    Click neighborhood
                 </button>
                 <button id="mode-draw-btn" type="button"
                         class="px-3 py-1 rounded-md text-xs font-medium transition-colors text-slate-400 hover:text-slate-200">
@@ -379,8 +379,8 @@ document.addEventListener('DOMContentLoaded', function () {
     // ── Bbox Map ──────────────────────────────────────────────────────
     let bboxMap = null;
     let bboxMapReady = false;
-    let currentBbox = null;       // [west, south, east, north] in WGS84
-    let selectedCityId = null;
+    let currentBbox = null;       // [west, south, east, north] in WGS84 — union of all selected neighborhoods
+    const selectedNeighborhoods = new Map(); // id -> { name, bbox }
 
     // Draw-rectangle state
     let drawMode = false;
@@ -420,17 +420,17 @@ document.addEventListener('DOMContentLoaded', function () {
         bboxMap.getCanvas().style.cursor = active ? 'crosshair' : '';
         bboxHint.textContent = active
             ? 'Click to set the first corner of the bounding box'
-            : 'Click a city to select it as the area of interest';
+            : 'Click a neighborhood to select it as part of the area of interest — click again to deselect';
 
         // Clear draw preview
         bboxMap.getSource('draw-preview').setData(emptyGeoJSON());
 
-        // City layers: pointer cursor only in city mode
-        bboxMap.on('mouseenter', 'cities-fill', cityMouseEnter);
-        bboxMap.on('mouseleave', 'cities-fill', cityMouseLeave);
+        // Neighborhood layers: pointer cursor only in click mode
+        bboxMap.on('mouseenter', 'neighborhoods-fill', neighborhoodMouseEnter);
+        bboxMap.on('mouseleave', 'neighborhoods-fill', neighborhoodMouseLeave);
         if (active) {
-            bboxMap.off('mouseenter', 'cities-fill', cityMouseEnter);
-            bboxMap.off('mouseleave', 'cities-fill', cityMouseLeave);
+            bboxMap.off('mouseenter', 'neighborhoods-fill', neighborhoodMouseEnter);
+            bboxMap.off('mouseleave', 'neighborhoods-fill', neighborhoodMouseLeave);
         }
     }
 
@@ -441,10 +441,13 @@ document.addEventListener('DOMContentLoaded', function () {
         drawStart = null;
         bboxHint.textContent = 'Click to set the first corner of the bounding box';
         bboxMap.getSource('draw-preview').setData(emptyGeoJSON());
-        selectArea('Custom area', bbox);
+        // Drawing a custom rectangle replaces any neighborhood picks.
+        selectedNeighborhoods.clear();
+        highlightSelectedNeighborhoods();
+        setAreaLabelAndFit('Custom area', bbox);
     }
 
-    function selectArea(label, bbox) {
+    function setAreaLabelAndFit(label, bbox) {
         currentBbox = bbox;
         selectedCityNameEl.textContent = label;
         citySelectedInfo.classList.remove('hidden');
@@ -452,46 +455,61 @@ document.addEventListener('DOMContentLoaded', function () {
         bboxMap.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], { padding: 40, duration: 800 });
     }
 
-    function selectCity(cityId, cityName, bbox) {
-        selectedCityId = cityId;
-        highlightSelectedCity();
-        selectArea(cityName, bbox);
+    // Union of [west, south, east, north] bboxes into one bbox covering all of them.
+    function unionBbox(bboxes) {
+        return bboxes.reduce((acc, b) => acc ? [
+            Math.min(acc[0], b[0]), Math.min(acc[1], b[1]),
+            Math.max(acc[2], b[2]), Math.max(acc[3], b[3]),
+        ] : b.slice(), null);
     }
 
-    function highlightSelectedCity() {
+    function toggleNeighborhood(id, name, bbox) {
+        if (selectedNeighborhoods.has(id)) {
+            selectedNeighborhoods.delete(id);
+        } else {
+            selectedNeighborhoods.set(id, { name, bbox });
+        }
+        highlightSelectedNeighborhoods();
+
+        if (selectedNeighborhoods.size === 0) {
+            clearBbox();
+            return;
+        }
+
+        const names = Array.from(selectedNeighborhoods.values()).map(v => v.name);
+        const label = names.length === 1 ? names[0] : `${names.length} neighborhoods selected`;
+        const combinedBbox = unionBbox(Array.from(selectedNeighborhoods.values()).map(v => v.bbox));
+        setAreaLabelAndFit(label, combinedBbox);
+    }
+
+    function highlightSelectedNeighborhoods() {
         if (!bboxMapReady) return;
-        bboxMap.setPaintProperty('cities-fill', 'fill-color', [
-            'case', ['==', ['get', 'id'], selectedCityId], '#f59e0b', '#3b82f6'
-        ]);
-        bboxMap.setPaintProperty('cities-fill', 'fill-opacity', [
-            'case', ['==', ['get', 'id'], selectedCityId], 0.35, 0.15
-        ]);
-        bboxMap.setPaintProperty('cities-outline', 'line-color', [
-            'case', ['==', ['get', 'id'], selectedCityId], '#f59e0b', '#60a5fa'
-        ]);
-        bboxMap.setPaintProperty('cities-outline', 'line-width', [
-            'case', ['==', ['get', 'id'], selectedCityId], 2, 1
-        ]);
+        const selectedIds = Array.from(selectedNeighborhoods.keys());
+        const isSelected = ['in', ['get', 'id'], ['literal', selectedIds]];
+        bboxMap.setPaintProperty('neighborhoods-fill', 'fill-color', ['case', isSelected, '#f59e0b', '#3b82f6']);
+        bboxMap.setPaintProperty('neighborhoods-fill', 'fill-opacity', ['case', isSelected, 0.35, 0.15]);
+        bboxMap.setPaintProperty('neighborhoods-outline', 'line-color', ['case', isSelected, '#f59e0b', '#60a5fa']);
+        bboxMap.setPaintProperty('neighborhoods-outline', 'line-width', ['case', isSelected, 2, 1]);
     }
 
     function clearBbox() {
-        selectedCityId = null;
+        selectedNeighborhoods.clear();
         currentBbox = null;
         drawStart = null;
         citySelectedInfo.classList.add('hidden');
         bboxHint.classList.remove('hidden');
         if (bboxMapReady) {
             bboxMap.getSource('draw-preview').setData(emptyGeoJSON());
-            bboxMap.setPaintProperty('cities-fill', 'fill-color', '#3b82f6');
-            bboxMap.setPaintProperty('cities-fill', 'fill-opacity', 0.15);
-            bboxMap.setPaintProperty('cities-outline', 'line-color', '#60a5fa');
-            bboxMap.setPaintProperty('cities-outline', 'line-width', 1);
+            bboxMap.setPaintProperty('neighborhoods-fill', 'fill-color', '#3b82f6');
+            bboxMap.setPaintProperty('neighborhoods-fill', 'fill-opacity', 0.15);
+            bboxMap.setPaintProperty('neighborhoods-outline', 'line-color', '#60a5fa');
+            bboxMap.setPaintProperty('neighborhoods-outline', 'line-width', 1);
             bboxMap.flyTo({ center: [5.28, 52.13], zoom: 6.5, duration: 800 });
         }
     }
 
-    function cityMouseEnter() { bboxMap.getCanvas().style.cursor = 'pointer'; }
-    function cityMouseLeave() { bboxMap.getCanvas().style.cursor = ''; }
+    function neighborhoodMouseEnter() { bboxMap.getCanvas().style.cursor = 'pointer'; }
+    function neighborhoodMouseLeave() { bboxMap.getCanvas().style.cursor = ''; }
 
     function initBboxMap() {
         if (bboxMap) { bboxMap.resize(); return; }
@@ -514,27 +532,27 @@ document.addEventListener('DOMContentLoaded', function () {
             bboxMap.addLayer({ id: 'draw-fill',    type: 'fill',   source: 'draw-preview', paint: { 'fill-color': '#f59e0b', 'fill-opacity': 0.15 } });
             bboxMap.addLayer({ id: 'draw-outline', type: 'line',   source: 'draw-preview', paint: { 'line-color': '#f59e0b', 'line-width': 1.5, 'line-dasharray': [3, 2] } });
 
-            // City layers
-            fetch("{% url 'importer:cities_geojson' %}")
+            // Neighborhood layers
+            fetch("{% url 'importer:neighborhoods_geojson' %}")
                 .then(r => r.json())
                 .then(geojson => {
-                    bboxMap.addSource('cities', { type: 'geojson', data: geojson });
-                    bboxMap.addLayer({ id: 'cities-fill',    type: 'fill',   source: 'cities', paint: { 'fill-color': '#3b82f6', 'fill-opacity': 0.15 } });
-                    bboxMap.addLayer({ id: 'cities-outline', type: 'line',   source: 'cities', paint: { 'line-color': '#60a5fa', 'line-width': 1 } });
-                    bboxMap.addLayer({ id: 'cities-label',   type: 'symbol', source: 'cities',
+                    bboxMap.addSource('neighborhoods', { type: 'geojson', data: geojson });
+                    bboxMap.addLayer({ id: 'neighborhoods-fill',    type: 'fill',   source: 'neighborhoods', paint: { 'fill-color': '#3b82f6', 'fill-opacity': 0.15 } });
+                    bboxMap.addLayer({ id: 'neighborhoods-outline', type: 'line',   source: 'neighborhoods', paint: { 'line-color': '#60a5fa', 'line-width': 1 } });
+                    bboxMap.addLayer({ id: 'neighborhoods-label',   type: 'symbol', source: 'neighborhoods',
                         layout: { 'text-field': ['get', 'name'], 'text-size': 11, 'text-anchor': 'center' },
                         paint:  { 'text-color': '#94a3b8', 'text-halo-color': '#0f172a', 'text-halo-width': 1 },
                     });
-                    bboxMap.on('mouseenter', 'cities-fill', cityMouseEnter);
-                    bboxMap.on('mouseleave', 'cities-fill', cityMouseLeave);
-                    bboxMap.on('click', 'cities-fill', function (e) {
+                    bboxMap.on('mouseenter', 'neighborhoods-fill', neighborhoodMouseEnter);
+                    bboxMap.on('mouseleave', 'neighborhoods-fill', neighborhoodMouseLeave);
+                    bboxMap.on('click', 'neighborhoods-fill', function (e) {
                         if (drawMode || !e.features.length) return;
                         const props = e.features[0].properties;
                         const bbox = typeof props.bbox === 'string' ? JSON.parse(props.bbox) : props.bbox;
-                        selectCity(props.id, props.name, bbox);
+                        toggleNeighborhood(props.id, props.name, bbox);
                     });
                 })
-                .catch(err => console.error('Failed to load cities:', err));
+                .catch(err => console.error('Failed to load neighborhoods:', err));
 
             // Map click — draw mode
             bboxMap.on('click', function (e) {
@@ -719,7 +737,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const needsDraw = selected.some(k => catalog[k] && catalog[k].draw_bbox);
             alert(needsDraw
                 ? 'Please draw a rectangle on the map to define the area of interest.'
-                : 'Please click a city on the map to define the area of interest.');
+                : 'Please click one or more neighborhoods on the map to define the area of interest.');
             return;
         }
 

@@ -168,15 +168,31 @@ FIELD_MAPPINGS = {
         "upperWidth": "upperWidth",
         },
      
-    "pdok_forests": {
+    "bgt_forest": {
         "__geometry__": "geom",
-        "__unique__": "id",
-        "__unique_field__": "source_id",
-        "id": "source_id",
-        "naam": "name",
+        # fysiek_voorkomen is BGT's physical-terrain classification for
+        # begroeidterreindeel (vegetated terrain) -- these three values are
+        # the actual forest types; __client_filter__ (read by
+        # PDOKImporter.fetch_ogc_features) drops everything else
+        # (grasland, struiken, groenvoorziening, ...) before import.
+        "__client_filter__": {"property": "fysiek_voorkomen", "in": ["loofbos", "naaldbos", "gemengd bos"]},
+        # begroeidterreindeel has no name/title property at all.
+        "__name_template__": "{fysiek_voorkomen} ({lokaal_id})",
+        "fysiek_voorkomen": "type",
     },
-  
-    
+    "bgt_greenspace_park": {
+        "__geometry__": "geom",
+        "__spatial_fk__": {"field": "city", "model": "common.City", "required": True},
+        # BGT has no field that means "this is a park" specifically. plus_type
+        # values starting with "recreatie" (recreatie, recreatie: sportterrein,
+        # recreatie: speeltuin, ...) are the closest available proxy -- broader
+        # than parks alone (also covers sports fields/playgrounds).
+        "__client_filter__": {"property": "plus_type", "startswith": "recreatie"},
+        "__name_template__": "{plus_type} ({lokaal_id})",
+        "plus_type": "type",
+    },
+
+
     "rivm_energy_labels": {
         "__geometry__": "geom",
         "__unique__": "identificatie",
@@ -385,19 +401,30 @@ EXTERNAL_DATA_CATALOG = [
     },
 
     {
-        "key": "pdok_forests",
+        "key": "bgt_forest",
         "source": "pdok",
         "category": "Nature & Environment",
-        "name": "Forests (Bossen)",
-        "description": "Forest areas from TOP10NL dataset.",
+        "name": "Forest (BGT begroeidterreindeel)",
+        "description": "Forest patches (loofbos/naaldbos/gemengd bos) from Kadaster's BGT, per-parcel resolution.",
         "target_model": "nature.Forests",
-        "url": "https://service.pdok.nl/brt/top10nl/wfs/v1_0",
-        "layer": "top10nl:Terrein",
-        "format": "wfs",
-        "params": {
-            "srsName": "EPSG:{coordinate_system}",
-            "cql_filter": "typelandgebruik='bos: loofbos' OR typelandgebruik='bos: naaldbos' OR typelandgebruik='bos: gemengd bos'"
-        },
+        "url": "https://api.pdok.nl/lv/bgt/ogc/v1",
+        "collection": "begroeidterreindeel",
+        "format": "ogc_api",
+        "params": {"srsName": "EPSG:28992"},
+        "requires_bbox": True,
+        "enabled": True,
+    },
+    {
+        "key": "bgt_greenspace_park",
+        "source": "pdok",
+        "category": "Nature & Environment",
+        "name": "Green Space / Parks (BGT functioneelgebied)",
+        "description": "Recreation-designated green space (parks, sports fields, playgrounds) from Kadaster's BGT.",
+        "target_model": "nature.GreenSpaces",
+        "url": "https://api.pdok.nl/lv/bgt/ogc/v1",
+        "collection": "functioneelgebied",
+        "format": "ogc_api",
+        "params": {"srsName": "EPSG:28992"},
         "requires_bbox": True,
         "enabled": True,
     },

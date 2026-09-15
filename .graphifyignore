@@ -1,0 +1,4 @@
+# .graphifyignore
+/migrations/
+
+docs/

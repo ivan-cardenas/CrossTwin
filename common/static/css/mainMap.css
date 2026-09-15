@@ -1196,6 +1196,35 @@
     color: var(--text-tertiary);
 }
 
+.map-legend .legend-list {
+    max-height: 220px;
+    max-width: 200px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.map-legend .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.map-legend .legend-swatch {
+    flex-shrink: 0;
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    border: 1px solid var(--border-ui);
+}
+
+.map-legend .legend-label {
+    font-size: 11px;
+    color: var(--text-main);
+    text-transform: capitalize;
+}
+
 /* ============================================================
    MAP LOADER
    ============================================================ */

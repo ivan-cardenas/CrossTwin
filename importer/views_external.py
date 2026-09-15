@@ -81,31 +81,32 @@ def get_external_data(request):
     return render(request, "importer/external_data.html", context)
 
 
-def get_cities_geojson(request):
+def get_neighborhoods_geojson(request):
     """
-    Return all cities from common.City as a GeoJSON FeatureCollection in WGS84.
-    Used by the external data import map so the user can click a city to set the
-    area of interest (bbox) instead of drawing a rectangle manually.
+    Return all neighborhoods from common.Neighborhood as a GeoJSON FeatureCollection
+    in WGS84. Used by the external data import map so the user can click one or more
+    neighborhoods to set the area of interest (bbox) instead of drawing a rectangle
+    manually.
     """
-    from common.models import City
+    from common.models import Neighborhood
 
     features = []
-    for city in City.objects.only('id', 'cityName', 'geom'):
+    for neighborhood in Neighborhood.objects.only('id', 'neighborhoodName', 'geom'):
         try:
-            geom_wgs84 = city.geom.transform(4326, clone=True)
+            geom_wgs84 = neighborhood.geom.transform(4326, clone=True)
             # extent → (xmin, ymin, xmax, ymax) = (west, south, east, north) in WGS84
             bbox = list(geom_wgs84.extent)
             features.append({
                 'type': 'Feature',
                 'geometry': json.loads(geom_wgs84.geojson),
                 'properties': {
-                    'id': city.id,
-                    'name': city.cityName,
+                    'id': neighborhood.id,
+                    'name': neighborhood.neighborhoodName,
                     'bbox': bbox,
                 },
             })
         except Exception as e:
-            logger.warning(f"Skipping city {city.id} ({city.cityName}) from GeoJSON: {e}")
+            logger.warning(f"Skipping neighborhood {neighborhood.id} ({neighborhood.neighborhoodName}) from GeoJSON: {e}")
 
     return JsonResponse({'type': 'FeatureCollection', 'features': features})
 

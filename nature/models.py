@@ -1,4 +1,5 @@
 from django.contrib.gis.db import models
+from common.models import City
 from django.conf import settings
 
 COORDINATE_SYSTEM = settings.COORDINATE_SYSTEM
@@ -121,6 +122,7 @@ class GreenSpaces(models.Model):
     def save(self, *args, **kwargs):
         if self.geom:
             self.area = self.geom.area
+            self.city = City.objects.filter(geom__contains=self.geom.centroid).first()
         super().save(*args, **kwargs)
         
         
