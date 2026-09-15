@@ -1,0 +1,23 @@
+{% comment %} housing_indicators.html {% endcomment %}
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Province Housing Dashboard</title>
+  <link rel="stylesheet" href="{% static 'css/indicators.css' %}" />
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+</head>
+<body>
+
+  <header>
+    <span class="label-tag">CrossTwin · Housing Intelligence</span>
+    <h1>{{ location }}</h1>
+    <div class="year-badge">{{ year }}</div>
+  </header>
+
+  {% include 'housing/partials/indicators_panel.html' %}
+
+</body>
+</html>

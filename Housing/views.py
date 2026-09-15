@@ -132,6 +132,11 @@ def _build_indicators(data, interest_rate_override=None):
     # Housing deficit as % of demand
     deficit_pct = sd.get('deficit_pct') or 0
 
+    # Supply coverage: what share of demand is currently met (gauge display)
+    supply_coverage_pct = None
+    if sd.get('demand_units'):
+        supply_coverage_pct = round(sd['supply_units'] / sd['demand_units'] * 100, 1)
+
     # Affordability: housing cost burden (mortgage or rent / income)
     income = aff.get('avg_median_income')
     cost_burden_pct = None
@@ -148,6 +153,7 @@ def _build_indicators(data, interest_rate_override=None):
         'demand_units': sd['demand_units'],
         'deficit': sd['deficit'],
         'deficit_pct': deficit_pct,
+        'supply_coverage_pct': supply_coverage_pct,
 
         # -- Pipeline (New Units) --
         'completed_units': nu['completed_units'],
@@ -193,6 +199,7 @@ def _build_indicators(data, interest_rate_override=None):
         'zoning_commercial_pct': zoning.get('by_type', {}).get('commercial', {}).get('area_pct', 0),
         'zoning_industrial_pct': zoning.get('by_type', {}).get('industrial', {}).get('area_pct', 0),
         'zoning_mixed_pct': zoning.get('by_type', {}).get('mixed', {}).get('area_pct', 0),
+        'zoning_residential_benchmark_EUR_sqm': zoning.get('by_type', {}).get('residential', {}).get('avg_benchmark_EUR_sqm'),
 
         # -- Affordability --
         'affordability_index': aff.get('avg_affordability_index'),
@@ -218,6 +225,7 @@ def housing_indicators(request, location, year):
 
     context = {
         'Province': data['province'],
+        'location': location,
         'year': year,
         'indicators': _build_indicators(data),
     }
@@ -237,7 +245,7 @@ def recalculate_indicators(request, location, year):
 
     indicators = _build_indicators(data, interest_rate_override=interest_rate)
 
-    return render(request, 'housing/partials/indicators_panel.html', {'indicators': indicators})
+    return render(request, 'housing/partials/indicators_grid.html', {'indicators': indicators})
 
 
 def housing_indicators_json(request, location, year):

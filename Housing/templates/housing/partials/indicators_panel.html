@@ -1,0 +1,148 @@
+{% load static %}
+
+<div style="padding: 0 4px;">
+
+  <!-- Header -->
+  <div style="margin-bottom:16px;">
+    <div style="font-size:10px; letter-spacing:0.14em; text-transform:uppercase;
+                color:rgba(232,244,255,0.45); margin-bottom:4px;">
+      Housing Indicators
+    </div>
+    <div style="font-family:'Syne',sans-serif; font-size:1.1rem; font-weight:700;">
+      {{ location }}
+      <span style="color:rgba(232,244,255,0.4); font-size:0.85rem;">· {{ year }}</span>
+    </div>
+  </div>
+
+  <!-- Styled slider — mortgage interest rate what-if -->
+  <div class="slider-container">
+    <div class="slider-header">
+      <div class="slider-header-left">
+        <div class="card-icon" style="background:rgba(0,229,192,0.08);border-color:rgba(0,229,192,0.15);">📈</div>
+        <span class="card-label">Mortgage Interest Rate</span>
+      </div>
+      <div class="slider-value-display">
+        <span id="slider-display">{{ indicators.mortgage_rate }}</span>
+        <span class="slider-unit">% annual</span>
+      </div>
+    </div>
+    <div class="slider-zones-container">
+      <div class="slider-zones">
+        <div class="sz-ok"></div>
+        <div class="sz-warn"></div>
+        <div class="sz-bad"></div>
+      </div>
+      <div class="slider-zone-wrap">
+        <input id="mortgage-rate-slider"
+               class="zone-slider"
+               type="range"
+               name="interest_rate"
+               min="0" max="10" step="0.1"
+               value="{{ indicators.mortgage_rate }}"
+               hx-get="{% url 'housing:recalculate_indicators' location year %}"
+               hx-trigger="input changed delay:200ms"
+               hx-target="#indicators-grid"
+               hx-include="this"/>
+      </div>
+      <div class="slider-threshold-labels">
+        <span>0%</span><span>4%</span><span>8%</span><span>10%</span>
+      </div>
+    </div>
+    <div><span id="zone-tag" class="threshold-tag ok">Favorable</span></div>
+  </div>
+
+  <!-- Cards — swap target for recalculate -->
+  <div id="indicators-grid">
+    {% include 'housing/partials/indicators_grid.html' %}
+  </div>
+
+</div>
+
+<script>
+(function() {  // ← IIFE wrapper — all vars are local, no redeclaration
+
+  function zoneStyle(val) {
+    if (val < 4)      return { col: '#00e5c0', label: 'Favorable', cls: 'ok'   };
+    else if (val < 8) return { col: '#ffb84d', label: 'Elevated',  cls: 'warn' };
+    else              return { col: '#ff7a52', label: 'High',      cls: 'bad'  };
+  }
+
+  function applyZone(val) {
+    const z    = zoneStyle(val);
+    const sl   = document.getElementById('mortgage-rate-slider');
+    const tag  = document.getElementById('zone-tag');
+    const disp = document.getElementById('slider-display');
+    if (disp) disp.textContent = val;
+    if (sl)   sl.style.setProperty('--thumb-col', z.col);
+    if (tag)  { tag.textContent = z.label; tag.className = 'threshold-tag ' + z.cls; }
+  }
+
+  const slider = document.getElementById('mortgage-rate-slider');
+  if (slider) {
+    applyZone(parseFloat(slider.value));
+    slider.addEventListener('input', e => applyZone(parseFloat(e.target.value)));
+  }
+
+  // initGauges needs to be global so htmx:afterSwap can call it
+  window.initGauges = function() {
+    document.querySelectorAll('[data-gauge-id]').forEach(card => {
+      const val     = parseFloat(card.dataset.gaugeVal) || 0;
+      const id      = card.dataset.gaugeId;
+      const display = card.dataset.gaugeDisplay || '';
+      const path    = document.getElementById(id);
+      const txt     = document.getElementById(id + '-txt');
+      if (!path) return;
+
+      if (id === 'gauge-coverage') {
+        const total  = 157.08;
+        const capped = Math.min(val, 100);
+        let col = '#00e5c0';
+        if (val < 60) col = '#ff7a52'; else if (val < 90) col = '#ffb84d';
+        path.setAttribute('stroke', col);
+        requestAnimationFrame(() => {
+          path.style.strokeDashoffset = total - (total * capped / 100);
+        });
+        if (txt) txt.textContent = Math.round(val) + '%';
+        const displayEl = document.getElementById(id + '-txt');
+        if (displayEl && display) displayEl.setAttribute('data-full', display);
+
+      } else if (id === 'gauge-afford') {
+        // Lower price-to-income multiple is better (affordable); 3 = ok, 5 = stretched, >5 = stressed
+        const circ   = 238.76;
+        const MAX    = 10;
+        const capped = Math.min(val, MAX);
+        let col;
+        if      (val <= 3) col = '#00e5c0';
+        else if (val <= 5) col = '#ffb84d';
+        else               col = '#ff7a52';
+        path.setAttribute('stroke', col);
+        requestAnimationFrame(() => {
+          path.style.strokeDashoffset = circ - (circ * capped / MAX);
+        });
+        if (txt) txt.textContent = val ? val.toFixed(1) : '–';
+      }
+    });
+
+    // Mortgage rate bar
+    const mtgCard = document.querySelector('[data-mortgage-rate]');
+    const mtgBar  = document.getElementById('mortgage-rate-bar');
+    if (mtgCard && mtgBar) {
+      const rate = parseFloat(mtgCard.dataset.mortgageRate) || 0;
+      const pct  = Math.min(rate / 10 * 100, 100);
+      requestAnimationFrame(() => { mtgBar.style.width = pct + '%'; });
+    }
+  };
+
+  // Run on panel load
+  window.initGauges();
+
+  // Register listener only once
+  if (!window._gaugeListenerAttached) {
+    document.body.addEventListener('htmx:afterSwap', function(evt) {
+      if (evt.detail.target.id === 'indicators-grid') window.initGauges();
+    });
+    window._gaugeListenerAttached = true;
+  }
+
+})();  // ← end IIFE
+</script>

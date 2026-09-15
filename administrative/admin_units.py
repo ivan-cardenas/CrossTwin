@@ -6,6 +6,9 @@ a `geom` field and sit in a single FK chain
 (Province > City > District > Neighborhood).
 """
 
+from django.conf import settings
+from django.contrib.gis.geos import Point
+
 from .models import Province, City, District, Neighborhood
 
 ADMIN_LEVELS = {
@@ -26,6 +29,26 @@ def resolve_admin_unit(level, name):
         return model.objects.get(**{name_field: name})
     except model.DoesNotExist:
         return None
+
+
+def resolve_admin_unit_at_point(lng, lat):
+    """
+    Point-in-polygon lookup: find the smallest administrative unit
+    (Neighborhood > District > City > Province) containing a WGS84
+    (lng, lat) point, e.g. the current map center.
+
+    Returns (level, unit) — the level key from ADMIN_LEVELS and the
+    matching model instance — or (None, None) if the point falls outside
+    every known unit.
+    """
+    point = Point(lng, lat, srid=4326)
+    point.transform(settings.COORDINATE_SYSTEM)
+
+    for level, (model, _name_field) in reversed(list(ADMIN_LEVELS.items())):
+        unit = model.objects.filter(geom__contains=point).first()
+        if unit:
+            return level, unit
+    return None, None
 
 
 def cities_within(unit):

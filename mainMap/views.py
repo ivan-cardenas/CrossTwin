@@ -92,6 +92,33 @@ def map_view(request):
     }
     return render(request, 'mainMap.html', context)
 
+def admin_unit_at_point(request):
+    """
+    Point-in-polygon lookup for the map center: resolve the smallest
+    administrative unit (Neighborhood > District > City > Province)
+    containing the given WGS84 point and return its level, name, and
+    population.
+    URL: /api/admin-unit/?lng=<lng>&lat=<lat>
+    """
+    from administrative.admin_units import ADMIN_LEVELS, resolve_admin_unit_at_point
+
+    try:
+        lng = float(request.GET.get('lng'))
+        lat = float(request.GET.get('lat'))
+    except (TypeError, ValueError):
+        return JsonResponse({'error': 'lng and lat query params are required'}, status=400)
+
+    level, unit = resolve_admin_unit_at_point(lng, lat)
+    if unit is None:
+        return JsonResponse({'level': None, 'location': None, 'population': None})
+
+    name_field = ADMIN_LEVELS[level][1]
+    return JsonResponse({
+        'level': level,
+        'location': getattr(unit, name_field),
+        'population': unit.currentPopulation,
+    })
+
 def model_geojson(request, app_label, model_name):
     """
     Generic GeoJSON endpoint for any registered model.

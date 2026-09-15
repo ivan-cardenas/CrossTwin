@@ -42,7 +42,12 @@
         <span>🏗️</span>
         <div class="tool-tooltip">Built-up</div>
       </button>
-      <button class="tool-button" data-tool="Housing">
+      <button class="tool-button" data-tool="Housing"
+        data-panel-title="HOUSING"
+        hx-get="{% url 'housing:housing_indicators' location='Demo' year=2025 %}"
+        hx-target="#panel-body"
+        hx-indicator="#map-loader"
+        hx-swap="innerHTML">
         <span>🏘️</span>
         <div class="tool-tooltip">Housing</div>
       </button>
@@ -240,6 +245,14 @@
             <span class="indicator-value" id="visible-count">0</span>
           </div>
         </div>
+
+        <div class="indicator-pill" data-indicator="population">
+          <div class="indicator-icon">👤</div>
+          <div class="indicator-meta">
+            <span class="indicator-label">Population</span>
+            <span class="indicator-value" id="population-count">0</span>
+          </div>
+        </div>
       </div>
 
       <div class="city-name">{{ city_name|default:"Enschede" }}</div>
@@ -276,11 +289,11 @@
     <span class="actions-title">SELECT YEAR</span>
   </div>
   <div class="year-btn-group" id="year-btn-group">
-    <button class="year-btn active" data-year="2023">2023</button>
-    <button class="year-btn" data-year="2024">2024</button>
-    <button class="year-btn" data-year="2025">2025</button>
+    <button class="year-btn active" data-year="2025">2025</button>
     <button class="year-btn" data-year="2026">2026</button>
+    <button class="year-btn" data-year="2027">2027</button>
     <button class="year-btn" data-year="2030">2030</button>
+    <button class="year-btn" data-year="2050">2050</button>
   </div>
 
 </div>
@@ -505,6 +518,10 @@ const ADMIN_PANEL_TOOLS = {
     `/watersupply/indicators/${level}/${location}/${window.ACTIVE_YEAR}/`,
   temperature: (level, location) =>
     `/urban_heat/indicators/${level}/${location}/`,
+  // Housing indicators are province-scoped only (no level param) — see
+  // housing/views.py::_get_province_data.
+  Housing: (level, location) =>
+    `/housing/indicators/${location}/${window.ACTIVE_YEAR}/`,
 };
 
 function syncPanelBtns() {

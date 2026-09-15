@@ -10,6 +10,7 @@ let activeBasemap = 'light';
 let tilted = true;
 let activeTool = 'overview';
 let cityNameTimeout;
+let adminUnitTimeout;
 
 // Configuration (set from Django template via initializeUrbanTwinMap)
 let CONFIG = {

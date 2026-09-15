@@ -14,6 +14,17 @@ const ADMIN_LEVELS = {
 };
 
 /**
+ * Update the bottom-bar population pill. Shared by the admin-layer click
+ * handler (population comes free on the clicked feature's properties) and
+ * updateAdminUnitAtCenter (population comes from the point-in-polygon API).
+ */
+function setPopulationIndicator(pop) {
+  const populationEl = document.getElementById('population-count');
+  if (!populationEl) return;
+  populationEl.textContent = (pop || pop === 0) ? Number(pop).toLocaleString() : '—';
+}
+
+/**
  * Called by layers.js once an admin-hierarchy layer's real Mapbox layer
  * IDs are known, so we never hardcode an ID that a LAYER_STYLES override
  * might have renamed.
@@ -27,6 +38,11 @@ function onAdminLayerLoaded(key, layerIds) {
     window.ACTIVE_LEVEL = cfg.level;
     window.ACTIVE_LOCATION = props[cfg.nameField];
 
+    // currentPopulation rides along on every admin-hierarchy feature's
+    // properties (model_geojson serializes all non-geometry fields), so the
+    // bottom-bar pill can update straight from the click — no extra request.
+    setPopulationIndicator(props.currentPopulation);
+
     // syncPanelBtns/refreshActivePanel (defined in mainMap.html, driven by
     // the ADMIN_PANEL_TOOLS registry) update every admin-unit-driven panel's
     // URL and refresh whichever one is currently open — 'water' is only a
@@ -38,6 +54,37 @@ function onAdminLayerLoaded(key, layerIds) {
     syncPanelBtns();
     refreshActivePanel('water');
   });
+}
+
+/**
+ * Point-in-polygon lookup against the map center, so the admin-unit state
+ * (and the population pill) tracks panning, not just clicks on an
+ * admin-hierarchy layer. Debounced from map.on('moveend'), same as
+ * updateCityName — reverse geocoding and this hit different endpoints for
+ * a similar reason: Nominatim gives a human place name for any point on
+ * Earth, while this queries our own DB for the Province/City/District/
+ * Neighborhood record that actually contains the point.
+ */
+async function updateAdminUnitAtCenter() {
+  const center = map.getCenter();
+
+  try {
+    const response = await fetch(`/api/admin-unit/?lng=${center.lng}&lat=${center.lat}`);
+    const data = await response.json();
+
+    if (!data.level || !data.location) return;
+
+    window.ACTIVE_LEVEL = data.level;
+    window.ACTIVE_LOCATION = data.location;
+    setPopulationIndicator(data.population);
+
+    syncPanelBtns();
+    // No fallback tool here — panning shouldn't force a panel open, only
+    // keep an already-open one in sync (unlike an explicit layer click).
+    refreshActivePanel();
+  } catch (error) {
+    console.error('Error resolving admin unit at map center:', error);
+  }
 }
 
 // sessionStorage (not localStorage) on purpose: camera position should
@@ -132,10 +179,13 @@ function initializeUrbanTwinMap(config) {
     fetchAvailableLayers();
     add3DBuildings();
     updateCityName();
+    updateAdminUnitAtCenter();
 
     map.on('moveend', () => {
       clearTimeout(cityNameTimeout);
       cityNameTimeout = setTimeout(updateCityName, 500);
+      clearTimeout(adminUnitTimeout);
+      adminUnitTimeout = setTimeout(updateAdminUnitAtCenter, 500);
       saveCameraState();
     });
   });
