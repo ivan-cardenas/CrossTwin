@@ -120,9 +120,8 @@ class GreenSpaces(models.Model):
         verbose_name_plural = "Green Spaces"
         
     def save(self, *args, **kwargs):
-        if self.geom:
-            self.area = self.geom.area
-            self.city = City.objects.filter(geom__contains=self.geom.centroid).first()
+        self.area = self.geom.area
+        self.city = City.objects.filter(geom__contains=self.geom.centroid).first()
         super().save(*args, **kwargs)
         
         
