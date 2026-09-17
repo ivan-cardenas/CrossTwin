@@ -18,9 +18,28 @@ class WMSLayer(models.Model):
     legend_url = models.URLField(max_length=500, blank=True, null=True)
     opacity = models.FloatField(default=0.7)
     is_active = models.BooleanField(default=True)
-    
-    
-    
+    has_time_dimension = models.BooleanField(
+        default=False,
+        help_text="Whether this WMS layer exposes a WMS TIME dimension that should be animated on the map",
+    )
+    time_frame_count = models.PositiveSmallIntegerField(
+        default=12,
+        help_text="Number of most-recent time steps to loop through when animated",
+    )
+    time_refresh_minutes = models.PositiveSmallIntegerField(
+        default=5,
+        help_text="How often (in minutes) this WMS republishes new data — the map "
+                   "re-polls the TIME dimension on this cadence to pick up new frames",
+    )
+    api_key_setting = models.CharField(
+        max_length=100, blank=True, null=True,
+        help_text="Name of a Django setting (e.g. KNMI_API_KEY) holding an API key to "
+                   "send as this WMS's Authorization header — for an authenticated-tier "
+                   "endpoint with a higher rate limit. Leave blank for anonymous access. "
+                   "When set, GetMap tile requests are routed through a server-side proxy "
+                   "so the key is never exposed to the browser.",
+    )
+
     class Meta:
         verbose_name = "WMS Layer"
         verbose_name_plural = "WMS Layers"

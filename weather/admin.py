@@ -3,6 +3,7 @@ from django.contrib import admin
 from weather.models import *
 
 # Register your models here.
+admin.site.register(WMSLayer)
 admin.site.register(WeatherStation)
 admin.site.register(Meteorology)
 admin.site.register(PrecipitationRaster)

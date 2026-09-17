@@ -9,6 +9,7 @@ from django.db import connection
 from django.apps import apps
 
 from django.conf import settings
+from django.urls import reverse
 
 from core.utils import VECTOR_REGISTRY, WMS_REGISTRY, RASTER_REGISTRY, MODEL_REGISTRY
 from core.rasterStyles import raster_display_name
@@ -510,7 +511,36 @@ def available_layers(request):
         wms_instances = model.objects.all()
 
         for wms in wms_instances:
-            layers.append({
+            has_time_dimension = getattr(wms, 'has_time_dimension', False)
+            # A WMS configured with an API key must be fetched server-side —
+            # Mapbox's raster tile source can't attach an Authorization
+            # header, and the key must never reach the browser — so route
+            # tile requests through weather:wms_tile_proxy instead of the
+            # real WMS URL. The proxy forwards whatever querystring the
+            # frontend builds, so nothing else about the tile URL changes.
+            requires_proxy = bool(getattr(wms, 'api_key_setting', None))
+            wms_url = (
+                reverse('weather:wms_tile_proxy', args=[wms.name])
+                if requires_proxy else wms.url
+            )
+
+            # A stored legend_url is a static image and fine as-is for an
+            # anonymous WMS, but an authenticated one needs the same
+            # Authorization header as tiles — the browser can't attach it to
+            # a plain <img src>, so route GetLegendGraphic through the same
+            # proxy too. If no legend_url was configured at all, derive the
+            # standard GetLegendGraphic request from layers_param — most WMS
+            # servers support it without needing anything KNMI-specific.
+            legend_qs = f'service=WMS&request=GetLegendGraphic&version=1.3.0&format=image/png&layer={wms.layers_param}'
+            if requires_proxy:
+                legend_url = f"{wms_url}?{legend_qs}"
+            elif wms.legend_url:
+                legend_url = wms.legend_url
+            else:
+                separator = '&' if '?' in wms.url else '?'
+                legend_url = f'{wms.url}{separator}{legend_qs}'
+
+            layer_entry = {
                 'key': f'wms-{wms.name}',
                 'display_name': wms.display_name,
                 'app_label': wms_app_label,  # groups it under watersupply
@@ -518,11 +548,17 @@ def available_layers(request):
                 'color': wms.color,
                 'count': 'WMS',
                 'layer_type': 'wms',  # ← frontend uses this
-                'wms_url': wms.url,
+                'wms_url': wms_url,
                 'wms_layers': wms.layers_param,
-                'legend_url': wms.legend_url or '',
+                'legend_url': legend_url,
                 'opacity': wms.opacity,
-            })
+                'has_time_dimension': has_time_dimension,
+            }
+            if has_time_dimension:
+                layer_entry['time_frame_count'] = wms.time_frame_count
+                layer_entry['time_refresh_minutes'] = wms.time_refresh_minutes
+                layer_entry['time_endpoint'] = reverse('weather:wms_time_steps', args=[wms.name])
+            layers.append(layer_entry)
             
     # Raster Registry
     for key, model in RASTER_REGISTRY.items():

@@ -1,0 +1,14 @@
+{% comment %}
+Reusable "?" helper button, shared across domain dashboards (watersupply, housing, urban_heat, ...).
+Usage:
+{% include 'partials/_info_btn.html' with title="Card Title" text="Plain-language explanation." %}
+Requires the shared #info-popover markup/script to be included once per page
+(see partials/_info_popover.html).
+{% endcomment %}
+<button type="button" class="info-btn" data-info-title="{{ title }}" data-info-text="{{ text }}" aria-label="What is {{ title }}?">
+  <span class="info-btn-mark" aria-hidden="true">
+    <span class="tick tick-n"></span><span class="tick tick-e"></span>
+    <span class="tick tick-s"></span><span class="tick tick-w"></span>
+    <span class="info-btn-glyph">?</span>
+  </span>
+</button>

@@ -8,7 +8,7 @@
                 color:rgba(232,244,255,0.45); margin-bottom:4px;">
       Housing Indicators
     </div>
-    <div style="font-family:'Syne',sans-serif; font-size:1.1rem; font-weight:700;">
+    <div style="font-family:var(--font-base); font-size:1.1rem; font-weight:700;">
       {{ location }}
       <span style="color:rgba(232,244,255,0.4); font-size:0.85rem;">· {{ year }}</span>
     </div>
@@ -18,7 +18,7 @@
   <div class="slider-container">
     <div class="slider-header">
       <div class="slider-header-left">
-        <div class="card-icon" style="background:rgba(0,229,192,0.08);border-color:rgba(0,229,192,0.15);">📈</div>
+        <div class="card-icon" style="background:rgba(34,197,94,0.08);border-color:rgba(34,197,94,0.15);">📈</div>
         <span class="card-label">Mortgage Interest Rate</span>
       </div>
       <div class="slider-value-display">
@@ -39,7 +39,7 @@
                name="interest_rate"
                min="0" max="10" step="0.1"
                value="{{ indicators.mortgage_rate }}"
-               hx-get="{% url 'housing:recalculate_indicators' location year %}"
+               hx-get="{% url 'housing:recalculate_indicators' level location year %}"
                hx-trigger="input changed delay:200ms"
                hx-target="#indicators-grid"
                hx-include="this"/>
@@ -58,13 +58,15 @@
 
 </div>
 
+{% include 'partials/_info_popover.html' %}
+
 <script>
 (function() {  // ← IIFE wrapper — all vars are local, no redeclaration
 
   function zoneStyle(val) {
-    if (val < 4)      return { col: '#00e5c0', label: 'Favorable', cls: 'ok'   };
-    else if (val < 8) return { col: '#ffb84d', label: 'Elevated',  cls: 'warn' };
-    else              return { col: '#ff7a52', label: 'High',      cls: 'bad'  };
+    if (val < 4)      return { col: '#22c55e', label: 'Favorable', cls: 'ok'   };
+    else if (val < 8) return { col: '#f59e0b', label: 'Elevated',  cls: 'warn' };
+    else              return { col: '#ef4444', label: 'High',      cls: 'bad'  };
   }
 
   function applyZone(val) {
@@ -96,8 +98,8 @@
       if (id === 'gauge-coverage') {
         const total  = 157.08;
         const capped = Math.min(val, 100);
-        let col = '#00e5c0';
-        if (val < 60) col = '#ff7a52'; else if (val < 90) col = '#ffb84d';
+        let col = '#22c55e';
+        if (val < 60) col = '#ef4444'; else if (val < 90) col = '#f59e0b';
         path.setAttribute('stroke', col);
         requestAnimationFrame(() => {
           path.style.strokeDashoffset = total - (total * capped / 100);
@@ -112,9 +114,9 @@
         const MAX    = 10;
         const capped = Math.min(val, MAX);
         let col;
-        if      (val <= 3) col = '#00e5c0';
-        else if (val <= 5) col = '#ffb84d';
-        else               col = '#ff7a52';
+        if      (val <= 3) col = '#22c55e';
+        else if (val <= 5) col = '#f59e0b';
+        else               col = '#ef4444';
         path.setAttribute('stroke', col);
         requestAnimationFrame(() => {
           path.style.strokeDashoffset = circ - (circ * capped / MAX);

@@ -8,7 +8,6 @@ from .models import (
     NatureBasedSolutionPolygon, NatureBasedSolutionPoint,
     StressCategory,
 )
-from administrative.models import Province
 from physicalEnv.models import LandCoverVector, DigitalSurfaceModel
 from builtup.models import Park, Building, Street
 from weather.models import Meteorology
@@ -16,15 +15,15 @@ from weather.models import Meteorology
 
 # ── Vegetation & Green Area ──────────────────────────────────────────
 
-def calculate_green_area(province):
+def calculate_green_area(adminUnit):
     """Total green area (parks + green land cover) in km².
 
     DAG edges:  LandCover → Green_Area
     """
-    # Parks within province
+    # Parks within the administrative unit
     park_area_m2 = (
         Park.objects
-        .filter(geom__intersects=province.geom)
+        .filter(geom__intersects=adminUnit.geom)
         .aggregate(total=Sum('area'))['total'] or 0
     )
 
@@ -36,15 +35,15 @@ def calculate_green_area(province):
 
     # NOTE: percentage is stored relative to the *Province* total area
     # (see CLAUDE.md TODO on LandCoverVector.percentage), so this stays
-    # province-relative even when `province` here is a smaller unit.
+    # province-relative even when `adminUnit` here is a smaller unit.
     green_lc_pct = (
         LandCoverVector.objects
-        .filter(green_filter, geom__intersects=province.geom)
+        .filter(green_filter, geom__intersects=adminUnit.geom)
         .aggregate(total=Sum('percentage'))['total'] or 0
     )
 
-    province_area_km2 = province.area_km2 or 0
-    green_lc_km2 = province_area_km2 * green_lc_pct / 100
+    adminUnit_area_km2 = adminUnit.area_km2 or 0
+    green_lc_km2 = adminUnit_area_km2 * green_lc_pct / 100
 
     return {
         'park_area_km2': round(park_area_m2 / 1e6, 3),
@@ -53,16 +52,16 @@ def calculate_green_area(province):
     }
 
 
-def calculate_vegetation_coverage(province):
-    """Vegetation coverage as percentage of province area.
+def calculate_vegetation_coverage(adminUnit):
+    """Vegetation coverage as percentage of the administrative unit's area.
 
     DAG edges:  Green_Area → Vegetation_Coverage
                 Vegetation_Coverage → DSM
     """
-    green = calculate_green_area(province)
-    province_area = province.area_km2 or 0
-    if province_area > 0:
-        pct = round(green['total_green_km2'] / province_area * 100, 1)
+    green = calculate_green_area(adminUnit)
+    adminUnit_area = adminUnit.area_km2 or 0
+    if adminUnit_area > 0:
+        pct = round(green['total_green_km2'] / adminUnit_area * 100, 1)
     else:
         pct = 0
     return {
@@ -73,14 +72,14 @@ def calculate_vegetation_coverage(province):
 
 # ── Urban Morphology ─────────────────────────────────────────────────
 
-def calculate_urban_morphology(province):
+def calculate_urban_morphology(adminUnit):
     """Building and street statistics relevant to canyon geometry.
 
     DAG edges:  Buildings → DSM, Canyon_Aspect
                 Streets   → Canyon_Aspect
     """
-    buildings = Building.objects.filter(geom__intersects=province.geom)
-    streets = Street.objects.filter(geom__intersects=province.geom)
+    buildings = Building.objects.filter(geom__intersects=adminUnit.geom)
+    streets = Street.objects.filter(geom__intersects=adminUnit.geom)
 
     bldg_agg = buildings.aggregate(
         count=Count('id'),
@@ -143,7 +142,7 @@ def _raster_stats_sql(table, raster_col, geom_wkt, srid):
     return None
 
 
-def get_thermal_indices(province):
+def get_thermal_indices(adminUnit):
     """Aggregate raster statistics for all thermal indices.
 
     DAG edges:  Meteorology → Tmrt, PET, UTCI
@@ -151,8 +150,8 @@ def get_thermal_indices(province):
                 LST → PET
                 Tmrt → PET, UTCI
     """
-    geom_wkt = province.geom.wkt
-    srid = province.geom.srid
+    geom_wkt = adminUnit.geom.wkt
+    srid = adminUnit.geom.srid
 
     indices = {}
 
@@ -243,17 +242,17 @@ def classify_utci(value):
 
 # ── Nature-Based Solutions ───────────────────────────────────────────
 
-def calculate_nbs_coverage(province):
+def calculate_nbs_coverage(adminUnit):
     """NBS coverage area and count.
 
     DAG edges:  UTCI → NBS
                 PET  → NBS
     """
     polygons = NatureBasedSolutionPolygon.objects.filter(
-        geom__intersects=province.geom,
+        geom__intersects=adminUnit.geom,
     )
     points = NatureBasedSolutionPoint.objects.filter(
-        geom__intersects=province.geom,
+        geom__intersects=adminUnit.geom,
     )
 
     nbs_area = polygons.aggregate(total=Sum('area'))['total'] or 0
@@ -269,8 +268,8 @@ def calculate_nbs_coverage(province):
 
 # ── Meteorology Summary ─────────────────────────────────────────────
 
-def get_latest_meteorology(province):
-    """Latest meteorological measurements within the province.
+def get_latest_meteorology(adminUnit):
+    """Latest meteorological measurements within the administrative unit.
 
     DAG edges:  Climate_Change     → Meteorology
                 Anthropogenic_Heat → Meteorology
@@ -278,7 +277,7 @@ def get_latest_meteorology(province):
     """
     record = (
         Meteorology.objects
-        .filter(station__geom__intersects=province.geom, station__is_active=True)
+        .filter(station__geom__intersects=adminUnit.geom, station__is_active=True)
         .order_by('-date')
         .first()
     )

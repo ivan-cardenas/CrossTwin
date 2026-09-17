@@ -4,9 +4,9 @@
    ========================================================================== */
 
 :root {
-    --font-base: "Space Grotesk", "Inter", system-ui, sans-serif;
+    --font-base: "Archivo", "Inter", system-ui, sans-serif;
     --font-body: "Inter", system-ui, sans-serif;
-    --font-mono: "JetBrains Mono", "Fira Code", monospace;
+    --font-mono: "IBM Plex Mono", "Fira Code", monospace;
 
     /* Layout — written at runtime by JS in base.html */
     --header-height: 48px;
@@ -31,18 +31,19 @@
     --text-white:     #ffffff;
     --text-black:     #080808;
 
-    /* Single interactive accent — blue, used only   for focus/active states */
-    --accent:     #3b82f6;
-    --accent-rgb: 59, 130, 246;
+    /* Single interactive accent — Blueprint Cyanotype, used only for focus/active states.
+       UI tint (#2E6478) of the reference swatch (#1F4E5F) — lightened for text/icon contrast. */
+    --accent:     #2E6478;
+    --accent-rgb: 46, 100, 120;
 
     /* Legacy aliases — mapped neutral so old code doesn't break visually */
     --accent-1:     #f0f0f0;
     --accent-2:     #888888;
-    --accent-3:     #3b82f6;
+    --accent-3:     #2E6478;
     --accent-4:     #aaaaaa;
     --accent-1-rgb: 240, 240, 240;
     --accent-4-rgb: 170, 170, 170;
-    --accent-glow-rgb: 59, 130, 246;
+    --accent-glow-rgb: 46, 100, 120;
     --accent-hover: #ffffff;
     --accent-muted: rgba(255, 255, 255, 0.06);
 

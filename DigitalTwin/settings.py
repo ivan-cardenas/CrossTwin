@@ -70,6 +70,12 @@ TITILER_BASE_URL = os.environ.get("TITILER_BASE_URL")
 SENTINEL_CLIENT_ID = os.environ.get("SENTINEL_CLIENT_ID")
 SENTINEL_CLIENT_SECRET = os.environ.get("SENTINEL_CLIENT_SECRET")
 
+# Authenticated-tier API keys for external WMS/data services (higher rate
+# limits than anonymous access). A WMSLayer opts into one via its
+# `api_key_setting` field, naming the setting here to send as its
+# Authorization header — see weather/views.py::_wms_auth_headers.
+KNMI_API_KEY = os.environ.get("KNMI_API_KEY")
+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
 ALLOWED_HOSTS = []

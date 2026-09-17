@@ -44,7 +44,7 @@
       </button>
       <button class="tool-button" data-tool="Housing"
         data-panel-title="HOUSING"
-        hx-get="{% url 'housing:housing_indicators' location='Demo' year=2025 %}"
+        hx-get="{% url 'housing:housing_indicators' level='province' location='Demo' year=2025 %}"
         hx-target="#panel-body"
         hx-indicator="#map-loader"
         hx-swap="innerHTML">
@@ -209,6 +209,9 @@
       <div class="loading-spinner"></div>
       <span>Loading features...</span>
     </div>
+
+    <!-- WMS TIME SCRUBBER DOCK -->
+    <div class="wms-time-dock" id="wms-time-dock"></div>
 
     <!-- BOTTOM BAR -->
     <div class="bottom-bar">

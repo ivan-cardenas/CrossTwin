@@ -4,6 +4,7 @@
 // ============================================================
 
 let loaderTimeout = null;
+const LOADER_SHOW_DELAY_MS = 5000;  // only surface it for genuinely slow loads
 
 /**
  * Show/hide loading indicator
@@ -13,7 +14,7 @@ function showLoader(show) {
   if (!loader) return;
 
   if (show) {
-    loaderTimeout = setTimeout(() => loader.classList.add('visible'), 2000);
+    loaderTimeout = setTimeout(() => loader.classList.add('visible'), LOADER_SHOW_DELAY_MS);
   } else {
     clearTimeout(loaderTimeout);
     loader.classList.remove('visible');
@@ -88,6 +89,7 @@ async function addLayer(layerConfig) {
 
   if (loadedLayers[key]) return;
 
+  if (layer_type === 'wms' && layerConfig.has_time_dimension) { addAnimatedWmsLayer(layerConfig); return; }
   if (layer_type === 'wms')    { addWmsLayer(layerConfig); return; }
   if (layer_type === 'raster') { await addRasterLayerFromConfig(layerConfig); return; }
 
@@ -223,6 +225,159 @@ function addWmsLegend(key, title, legendUrl) {
   document.querySelector('.map-wrapper').appendChild(legend);
   legend.querySelector('img').addEventListener('load', repositionDynamicLegends);
   repositionDynamicLegends();
+}
+
+// ---- Time-dimension WMS layers ------------------------------------------
+//
+// A single raster source/layer is reused for every time step (source.setTiles
+// swaps the TIME param) rather than one layer per frame — remote WMS servers
+// commonly rate-limit (e.g. KNMI's anonymous tier: 1 request/sec/IP). Loading
+// all frames as separate always-visible layers up front, or panning/zooming
+// with N stacked layers, multiplies tile requests by the frame count and can
+// blow through that limit almost immediately. A single source only ever
+// requests tiles for the one frame currently shown, and slider drags are
+// debounced (WMS_RATE_LIMIT_MS) so fast dragging can't outrun the 1 req/sec cap.
+
+const wmsAnimations = {};       // key -> { times, index, refreshTimer, debounceTimer }
+const DEFAULT_TIME_REFRESH_MINUTES = 5;  // fallback if a layer doesn't specify its own cadence
+const WMS_RATE_LIMIT_MS = 1100;          // stay safely under a 1 request/sec/IP cap
+
+function wmsTileUrlForTime(wms_url, wms_layers, time) {
+  const separator = wms_url.includes('?') ? '&' : '?';
+  return wms_url + separator +
+    'service=WMS&request=GetMap&version=1.3.0' +
+    `&layers=${wms_layers}&styles=&format=image/png&transparent=true` +
+    `&width=256&height=256&crs=EPSG:3857&bbox={bbox-epsg-3857}&TIME=${time}`;
+}
+
+async function addAnimatedWmsLayer(layerConfig) {
+  const { key, wms_url, wms_layers, opacity, display_name, time_endpoint } = layerConfig;
+  if (map.getSource(key)) return;
+
+  const timeData = await fetchWmsTimeSteps(time_endpoint);
+  if (!timeData || !timeData.times || !timeData.times.length) {
+    console.error(`No time steps available for animated WMS layer "${key}"`);
+    return;
+  }
+
+  const times = timeData.times;
+  const startIndex = times.length - 1;  // most recent frame first
+
+  map.addSource(key, {
+    type: 'raster',
+    tiles: [wmsTileUrlForTime(wms_url, wms_layers, times[startIndex])],
+    tileSize: 256,
+  });
+  map.addLayer({
+    id: key, type: 'raster', source: key,
+    layout: { visibility: 'visible' },
+    paint: { 'raster-opacity': opacity || 0.7 },
+  });
+
+  loadedLayers[key] = {
+    layerIds: [key],
+    geojson: { features: [] },
+    config: layerConfig,
+  };
+
+  wmsAnimations[key] = { times, index: startIndex, refreshTimer: null, debounceTimer: null };
+  updateWmsTimeLabel(key);
+  renderWmsScrubberDock(key, layerConfig);
+  scheduleWmsTimeRefresh(key, layerConfig);
+
+  if (layerConfig.legend_url) addWmsLegend(key, display_name, layerConfig.legend_url);
+  console.log(`Time-dimension WMS layer "${key}" added with ${times.length} time steps`);
+  updateIndicators();
+}
+
+async function fetchWmsTimeSteps(time_endpoint) {
+  try {
+    const response = await fetch(time_endpoint);
+    if (!response.ok) throw new Error(`Failed to fetch time steps from ${time_endpoint}`);
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching WMS time steps:', error);
+    return null;
+  }
+}
+
+function scheduleWmsTimeRefresh(key, layerConfig) {
+  const state = wmsAnimations[key];
+  if (!state) return;
+
+  const refreshMinutes = layerConfig.time_refresh_minutes || DEFAULT_TIME_REFRESH_MINUTES;
+  const refreshMs = refreshMinutes * 60 * 1000;
+
+  state.refreshTimer = setInterval(async () => {
+    const timeData = await fetchWmsTimeSteps(layerConfig.time_endpoint);
+    if (!timeData || !timeData.times || !timeData.times.length) return;
+
+    const current = wmsAnimations[key];
+    if (!current) return;
+    // Same time list as before (no new run published yet) — nothing to update.
+    if (JSON.stringify(current.times) === JSON.stringify(timeData.times)) return;
+
+    current.times = timeData.times;
+    current.index = current.times.length - 1;
+    applyWmsFrame(key);
+  }, refreshMs);
+}
+
+function applyWmsFrame(key) {
+  const state = wmsAnimations[key];
+  const config = loadedLayers[key] && loadedLayers[key].config;
+  const source = map.getSource(key);
+  if (!state || !config || !source) return;
+
+  const time = state.times[state.index];
+  source.setTiles([wmsTileUrlForTime(config.wms_url, config.wms_layers, time)]);
+  updateWmsTimeLabel(key);
+}
+
+function scrubWmsAnimation(key, index) {
+  const state = wmsAnimations[key];
+  if (!state) return;
+
+  state.index = ((parseInt(index, 10) % state.times.length) + state.times.length) % state.times.length;
+  updateWmsTimeLabel(key);  // instant slider/label feedback — no network yet
+
+  // Debounce the actual tile fetch so scrubbing quickly can't exceed the
+  // remote WMS's rate limit; only the frame you settle on gets fetched.
+  clearTimeout(state.debounceTimer);
+  state.debounceTimer = setTimeout(() => applyWmsFrame(key), WMS_RATE_LIMIT_MS);
+}
+
+function updateWmsTimeLabel(key) {
+  const label = document.getElementById(`time-label-${key}`);
+  const slider = document.getElementById(`scrub-${key}`);
+  const state = wmsAnimations[key];
+  if (!state) return;
+  if (label) label.textContent = state.times[state.index].replace('T', ' ').replace('Z', ' UTC');
+  if (slider) slider.value = state.index;
+}
+
+// ---- Floating time-scrubber dock (bottom center of map) ---------------
+
+function renderWmsScrubberDock(key, layerConfig) {
+  const dock = document.getElementById('wms-time-dock');
+  if (!dock) return;
+
+  const frameCount = layerConfig.time_frame_count || (wmsAnimations[key] && wmsAnimations[key].times.length) || 12;
+
+  const scrubber = document.createElement('div');
+  scrubber.className = 'wms-time-scrubber';
+  scrubber.id = `scrubber-${key}`;
+  scrubber.innerHTML = `
+    <span class="wms-time-name">${layerConfig.display_name}</span>
+    <input type="range" class="zone-slider" id="scrub-${key}"
+           min="0" max="${frameCount - 1}" value="${frameCount - 1}"
+           oninput="scrubWmsAnimation('${key}', this.value)">
+    <span class="wms-time-label" id="time-label-${key}"></span>
+  `;
+
+  const existing = document.getElementById(`scrubber-${key}`);
+  if (existing) existing.remove();
+  dock.appendChild(scrubber);
 }
 
 // ---- Raster (TiTiler) layers -----------------------------------------
@@ -394,8 +549,16 @@ function toggleLayerVisibility(key, visible) {
     if (config) addLayer(config);
   } else if (!visible && loadedLayers[key]) {
     loadedLayers[key].layerIds.forEach(id => map.setLayoutProperty(id, 'visibility', 'none'));
+    if (wmsAnimations[key]) {
+      const scrubber = document.getElementById(`scrubber-${key}`);
+      if (scrubber) scrubber.style.display = 'none';
+    }
   } else if (visible && loadedLayers[key]) {
     loadedLayers[key].layerIds.forEach(id => map.setLayoutProperty(id, 'visibility', 'visible'));
+    if (wmsAnimations[key]) {
+      const scrubber = document.getElementById(`scrubber-${key}`);
+      if (scrubber) scrubber.style.display = 'flex';
+    }
   }
 
   updateIndicators();

@@ -25,6 +25,7 @@ urlpatterns = [
     path("watersupply/", include("watersupply.urls")),
     path("housing/", include("housing.urls")),
     path("urban_heat/", include("urban_heat.urls")),
+    path("weather/", include("weather.urls")),
     path("importer/", include("importer.urls")),
     path("", include("mainMap.urls")),
     path("api/", include('core.urls')),

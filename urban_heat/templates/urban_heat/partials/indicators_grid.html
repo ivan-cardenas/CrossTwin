@@ -1,6 +1,42 @@
 {% comment %} indicators_grid.html — Urban Heat {% endcomment %}
 <div class="grid">
 
+  
+  <!-- ── Meteorology ── -->
+  <div class="card c3 wide">
+    <div class="gauge-header">
+      <div class="card-icon">☁️</div>
+      <div class="card-label">Current Meteorology</div>
+      {% include 'partials/_info_btn.html' with title="Current Meteorology" text="Latest reading from the nearest active weather station within the area: air temperature, humidity, wind speed and solar radiation. These conditions feed into how PET/UTCI are computed upstream." %}
+    </div>
+    <div style="display:flex; gap:16px; flex-wrap:wrap;">
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Air Temp</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">
+          {% if indicators.air_temp_C != None %}{{ indicators.air_temp_C }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">°C</span>{% else %}—{% endif %}
+        </div>
+      </div>
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Humidity</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">
+          {% if indicators.humidity_pct != None %}{{ indicators.humidity_pct }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">%</span>{% else %}—{% endif %}
+        </div>
+      </div>
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Wind</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">
+          {% if indicators.wind_speed_m_s != None %}{{ indicators.wind_speed_m_s }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">m/s</span>{% else %}—{% endif %}
+        </div>
+      </div>
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Solar Radiation</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">
+          {% if indicators.solar_radiation != None %}{{ indicators.solar_radiation }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">W/m²</span>{% else %}—{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ── LST ── -->
   <div class="card gauge"
        data-gauge-val="{{ indicators.lst_pct }}"
@@ -9,6 +45,7 @@
     <div class="gauge-header">
       <div class="card-icon">🌡️</div>
       <div class="card-label">Land Surface Temp</div>
+      {% include 'partials/_info_btn.html' with title="Land Surface Temp (LST)" text="Mean land surface temperature from the most recent LST raster covering the area, with Min/Max from the same raster. The gauge scales this against a 50°C display ceiling." %}
     </div>
     <div class="gauge-body bottom">
       <svg viewBox="0 0 120 70" width="160" height="95" aria-hidden="true">
@@ -16,18 +53,18 @@
               fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10" stroke-linecap="round"/>
         <path id="gauge-lst"
               d="M 10,65 A 50,50 0 0 1 110,65"
-              fill="none" stroke="#ff7a52" stroke-width="10" stroke-linecap="round"
+              fill="none" stroke="#ef4444" stroke-width="10" stroke-linecap="round"
               stroke-dasharray="157.08" stroke-dashoffset="157.08"
               style="transition: stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)"/>
         <text x="60" y="55" text-anchor="middle"
-              font-family="Syne,sans-serif" font-size="15" font-weight="700"
+              font-family="var(--font-base)" font-size="15" font-weight="700"
               fill="#e8f4ff" id="gauge-lst-txt">–</text>
         <text x="60" y="67" text-anchor="middle"
-              font-family="DM Mono,monospace" font-size="7"
+              font-family="var(--font-mono)" font-size="7"
               fill="rgba(232,244,255,0.45)">°C mean</text>
       </svg>
     </div>
-    <div style="display:flex; gap:12px; font-size:9px; color:rgba(232,244,255,0.45); font-family:'DM Mono',monospace;">
+    <div style="display:flex; gap:12px; font-size:9px; color:rgba(232,244,255,0.45); font-family:var(--font-mono);">
       <span>Min: {% if indicators.lst_min != None %}{{ indicators.lst_min }}°C{% else %}—{% endif %}</span>
       <span>Max: {% if indicators.lst_max != None %}{{ indicators.lst_max }}°C{% else %}—{% endif %}</span>
     </div>
@@ -41,6 +78,7 @@
     <div class="gauge-header">
       <div class="card-icon">🧍</div>
       <div class="card-label">PET</div>
+      {% include 'partials/_info_btn.html' with title="PET (Physiological Equivalent Temperature)" text="Mean value from the latest PET raster — an outdoor thermal-comfort index (in °C) accounting for radiation, wind and humidity, not just air temperature. The category label follows the standard PET stress scale, from 'Extreme Cold Stress' to 'Extreme Heat Stress'. Gauge is scaled against a 41°C extreme-heat ceiling." %}
     </div>
     <div class="gauge-body bottom">
       <svg viewBox="0 0 120 70" width="160" height="95" aria-hidden="true">
@@ -48,21 +86,21 @@
               fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10" stroke-linecap="round"/>
         <path id="gauge-pet"
               d="M 10,65 A 50,50 0 0 1 110,65"
-              fill="none" stroke="#ffb84d" stroke-width="10" stroke-linecap="round"
+              fill="none" stroke="#f59e0b" stroke-width="10" stroke-linecap="round"
               stroke-dasharray="157.08" stroke-dashoffset="157.08"
               style="transition: stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)"/>
         <text x="60" y="55" text-anchor="middle"
-              font-family="Syne,sans-serif" font-size="15" font-weight="700"
+              font-family="var(--font-base)" font-size="15" font-weight="700"
               fill="#e8f4ff" id="gauge-pet-txt">–</text>
         <text x="60" y="67" text-anchor="middle"
-              font-family="DM Mono,monospace" font-size="7"
+              font-family="var(--font-mono)" font-size="7"
               fill="rgba(232,244,255,0.45)">°C mean</text>
       </svg>
     </div>
     {% if indicators.pet_category %}
     <div style="font-size:9px; letter-spacing:0.12em; text-transform:uppercase; padding:3px 8px;
                 border-radius:4px; align-self:flex-start;
-                color:{% if 'Heat' in indicators.pet_category %}#ff7a52{% elif 'Cold' in indicators.pet_category %}#63d2ff{% else %}#00e5c0{% endif %};
+                color:{% if 'Heat' in indicators.pet_category %}#ef4444{% elif 'Cold' in indicators.pet_category %}#2E6478{% else %}#22c55e{% endif %};
                 background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1);">
       {{ indicators.pet_category }}
     </div>
@@ -77,6 +115,7 @@
     <div class="gauge-header">
       <div class="card-icon">🌤️</div>
       <div class="card-label">UTCI</div>
+      {% include 'partials/_info_btn.html' with title="UTCI (Universal Thermal Climate Index)" text="Mean value from the latest UTCI raster — a thermal-comfort index similar to PET but calibrated to a reference person, with its own stress bands from 'Extreme Cold Stress' to 'Extreme Heat Stress'. Gauge is scaled against a 46°C extreme-heat ceiling." %}
     </div>
     <div class="gauge-body bottom">
       <svg viewBox="0 0 120 70" width="160" height="95" aria-hidden="true">
@@ -84,21 +123,21 @@
               fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10" stroke-linecap="round"/>
         <path id="gauge-utci"
               d="M 10,65 A 50,50 0 0 1 110,65"
-              fill="none" stroke="#ff7a52" stroke-width="10" stroke-linecap="round"
+              fill="none" stroke="#ef4444" stroke-width="10" stroke-linecap="round"
               stroke-dasharray="157.08" stroke-dashoffset="157.08"
               style="transition: stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)"/>
         <text x="60" y="55" text-anchor="middle"
-              font-family="Syne,sans-serif" font-size="15" font-weight="700"
+              font-family="var(--font-base)" font-size="15" font-weight="700"
               fill="#e8f4ff" id="gauge-utci-txt">–</text>
         <text x="60" y="67" text-anchor="middle"
-              font-family="DM Mono,monospace" font-size="7"
+              font-family="var(--font-mono)" font-size="7"
               fill="rgba(232,244,255,0.45)">°C mean</text>
       </svg>
     </div>
     {% if indicators.utci_category %}
     <div style="font-size:9px; letter-spacing:0.12em; text-transform:uppercase; padding:3px 8px;
                 border-radius:4px; align-self:flex-start;
-                color:{% if 'Heat' in indicators.utci_category %}#ff7a52{% elif 'Cold' in indicators.utci_category %}#63d2ff{% else %}#00e5c0{% endif %};
+                color:{% if 'Heat' in indicators.utci_category %}#ef4444{% elif 'Cold' in indicators.utci_category %}#2E6478{% else %}#22c55e{% endif %};
                 background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1);">
       {{ indicators.utci_category }}
     </div>
@@ -113,6 +152,7 @@
     <div class="gauge-header">
       <div class="card-icon">🔭</div>
       <div class="card-label">Sky View Factor</div>
+      {% include 'partials/_info_btn.html' with title="Sky View Factor (SVF)" text="Mean value (0–1) from the latest SVF raster — the fraction of sky visible from ground level. Lower values mean more enclosed streets and rooftops, which trap more heat at night. Shown here as a %." %}
     </div>
     <div class="gauge-body" style="flex:1;display:flex;justify-content:center;align-items:center;">
       <svg viewBox="0 0 100 100" width="110" height="110" aria-hidden="true">
@@ -120,15 +160,15 @@
                 fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="12"/>
         <circle id="gauge-svf"
                 cx="50" cy="50" r="38"
-                fill="none" stroke="#63d2ff" stroke-width="12" stroke-linecap="round"
+                fill="none" stroke="#2E6478" stroke-width="12" stroke-linecap="round"
                 stroke-dasharray="238.76" stroke-dashoffset="238.76"
                 transform="rotate(-90 50 50)"
                 style="transition: stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)"/>
         <text x="50" y="46" text-anchor="middle"
-              font-family="Syne,sans-serif" font-size="18" font-weight="700"
+              font-family="var(--font-base)" font-size="18" font-weight="700"
               fill="#e8f4ff" id="gauge-svf-txt">–</text>
         <text x="50" y="59" text-anchor="middle"
-              font-family="DM Mono,monospace" font-size="8"
+              font-family="var(--font-mono)" font-size="8"
               fill="rgba(232,244,255,0.45)">mean (0–1)</text>
       </svg>
     </div>
@@ -139,6 +179,7 @@
     <div class="gauge-header">
       <div class="card-icon">🌿</div>
       <div class="card-label">Vegetation Coverage</div>
+      {% include 'partials/_info_btn.html' with title="Vegetation Coverage" text="Green area — parks plus green land-cover classes (forest, grass, tree, nature, etc.) — as a % of the province's total area. Note: the slider above only overrides this display value for what-if exploration; it does not currently recalculate LST/PET/UTCI below, since that derivation isn't implemented yet." %}
     </div>
     <div style="display:flex; align-items:baseline; gap:8px;">
       <div class="card-value">{{ indicators.vegetation_pct }}%</div>
@@ -148,22 +189,22 @@
       <div class="bar-track" style="height:8px;">
         <div class="bar-fill"
              style="width:{{ indicators.vegetation_pct }}%;
-                    background:linear-gradient(90deg,#00e5c0,rgba(0,229,192,0.4));">
+                    background:#22c55e;">
         </div>
       </div>
     </div>
     <div style="display:flex; gap:16px; margin-top:10px;">
       <div>
         <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Parks</div>
-        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">{{ indicators.park_area_km2 }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">km²</span></div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.park_area_km2 }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">km²</span></div>
       </div>
       <div>
         <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Green Land Cover</div>
-        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">{{ indicators.green_lc_km2 }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">km²</span></div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.green_lc_km2 }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">km²</span></div>
       </div>
       <div>
         <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Total</div>
-        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">{{ indicators.total_green_km2 }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">km²</span></div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.total_green_km2 }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">km²</span></div>
       </div>
     </div>
   </div>
@@ -173,31 +214,32 @@
     <div class="gauge-header">
       <div class="card-icon">🏗️</div>
       <div class="card-label">Urban Morphology</div>
+      {% include 'partials/_info_btn.html' with title="Urban Morphology" text="Building and street statistics used as a proxy for street-canyon geometry. Aspect Ratio (H/W) is average building height ÷ average street width — higher values mean narrower, more enclosed canyons that trap more heat." %}
     </div>
     <div style="display:flex; gap:16px; flex-wrap:wrap;">
       <div>
         <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Buildings</div>
-        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">{{ indicators.building_count }}</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.building_count }}</div>
       </div>
       <div>
         <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Avg Height</div>
-        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">{{ indicators.avg_height_m }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">m</span></div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.avg_height_m }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">m</span></div>
       </div>
       <div>
         <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Max Height</div>
-        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">{{ indicators.max_height_m }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">m</span></div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.max_height_m }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">m</span></div>
       </div>
       <div>
         <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Aspect Ratio (H/W)</div>
-        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">
-          <span style="color:{% if indicators.aspect_ratio > 1.5 %}#ff7a52{% elif indicators.aspect_ratio > 1.0 %}#ffb84d{% else %}#00e5c0{% endif %};">
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">
+          <span style="color:{% if indicators.aspect_ratio > 1.5 %}#ef4444{% elif indicators.aspect_ratio > 1.0 %}#f59e0b{% else %}#22c55e{% endif %};">
             {{ indicators.aspect_ratio }}
           </span>
         </div>
       </div>
       <div>
         <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Footprint</div>
-        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">{{ indicators.footprint_km2 }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">km²</span></div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.footprint_km2 }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">km²</span></div>
       </div>
     </div>
   </div>
@@ -207,11 +249,12 @@
     <div class="gauge-header">
       <div class="card-icon">🏙️</div>
       <div class="card-label">Heat Island (SUHII)</div>
+      {% include 'partials/_info_btn.html' with title="Heat Island (SUHII)" text="Mean Surface Urban Heat Island Intensity from the latest SUHII raster — how many °C hotter the urban surface is than its rural/reference surroundings. Min/Max come from the same raster." %}
     </div>
     <div>
       <div class="card-value">
         {% if indicators.suhii_mean != None %}
-          <span style="color:{% if indicators.suhii_mean > 4 %}#ff7a52{% elif indicators.suhii_mean > 2 %}#ffb84d{% else %}#00e5c0{% endif %};">
+          <span style="color:{% if indicators.suhii_mean > 4 %}#ef4444{% elif indicators.suhii_mean > 2 %}#f59e0b{% else %}#22c55e{% endif %};">
             {{ indicators.suhii_mean }}°C
           </span>
         {% else %}
@@ -220,7 +263,7 @@
       </div>
       <div class="card-unit">mean intensity</div>
     </div>
-    <div style="display:flex; gap:12px; margin-top:8px; font-size:9px; color:rgba(232,244,255,0.45); font-family:'DM Mono',monospace;">
+    <div style="display:flex; gap:12px; margin-top:8px; font-size:9px; color:rgba(232,244,255,0.45); font-family:var(--font-mono);">
       <span>Min: {% if indicators.suhii_min != None %}{{ indicators.suhii_min }}°C{% else %}—{% endif %}</span>
       <span>Max: {% if indicators.suhii_max != None %}{{ indicators.suhii_max }}°C{% else %}—{% endif %}</span>
     </div>
@@ -231,47 +274,14 @@
     <div class="gauge-header">
       <div class="card-icon">🌳</div>
       <div class="card-label">Nature-Based Solutions</div>
+      {% include 'partials/_info_btn.html' with title="Nature-Based Solutions (NBS)" text="Count and total area of recorded NBS interventions (e.g. green roofs, bioswales, pocket parks) within the area, as polygon and point features. This tracks the response in place — it isn't yet linked back to a measured cooling effect on PET/UTCI." %}
     </div>
     <div>
       <div class="card-value">{{ indicators.nbs_count }}</div>
       <div class="card-unit">interventions</div>
     </div>
-    <div style="margin-top:6px; font-size:9px; color:rgba(232,244,255,0.45); font-family:'DM Mono',monospace;">
+    <div style="margin-top:6px; font-size:9px; color:rgba(232,244,255,0.45); font-family:var(--font-mono);">
       {{ indicators.nbs_area_km2 }} km² covered ({{ indicators.nbs_area_m2 }} m²)
-    </div>
-  </div>
-
-  <!-- ── Meteorology ── -->
-  <div class="card c3 wide">
-    <div class="gauge-header">
-      <div class="card-icon">☁️</div>
-      <div class="card-label">Current Meteorology</div>
-    </div>
-    <div style="display:flex; gap:16px; flex-wrap:wrap;">
-      <div>
-        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Air Temp</div>
-        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">
-          {% if indicators.air_temp_C != None %}{{ indicators.air_temp_C }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">°C</span>{% else %}—{% endif %}
-        </div>
-      </div>
-      <div>
-        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Humidity</div>
-        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">
-          {% if indicators.humidity_pct != None %}{{ indicators.humidity_pct }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">%</span>{% else %}—{% endif %}
-        </div>
-      </div>
-      <div>
-        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Wind</div>
-        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">
-          {% if indicators.wind_speed_m_s != None %}{{ indicators.wind_speed_m_s }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">m/s</span>{% else %}—{% endif %}
-        </div>
-      </div>
-      <div>
-        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Solar Radiation</div>
-        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">
-          {% if indicators.solar_radiation != None %}{{ indicators.solar_radiation }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">W/m²</span>{% else %}—{% endif %}
-        </div>
-      </div>
     </div>
   </div>
 

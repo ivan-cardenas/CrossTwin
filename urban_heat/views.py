@@ -19,20 +19,20 @@ MAX_PET  = 41       # extreme heat stress threshold
 MAX_LST  = 50       # upper display bound for LST gauge
 
 # ── shared helper ─────────────────────────────────────────────────────
-def _get_province_data(level, location):
+def _get_adminUnit_data(level, location):
     """Fetch all urban-heat-related data for an administrative unit. Returns a dict."""
-    province = resolve_admin_unit(level, location)
-    if province is None:
+    adminUnit = resolve_admin_unit(level, location)
+    if adminUnit is None:
         return None
 
-    vegetation = calculate_vegetation_coverage(province)
-    morphology = calculate_urban_morphology(province)
-    thermal = get_thermal_indices(province)
-    nbs = calculate_nbs_coverage(province)
-    meteo = get_latest_meteorology(province)
+    vegetation = calculate_vegetation_coverage(adminUnit)
+    morphology = calculate_urban_morphology(adminUnit)
+    thermal = get_thermal_indices(adminUnit)
+    nbs = calculate_nbs_coverage(adminUnit)
+    meteo = get_latest_meteorology(adminUnit)
 
     return {
-        'province': province,
+        'adminUnit': adminUnit,
         'vegetation': vegetation,
         'morphology': morphology,
         'thermal': thermal,
@@ -42,8 +42,8 @@ def _get_province_data(level, location):
 
 
 MOCK_DATA = {
-    'province': type('Province', (), {
-        'ProvinceName': 'Demo', 'area_km2': 150,
+    'adminUnit': type('adminUnit', (), {
+        'adminUnitName': 'Demo', 'area_km2': 150,
         'currentPopulation': 500_000,
     })(),
     'vegetation': {
@@ -176,12 +176,12 @@ def heat_indicators(request, level, location):
     Serves the full page on normal requests, or just the panel
     partial on HTMX requests (for embedding in the main map sidebar).
     """
-    data = _get_province_data(level, location)
+    data = _get_adminUnit_data(level, location)
     if data is None:
         data = MOCK_DATA
 
     context = {
-        'Province': data['province'],
+        'adminUnit': data['adminUnit'],
         'level': level,
         'location': location,
         'indicators': _build_indicators(data),
@@ -197,7 +197,7 @@ def recalculate_indicators(request, level, location):
 
     This allows what-if analysis: "what if vegetation coverage were X%?"
     """
-    data = _get_province_data(level, location)
+    data = _get_adminUnit_data(level, location)
     if data is None:
         data = MOCK_DATA
 

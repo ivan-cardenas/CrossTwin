@@ -75,3 +75,20 @@ def neighborhoods_within(unit):
     if isinstance(unit, Neighborhood):
         return Neighborhood.objects.filter(pk=unit.pk)
     raise TypeError(f"neighborhoods_within: unsupported unit type {type(unit)!r}")
+
+
+def province_of(unit):
+    """Resolve the enclosing Province for an admin unit at any level.
+
+    Needed for province-scoped reference data (e.g. central bank policy,
+    credit conditions) that has no per-city/district/neighborhood variant.
+    """
+    if isinstance(unit, Province):
+        return unit
+    if isinstance(unit, City):
+        return unit.province
+    if isinstance(unit, District):
+        return unit.city.province
+    if isinstance(unit, Neighborhood):
+        return unit.district.city.province
+    raise TypeError(f"province_of: unsupported unit type {type(unit)!r}")

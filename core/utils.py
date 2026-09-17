@@ -40,4 +40,3 @@ RASTER_REGISTRY = {
     if value._meta.get_fields() and any(isinstance(f, gis_models.RasterField) for f in value._meta.get_fields())
 }    
 
-#TODO add H3 hexagons configuration for aggregation

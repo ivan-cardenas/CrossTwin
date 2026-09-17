@@ -9,6 +9,7 @@
     <div class="gauge-header">
       <div class="card-icon">🏘️</div>
       <div class="card-label">Housing Supply Coverage</div>
+      {% include 'partials/_info_btn.html' with title="Housing Supply Coverage" text="Share of housing demand currently met: supply units ÷ demand units, from the latest HousingSupplyDemand record for the area. Below 100% means there aren't enough homes for the estimated demand." %}
     </div>
     <div class="gauge-body bottom">
       <svg viewBox="0 0 120 70" width="160" height="95" aria-hidden="true">
@@ -17,16 +18,16 @@
               stroke-linecap="round"/>
         <path id="gauge-coverage"
               d="M 10,65 A 50,50 0 0 1 110,65"
-              fill="none" stroke="#63d2ff" stroke-width="10"
+              fill="none" stroke="#2E6478" stroke-width="10"
               stroke-linecap="round"
               stroke-dasharray="157.08"
               stroke-dashoffset="157.08"
               style="transition: stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)"/>
         <text x="60" y="55" text-anchor="middle"
-              font-family="Syne,sans-serif" font-size="15" font-weight="700"
+              font-family="var(--font-base)" font-size="15" font-weight="700"
               fill="#e8f4ff" id="gauge-coverage-txt">–</text>
         <text x="60" y="67" text-anchor="middle"
-              font-family="DM Mono,monospace" font-size="7"
+              font-family="var(--font-mono)" font-size="7"
               fill="rgba(232,244,255,0.45)">of {{ indicators.demand_units }} demand</text>
       </svg>
     </div>
@@ -39,6 +40,7 @@
     <div class="gauge-header">
       <div class="card-icon">🏦</div>
       <div class="card-label">Affordability (Price-to-Income)</div>
+      {% include 'partials/_info_btn.html' with title="Affordability (Price-to-Income)" text="Median house price ÷ median income, averaged across reporting neighborhoods — how many years of income it takes to buy the median home. Lower is more affordable: ≤3x is comfortable, 3–5x is stretched, above 5x is stressed. The badge below shows housing cost (mortgage) as a % of income." %}
     </div>
     <div class="gauge-body" style="flex:1; display:flex; justify-content:center; align-items:center;">
       <svg viewBox="0 0 100 100" width="110" height="110" aria-hidden="true">
@@ -46,20 +48,20 @@
                 fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="12"/>
         <circle id="gauge-afford"
                 cx="50" cy="50" r="38"
-                fill="none" stroke="#63d2ff" stroke-width="12"
+                fill="none" stroke="#2E6478" stroke-width="12"
                 stroke-linecap="round"
                 stroke-dasharray="238.76"
                 stroke-dashoffset="238.76"
                 transform="rotate(-90 50 50)"
                 style="transition: stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)"/>
         <text x="26" y="40" text-anchor="middle"
-              font-family="DM Mono,monospace" font-size="6.5"
+              font-family="var(--font-mono)" font-size="6.5"
               fill="rgba(255,255,255,0.45)">10x</text>
         <text x="50" y="46" text-anchor="middle"
-              font-family="Syne,sans-serif" font-size="18" font-weight="700"
+              font-family="var(--font-base)" font-size="18" font-weight="700"
               fill="#e8f4ff" id="gauge-afford-txt">–</text>
         <text x="50" y="59" text-anchor="middle"
-              font-family="DM Mono,monospace" font-size="8"
+              font-family="var(--font-mono)" font-size="8"
               fill="rgba(232,244,255,0.45)">income multiples</text>
       </svg>
     </div>
@@ -80,6 +82,7 @@
     <div class="gauge-header">
       <div class="card-icon">📈</div>
       <div class="card-label">Average Fixed Mortgage Rate</div>
+      {% include 'partials/_info_btn.html' with title="Average Fixed Mortgage Rate" text="The area's average mortgage rate from credit-supply data (or the slider override above). Moving the slider recalculates Monthly Payment from the average loan amount using the standard annuity formula, assuming a 30-year fixed term." %}
     </div>
     <div style="display:flex; align-items:baseline; gap:8px;">
       <div class="card-value">{{ indicators.mortgage_rate|default:"–" }}%</div>
@@ -89,12 +92,12 @@
       <div class="bar-track" style="height:8px;">
         <div class="bar-fill" id="mortgage-rate-bar"
              style="width:0%;
-                    background:linear-gradient(90deg,#ff7a52,rgba(255,122,82,0.4));">
+                    background:#ef4444;">
         </div>
       </div>
       <div style="display:flex; justify-content:space-between;
                   margin-top:6px; font-size:9px;
-                  color:rgba(232,244,255,0.35); font-family:'DM Mono',monospace;">
+                  color:rgba(232,244,255,0.35); font-family:var(--font-mono);">
         <span>0%</span>
         <span>10% cap</span>
       </div>
@@ -102,15 +105,15 @@
     <div style="display:flex; gap:16px; margin-top:10px;">
       <div>
         <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Monthly Payment</div>
-        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">€ {{ indicators.avg_monthly_payment|default:"–" }}</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">€ {{ indicators.avg_monthly_payment|default:"–" }}</div>
       </div>
       <div>
         <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Avg Loan</div>
-        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">€ {{ indicators.avg_loan_amount|default:"–" }}</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">€ {{ indicators.avg_loan_amount|default:"–" }}</div>
       </div>
       <div>
         <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Mortgages</div>
-        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">{{ indicators.total_mortgages }}</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.total_mortgages }}</div>
       </div>
     </div>
   </div>
@@ -120,14 +123,15 @@
     <div class="gauge-header">
       <div class="card-icon">📊</div>
       <div class="card-label">House Price Index</div>
+      {% include 'partials/_info_btn.html' with title="House Price Index" text="Average HPI value across reporting neighborhoods for the year (base = 100). The YoY figure compares this year's average against last year's for the same neighborhoods: (current − previous) ÷ previous × 100." %}
     </div>
     <div>
       <div class="card-value">{{ indicators.hpi_value|default:"–" }}</div>
       <div class="card-unit">index (base = 100)</div>
     </div>
     {% if indicators.hpi_yoy_change != None %}
-    <div style="font-size:0.85rem; font-family:'DM Mono',monospace;
-                color:{% if indicators.hpi_yoy_change >= 0 %}#00e5c0{% else %}#ff7a52{% endif %};">
+    <div style="font-size:0.85rem; font-family:var(--font-mono);
+                color:{% if indicators.hpi_yoy_change >= 0 %}#22c55e{% else %}#ef4444{% endif %};">
       {% if indicators.hpi_yoy_change >= 0 %}▲{% else %}▼{% endif %} {{ indicators.hpi_yoy_change }}% YoY
     </div>
     {% endif %}
@@ -141,22 +145,23 @@
     <div class="gauge-header">
       <div class="card-icon">🏗️</div>
       <div class="card-label">New Housing Units</div>
+      {% include 'partials/_info_btn.html' with title="New Housing Units" text="Completed units are projects with an expected completion year at or before the selected year; Pipeline units have a completion year still ahead. Supply Deficit is demand units minus supply units (from Housing Supply Coverage), shown both as a count and as a % of demand." %}
     </div>
     <div style="display:flex; gap:16px; margin-top:4px;">
       <div>
         <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Completed / yr</div>
-        <div style="font-family:'Syne',sans-serif; font-size:1.1rem; font-weight:700;">{{ indicators.completed_units }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">homes</span></div>
+        <div style="font-family:var(--font-base); font-size:1.1rem; font-weight:700;">{{ indicators.completed_units }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">homes</span></div>
         <div style="font-size:9px; color:rgba(232,244,255,0.35);">{{ indicators.completed_projects }} projects</div>
       </div>
       <div>
         <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Pipeline</div>
-        <div style="font-family:'Syne',sans-serif; font-size:1.1rem; font-weight:700;">{{ indicators.pipeline_units }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">homes</span></div>
+        <div style="font-family:var(--font-base); font-size:1.1rem; font-weight:700;">{{ indicators.pipeline_units }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">homes</span></div>
         <div style="font-size:9px; color:rgba(232,244,255,0.35);">{{ indicators.pipeline_projects }} projects</div>
       </div>
       <div>
         <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Supply Deficit</div>
-        <div style="font-family:'Syne',sans-serif; font-size:1.1rem; font-weight:700;
-                    color:{% if indicators.deficit_pct > 15 %}#ff7a52{% elif indicators.deficit_pct > 5 %}#ffb84d{% else %}#00e5c0{% endif %};">
+        <div style="font-family:var(--font-base); font-size:1.1rem; font-weight:700;
+                    color:{% if indicators.deficit_pct > 15 %}#ef4444{% elif indicators.deficit_pct > 5 %}#f59e0b{% else %}#22c55e{% endif %};">
           {{ indicators.deficit }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">units</span>
         </div>
         <div style="font-size:9px; color:rgba(232,244,255,0.35);">{{ indicators.deficit_pct }}% of demand</div>
@@ -169,23 +174,24 @@
     <div class="gauge-header">
       <div class="card-icon">🏠</div>
       <div class="card-label">Property Market</div>
+      {% include 'partials/_info_btn.html' with title="Property Market" text="Averages across all recorded properties in the area: sale price, listing price, unitary price (€/m²) and living area. Vacancy is the share of buildings flagged vacant out of all buildings on record." %}
     </div>
     <div style="display:flex; gap:16px; flex-wrap:wrap; margin-top:4px;">
       <div>
         <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Avg Sale Price</div>
-        <div style="font-family:'Syne',sans-serif; font-size:1rem; font-weight:700;">€ {{ indicators.avg_sale_price|default:"–" }}</div>
+        <div style="font-family:var(--font-base); font-size:1rem; font-weight:700;">€ {{ indicators.avg_sale_price|default:"–" }}</div>
       </div>
       <div>
         <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Avg Listing Price</div>
-        <div style="font-family:'Syne',sans-serif; font-size:1rem; font-weight:700;">€ {{ indicators.avg_listing_price|default:"–" }}</div>
+        <div style="font-family:var(--font-base); font-size:1rem; font-weight:700;">€ {{ indicators.avg_listing_price|default:"–" }}</div>
       </div>
       <div>
         <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Unitary Price</div>
-        <div style="font-family:'Syne',sans-serif; font-size:1rem; font-weight:700;">€ {{ indicators.avg_price_sqm|default:"–" }} <span style="font-size:0.65rem; color:rgba(232,244,255,0.45);">/m²</span></div>
+        <div style="font-family:var(--font-base); font-size:1rem; font-weight:700;">€ {{ indicators.avg_price_sqm|default:"–" }} <span style="font-size:0.65rem; color:rgba(232,244,255,0.45);">/m²</span></div>
       </div>
       <div>
         <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Living Area</div>
-        <div style="font-family:'Syne',sans-serif; font-size:1rem; font-weight:700;">{{ indicators.avg_living_area|default:"–" }} <span style="font-size:0.65rem; color:rgba(232,244,255,0.45);">m²</span></div>
+        <div style="font-family:var(--font-base); font-size:1rem; font-weight:700;">{{ indicators.avg_living_area|default:"–" }} <span style="font-size:0.65rem; color:rgba(232,244,255,0.45);">m²</span></div>
       </div>
     </div>
     <div style="margin-top:10px; font-size:9px; color:rgba(232,244,255,0.35);">
@@ -198,6 +204,7 @@
     <div class="gauge-header">
       <div class="card-icon">🔑</div>
       <div class="card-label">Rental Market</div>
+      {% include 'partials/_info_btn.html' with title="Rental Market" text="Average monthly rent across recorded rental listings in the area. Price-to-rent ratio is the average sale price divided by annual rent — a common signal of whether it's cheaper to rent or buy (higher favors renting)." %}
     </div>
     <div>
       <div class="card-value">€ {{ indicators.avg_monthly_rent|default:"–" }}</div>
@@ -213,26 +220,27 @@
     <div class="gauge-header">
       <div class="card-icon">⚠️</div>
       <div class="card-label">Affordability Stress</div>
+      {% include 'partials/_info_btn.html' with title="Affordability Stress" text="Count of neighborhoods classified Low / Moderate / High affordability stress, from each neighborhood's recorded HousingAffordability.affordabilityStressLevel field. Median income shown is the average of each neighborhood's median income for the year." %}
     </div>
     <div class="bar-track" style="height:10px; display:flex;">
       {% if indicators.stress_total %}
-      <div style="width:{% widthratio indicators.stress_low indicators.stress_total 100 %}%; background:#00e5c0;"></div>
-      <div style="width:{% widthratio indicators.stress_moderate indicators.stress_total 100 %}%; background:#ffb84d;"></div>
-      <div style="width:{% widthratio indicators.stress_high indicators.stress_total 100 %}%; background:#ff7a52;"></div>
+      <div style="width:{% widthratio indicators.stress_low indicators.stress_total 100 %}%; background:#22c55e;"></div>
+      <div style="width:{% widthratio indicators.stress_moderate indicators.stress_total 100 %}%; background:#f59e0b;"></div>
+      <div style="width:{% widthratio indicators.stress_high indicators.stress_total 100 %}%; background:#ef4444;"></div>
       {% endif %}
     </div>
     <div style="display:flex; gap:16px; margin-top:10px;">
       <div>
-        <div style="font-size:9px; color:#00e5c0; text-transform:uppercase; letter-spacing:0.1em;">Low</div>
-        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">{{ indicators.stress_low }}</div>
+        <div style="font-size:9px; color:#22c55e; text-transform:uppercase; letter-spacing:0.1em;">Low</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.stress_low }}</div>
       </div>
       <div>
-        <div style="font-size:9px; color:#ffb84d; text-transform:uppercase; letter-spacing:0.1em;">Moderate</div>
-        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">{{ indicators.stress_moderate }}</div>
+        <div style="font-size:9px; color:#f59e0b; text-transform:uppercase; letter-spacing:0.1em;">Moderate</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.stress_moderate }}</div>
       </div>
       <div>
-        <div style="font-size:9px; color:#ff7a52; text-transform:uppercase; letter-spacing:0.1em;">High</div>
-        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">{{ indicators.stress_high }}</div>
+        <div style="font-size:9px; color:#ef4444; text-transform:uppercase; letter-spacing:0.1em;">High</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.stress_high }}</div>
       </div>
     </div>
     <div style="margin-top:6px; font-size:9px; color:rgba(232,244,255,0.35);">
@@ -245,29 +253,30 @@
     <div class="gauge-header">
       <div class="card-icon">🗺️</div>
       <div class="card-label">Zoning & Land Value</div>
+      {% include 'partials/_info_btn.html' with title="Zoning & Land Value" text="Share of total zoned area (m²) that is residential, commercial, industrial or mixed-use, from ZoningArea records. The residential benchmark is the average benchmark price per m² recorded for residential zones." %}
     </div>
     <div class="bar-track" style="height:10px; display:flex;">
-      <div style="width:{{ indicators.zoning_residential_pct }}%; background:#63d2ff;"></div>
-      <div style="width:{{ indicators.zoning_commercial_pct }}%; background:#00e5c0;"></div>
-      <div style="width:{{ indicators.zoning_industrial_pct }}%; background:#ffb84d;"></div>
-      <div style="width:{{ indicators.zoning_mixed_pct }}%; background:#ff7a52;"></div>
+      <div style="width:{{ indicators.zoning_residential_pct }}%; background:#2E6478;"></div>
+      <div style="width:{{ indicators.zoning_commercial_pct }}%; background:#22c55e;"></div>
+      <div style="width:{{ indicators.zoning_industrial_pct }}%; background:#f59e0b;"></div>
+      <div style="width:{{ indicators.zoning_mixed_pct }}%; background:#ef4444;"></div>
     </div>
     <div style="display:flex; gap:16px; margin-top:10px; flex-wrap:wrap;">
       <div>
-        <div style="font-size:9px; color:#63d2ff; text-transform:uppercase; letter-spacing:0.1em;">Residential</div>
-        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">{{ indicators.zoning_residential_pct }}%</div>
+        <div style="font-size:9px; color:#2E6478; text-transform:uppercase; letter-spacing:0.1em;">Residential</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.zoning_residential_pct }}%</div>
       </div>
       <div>
-        <div style="font-size:9px; color:#00e5c0; text-transform:uppercase; letter-spacing:0.1em;">Commercial</div>
-        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">{{ indicators.zoning_commercial_pct }}%</div>
+        <div style="font-size:9px; color:#22c55e; text-transform:uppercase; letter-spacing:0.1em;">Commercial</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.zoning_commercial_pct }}%</div>
       </div>
       <div>
-        <div style="font-size:9px; color:#ffb84d; text-transform:uppercase; letter-spacing:0.1em;">Industrial</div>
-        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">{{ indicators.zoning_industrial_pct }}%</div>
+        <div style="font-size:9px; color:#f59e0b; text-transform:uppercase; letter-spacing:0.1em;">Industrial</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.zoning_industrial_pct }}%</div>
       </div>
       <div>
-        <div style="font-size:9px; color:#ff7a52; text-transform:uppercase; letter-spacing:0.1em;">Mixed</div>
-        <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:600;">{{ indicators.zoning_mixed_pct }}%</div>
+        <div style="font-size:9px; color:#ef4444; text-transform:uppercase; letter-spacing:0.1em;">Mixed</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.zoning_mixed_pct }}%</div>
       </div>
     </div>
     <div style="margin-top:6px; font-size:9px; color:rgba(232,244,255,0.35);">

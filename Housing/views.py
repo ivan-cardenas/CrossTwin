@@ -1,10 +1,10 @@
 from django.shortcuts import render
 from django.http import JsonResponse
 
-from administrative.models import Province as PM
+from administrative.admin_units import resolve_admin_unit, ADMIN_LEVELS
 from .calculations import (
-    calculate_supply_demand_province,
-    calculate_new_units_province,
+    calculate_supply_demand_for_unit,
+    calculate_new_units_for_unit,
     calculate_mortgage_indicators,
     calculate_rent_indicators,
     calculate_house_price_index,
@@ -16,25 +16,24 @@ from .calculations import (
 
 # -- shared helper ------------------------------------------------------------
 
-def _get_province_data(location, year):
-    """Fetch all housing-related DB values for a province/year."""
-    try:
-        province = PM.objects.get(ProvinceName=location)
-    except PM.DoesNotExist:
+def _get_adminUnit_data(level, location, year):
+    """Fetch all housing-related DB values for an administrative unit/year."""
+    adminUnit = resolve_admin_unit(level, location)
+    if adminUnit is None:
         return None
 
-    supply_demand = calculate_supply_demand_province(province, year)
-    new_units = calculate_new_units_province(province, year)
-    mortgage = calculate_mortgage_indicators(province, year)
-    rent = calculate_rent_indicators(province)
-    hpi = calculate_house_price_index(province, year)
-    property_ind = calculate_property_indicators(province)
-    zoning = calculate_zoning(province)
-    affordability = calculate_affordability(province, year)
+    supply_demand = calculate_supply_demand_for_unit(adminUnit, year)
+    new_units = calculate_new_units_for_unit(adminUnit, year)
+    mortgage = calculate_mortgage_indicators(adminUnit, year)
+    rent = calculate_rent_indicators(adminUnit)
+    hpi = calculate_house_price_index(adminUnit, year)
+    property_ind = calculate_property_indicators(adminUnit)
+    zoning = calculate_zoning(adminUnit)
+    affordability = calculate_affordability(adminUnit, year)
 
     return {
-        'province': province,
-        'population': province.currentPopulation,
+        'adminUnit': adminUnit,
+        'population': adminUnit.currentPopulation,
         'supply_demand': supply_demand,
         'new_units': new_units,
         'mortgage': mortgage,
@@ -47,8 +46,8 @@ def _get_province_data(location, year):
 
 
 MOCK_DATA = {
-    'province': type('Province', (), {
-        'ProvinceName': 'Demo', 'currentPopulation': 500_000,
+    'adminUnit': type('adminUnit', (), {
+        'adminUnitName': 'Demo', 'currentPopulation': 500_000,
     })(),
     'population': 500_000,
     'supply_demand': {
@@ -218,13 +217,14 @@ def _build_indicators(data, interest_rate_override=None):
 
 # -- views --------------------------------------------------------------------
 
-def housing_indicators(request, location, year):
-    data = _get_province_data(location, year)
+def housing_indicators(request, level, location, year):
+    data = _get_adminUnit_data(level, location, year)
     if data is None:
         data = MOCK_DATA
 
     context = {
-        'Province': data['province'],
+        'adminUnit': data['adminUnit'],
+        'level': level,
         'location': location,
         'year': year,
         'indicators': _build_indicators(data),
@@ -235,11 +235,11 @@ def housing_indicators(request, location, year):
     return render(request, 'housing/housing_indicators.html', context)
 
 
-def recalculate_indicators(request, location, year):
+def recalculate_indicators(request, level, location, year):
     interest_rate = request.GET.get('interest_rate')
     interest_rate = float(interest_rate) if interest_rate else None
 
-    data = _get_province_data(location, year)
+    data = _get_adminUnit_data(level, location, year)
     if data is None:
         data = MOCK_DATA
 
@@ -248,15 +248,17 @@ def recalculate_indicators(request, location, year):
     return render(request, 'housing/partials/indicators_grid.html', {'indicators': indicators})
 
 
-def housing_indicators_json(request, location, year):
+def housing_indicators_json(request, level, location, year):
     """JSON endpoint for programmatic access to housing indicators."""
-    data = _get_province_data(location, year)
+    data = _get_adminUnit_data(level, location, year)
     if data is None:
-        return JsonResponse({'error': 'Province not found', 'using_mock': True,
+        return JsonResponse({'error': 'Administrative unit not found', 'using_mock': True,
                              'indicators': _build_indicators(MOCK_DATA)})
 
+    name_field = ADMIN_LEVELS.get(level, (None, None))[1]
+    name = getattr(data['adminUnit'], name_field, None) if name_field else str(data['adminUnit'])
     return JsonResponse({
-        'province': data['province'].ProvinceName,
+        'adminUnit': name,
         'year': year,
         'indicators': _build_indicators(data),
     })

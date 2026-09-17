@@ -1,0 +1,62 @@
+{% comment %}
+Shared popover target + event-delegated script for all "?" info buttons
+(see partials/_info_btn.html). Include this ONCE per page, outside any
+htmx swap target so it survives partial re-renders. Usage:
+{% include 'partials/_info_popover.html' %}
+{% endcomment %}
+<div id="info-popover" role="tooltip">
+  <span class="info-popover-notch" aria-hidden="true"></span>
+  <span class="info-popover-title"></span>
+  <span class="info-popover-text"></span>
+</div>
+
+<script>
+(function() {
+  if (window._infoPopoverAttached) return;
+
+  const popover = document.getElementById('info-popover');
+
+  function showInfo(btn) {
+    if (!popover) return;
+    popover.querySelector('.info-popover-title').textContent = btn.dataset.infoTitle || '';
+    popover.querySelector('.info-popover-text').textContent = btn.dataset.infoText || '';
+    popover.classList.add('show');
+
+    const rect = popover.getBoundingClientRect();
+    const btnRect = btn.getBoundingClientRect();
+    let left = btnRect.right - rect.width;
+    let top = btnRect.bottom + 10;
+    left = Math.max(8, Math.min(left, window.innerWidth - rect.width - 8));
+    const flipped = top + rect.height > window.innerHeight - 8;
+    if (flipped) top = btnRect.top - rect.height - 10;
+    popover.style.left = left + 'px';
+    popover.style.top = top + 'px';
+    popover.dataset.placement = flipped ? 'above' : 'below';
+    // Notch sits under the button regardless of how far the note shifted left
+    const notchOffset = Math.max(12, Math.min(rect.width - 22, btnRect.left - left + btnRect.width / 2 - 5));
+    popover.style.setProperty('--notch-offset', notchOffset + 'px');
+  }
+
+  function hideInfo() {
+    if (popover) popover.classList.remove('show');
+  }
+
+  document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.info-btn');
+    if (btn) {
+      e.stopPropagation();
+      const isOpen = popover.classList.contains('show') && popover._openBtn === btn;
+      hideInfo();
+      if (!isOpen) { showInfo(btn); popover._openBtn = btn; }
+      return;
+    }
+    if (!e.target.closest('#info-popover')) hideInfo();
+  });
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') hideInfo();
+  });
+
+  window._infoPopoverAttached = true;
+})();
+</script>

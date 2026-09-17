@@ -5,7 +5,7 @@ from .models import (
     CreditSupplyConditions, Mortgage, Rentals, HousePriceIndex,
     HousingAffordability,
 )
-from administrative.models import City, Neighborhood
+from administrative.admin_units import cities_within, neighborhoods_within, province_of
 from builtup.models import Property, ZoningArea, Building
 
 
@@ -40,9 +40,9 @@ def calculate_supply_demand(city, year):
     }
 
 
-def calculate_supply_demand_province(province, year):
-    """Aggregate supply/demand across all cities in a province."""
-    cities = City.objects.filter(province=province)
+def calculate_supply_demand_for_unit(adminBund, year):
+    """Aggregate supply/demand across all cities within an admin unit."""
+    cities = cities_within(adminBund)
     records = HousingSupplyDemand.objects.filter(city__in=cities, year=year)
 
     agg = records.aggregate(
@@ -95,10 +95,9 @@ def calculate_new_units(city, year):
     }
 
 
-def calculate_new_units_province(province, year):
-    """Aggregate new units across all cities in a province."""
-    cities = City.objects.filter(province=province)
-    neighborhoods = Neighborhood.objects.filter(district__city__in=cities)
+def calculate_new_units_for_unit(adminBund, year):
+    """Aggregate new units across all cities within an admin unit."""
+    neighborhoods = neighborhoods_within(adminBund)
     projects = HousingProject.objects.filter(neighborhood__in=neighborhoods)
 
     completed = projects.filter(year_expected_completion__lte=year)
@@ -121,7 +120,7 @@ def calculate_new_units_province(province, year):
 
 # -- Mortgage -----------------------------------------------------------------
 
-def calculate_mortgage_indicators(province, year):
+def calculate_mortgage_indicators(adminBund, year):
     """Mortgage indicators from central bank policy and credit conditions.
 
     DAG edges:  Central_Bank  -> Mortgage
@@ -129,6 +128,10 @@ def calculate_mortgage_indicators(province, year):
                 Mortgage      -> Affordability_Stress
                 Mortgage      -> Income_Expenses
     """
+    # Central bank policy / credit conditions are only recorded at
+    # Province level, so a smaller adminBund resolves up to its province.
+    province = province_of(adminBund)
+
     policy = CentralBankPolicy.objects.filter(
         province=province, year=year,
     ).first()
@@ -138,8 +141,7 @@ def calculate_mortgage_indicators(province, year):
     ).first()
 
     # Aggregate actual mortgage data
-    cities = City.objects.filter(province=province)
-    neighborhoods = Neighborhood.objects.filter(district__city__in=cities)
+    neighborhoods = neighborhoods_within(adminBund)
     buildings = Building.objects.filter(neighborhood__in=neighborhoods)
     properties = Property.objects.filter(building__in=buildings)
     mortgages = Mortgage.objects.filter(property__in=properties)
@@ -167,14 +169,13 @@ def calculate_mortgage_indicators(province, year):
 
 # -- Rent ---------------------------------------------------------------------
 
-def calculate_rent_indicators(province):
+def calculate_rent_indicators(adminBund):
     """Rental market indicators.
 
     DAG edges:  Property -> Rent
                 Rent     -> Income_Expenses
     """
-    cities = City.objects.filter(province=province)
-    neighborhoods = Neighborhood.objects.filter(district__city__in=cities)
+    neighborhoods = neighborhoods_within(adminBund)
     buildings = Building.objects.filter(neighborhood__in=neighborhoods)
     properties = Property.objects.filter(building__in=buildings)
     rentals = Rentals.objects.filter(property__in=properties)
@@ -196,14 +197,13 @@ def calculate_rent_indicators(province):
 
 # -- House Price Index --------------------------------------------------------
 
-def calculate_house_price_index(province, year):
+def calculate_house_price_index(adminBund, year):
     """House price index aggregated across neighborhoods.
 
     DAG edges:  Housing_Demand -> House_Price_Index
                 Property       -> House_Price_Index
     """
-    cities = City.objects.filter(province=province)
-    neighborhoods = Neighborhood.objects.filter(district__city__in=cities)
+    neighborhoods = neighborhoods_within(adminBund)
     records = HousePriceIndex.objects.filter(
         neighborhood__in=neighborhoods, year=year,
     )
@@ -233,7 +233,7 @@ def calculate_house_price_index(province, year):
 
 # -- Property Market ----------------------------------------------------------
 
-def calculate_property_indicators(province):
+def calculate_property_indicators(adminBund):
     """Property market indicators.
 
     DAG edges:  Housing_Supply -> Property
@@ -244,8 +244,7 @@ def calculate_property_indicators(province):
                 Property       -> House_Price_Index
                 Property       -> Mortgage
     """
-    cities = City.objects.filter(province=province)
-    neighborhoods = Neighborhood.objects.filter(district__city__in=cities)
+    neighborhoods = neighborhoods_within(adminBund)
     buildings = Building.objects.filter(neighborhood__in=neighborhoods)
     properties = Property.objects.filter(building__in=buildings)
 
@@ -283,15 +282,14 @@ def calculate_property_indicators(province):
 
 # -- Zoning -------------------------------------------------------------------
 
-def calculate_zoning(province):
+def calculate_zoning(adminBund):
     """Zoning area breakdown.
 
     DAG edges:  Housing_Demand -> Zoning_Status
                 Zoning_Status  -> Property
                 Zoning_Status  -> New_Units
     """
-    cities = City.objects.filter(province=province)
-    neighborhoods = Neighborhood.objects.filter(district__city__in=cities)
+    neighborhoods = neighborhoods_within(adminBund)
     zones = ZoningArea.objects.filter(neighborhood__in=neighborhoods)
 
     total_area = zones.aggregate(total=Sum('area'))['total'] or 0
@@ -318,7 +316,7 @@ def calculate_zoning(province):
 
 # -- Affordability ------------------------------------------------------------
 
-def calculate_affordability(province, year):
+def calculate_affordability(adminBund, year):
     """Housing affordability indicators.
 
     DAG edges:  Property            -> Affordability_Stress
@@ -328,8 +326,7 @@ def calculate_affordability(province, year):
                 Rent                -> Income_Expenses
                 Mortgage            -> Income_Expenses
     """
-    cities = City.objects.filter(province=province)
-    neighborhoods = Neighborhood.objects.filter(district__city__in=cities)
+    neighborhoods = neighborhoods_within(adminBund)
     records = HousingAffordability.objects.filter(
         neighborhood__in=neighborhoods, year=year,
     )

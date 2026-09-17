@@ -8,7 +8,7 @@
                 color:rgba(232,244,255,0.45); margin-bottom:4px;">
       Urban Heat Indicators
     </div>
-    <div style="font-family:'Syne',sans-serif; font-size:1.1rem; font-weight:700;">
+    <div style="font-family:var(--font-base); font-size:1.1rem; font-weight:700;">
       {{ location }}
     </div>
   </div>
@@ -17,7 +17,7 @@
   <div class="slider-container">
     <div class="slider-header">
       <div class="slider-header-left">
-        <div class="card-icon" style="background:rgba(0,229,192,0.08);border-color:rgba(0,229,192,0.15);">🌿</div>
+        <div class="card-icon" style="background:rgba(34,197,94,0.08);border-color:rgba(34,197,94,0.15);">🌿</div>
         <span class="card-label">Vegetation Coverage</span>
       </div>
       <div class="slider-value-display">
@@ -66,13 +66,15 @@
 
 </div>
 
+{% include 'partials/_info_popover.html' %}
+
 <script>
 (function() {
 
   function zoneStyle(val) {
-    if (val >= 30)      return { col: '#00e5c0', label: 'Good',     cls: 'ok'   };
-    else if (val >= 15) return { col: '#ffb84d', label: 'Moderate', cls: 'warn' };
-    else                return { col: '#ff7a52', label: 'Low',      cls: 'bad'  };
+    if (val >= 30)      return { col: '#22c55e', label: 'Good',     cls: 'ok'   };
+    else if (val >= 15) return { col: '#f59e0b', label: 'Moderate', cls: 'warn' };
+    else                return { col: '#ef4444', label: 'Low',      cls: 'bad'  };
   }
 
   function applyZone(val) {
@@ -106,9 +108,9 @@
         const circ   = 238.76;
         const capped = Math.min(val, 100);
         let col;
-        if      (val > 70) col = '#63d2ff';
-        else if (val > 40) col = '#ffb84d';
-        else               col = '#ff7a52';
+        if      (val > 70) col = '#2E6478';
+        else if (val > 40) col = '#f59e0b';
+        else               col = '#ef4444';
         path.setAttribute('stroke', col);
         requestAnimationFrame(() => {
           path.style.strokeDashoffset = circ - (circ * capped / 100);
@@ -121,9 +123,9 @@
         // Color by thermal stress
         let col;
         if      (val > 75) col = '#ff5252';
-        else if (val > 50) col = '#ff7a52';
-        else if (val > 30) col = '#ffb84d';
-        else               col = '#00e5c0';
+        else if (val > 50) col = '#ef4444';
+        else if (val > 30) col = '#f59e0b';
+        else               col = '#22c55e';
         path.setAttribute('stroke', col);
         requestAnimationFrame(() => {
           path.style.strokeDashoffset = total - (total * capped / 100);
