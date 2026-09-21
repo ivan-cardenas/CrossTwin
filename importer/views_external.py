@@ -30,7 +30,7 @@ def get_external_data(request):
     Users tick datasets they want, then POST to start the import.
     """
     catalog_grouped = get_catalog_grouped()
-    source_order = ["pdok", "CBS", "sentinel2", "gee", "rivm"]
+    source_order = ["pdok", "CBS", "sentinel2", "gee", "knmi", "rivm"]
 
     sources_present = {ds["source"] for datasets in catalog_grouped.values() for ds in datasets}
     all_sources = [
@@ -70,6 +70,7 @@ def get_external_data(request):
                 "target_model": d["target_model"],
                 "requires_bbox": d.get("requires_bbox", False),
                 "draw_bbox": d.get("draw_bbox", False),
+                "bbox_from": d.get("bbox_from"),
                 "requires_auth": d.get("requires_auth", False),
                 "requires_date_range": d.get("requires_date_range", False),
                 "enabled": d.get("enabled", True),
@@ -81,34 +82,58 @@ def get_external_data(request):
     return render(request, "importer/external_data.html", context)
 
 
-def get_neighborhoods_geojson(request):
+# Administrative levels the import map can pick an area of interest from:
+# level -> (model path, name field, display-simplification tolerance in degrees).
+# The tolerance only thins the polygons drawn on the picker map (city outlines
+# are large); each feature's bbox is always taken from the full-resolution geometry.
+ADMIN_AREA_LEVELS = {
+    "city": ("administrative.City", "cityName", 0.0005),
+    "district": ("administrative.District", "districtName", 0.0002),
+    "neighborhood": ("administrative.Neighborhood", "neighborhoodName", 0),
+}
+
+
+def get_admin_areas_geojson(request):
     """
-    Return all neighborhoods from administrative.Neighborhood as a GeoJSON FeatureCollection
-    in WGS84. Used by the external data import map so the user can click one or more
-    neighborhoods to set the area of interest (bbox) instead of drawing a rectangle
-    manually.
+    Return the administrative units of one level (?level=city|district|neighborhood,
+    default neighborhood) as a GeoJSON FeatureCollection in WGS84.
+
+    Used by the external data import map so the user can click one or more units to
+    set the area of interest (bbox) instead of drawing a rectangle manually. The level
+    follows the dataset being imported: districts are picked from cities, neighborhoods
+    from districts (see `bbox_from` in external_catalog.py).
     """
-    from administrative.models import Neighborhood
+    level = request.GET.get("level", "neighborhood")
+    if level not in ADMIN_AREA_LEVELS:
+        return JsonResponse(
+            {"error": f"Unknown level '{level}'. Use one of: {', '.join(ADMIN_AREA_LEVELS)}."},
+            status=400,
+        )
+
+    model_path, name_field, tolerance = ADMIN_AREA_LEVELS[level]
+    Model = apps.get_model(model_path)
 
     features = []
-    for neighborhood in Neighborhood.objects.only('id', 'neighborhoodName', 'geom'):
+    for unit in Model.objects.only("id", name_field, "geom"):
         try:
-            geom_wgs84 = neighborhood.geom.transform(4326, clone=True)
+            geom_wgs84 = unit.geom.transform(4326, clone=True)
             # extent → (xmin, ymin, xmax, ymax) = (west, south, east, north) in WGS84
             bbox = list(geom_wgs84.extent)
+            if tolerance:
+                geom_wgs84 = geom_wgs84.simplify(tolerance, preserve_topology=True)
             features.append({
-                'type': 'Feature',
-                'geometry': json.loads(geom_wgs84.geojson),
-                'properties': {
-                    'id': neighborhood.id,
-                    'name': neighborhood.neighborhoodName,
-                    'bbox': bbox,
+                "type": "Feature",
+                "geometry": json.loads(geom_wgs84.geojson),
+                "properties": {
+                    "id": unit.id,
+                    "name": getattr(unit, name_field),
+                    "bbox": bbox,
                 },
             })
         except Exception as e:
-            logger.warning(f"Skipping neighborhood {neighborhood.id} ({neighborhood.neighborhoodName}) from GeoJSON: {e}")
+            logger.warning(f"Skipping {level} {unit.id} ({getattr(unit, name_field)}) from GeoJSON: {e}")
 
-    return JsonResponse({'type': 'FeatureCollection', 'features': features})
+    return JsonResponse({"type": "FeatureCollection", "features": features})
 
 
 @require_POST

@@ -82,6 +82,25 @@ class UTCI(models.Model):
         verbose_name = "Universal Thermal Climate Index"
         verbose_name_plural = "Universal Thermal Climate Index Measurements"
     
+class WetBulbGlobeTemperature(models.Model):
+    """Wet Bulb Globe Temperature (WBGT) - heat-stress measure combining air temperature,
+    humidity, wind and radiation. Imported from the KNMI Data Platform (see
+    importer/external_data.py::KNMIImporter)."""
+    raster = models.RasterField(srid=settings.COORDINATE_SYSTEM, null=True, blank=True, verbose_name="WBGT Raster", help_text="Raster file containing Wet Bulb Globe Temperature values in degrees Celsius.")
+    date_time = models.DateTimeField(default=timezone.now, help_text="Time the values are valid for (parsed from the KNMI file name)")
+    source = models.CharField(max_length=100, null=True, blank=True, help_text="Origin of the raster (e.g., 'KNMI Data Platform')")
+    measurement_method = models.CharField(max_length=100, null=True, blank=True, help_text="Method used to derive the values (e.g., 'KNMI WBGT analysis')")
+    resolution = models.FloatField(null=True, blank=True, help_text="Spatial resolution of the raster in meters")
+    cog_path = models.CharField(max_length=500, null=True, blank=True, help_text="Path to the exported Cloud-Optimized GeoTIFF served by TiTiler")
+
+    def __str__(self):
+        return f"WBGT Measurement at {self.date_time.strftime('%Y-%m-%d %H:%M:%S')}"
+
+    class Meta:
+        verbose_name = "Wet Bulb Globe Temperature"
+        verbose_name_plural = "Wet Bulb Globe Temperature Measurements"
+
+
 class SkyViewFactor(models.Model):
     """Sky View Factor (SVF) measurements"""
     raster = models.RasterField(srid=settings.COORDINATE_SYSTEM, null=True, blank=True, verbose_name="SVF Raster", help_text="Raster file containing Sky View Factor values (0 to 1).")

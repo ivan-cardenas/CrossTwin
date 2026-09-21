@@ -275,6 +275,7 @@ EXTERNAL_DATA_CATALOG = [
         "layer": "wijkenbuurten:wijken",
         "format": "wfs",
         "requires_bbox": True,
+        "bbox_from": "administrative.City",  # area of interest is picked from imported cities
         "requires_model": "administrative.City",
         "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "enabled": True,
@@ -290,6 +291,7 @@ EXTERNAL_DATA_CATALOG = [
         "layer": "wijkenbuurten:buurten",
         "format": "wfs",
         "requires_bbox": True,
+        "bbox_from": "administrative.District",  # area of interest is picked from imported districts
         "requires_model": "administrative.District",
         "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "enabled": True,
@@ -933,6 +935,24 @@ EXTERNAL_DATA_CATALOG = [
         "slow_reason": "Server-side compositing across an image collection on Google Earth Engine can take a while, especially over a wide date range.",
         "enabled": True,
     },
+
+    # ── KNMI Data Platform ───────────────────────────────────────────────────
+    {
+        "key": "knmi_wbgt",
+        "source": "knmi",
+        "category": "Climate",
+        "name": "Wet Bulb Globe Temperature (KNMI, latest)",
+        "description": "Latest heat-stress measure (WBGT) published by KNMI: air temperature, humidity, wind and radiation combined. Always fetches the newest file; needs KNMI_API_KEY on the server.",
+        "target_model": "urban_heat.WetBulbGlobeTemperature",
+        "api_base": "https://api.dataplatform.knmi.nl/open-data/v1",
+        "dataset_name": "wet_bulb_globe_temperature",
+        "dataset_version": "3.0",
+        "measurement_method": "KNMI WBGT analysis",
+        "format": "raster",
+        # The key lives in the server's .env (KNMI_API_KEY), so the user
+        # supplies nothing and no bbox is needed: the whole grid is stored.
+        "enabled": True,
+    },
 ]
 
 # Build a quick-lookup dict
@@ -973,6 +993,15 @@ SOURCE_INFO = {
         "icon": "cloud",
         "color": "amber",
         "auth_required": True,
+    },
+
+    "knmi": {
+        "name": "KNMI",
+        "full_name": "Royal Netherlands Meteorological Institute (Data Platform)",
+        "description": "Dutch national weather and climate data. The API key is configured on the server (KNMI_API_KEY), so no credentials are asked for here.",
+        "icon": "cloud",
+        "color": "sky",
+        "auth_required": False,
     },
 
     "rivm": {

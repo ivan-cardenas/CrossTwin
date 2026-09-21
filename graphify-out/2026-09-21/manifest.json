@@ -318,15 +318,15 @@
     "semantic_hash": "de0066091281d3854e7533bf39724bd9"
   },
   "importer/external_catalog.py": {
-    "mtime": 1789996139.9270115,
-    "seen": 1789996629.0443952,
-    "ast_hash": "809232427f6bd330a378baa22766d23b",
+    "mtime": 1790001199.6704466,
+    "seen": 1790001397.6838615,
+    "ast_hash": "eed37b94ed8cb8dee4ccf40ad1087f04",
     "semantic_hash": ""
   },
   "importer/external_data.py": {
-    "mtime": 1789996133.3509016,
-    "seen": 1789996629.0443964,
-    "ast_hash": "76ca71856ab3d98896294eaceb58b8b7",
+    "mtime": 1790001203.1901362,
+    "seen": 1790001397.6838655,
+    "ast_hash": "3b5896b1ef3e5a4907abb9588daa4c8b",
     "semantic_hash": ""
   },
   "importer/forms.py": {
@@ -348,16 +348,16 @@
     "semantic_hash": "d66d26e53e7ac2028454d3dd6f7e92ad"
   },
   "importer/tests.py": {
-    "mtime": 1789996222.8199496,
-    "seen": 1789996629.0444005,
-    "ast_hash": "65c3708df88a10c7dda145fd61036bca",
+    "mtime": 1790001308.1485865,
+    "seen": 1790001397.683878,
+    "ast_hash": "c29ec72dee49cf74fb7e07d71dab16b9",
     "semantic_hash": ""
   },
   "importer/urls.py": {
-    "mtime": 1789392837.0469823,
-    "seen": 1789470760.6183946,
-    "ast_hash": "4ceff2a638f4e5bc973ad7df493f85a7",
-    "semantic_hash": "4ceff2a638f4e5bc973ad7df493f85a7"
+    "mtime": 1790001201.89525,
+    "seen": 1790001397.6838808,
+    "ast_hash": "4391c986a025e4de2b8b38562f4c3367",
+    "semantic_hash": ""
   },
   "importer/utils.py": {
     "mtime": 1789992385.606415,
@@ -372,10 +372,10 @@
     "semantic_hash": ""
   },
   "importer/views_external.py": {
-    "mtime": 1789475479.7340252,
-    "seen": 1789991810.466642,
-    "ast_hash": "5b373e042a02931b403362f3e4745269",
-    "semantic_hash": "5b373e042a02931b403362f3e4745269"
+    "mtime": 1790001216.289029,
+    "seen": 1790001397.6838903,
+    "ast_hash": "bc39948e3ddd37cd63943f5d50c8eb1b",
+    "semantic_hash": ""
   },
   "mainMap/__init__.py": {
     "mtime": 1769075889.0,
@@ -408,21 +408,21 @@
     "semantic_hash": "d66d26e53e7ac2028454d3dd6f7e92ad"
   },
   "mainMap/tests.py": {
-    "mtime": 1789996512.6008954,
-    "seen": 1789996629.0444107,
-    "ast_hash": "bafa1523791f8d5d3d2f86e949bffabc",
+    "mtime": 1789997295.3070145,
+    "seen": 1789997622.0744746,
+    "ast_hash": "0457d0adc4279812a500e72953fb51e5",
     "semantic_hash": ""
   },
   "mainMap/urls.py": {
-    "mtime": 1789995365.9723506,
-    "seen": 1789995616.1342034,
-    "ast_hash": "d9fb7516244050cf042124381b1e88fa",
+    "mtime": 1789997035.0529642,
+    "seen": 1789997622.074477,
+    "ast_hash": "bdf3204d1ca95bac858c240b5a525c99",
     "semantic_hash": ""
   },
   "mainMap/views.py": {
-    "mtime": 1789996451.3535912,
-    "seen": 1789996629.0444124,
-    "ast_hash": "bc35a69a29f4f7c5c0750d76bb690981",
+    "mtime": 1789997035.051959,
+    "seen": 1789997622.0744796,
+    "ast_hash": "1a7e8a0c6c83a3d03431850b478872c0",
     "semantic_hash": ""
   },
   "manage.py": {
@@ -756,9 +756,9 @@
     "semantic_hash": "a74ed589721c3935b266830049e899bd"
   },
   "CLAUDE.md": {
-    "mtime": 1789996621.5836103,
-    "seen": 1789996629.044488,
-    "ast_hash": "14638af516850eddb1bd717314fac805",
+    "mtime": 1789997614.8912358,
+    "seen": 1789997622.0746677,
+    "ast_hash": "397ef6123904ca82283263a2923f2cec",
     "semantic_hash": ""
   },
   "ImporterArchitecture.html": {
@@ -804,10 +804,10 @@
     "semantic_hash": ""
   },
   "importer/templates/importer/external_data.html": {
-    "mtime": 1789392911.2417603,
-    "seen": 1789470760.6185374,
-    "ast_hash": "26313925126e80a7bb187166edaafdf8",
-    "semantic_hash": "26313925126e80a7bb187166edaafdf8"
+    "mtime": 1790001290.6713908,
+    "seen": 1790001397.6841426,
+    "ast_hash": "317026db58d8d56563184bd4723ca1df",
+    "semantic_hash": ""
   },
   "importer/templates/importer/upload.html": {
     "mtime": 1771412527.4299023,
@@ -822,9 +822,9 @@
     "semantic_hash": "ba0ff40ec8eb57b76a40e1f989f2224e"
   },
   "mainMap/templates/mainMap.html": {
-    "mtime": 1789996451.352589,
-    "seen": 1789996629.044506,
-    "ast_hash": "6be78b3dd6591a66acf9d5fa88bdc293",
+    "mtime": 1789997116.4868836,
+    "seen": 1789997622.0747125,
+    "ast_hash": "773b09c84e1687ee1b37b25de5ef1304",
     "semantic_hash": ""
   },
   "requirements.txt": {
@@ -858,9 +858,9 @@
     "semantic_hash": "f4258dcc3f1631546d419fc11ec8851c"
   },
   "watersupply/templates/watersupply/partials/indicators_panel.html": {
-    "mtime": 1789996418.4252746,
-    "seen": 1789996629.0445127,
-    "ast_hash": "bb557f2e6ff6adfea31fbfb44eca5f67",
+    "mtime": 1789997116.485376,
+    "seen": 1789997622.0747607,
+    "ast_hash": "6bad606162bcdf226d50c0907e7bfded",
     "semantic_hash": ""
   },
   "watersupply/templates/watersupply/water_indicators.html": {
@@ -948,9 +948,9 @@
     "semantic_hash": ""
   },
   "core/static/js/Events.js": {
-    "mtime": 1789995403.3798497,
-    "seen": 1789995616.1342034,
-    "ast_hash": "17827b0d067916e26343a1a8ef3bfd0f",
+    "mtime": 1789997196.9590685,
+    "seen": 1789997622.0742931,
+    "ast_hash": "c3aebcbcf118a1a022eda8f61ecfa476",
     "semantic_hash": ""
   },
   "core/static/js/Layers.js": {
@@ -966,15 +966,15 @@
     "semantic_hash": "1c11ed23b7695b55d9b045f4c186e222"
   },
   "core/static/js/Map_init.js": {
-    "mtime": 1789995406.2785661,
-    "seen": 1789995616.1342034,
-    "ast_hash": "3e3bd733a05a9254d14171c08e3072f9",
+    "mtime": 1789997196.9590685,
+    "seen": 1789997622.0743027,
+    "ast_hash": "f9e966deddc559e4f44af8d375a7c039",
     "semantic_hash": ""
   },
   "core/static/js/Panels.js": {
-    "mtime": 1789996418.4277828,
-    "seen": 1789996629.0443745,
-    "ast_hash": "78b0b0b822599b39d94c4c6056f99645",
+    "mtime": 1789997196.9574807,
+    "seen": 1789997622.0743053,
+    "ast_hash": "708c9822ff42ff425a9650b89b5386d5",
     "semantic_hash": ""
   },
   "core/static/js/model_selector.js": {
@@ -1080,9 +1080,9 @@
     "semantic_hash": "42404aa103c7a1147770de0eb6e47706"
   },
   "housing/templates/housing/partials/indicators_panel.html": {
-    "mtime": 1789996418.4267786,
-    "seen": 1789996629.0444996,
-    "ast_hash": "497b9689d13051fc52c76dbfa5a1635c",
+    "mtime": 1789997116.486376,
+    "seen": 1789997622.074698,
+    "ast_hash": "c8aeb4ef56db9eb137eccf51ac7e507d",
     "semantic_hash": ""
   },
   "core/static/ico/android-chrome-192x192.png": {
@@ -1128,15 +1128,15 @@
     "semantic_hash": ""
   },
   ".claude/plans/1-i-need-to-tidy-simon.md": {
-    "mtime": 1789996621.6468484,
-    "seen": 1789996629.0444765,
-    "ast_hash": "740b1238980f7279cd1750dfdbe97655",
+    "mtime": 1789997614.9580853,
+    "seen": 1789997622.0746393,
+    "ast_hash": "1918cfa67cd5fd430df8491f214a4de2",
     "semantic_hash": ""
   },
   "mainMap/templates/mainMap/partials/dashboard_summary.html": {
-    "mtime": 1789996458.1507976,
-    "seen": 1789996629.0445068,
-    "ast_hash": "3020424f45c7a2aaf27c2457f958f8db",
+    "mtime": 1789997082.020727,
+    "seen": 1789997622.0747154,
+    "ast_hash": "d50a1573acbd1774e83d2aff3ad7aeb4",
     "semantic_hash": ""
   },
   "administrative/migrations/0002_population_projection.py": {
@@ -1158,15 +1158,33 @@
     "semantic_hash": ""
   },
   "watersupply/tests/test_population_wiring.py": {
-    "mtime": 1789996588.6906283,
-    "seen": 1789996629.0444584,
-    "ast_hash": "1cf35f048916712f64baf67f35cf5be7",
+    "mtime": 1789997295.3085663,
+    "seen": 1789997622.074591,
+    "ast_hash": "abbb7c7d814fe7f879c0f90cdf6582c1",
     "semantic_hash": ""
   },
   "Templates/partials/_population_controls.html": {
-    "mtime": 1789996588.660786,
-    "seen": 1789996629.044497,
-    "ast_hash": "778e750243793abb3f8177b2db08ccb8",
+    "mtime": 1789997116.4843752,
+    "seen": 1789997622.0746908,
+    "ast_hash": "e1e24dbd7ab4a9c04600377a99800660",
+    "semantic_hash": ""
+  },
+  "mainMap/charts.py": {
+    "mtime": 1789997549.1474304,
+    "seen": 1789997622.074462,
+    "ast_hash": "1d6bcd097468dc0866283613a920e7bc",
+    "semantic_hash": ""
+  },
+  "mainMap/test_charts.py": {
+    "mtime": 1789997295.3085663,
+    "seen": 1789997622.0744715,
+    "ast_hash": "a39543f1b70d886a611a5d4fec3571f8",
+    "semantic_hash": ""
+  },
+  "mainMap/templates/mainMap/partials/population_panel.html": {
+    "mtime": 1789997549.1484768,
+    "seen": 1789997622.0747428,
+    "ast_hash": "fb0b025319aeb27638ea46c998380cee",
     "semantic_hash": ""
   }
 }

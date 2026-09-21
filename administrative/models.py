@@ -53,7 +53,7 @@ class City(models.Model):
     id = models.AutoField(primary_key=True)
     province = models.ForeignKey(Province, on_delete=models.CASCADE, help_text="Province code from administrative.Province")
     cityName = models.CharField(max_length=100, verbose_name="City Name", help_text="Name of the city")
-    currentPopulation = models.IntegerField(help_text="Total current population in the city", verbose_name="Current Population")
+    currentPopulation = models.IntegerField(help_text="Total current population in the city", verbose_name="Current Population", null=True)
     area_km2 = models.FloatField(null=True, help_text="Area in square kilometers")
     populationDensity = models.FloatField(null=True, help_text="Population density in people per square kilometer", verbose_name="Population Density") # people/km2
     populationDate = models.DateField(null=True)

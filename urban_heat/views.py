@@ -8,6 +8,8 @@ from .calculations import (
     get_thermal_indices,
     classify_pet,
     classify_utci,
+    classify_wbgt,
+    wbgt_color,
     calculate_nbs_coverage,
     get_latest_meteorology,
 )
@@ -16,6 +18,7 @@ from .calculations import (
 # ── constants ─────────────────────────────────────────────────────────
 MAX_UTCI = 46       # extreme heat stress threshold
 MAX_PET  = 41       # extreme heat stress threshold
+MAX_WBGT = 35       # upper display bound for the WBGT gauge (above the 33 °C extreme band)
 MAX_LST  = 50       # upper display bound for LST gauge
 
 # ── shared helper ─────────────────────────────────────────────────────
@@ -66,7 +69,8 @@ MOCK_DATA = {
         'tmrt':  {'min': 18.5, 'max': 55.2, 'mean': 38.7, 'stddev': 8.2, 'count': 48000},
         'pet':   {'min': 14.0, 'max': 42.3, 'mean': 28.6, 'stddev': 5.4, 'count': 48000},
         'utci':  {'min': 12.5, 'max': 39.8, 'mean': 26.4, 'stddev': 4.8, 'count': 48000},
-        'svf':   {'min': 0.12, 'max': 0.98, 'mean': 0.62, 'stddev': 0.18, 'count': 48000},
+        'wbgt':  {'min': 19.0, 'max': 27.5, 'mean': 23.4, 'stddev': 2.1, 'count': 48000},
+        'svf':  {'min': 0.12, 'max': 0.98, 'mean': 0.62, 'stddev': 0.18, 'count': 48000},
         'suhii': {'min': 0.5, 'max': 5.2, 'mean': 2.8, 'stddev': 1.1, 'count': 48000},
     },
     'nbs': {
@@ -100,6 +104,7 @@ def _build_indicators(data):
     tmrt_stats = thermal.get('tmrt')
     pet_stats  = thermal.get('pet')
     utci_stats = thermal.get('utci')
+    wbgt_stats = thermal.get('wbgt')
     svf_stats  = thermal.get('svf')
     suhii_stats = thermal.get('suhii')
 
@@ -107,7 +112,8 @@ def _build_indicators(data):
     tmrt_mean = tmrt_stats['mean'] if tmrt_stats else None
     pet_mean  = pet_stats['mean']  if pet_stats  else None
     utci_mean = utci_stats['mean'] if utci_stats else None
-    svf_mean  = svf_stats['mean']  if svf_stats  else None
+    wbgt_mean = wbgt_stats['mean'] if wbgt_stats else None
+    svf_mean = svf_stats['mean']  if svf_stats  else None
     suhii_mean = suhii_stats['mean'] if suhii_stats else None
 
     return {
@@ -132,6 +138,13 @@ def _build_indicators(data):
         'utci_max':   utci_stats['max'] if utci_stats else None,
         'utci_pct':   round(min(utci_mean / MAX_UTCI * 100, 100), 1) if utci_mean else 0,
         'utci_category': classify_utci(utci_mean),
+
+        'wbgt_mean':  wbgt_mean,
+        'wbgt_min':   wbgt_stats['min'] if wbgt_stats else None,
+        'wbgt_max':   wbgt_stats['max'] if wbgt_stats else None,
+        'wbgt_pct':   round(min(wbgt_mean / MAX_WBGT * 100, 100), 1) if wbgt_mean else 0,
+        'wbgt_category': classify_wbgt(wbgt_mean),
+        'wbgt_color': wbgt_color(wbgt_mean),
 
         'svf_mean':   svf_mean,
         'svf_min':    svf_stats['min']  if svf_stats  else None,

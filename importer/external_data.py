@@ -1,11 +1,11 @@
 """
 External Data Catalog & Import Logic
 =====================================
-Defines available datasets from PDOK, Sentinel-2, and Google Earth Engine
-that can be fetched and imported into CrossTwin models.
+Defines available datasets from PDOK, Sentinel-2, Google Earth Engine and the
+KNMI Data Platform that can be fetched and imported into CrossTwin models.
 
 Each catalog entry specifies:
-  - source:       'pdok' | 'sentinel2' | 'gee'
+  - source:       'pdok' | 'sentinel2' | 'gee' | 'knmi'
   - key:          unique identifier
   - name:         human-readable display name
   - description:  short description for the UI
@@ -20,11 +20,12 @@ import json
 import logging
 import math
 import os
+import re
 import time
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple, List
-from datetime import datetime, timedelta
-from urllib.parse import urlencode
+from datetime import date, datetime, timedelta, timezone as dt_timezone
+from urllib.parse import urlencode, quote
 
 import requests
 from pyproj import Transformer
@@ -396,7 +397,9 @@ def load_raster_into_target_model(
         # row so LandCoverRaster/SatelliteImagery/DigitalElevationModel/
         # DigitalSurfaceModel records reflect what actually produced them,
         # instead of only holding a bare raster + cog_path.
-        if "date" in model_field_names and acquisition_date:
+        # Satellite/land-cover models call it `date`, the urban_heat rasters `date_time`.
+        date_field = next((f for f in ("date", "date_time") if f in model_field_names), None)
+        if date_field and acquisition_date:
             # `acquisition_date` is a real timestamp looked up from the
             # actual satellite catalog (Copernicus Data Space's OData API
             # for Sentinel-2 — see Sentinel2Importer._lookup_acquisition_date
@@ -409,10 +412,12 @@ def load_raster_into_target_model(
             # datetime.now() — both are guesses, not real satellite data, so
             # the field is left unset when no real date could be found
             # rather than stamping it with an invented one.
-            field_values["date"] = acquisition_date
+            field_values[date_field] = acquisition_date
         if "source" in model_field_names:
-            source_labels = {"pdok": "PDOK", "sentinel2": "Sentinel-2 / Copernicus", "gee": "Google Earth Engine"}
+            source_labels = {"pdok": "PDOK", "sentinel2": "Sentinel-2 / Copernicus", "gee": "Google Earth Engine", "knmi": "KNMI Data Platform"}
             field_values["source"] = source_labels.get(dataset.get("source"), dataset.get("source"))
+        if "measurement_method" in model_field_names and dataset.get("measurement_method"):
+            field_values["measurement_method"] = dataset["measurement_method"]
         if "satellite_type" in model_field_names and dataset.get("satellite_type"):
             field_values["satellite_type"] = dataset["satellite_type"]
         if "index" in model_field_names:
@@ -635,6 +640,18 @@ def _import_geojson_features(features: List[Dict], dataset: Dict, Model, mapping
                         continue  # Skip special keys
                     if wfs_prop in props and props[wfs_prop] is not None:
                         field_values[model_field] = props[wfs_prop]
+
+                # A bare year (CBS wijkenbuurten's "jaar": 2025) mapped onto a
+                # DateField would otherwise reach Django as an int and blow up
+                # in date.fromisoformat() -- store it as 1 January of that year.
+                for model_field, value in list(field_values.items()):
+                    if (
+                        isinstance(value, int)
+                        and not isinstance(value, bool)
+                        and 1000 <= value <= 9999
+                        and Model._meta.get_field(model_field).get_internal_type() == "DateField"
+                    ):
+                        field_values[model_field] = date(value, 1, 1)
 
                 # __year_from_date__: some source properties are a full ISO
                 # timestamp (e.g. "2015-12-31T23:00:00Z") where the model
@@ -1040,8 +1057,8 @@ class PDOKImporter:
             layer = dataset["layer"]
 
             # bbox arrives in WGS84 from the frontend (union of selected
-            # neighborhood extents, or a drawn rectangle — see
-            # importer/views_external.py::get_neighborhoods_geojson).
+            # city/district/neighborhood extents, or a drawn rectangle — see
+            # importer/views_external.py::get_admin_areas_geojson).
             # The subset below has no CRS declaration, so WCS 2.0.1 interprets
             # it in the coverage's native CRS; for a CRS like AHN's RD New
             # (EPSG:28992), passing raw lon/lat numbers lands nowhere near the
@@ -1960,6 +1977,212 @@ class GEEImporter:
             return ImportResult("error", f"GEE export failed: {e}")
 
 
+# KNMI file names carry the valid time as YYYYMMDD[HH[MM]] (optionally separated by - _ T).
+_KNMI_TIMESTAMP_RE = re.compile(
+    r"(20\d{2})[-_]?(0[1-9]|1[0-2])[-_]?(0[1-9]|[12]\d|3[01])"
+    r"(?:[T_-]?([01]\d|2[0-3])(?:[:_-]?([0-5]\d))?)?"
+)
+
+# Explicit nodata value for the GeoTIFF we write, so PostGIS and TiTiler treat missing cells the same way.
+_KNMI_NODATA = -9999.0
+
+
+class KNMIImporter:
+    """
+    KNMI Data Platform (Open Data API v1).
+
+    Flow: list the newest file of a dataset -> ask for a short-lived download
+    URL -> download -> turn the (NetCDF/HDF5) grid into a GeoTIFF in the storage
+    CRS -> hand it to load_raster_into_target_model, which stores it and lets
+    the post_save signal export the COG.
+
+    The API key comes from settings.KNMI_API_KEY (server side) and is sent
+    as the raw Authorization header value, without a "Bearer" prefix. It is
+    never logged or included in a message returned to the browser.
+    """
+
+    LIST_TIMEOUT = 30
+    DOWNLOAD_TIMEOUT = 180
+
+    @staticmethod
+    def parse_valid_time(filename: str) -> Optional[datetime]:
+        """UTC datetime encoded in a KNMI file name, or None if it has none."""
+        match = _KNMI_TIMESTAMP_RE.search(filename or "")
+        if not match:
+            return None
+        year, month, day, hour, minute = match.groups()
+        return datetime(
+            int(year), int(month), int(day), int(hour or 0), int(minute or 0),
+            tzinfo=dt_timezone.utc,
+        )
+
+    @staticmethod
+    def _parse_iso(value: Optional[str]) -> Optional[datetime]:
+        if not value:
+            return None
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=dt_timezone.utc)
+
+    @staticmethod
+    def to_geotiff(src_path: str, dst_path: str) -> str:
+        """
+        Convert a downloaded KNMI grid to a single-band float32 GeoTIFF in
+        settings.COORDINATE_SYSTEM. Returns a note about what was picked
+        ('' when there was nothing to choose).
+
+        The reprojection is done here rather than left to
+        load_raster_into_target_model: KNMI grids are often in a projection
+        without an EPSG code, and that loader only reprojects when it can read
+        one. Packed values (scale/offset) and Kelvin are converted to degrees
+        Celsius; the source's own nodata cells stay nodata.
+        """
+        import numpy as np
+        import rasterio
+        from rasterio.warp import calculate_default_transform, reproject, Resampling
+
+        notes = []
+        source = src_path
+        with rasterio.open(src_path) as container:
+            # A NetCDF/HDF5 file with several variables opens as a container
+            # of subdatasets instead of as a raster: pick the WBGT variable.
+            if container.count == 0 and container.subdatasets:
+                source = next(
+                    (s for s in container.subdatasets if "wbgt" in s.lower()),
+                    container.subdatasets[0],
+                )
+                notes.append(f"variable {source.rsplit(':', 1)[-1]}")
+
+        with rasterio.open(source) as src:
+            if src.crs is None:
+                raise ValueError("the KNMI file has no coordinate reference system, so it cannot be placed on the map")
+            if src.count > 1:
+                notes.append(f"first of {src.count} time steps")
+
+            values = src.read(1).astype("float64")
+            invalid = np.isnan(values)
+            if src.nodata is not None and not np.isnan(src.nodata):
+                invalid |= values == src.nodata
+            scale = (src.scales[0] if src.scales else None) or 1.0
+            offset = (src.offsets[0] if src.offsets else None) or 0.0
+            values = values * scale + offset
+            unit = (src.units[0] if src.units else None) or ""
+            if unit.lower() in ("k", "kelvin"):
+                values -= 273.15
+            values = np.where(invalid, _KNMI_NODATA, values).astype("float32")
+
+            dst_crs = f"EPSG:{coordinate_system}"
+            transform, width, height = calculate_default_transform(
+                src.crs, dst_crs, src.width, src.height, *src.bounds
+            )
+            warped = np.full((height, width), _KNMI_NODATA, dtype="float32")
+            reproject(
+                source=values,
+                destination=warped,
+                src_transform=src.transform,
+                src_crs=src.crs,
+                src_nodata=_KNMI_NODATA,
+                dst_transform=transform,
+                dst_crs=dst_crs,
+                dst_nodata=_KNMI_NODATA,
+                resampling=Resampling.bilinear,
+            )
+
+        with rasterio.open(
+            dst_path, "w", driver="GTiff", dtype="float32", count=1,
+            width=width, height=height, crs=dst_crs, transform=transform,
+            nodata=_KNMI_NODATA, compress="deflate",
+        ) as dst:
+            dst.write(warped, 1)
+        return ", ".join(notes)
+
+    @staticmethod
+    def fetch_latest(dataset: Dict) -> ImportResult:
+        """Import the newest file of the dataset described by a catalog entry."""
+        api_key = getattr(settings, "KNMI_API_KEY", None)
+        if not api_key:
+            return ImportResult(
+                "error",
+                "KNMI_API_KEY is not set on the server. Add it to .env (a key from the "
+                "KNMI Data Platform) and restart Django.",
+            )
+        headers = {"Authorization": api_key}
+        files_url = (
+            f"{dataset['api_base']}/datasets/{dataset['dataset_name']}"
+            f"/versions/{dataset['dataset_version']}/files"
+        )
+
+        try:
+            listing = requests.get(
+                files_url,
+                headers=headers,
+                params={"maxKeys": 1, "orderBy": "created", "sorting": "desc"},
+                timeout=KNMIImporter.LIST_TIMEOUT,
+            )
+            if listing.status_code in (401, 403):
+                return ImportResult(
+                    "error",
+                    f"KNMI rejected the API key (HTTP {listing.status_code}). Check KNMI_API_KEY in .env.",
+                )
+            listing.raise_for_status()
+            files = listing.json().get("files") or []
+            if not files:
+                return ImportResult("error", "KNMI lists no files for this dataset.")
+
+            latest = files[0]
+            filename = Path(latest["filename"]).name
+            valid_time = (
+                KNMIImporter.parse_valid_time(filename)
+                or KNMIImporter._parse_iso(latest.get("created"))
+            )
+
+            Model = get_model_class(dataset["target_model"])
+            if valid_time and Model.objects.filter(date_time=valid_time).exists():
+                return ImportResult(
+                    "success",
+                    f"Latest KNMI file ({filename}) is already imported; nothing to do.",
+                )
+
+            # Same headers, different endpoint: this returns a pre-signed URL.
+            link = requests.get(
+                f"{files_url}/{quote(filename)}/url",
+                headers=headers,
+                timeout=KNMIImporter.LIST_TIMEOUT,
+            )
+            link.raise_for_status()
+            download_url = link.json()["temporaryDownloadUrl"]
+
+            target_dir = Path(settings.MEDIA_ROOT) / "imports" / "knmi"
+            target_dir.mkdir(parents=True, exist_ok=True)
+            raw_path = target_dir / filename
+            # The pre-signed URL carries its own authorisation; sending the API key there is unnecessary.
+            with requests.get(download_url, stream=True, timeout=KNMIImporter.DOWNLOAD_TIMEOUT) as download:
+                download.raise_for_status()
+                with open(raw_path, "wb") as fh:
+                    for chunk in download.iter_content(chunk_size=1024 * 1024):
+                        fh.write(chunk)
+
+            tif_path = raw_path.with_suffix(".tif")
+            note = KNMIImporter.to_geotiff(str(raw_path), str(tif_path))
+
+            ok, message = load_raster_into_target_model(
+                str(tif_path), dataset, acquisition_date=valid_time
+            )
+            if not ok:
+                return ImportResult("error", message, file_path=str(tif_path))
+            if note:
+                message += f" (used {note})"
+            return ImportResult("success", f"{filename}: {message}", records_created=1, file_path=str(tif_path))
+
+        except requests.RequestException as e:
+            return ImportResult("error", f"KNMI request failed: {e}")
+        except Exception as e:
+            logger.exception(f"KNMI import error for {dataset['key']}")
+            return ImportResult("error", f"KNMI import failed: {e}")
+
+
 def import_dataset(
     dataset_key: str,
     bbox: Optional[list] = None,
@@ -2039,5 +2262,8 @@ def import_dataset(
     
     elif source == "gee":
         return GEEImporter.export_raster(dataset, bbox, date_from, date_to)
-    
+
+    elif source == "knmi":
+        return KNMIImporter.fetch_latest(dataset)
+
     return ImportResult("error on EXTERNAL_DATA", f"No handler for source={source}, format={fmt}")

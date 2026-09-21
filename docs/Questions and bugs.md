@@ -1,6 +1,6 @@
 # Questions and bugs
 
-1. Should I change common to Administrative boundaries?
+1.I changed common to Administrative boundaries?
 	- Where should I leave landcover classes, DSM, DEM, calculation tables?
 
 
@@ -41,6 +41,8 @@
 14. Green spaces and parks are saved in two models, should I merge them into one? Probably only green spaces
 
 14. is there a table or map of infiltration capacity?
+
+14. should I use docker for deployment?
 
 ## TODOS
 

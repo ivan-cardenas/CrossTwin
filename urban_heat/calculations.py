@@ -3,7 +3,7 @@ from django.contrib.gis.db.models.functions import Area, Intersection
 from django.db import connection
 
 from .models import (
-    MeanRadiantTemperature, UTCI, SkyViewFactor, PET,
+    MeanRadiantTemperature, UTCI, WetBulbGlobeTemperature, SkyViewFactor, PET,
     LandSurfaceTemperature, SurfaceUrbanHeatIslandIntensity,
     NatureBasedSolutionPolygon, NatureBasedSolutionPoint,
     StressCategory,
@@ -149,6 +149,9 @@ def get_thermal_indices(adminUnit):
                 DSM → SVF → Tmrt, PET
                 LST → PET
                 Tmrt → PET, UTCI
+
+    WBGT is not a DAG node: it is an observed measure imported from KNMI
+    (importer KNMIImporter), read here as-is like the other rasters.
     """
     geom_wkt = adminUnit.geom.wkt
     srid = adminUnit.geom.srid
@@ -173,6 +176,11 @@ def get_thermal_indices(adminUnit):
     # UTCI (Universal Thermal Climate Index)
     indices['utci'] = _raster_stats_sql(
         'urban_heat_utci', 'raster', geom_wkt, srid
+    )
+
+    # WBGT (Wet Bulb Globe Temperature, latest KNMI import)
+    indices['wbgt'] = _raster_stats_sql(
+        WetBulbGlobeTemperature._meta.db_table, 'raster', geom_wkt, srid
     )
 
     # SVF (Sky View Factor)
@@ -238,6 +246,36 @@ def classify_utci(value):
         return 'Very Strong Heat Stress'
     else:
         return 'Extreme Heat Stress'
+
+
+# (upper bound in °C, exclusive · label · gauge colour). PROVISIONAL bands
+# (~25/28/30/33 °C, the commonly used WBGT steps): confirm against the
+# standard the project follows before treating the labels as authoritative.
+WBGT_BANDS = [
+    (25, 'No Heat Stress', '#22c55e'),
+    (28, 'Moderate Heat Stress', '#eab308'),
+    (30, 'Strong Heat Stress', '#f97316'),
+    (33, 'Very Strong Heat Stress', '#ef4444'),
+    (float('inf'), 'Extreme Heat Stress', '#b91c1c'),
+]
+
+
+def _wbgt_band(value):
+    return next(band for band in WBGT_BANDS if value < band[0])
+
+
+def classify_wbgt(value):
+    """Classify a WBGT value (°C) into a heat-stress category."""
+    if value is None:
+        return None
+    return _wbgt_band(value)[1]
+
+
+def wbgt_color(value):
+    """Gauge colour matching classify_wbgt (None when there is no value)."""
+    if value is None:
+        return None
+    return _wbgt_band(value)[2]
 
 
 # ── Nature-Based Solutions ───────────────────────────────────────────

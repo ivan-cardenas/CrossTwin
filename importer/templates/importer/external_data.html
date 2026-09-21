@@ -199,7 +199,7 @@
             </div>
             <div class="flex-1">
                 <h3 class="text-sm font-medium text-slate-400">Area of Interest</h3>
-                <p class="text-xs text-slate-400">Click one or more neighborhoods on the map to define the import area</p>
+                <p id="bbox-subtitle" class="text-xs text-slate-400">Click one or more neighborhoods on the map to define the import area</p>
             </div>
             <!-- Shown after at least one neighborhood is selected -->
             <div id="city-selected-info" class="hidden flex items-center gap-3">
@@ -368,6 +368,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const modeCityBtn = document.getElementById('mode-city-btn');
     const modeDrawBtn = document.getElementById('mode-draw-btn');
     const modeToolbar = modeCityBtn.parentElement;
+    const bboxSubtitle = document.getElementById('bbox-subtitle');
+    const areasUrl = "{% url 'importer:admin_areas_geojson' %}";
 
     // Set default date range (last 30 days)
     const today = new Date();
@@ -379,8 +381,67 @@ document.addEventListener('DOMContentLoaded', function () {
     // ── Bbox Map ──────────────────────────────────────────────────────
     let bboxMap = null;
     let bboxMapReady = false;
-    let currentBbox = null;       // [west, south, east, north] in WGS84 — union of all selected neighborhoods
-    const selectedNeighborhoods = new Map(); // id -> { name, bbox }
+    let currentBbox = null;       // [west, south, east, north] in WGS84 — union of all selected areas
+    const selectedAreas = new Map(); // id -> { name, bbox }
+
+    // Which administrative level the map offers as the area-of-interest picker.
+    // Districts are picked from cities and neighborhoods from districts (catalog
+    // `bbox_from`); every other dataset falls back to neighborhoods.
+    const PICKER_LEVELS = {
+        city:         { singular: 'city',         plural: 'cities' },
+        district:     { singular: 'district',     plural: 'districts' },
+        neighborhood: { singular: 'neighborhood', plural: 'neighborhoods' },
+    };
+    const BBOX_FROM_LEVEL = { 'administrative.City': 'city', 'administrative.District': 'district' };
+    let pickerLevel = 'neighborhood';
+
+    // When several datasets are ticked the coarsest level wins: a city bbox
+    // also covers the districts/neighborhoods inside it.
+    function pickerLevelFor(selectedKeys) {
+        const levels = selectedKeys
+            .map(k => BBOX_FROM_LEVEL[catalog[k] && catalog[k].bbox_from])
+            .filter(Boolean);
+        if (levels.includes('city')) return 'city';
+        if (levels.includes('district')) return 'district';
+        return 'neighborhood';
+    }
+
+    function clickHint() {
+        return `Click a ${PICKER_LEVELS[pickerLevel].singular} to select it as part of the area of interest — click again to deselect`;
+    }
+
+    function refreshPickerLabels() {
+        const { singular, plural } = PICKER_LEVELS[pickerLevel];
+        bboxSubtitle.textContent = `Click one or more ${plural} on the map to define the import area`;
+        modeCityBtn.textContent = `Click ${singular}`;
+        if (!drawMode) bboxHint.textContent = clickHint();
+    }
+
+    function loadPickerLevel() {
+        if (!bboxMapReady) return;  // the map's load handler calls this once it is ready
+        const level = pickerLevel;
+        // Don't leave the previous level's polygons on screen while this one loads.
+        bboxMap.getSource('areas').setData(emptyGeoJSON());
+        fetch(`${areasUrl}?level=${level}`)
+            .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+            .then(geojson => {
+                if (level !== pickerLevel) return;  // user switched level while this was loading
+                bboxMap.getSource('areas').setData(geojson);
+                if (!geojson.features.length && !drawMode) {
+                    bboxHint.textContent = `No ${PICKER_LEVELS[level].plural} in the database yet — import them first`;
+                }
+            })
+            .catch(err => console.error(`Failed to load ${level} areas:`, err));
+    }
+
+    function setPickerLevel(level) {
+        if (level === pickerLevel) return;
+        pickerLevel = level;
+        // A selection made on one level means nothing on another.
+        clearBbox();
+        refreshPickerLabels();
+        loadPickerLevel();
+    }
 
     // Draw-rectangle state
     let drawMode = false;
@@ -420,17 +481,17 @@ document.addEventListener('DOMContentLoaded', function () {
         bboxMap.getCanvas().style.cursor = active ? 'crosshair' : '';
         bboxHint.textContent = active
             ? 'Click to set the first corner of the bounding box'
-            : 'Click a neighborhood to select it as part of the area of interest — click again to deselect';
+            : clickHint();
 
         // Clear draw preview
         bboxMap.getSource('draw-preview').setData(emptyGeoJSON());
 
-        // Neighborhood layers: pointer cursor only in click mode
-        bboxMap.on('mouseenter', 'neighborhoods-fill', neighborhoodMouseEnter);
-        bboxMap.on('mouseleave', 'neighborhoods-fill', neighborhoodMouseLeave);
+        // Area layers: pointer cursor only in click mode
+        bboxMap.on('mouseenter', 'areas-fill', areaMouseEnter);
+        bboxMap.on('mouseleave', 'areas-fill', areaMouseLeave);
         if (active) {
-            bboxMap.off('mouseenter', 'neighborhoods-fill', neighborhoodMouseEnter);
-            bboxMap.off('mouseleave', 'neighborhoods-fill', neighborhoodMouseLeave);
+            bboxMap.off('mouseenter', 'areas-fill', areaMouseEnter);
+            bboxMap.off('mouseleave', 'areas-fill', areaMouseLeave);
         }
     }
 
@@ -441,9 +502,9 @@ document.addEventListener('DOMContentLoaded', function () {
         drawStart = null;
         bboxHint.textContent = 'Click to set the first corner of the bounding box';
         bboxMap.getSource('draw-preview').setData(emptyGeoJSON());
-        // Drawing a custom rectangle replaces any neighborhood picks.
-        selectedNeighborhoods.clear();
-        highlightSelectedNeighborhoods();
+        // Drawing a custom rectangle replaces any area picks.
+        selectedAreas.clear();
+        highlightSelectedAreas();
         setAreaLabelAndFit('Custom area', bbox);
     }
 
@@ -463,53 +524,53 @@ document.addEventListener('DOMContentLoaded', function () {
         ] : b.slice(), null);
     }
 
-    function toggleNeighborhood(id, name, bbox) {
-        if (selectedNeighborhoods.has(id)) {
-            selectedNeighborhoods.delete(id);
+    function toggleArea(id, name, bbox) {
+        if (selectedAreas.has(id)) {
+            selectedAreas.delete(id);
         } else {
-            selectedNeighborhoods.set(id, { name, bbox });
+            selectedAreas.set(id, { name, bbox });
         }
-        highlightSelectedNeighborhoods();
+        highlightSelectedAreas();
 
-        if (selectedNeighborhoods.size === 0) {
+        if (selectedAreas.size === 0) {
             clearBbox();
             return;
         }
 
-        const names = Array.from(selectedNeighborhoods.values()).map(v => v.name);
-        const label = names.length === 1 ? names[0] : `${names.length} neighborhoods selected`;
-        const combinedBbox = unionBbox(Array.from(selectedNeighborhoods.values()).map(v => v.bbox));
+        const names = Array.from(selectedAreas.values()).map(v => v.name);
+        const label = names.length === 1 ? names[0] : `${names.length} ${PICKER_LEVELS[pickerLevel].plural} selected`;
+        const combinedBbox = unionBbox(Array.from(selectedAreas.values()).map(v => v.bbox));
         setAreaLabelAndFit(label, combinedBbox);
     }
 
-    function highlightSelectedNeighborhoods() {
+    function highlightSelectedAreas() {
         if (!bboxMapReady) return;
-        const selectedIds = Array.from(selectedNeighborhoods.keys());
+        const selectedIds = Array.from(selectedAreas.keys());
         const isSelected = ['in', ['get', 'id'], ['literal', selectedIds]];
-        bboxMap.setPaintProperty('neighborhoods-fill', 'fill-color', ['case', isSelected, '#f59e0b', '#3b82f6']);
-        bboxMap.setPaintProperty('neighborhoods-fill', 'fill-opacity', ['case', isSelected, 0.35, 0.15]);
-        bboxMap.setPaintProperty('neighborhoods-outline', 'line-color', ['case', isSelected, '#f59e0b', '#60a5fa']);
-        bboxMap.setPaintProperty('neighborhoods-outline', 'line-width', ['case', isSelected, 2, 1]);
+        bboxMap.setPaintProperty('areas-fill', 'fill-color', ['case', isSelected, '#f59e0b', '#3b82f6']);
+        bboxMap.setPaintProperty('areas-fill', 'fill-opacity', ['case', isSelected, 0.35, 0.15]);
+        bboxMap.setPaintProperty('areas-outline', 'line-color', ['case', isSelected, '#f59e0b', '#60a5fa']);
+        bboxMap.setPaintProperty('areas-outline', 'line-width', ['case', isSelected, 2, 1]);
     }
 
     function clearBbox() {
-        selectedNeighborhoods.clear();
+        selectedAreas.clear();
         currentBbox = null;
         drawStart = null;
         citySelectedInfo.classList.add('hidden');
         bboxHint.classList.remove('hidden');
         if (bboxMapReady) {
             bboxMap.getSource('draw-preview').setData(emptyGeoJSON());
-            bboxMap.setPaintProperty('neighborhoods-fill', 'fill-color', '#3b82f6');
-            bboxMap.setPaintProperty('neighborhoods-fill', 'fill-opacity', 0.15);
-            bboxMap.setPaintProperty('neighborhoods-outline', 'line-color', '#60a5fa');
-            bboxMap.setPaintProperty('neighborhoods-outline', 'line-width', 1);
+            bboxMap.setPaintProperty('areas-fill', 'fill-color', '#3b82f6');
+            bboxMap.setPaintProperty('areas-fill', 'fill-opacity', 0.15);
+            bboxMap.setPaintProperty('areas-outline', 'line-color', '#60a5fa');
+            bboxMap.setPaintProperty('areas-outline', 'line-width', 1);
             bboxMap.flyTo({ center: [5.28, 52.13], zoom: 6.5, duration: 800 });
         }
     }
 
-    function neighborhoodMouseEnter() { bboxMap.getCanvas().style.cursor = 'pointer'; }
-    function neighborhoodMouseLeave() { bboxMap.getCanvas().style.cursor = ''; }
+    function areaMouseEnter() { bboxMap.getCanvas().style.cursor = 'pointer'; }
+    function areaMouseLeave() { bboxMap.getCanvas().style.cursor = ''; }
 
     function initBboxMap() {
         if (bboxMap) { bboxMap.resize(); return; }
@@ -527,32 +588,32 @@ document.addEventListener('DOMContentLoaded', function () {
         bboxMap.on('load', function () {
             bboxMapReady = true;
 
-            // Draw-preview layers (always present, normally empty)
+            // Area picker layers (city / district / neighborhood, per pickerLevel).
+            // Created up front with empty data so the paint helpers above never
+            // touch a missing layer; loadPickerLevel() fills the source.
+            bboxMap.addSource('areas', { type: 'geojson', data: emptyGeoJSON() });
+            bboxMap.addLayer({ id: 'areas-fill',    type: 'fill',   source: 'areas', paint: { 'fill-color': '#3b82f6', 'fill-opacity': 0.15 } });
+            bboxMap.addLayer({ id: 'areas-outline', type: 'line',   source: 'areas', paint: { 'line-color': '#60a5fa', 'line-width': 1 } });
+            bboxMap.addLayer({ id: 'areas-label',   type: 'symbol', source: 'areas',
+                layout: { 'text-field': ['get', 'name'], 'text-size': 11, 'text-anchor': 'center' },
+                paint:  { 'text-color': '#94a3b8', 'text-halo-color': '#0f172a', 'text-halo-width': 1 },
+            });
+            bboxMap.on('mouseenter', 'areas-fill', areaMouseEnter);
+            bboxMap.on('mouseleave', 'areas-fill', areaMouseLeave);
+            bboxMap.on('click', 'areas-fill', function (e) {
+                if (drawMode || !e.features.length) return;
+                const props = e.features[0].properties;
+                const bbox = typeof props.bbox === 'string' ? JSON.parse(props.bbox) : props.bbox;
+                toggleArea(props.id, props.name, bbox);
+            });
+
+            // Draw-preview layers (always present, normally empty; added last so they sit on top)
             bboxMap.addSource('draw-preview', { type: 'geojson', data: emptyGeoJSON() });
             bboxMap.addLayer({ id: 'draw-fill',    type: 'fill',   source: 'draw-preview', paint: { 'fill-color': '#f59e0b', 'fill-opacity': 0.15 } });
             bboxMap.addLayer({ id: 'draw-outline', type: 'line',   source: 'draw-preview', paint: { 'line-color': '#f59e0b', 'line-width': 1.5, 'line-dasharray': [3, 2] } });
 
-            // Neighborhood layers
-            fetch("{% url 'importer:neighborhoods_geojson' %}")
-                .then(r => r.json())
-                .then(geojson => {
-                    bboxMap.addSource('neighborhoods', { type: 'geojson', data: geojson });
-                    bboxMap.addLayer({ id: 'neighborhoods-fill',    type: 'fill',   source: 'neighborhoods', paint: { 'fill-color': '#3b82f6', 'fill-opacity': 0.15 } });
-                    bboxMap.addLayer({ id: 'neighborhoods-outline', type: 'line',   source: 'neighborhoods', paint: { 'line-color': '#60a5fa', 'line-width': 1 } });
-                    bboxMap.addLayer({ id: 'neighborhoods-label',   type: 'symbol', source: 'neighborhoods',
-                        layout: { 'text-field': ['get', 'name'], 'text-size': 11, 'text-anchor': 'center' },
-                        paint:  { 'text-color': '#94a3b8', 'text-halo-color': '#0f172a', 'text-halo-width': 1 },
-                    });
-                    bboxMap.on('mouseenter', 'neighborhoods-fill', neighborhoodMouseEnter);
-                    bboxMap.on('mouseleave', 'neighborhoods-fill', neighborhoodMouseLeave);
-                    bboxMap.on('click', 'neighborhoods-fill', function (e) {
-                        if (drawMode || !e.features.length) return;
-                        const props = e.features[0].properties;
-                        const bbox = typeof props.bbox === 'string' ? JSON.parse(props.bbox) : props.bbox;
-                        toggleNeighborhood(props.id, props.name, bbox);
-                    });
-                })
-                .catch(err => console.error('Failed to load neighborhoods:', err));
+            refreshPickerLabels();
+            loadPickerLevel();
 
             // Map click — draw mode
             bboxMap.on('click', function (e) {
@@ -606,6 +667,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const needsBbox = selected.some(k => catalog[k] && catalog[k].requires_bbox);
         const wasBboxHidden = bboxPanel.classList.contains('hidden');
         bboxPanel.classList.toggle('hidden', !needsBbox);
+        if (needsBbox) setPickerLevel(pickerLevelFor(selected));
         if (needsBbox && wasBboxHidden) {
             setTimeout(initBboxMap, 50);
         }

@@ -101,7 +101,7 @@ Domain dashboards follow a three-layer pattern:
 
 Two import paths:
 1. **File upload** (`views.py`) — Upload GeoJSON/Shapefile, map fields to any registered model, preview, then import with savepoints. Uses `MODEL_OVERRIDES` dict for per-model upsert keys.
-2. **External data** (`views_external.py`, `external_catalog.py`, `external_data.py`) — Catalog-driven import from PDOK, CBS, Sentinel-2, Google Earth Engine.
+2. **External data** (`views_external.py`, `external_catalog.py`, `external_data.py`) — Catalog-driven import from PDOK, CBS, Sentinel-2, Google Earth Engine and the KNMI Data Platform. The KNMI source (`KNMIImporter.fetch_latest`, e.g. `knmi_wbgt` → `urban_heat.WetBulbGlobeTemperature`) uses the server-side `KNMI_API_KEY`, needs no bbox, and skips a file whose valid time is already stored. For districts and neighborhoods the import map picks the area of interest from cities and districts respectively (`bbox_from` in the catalog).
 
 ### Raster Pipeline (`core/rasterOperations.py`)
 

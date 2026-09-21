@@ -144,6 +144,43 @@
     {% endif %}
   </div>
 
+  <!-- ── WBGT ── -->
+  <div class="card gauge"
+       data-gauge-val="{{ indicators.wbgt_pct }}"
+       data-gauge-id="gauge-wbgt"
+       data-gauge-display="{{ indicators.wbgt_mean }}">
+    <div class="gauge-header">
+      <div class="card-icon">🌡️</div>
+      <div class="card-label">WBGT</div>
+      {% include 'partials/_info_btn.html' with title="WBGT (Wet Bulb Globe Temperature)" text="Mean value from the latest WBGT raster imported from the KNMI Data Platform — a heat-stress measure that combines air temperature, humidity, wind and radiation. Categories use provisional bands at 25/28/30/33°C; the gauge is scaled against 35°C." %}
+    </div>
+    <div class="gauge-body bottom">
+      <svg viewBox="0 0 120 70" width="160" height="95" aria-hidden="true">
+        <path d="M 10,65 A 50,50 0 0 1 110,65"
+              fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10" stroke-linecap="round"/>
+        <path id="gauge-wbgt"
+              d="M 10,65 A 50,50 0 0 1 110,65"
+              fill="none" stroke="{{ indicators.wbgt_color|default:'#ef4444' }}" stroke-width="10" stroke-linecap="round"
+              stroke-dasharray="157.08" stroke-dashoffset="157.08"
+              style="transition: stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)"/>
+        <text x="60" y="55" text-anchor="middle"
+              font-family="var(--font-base)" font-size="15" font-weight="700"
+              fill="#e8f4ff" id="gauge-wbgt-txt">–</text>
+        <text x="60" y="67" text-anchor="middle"
+              font-family="var(--font-mono)" font-size="7"
+              fill="rgba(232,244,255,0.45)">°C mean</text>
+      </svg>
+    </div>
+    {% if indicators.wbgt_category %}
+    <div style="font-size:9px; letter-spacing:0.12em; text-transform:uppercase; padding:3px 8px;
+                border-radius:4px; align-self:flex-start;
+                color:{{ indicators.wbgt_color }};
+                background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1);">
+      {{ indicators.wbgt_category }}
+    </div>
+    {% endif %}
+  </div>
+
   <!-- ── SVF ── -->
   <div class="card gauge"
        data-gauge-val="{{ indicators.svf_pct }}"
