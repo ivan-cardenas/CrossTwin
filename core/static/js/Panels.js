@@ -4,80 +4,104 @@
 // ============================================================
 
 /**
- * Show the city dashboard panel
+ * Dashboard button handler: open/close the side panel.
+ *
+ * Closed -> open: if an indicator tool (water / heat / housing) is the active
+ * toolbar tool, reload its indicators (refreshActivePanel, defined in
+ * mainMap.html); otherwise show the summary panel below.
+ * Open -> close. The button's own "active" state follows the panel (see the
+ * MutationObserver in events.js), so the ✕ button, the layer pills and the
+ * toolbar all keep it consistent.
  */
-function showDashboard() {
-  const panelTitle = document.getElementById('panel-title');
-  const panelBody  = document.getElementById('panel-body');
-  const sidePanel  = document.getElementById('side-panel');
+function toggleDashboard() {
+  const sidePanel = document.getElementById('side-panel');
+  if (!sidePanel) return;
 
-  let totalFeatures = 0;
-  let visibleLayers = 0;
-
-  for (const [key, data] of Object.entries(loadedLayers)) {
-    totalFeatures += data.geojson.features.length;
-    if (layerVisibility[key]) visibleLayers++;
+  if (sidePanel.classList.contains('visible')) {
+    sidePanel.classList.remove('visible');
+    return;
   }
 
-  // Mini bar chart (mock monthly data)
-  const monthlyData = [65, 72, 78, 85, 92, 88, 82, 76, 70, 68, 62, 60];
-  const maxVal = Math.max(...monthlyData);
-  const barsHTML = monthlyData.map(v => {
-    const h = Math.round((v / maxVal) * 100);
-    return `<div class="mini-bar" style="--h:${h}%"></div>`;
-  }).join('');
+  document.getElementById('layers-panel')?.classList.remove('visible');
 
-  if (panelTitle) panelTitle.textContent = 'CITY DASHBOARD';
+  const tool = typeof findActiveAdminTool === 'function' ? findActiveAdminTool() : null;
+  if (tool && typeof window.refreshActivePanel === 'function') {
+    window.refreshActivePanel();
+  } else {
+    showDashboardSummary();
+  }
+  sidePanel.classList.add('visible');
+}
+
+/**
+ * Summary panel: number of layers available, and the total population of the
+ * selected administrative unit (or the city around the map center if none is
+ * selected — resolved server-side by /api/dashboard/summary/).
+ */
+function showDashboardSummary() {
+  const panelTitle = document.getElementById('panel-title');
+  const panelBody  = document.getElementById('panel-body');
+
+  const visibleLayers = Object.values(layerVisibility).filter(Boolean).length;
+  const loadedCount   = Object.keys(loadedLayers).length;
+
+  if (panelTitle) panelTitle.textContent = 'DASHBOARD';
   if (panelBody) {
     panelBody.innerHTML = `
       <div class="dashboard-grid">
         <div class="kpi-card">
-          <div class="kpi-header"><span>Total Layers</span><span class="kpi-dot"></span></div>
+          <div class="kpi-header"><span>Layers available</span><span class="kpi-dot"></span></div>
           <div class="kpi-value">${availableLayers.length}</div>
-          <div class="kpi-sub">From database</div>
+          <div class="kpi-sub">From the database</div>
         </div>
-
         <div class="kpi-card">
-          <div class="kpi-header"><span>Total Features</span><span class="kpi-dot"></span></div>
-          <div class="kpi-value">${totalFeatures.toLocaleString()}</div>
-          <div class="kpi-sub">Loaded on map</div>
-        </div>
-
-        <div class="gauge-card">
-          <div class="gauge-ring" style="--value:${Math.round(visibleLayers / availableLayers.length * 100)};">
-            <div class="gauge-center">${visibleLayers}/${availableLayers.length}</div>
-          </div>
-          <div class="gauge-text">
-            <div class="gauge-label">Visible Layers</div>
-            <div class="gauge-sub">Currently displayed</div>
-          </div>
-        </div>
-
-        <div class="gauge-card">
-          <div class="gauge-ring" style="--value:72;">
-            <div class="gauge-center">72%</div>
-          </div>
-          <div class="gauge-text">
-            <div class="gauge-label">Data Coverage</div>
-            <div class="gauge-sub">Area with spatial data</div>
-          </div>
+          <div class="kpi-header"><span>Layers visible</span><span class="kpi-dot"></span></div>
+          <div class="kpi-value">${visibleLayers}</div>
+          <div class="kpi-sub">${loadedCount} loaded on the map</div>
         </div>
       </div>
 
-      <div class="kpi-card" style="margin-top:12px;">
-        <div class="kpi-header"><span>Activity Trend (12 months)</span><span class="kpi-dot"></span></div>
-        <div class="mini-chart">${barsHTML}</div>
-        <div class="kpi-sub" style="margin-top:6px;">Data updates and feature additions over time</div>
+      <div id="dashboard-population" style="margin-top:12px;">
+        <div class="kpi-card"><div class="kpi-sub">Loading population…</div></div>
       </div>
 
       <p class="dashboard-note">
-        Dashboard values are dynamically calculated from loaded layers. Some metrics are placeholders.
+        Pick a thematic tool (Water Supply, Heat, Housing) on the left toolbar to see its indicators.
       </p>
     `;
   }
 
-  sidePanel?.classList.add('visible');
-  document.getElementById('layers-panel')?.classList.remove('visible');
+  loadDashboardPopulation();
+}
+
+/**
+ * (Re)load the population card of the summary panel. Safe to call any time:
+ * it does nothing unless the summary panel is currently showing.
+ */
+async function loadDashboardPopulation() {
+  const target = document.getElementById('dashboard-population');
+  if (!target) return;
+
+  const params = new URLSearchParams();
+  const selected = window.SELECTED_UNIT;   // set on an explicit click (map_init.js)
+  if (selected?.level && selected?.location) {
+    params.set('level', selected.level);
+    params.set('location', selected.location);
+  }
+  if (typeof map !== 'undefined' && map) {
+    const center = map.getCenter();
+    params.set('lng', center.lng);
+    params.set('lat', center.lat);
+  }
+
+  try {
+    const response = await fetch(`/api/dashboard/summary/?${params}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    target.innerHTML = await response.text();
+  } catch (error) {
+    console.error('Error loading dashboard population:', error);
+    target.innerHTML = '<div class="kpi-card"><div class="kpi-sub">Could not load the population.</div></div>';
+  }
 }
 
 /**

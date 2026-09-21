@@ -70,18 +70,21 @@ def calculate_total_production_day(adminBund=None):
     return extraction_m3_d + imported_m3_d
 
 
-def calculate_supply_security(adminBund):
+def calculate_supply_security(adminBund, year=None):
     """Supply security: demand vs production.
 
     DAG edges:  Total_Water_Demand → Supply_Security
                 Total_Water_Prod   → Supply_Security
+    TotalWaterDemand.demandDay is stored in Mm³/day; it is converted to m³/day
+    here. Pass `year` to use that year's demand only (otherwise every year's
+    record would be summed together).
     Returns (demand_m3_d, production_m3_d, security_ratio).
     """
     cities = cities_within(adminBund)
-    demand = (
-        TotalWaterDemand.objects.filter(city__in=cities)
-        .aggregate(total=Sum('demandDay'))['total'] or 0
-    )
+    demand_qs = TotalWaterDemand.objects.filter(city__in=cities)
+    if year is not None:
+        demand_qs = demand_qs.filter(year=year)
+    demand = (demand_qs.aggregate(total=Sum('demandDay'))['total'] or 0) * 1e6
     production = calculate_total_production_day(adminBund)
 
     if demand and production:

@@ -86,8 +86,19 @@ function initializeUI() {
   });
 
   // ---- Dashboard & Scenarios buttons ------------------------------------
-  document.getElementById('btn-dashboard')?.addEventListener('click', showDashboard);
+  const dashboardBtn = document.getElementById('btn-dashboard');
+  dashboardBtn?.addEventListener('click', toggleDashboard);
   document.getElementById('btn-scenarios')?.addEventListener('click', showScenarios);
+
+  // Keep the Dashboard button's "active" state equal to "side panel is open",
+  // whichever control opened or closed it (✕, layer pills, toolbar, htmx swap).
+  if (sidePanel && dashboardBtn) {
+    const syncDashboardBtn = () =>
+      dashboardBtn.classList.toggle('active', sidePanel.classList.contains('visible'));
+    new MutationObserver(syncDashboardBtn)
+      .observe(sidePanel, { attributes: true, attributeFilter: ['class'] });
+    syncDashboardBtn();
+  }
 
   // ---- Indicator pills --------------------------------------------------
   document.querySelectorAll('.indicator-pill').forEach(pill => {

@@ -37,6 +37,10 @@ function onAdminLayerLoaded(key, layerIds) {
     const props = e.features[0].properties;
     window.ACTIVE_LEVEL = cfg.level;
     window.ACTIVE_LOCATION = props[cfg.nameField];
+    // Explicit selection (unlike ACTIVE_*, which also tracks the map center
+    // while panning): what the Dashboard summary reports the population of.
+    window.SELECTED_UNIT = { level: cfg.level, location: props[cfg.nameField] };
+    loadDashboardPopulation();  // no-op unless the Dashboard summary is showing
 
     // currentPopulation rides along on every admin-hierarchy feature's
     // properties (model_geojson serializes all non-geometry fields), so the
@@ -77,6 +81,8 @@ async function updateAdminUnitAtCenter() {
     window.ACTIVE_LEVEL = data.level;
     window.ACTIVE_LOCATION = data.location;
     setPopulationIndicator(data.population);
+    // Without an explicit selection the summary follows the map center's city
+    if (!window.SELECTED_UNIT) loadDashboardPopulation();
 
     syncPanelBtns();
     // No fallback tool here — panning shouldn't force a panel open, only

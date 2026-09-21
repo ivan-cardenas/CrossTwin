@@ -16,7 +16,7 @@ class ElectricityCost(models.Model):
     last_updated = models.DateTimeField(default=timezone.now)
     
     def __str__(self):
-        return f"{self.Province} - {self.year}: {self.cost_EUR_kWh} EUR/kWh"
+        return f"{self.province} - {self.year}: {self.cost_EUR_kWh} EUR/kWh"
     
     class Meta:
         verbose_name = "Electricity Cost"

@@ -53,7 +53,7 @@ class CentralBankPolicy(models.Model):
     last_updated = models.DateTimeField(default=timezone.now)
     
     def __str__(self):
-        return f"Central Bank Policy {self.year} for {self.Province}"
+        return f"Central Bank Policy {self.year} for {self.province}"
     
     class Meta:
         verbose_name = "Central Bank Policy"
@@ -70,7 +70,7 @@ class CreditSupplyConditions(models.Model):
     last_updated = models.DateTimeField(default=timezone.now)
     
     def __str__(self):
-        return f"Credit Supply Conditions {self.year} for {self.Province}"
+        return f"Credit Supply Conditions {self.year} for {self.province}"
     
     class Meta:
         verbose_name = "Credit Supply Conditions"
@@ -106,7 +106,9 @@ class Rentals(models.Model):
     
     def save(self, *args, **kwargs):
         self.annualRent = self.monthlyRent * 12
-        self.priceToRentRatio = self.property.price / self.annualRent if self.annualRent != 0 else 0
+        # Property has no `price`; use the sale price, else the listing price.
+        price = self.property.salePrice_EUR or self.property.listingPrice_EUR
+        self.priceToRentRatio = price / self.annualRent if price and self.annualRent else 0
         super().save(*args, **kwargs)
     
     class Meta:

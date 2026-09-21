@@ -35,6 +35,7 @@ from django.conf import settings
 from django.utils import timezone
 
 from .external_catalog import FIELD_MAPPINGS, CATALOG_BY_KEY
+from .utils import to_storage_srid
 
 coordinate_system = settings.COORDINATE_SYSTEM
 
@@ -72,7 +73,7 @@ class ImportResult:
 def ensure_multipolygon(geom: GEOSGeometry) -> MultiPolygon:
     """Convert Polygon to MultiPolygon if needed."""
     if geom.geom_type == 'Polygon':
-        return MultiPolygon(geom)
+        return MultiPolygon(geom, srid=geom.srid)  # constructor drops the SRID otherwise
     elif geom.geom_type == 'MultiPolygon':
         return geom
     else:
@@ -175,7 +176,7 @@ def _import_atom_gml_features(href: str, bbox_polygon: Polygon, Model, mapping: 
                     if href_val:
                         plan_type = href_val.rsplit("/", 1)[-1]
 
-                geom.transform(28992)
+                geom.transform(coordinate_system)
 
                 field_values = {geom_field: geom, "area": geom.area}
                 props = {"title": title, "plan_type": plan_type, "valid_from": valid_from}
@@ -605,23 +606,26 @@ def _import_geojson_features(features: List[Dict], dataset: Dict, Model, mapping
 
                 # GeoJSON parsing always sets srid=4326 by convention, but
                 # PDOK returns coordinates in the requested srsName CRS
-                # (EPSG:28992 by default). Force the correct SRID so Django
-                # doesn't try to transform RD New meter values as WGS84 degrees.
+                # (EPSG:28992 by default). Declare the true source CRS, then
+                # reproject to the storage CRS (settings.COORDINATE_SYSTEM) so
+                # every stored geometry, its centroid and its area agree
+                # whatever srsName the catalog entry requests.
                 source_srs = dataset.get("params", {}).get("srsName", "EPSG:28992")
                 source_epsg = int(source_srs.split(":")[-1])
-                geom.srid = source_epsg
+                geom = to_storage_srid(geom, source_epsg)
 
-                # Convert to MultiPolygon if model expects it
+                # Convert to the Multi* type the model expects. The Multi*
+                # constructors drop the SRID, so pass it explicitly.
                 model_geom_field = Model._meta.get_field(geom_field)
                 if hasattr(model_geom_field, 'geom_type'):
                     if model_geom_field.geom_type == 'MULTIPOLYGON' and geom.geom_type == 'Polygon':
-                        geom = MultiPolygon(geom)
+                        geom = MultiPolygon(geom, srid=geom.srid)
                     elif model_geom_field.geom_type == 'MULTILINESTRING' and geom.geom_type == 'LineString':
                         from django.contrib.gis.geos import MultiLineString
-                        geom = MultiLineString(geom)
+                        geom = MultiLineString(geom, srid=geom.srid)
                     elif model_geom_field.geom_type == 'MULTIPOINT' and geom.geom_type == 'Point':
                         from django.contrib.gis.geos import MultiPoint
-                        geom = MultiPoint(geom)
+                        geom = MultiPoint(geom, srid=geom.srid)
 
                 # Build field values from mapping
                 field_values = {geom_field: geom}
@@ -1440,7 +1444,7 @@ class CBSImporter:
             city_cache = {}
             if city_source and city_field:
                 from django.apps import apps as django_apps
-                City = django_apps.get_model("common", "City")
+                City = django_apps.get_model("administrative", "City")
                 city_cache = {c.pk: c for c in City.objects.all()}
 
             created_count = updated_count = 0

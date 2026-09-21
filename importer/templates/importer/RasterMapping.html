@@ -20,8 +20,9 @@
         
         <div class="mb-4">
             <label class="block mb-2">Target SRID:</label>
-            <input type="number" name="target_srid" value="{{ crs|default:'28992' }}" 
+            <input type="number" value="{{ target_srid }}" readonly disabled
                    class="border p-2 rounded w-full">
+            <p class="text-sm text-white-600 mt-1">Fixed: rasters are reprojected to EPSG:{{ target_srid }} when saved</p>
         </div>
 
        <!-- Date field -->

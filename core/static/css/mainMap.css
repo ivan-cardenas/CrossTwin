@@ -966,6 +966,12 @@
 
 .mode-btn span { font-size: 11px; }
 .mode-btn:hover { color: var(--text-main); border-color: var(--border-ui-strong); }
+/* Dashboard button while the side panel is open (same accent as .tool-button.active) */
+.mode-btn.active {
+    background: rgba(var(--accent-rgb), 0.12);
+    border-color: rgba(var(--accent-rgb), 0.35);
+    color: var(--accent);
+}
 
 /* ============================================================
    ONBOARDING HINT

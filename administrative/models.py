@@ -21,17 +21,13 @@ class Province(models.Model):
 
     def save(self, *args, **kwargs):
         if self.currentPopulation is None:
-            try:
-                # NOTE: pre-existing bug — `Province=` is a wrong-case kwarg
-                # for the `city.province` field, so this always raises and
-                # falls through to the except below. Left as-is (not in
-                # scope for the administrative/physicalEnv app split).
-                total = City.objects.filter(Province=self.id).aggregate(
+            # Sum of its cities; a brand-new Province (no pk yet) has none.
+            total = None
+            if self.pk:
+                total = City.objects.filter(province=self.pk).aggregate(
                     total=Sum('currentPopulation')
                 )['total']
-                self.currentPopulation = total
-            except:
-                self.currentPopulation = 0
+            self.currentPopulation = total or 0
 
 
         self.area_km2 = self.geom.area / 1e6  # Convert m2 to km2

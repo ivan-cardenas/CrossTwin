@@ -36,10 +36,19 @@ class ConsumptionCapita(models.Model):
     last_updated = models.DateTimeField(default=timezone.now)
 
     def save(self, *args, **kwargs):
+        """
+        DAG edges: Total_Population -> Total_Consumption
+                   ConsumptionCapita -> Total_Consumption
+        total_consumption_m3_yr = L/person/day / 1000 * population * 365
+        """
         if self.consumption_capita_L_d < 0:
             raise ValidationError("Consumption Capita cannot be negative")
+        population = self.city.currentPopulation
+        if population is not None:
+            self.total_consumption_m3_yr = self.consumption_capita_L_d / 1000 * population * 365
+        self.last_updated = timezone.now()
         super().save(*args, **kwargs)
-        
+
 
     def __str__(self):
         return f"{self.city} - {self.year}: {self.consumption_capita_L_d} L/person/day"
@@ -59,8 +68,23 @@ class TotalWaterDemand(models.Model):
         return f"{self.city} - {self.year}: {self.demandDay} Mm3/day"
     
     def save(self, *args, **kwargs):
-        self.demandDay = self.city.currentPopulation * ConsumptionCapita.objects.get(city=self.city, year=self.year).consumption_capita_L_d
+        """
+        DAG edges: Total_Population -> Total_Water_Demand
+                   ConsumptionCapita -> Total_Water_Demand
+        demandDay [Mm3/day] = population * L/person/day / 1e9   (L -> Mm3)
+        """
+        consumption = ConsumptionCapita.objects.filter(
+            city=self.city, year=self.year
+        ).first()
+        if consumption is None:
+            raise ValidationError(
+                f"No ConsumptionCapita record for {self.city} in {self.year}; "
+                "cannot calculate the water demand."
+            )
+        population = self.city.currentPopulation or 0
+        self.demandDay = population * consumption.consumption_capita_L_d / 1e9
         self.demandYR = self.demandDay * 365
+        self.last_updated = timezone.now()
         super().save(*args, **kwargs)
         
     class Meta:
@@ -75,9 +99,36 @@ class SupplySecurity(models.Model):
     service_time_hours = models.FloatField(help_text="in hours per day") # hours/day
     last_updated = models.DateTimeField(default=timezone.now) 
     
+    SERVICE_HOURS_MAX = 24
+
     def __str__(self):
-        return f"{self.city} - {self.year}: {self.supply_security}"
-    
+        return f"{self.city} - {self.year}: {self.supply_security_pct}%"
+
+    def save(self, *args, **kwargs):
+        """
+        DAG edges: Total_Water_Demand -> Supply_Security
+                   Total_Water_Prod   -> Supply_Security
+                   Supply_Security    -> Service_Time
+        Same formulas as watersupply.views._build_indicators:
+          supply_security_pct = production / demand * 100
+          service_time_hours  = 24 if production >= demand else 24 * production / demand
+        Only recalculated when both demand (TotalWaterDemand for this city/year)
+        and production are known; otherwise the supplied values are kept.
+        """
+        from .calculations import calculate_total_production_day  # avoid circular import
+
+        demand = TotalWaterDemand.objects.filter(city=self.city, year=self.year).first()
+        demand_m3_d = demand.demandDay * 1e6 if demand else 0       # Mm3/day -> m3/day
+        production_m3_d = calculate_total_production_day(self.city)  # m3/day
+        if demand_m3_d > 0 and production_m3_d > 0:
+            self.supply_security_pct = production_m3_d / demand_m3_d * 100
+            self.service_time_hours = (
+                self.SERVICE_HOURS_MAX if production_m3_d >= demand_m3_d
+                else round(self.SERVICE_HOURS_MAX * production_m3_d / demand_m3_d, 1)
+            )
+        self.last_updated = timezone.now()
+        super().save(*args, **kwargs)
+
     class Meta:
         verbose_name = "Supply Security"
         verbose_name_plural = "Supply Security Records"
@@ -119,12 +170,13 @@ class MeteredResidential(models.Model):
     last_updated = models.DateTimeField(default=timezone.now)
     
     def save(self, *args, **kwargs):
-        city = self.userLocation.neighborhood.district.city
+        district = self.userLocation.neighborhood.district
+        city = district.city if district else None
         # Get most recent record for this city, not filtered by current year
         consumption_record = ConsumptionCapita.objects.filter(
             city=city
-        ).order_by('-year').first()
-        
+        ).order_by('-year').first() if city else None
+
         if consumption_record and self.userLocation.populationServed:
             collection_ratio = (
                 self.collected_meters / self.installed_meters
@@ -144,7 +196,7 @@ class MeteredResidential(models.Model):
         super().save(*args, **kwargs)
     
     def __str__(self):
-        return f"{self.user.neighborhood} - {self.installed_meters} installed meters. {self.Recovery_EUR} EUR recovered"
+        return f"{self.userLocation.neighborhood} - {self.installed_meters} installed meters. {self.Recovery_EUR} EUR recovered"
     
     class Meta:
         verbose_name = "Metered Residential"
@@ -177,11 +229,11 @@ class AvailableFreshWater(models.Model):
     def __str__(self):
         return f"{self.SourceName} - {self.totalQuantity_Mm3} Mm3"
     
-    def save(self, *args, **kwargs):
-        Province = Province.objects.get(geom__contains=self.geom.centroid)
-        self.Province = Province
-        super().save(*args, **kwargs)
-        
+    # No save() override: the previous one shadowed the `Province` class with a
+    # local variable (UnboundLocalError on every save) and assigned to an
+    # attribute that is not a model field, so it derived nothing.
+    # infiltrationRate_cm_h stays an input (see TODO above).
+
     class Meta:
         verbose_name = "Available Fresh Water"
         verbose_name_plural = "Available Fresh Water"
@@ -220,7 +272,7 @@ class ExtractionWater(models.Model):
     depth_m = models.FloatField(help_text="Depth in meters")
     pumpEfficiency = models.FloatField(help_text="Pump efficiency in percent")
     pumpEnergyRate_kWh_h = models.FloatField(help_text="Pump energy rate in kilowatt-hours per hour")
-    pumpEmissionRate_kg_CO2_h = models.FloatField(null=True, help_text="Pump emission rate in kilograms of CO2 per hour") #TODO: This should be calculated from the energy rate and the electricity emission factor
+    pumpEmissionRate_kg_CO2_h = models.FloatField(null=True, help_text="Pump emission rate in kilograms of CO2 per hour") # calculated in save() from the energy rate and emission factor
     pumpEmmissionFactor_kg_CO2_kWh = models.FloatField(null=True, help_text="Pump emission factor in kilograms of CO2 per kilowatt-hour")
     pumpEmission_day_kg_CO2 = models.FloatField(null=True, help_text="Pump emissions in kilograms of CO2 per day")
     pumpEmission_year_kg_CO2 = models.FloatField(null=True, help_text="Pump emissions in kilograms of CO2 per year")
@@ -263,11 +315,25 @@ class ExtractionWater(models.Model):
         return f"{self.source} - {self.stationName}"
     
     def save(self, *args, **kwargs):
-        # Assign source based on location
-        source = AvailableFreshWater.objects.get(geom__contains=self.geom.centroid)
-        self.source = source
-        
-        # Calculate emissions if factors are provided
+        """
+        DAG edges: Available_FW -> Total_Extraction
+                   Total_Extraction -> Energy_Consumption / CO2_Emission
+        Derived here: source (from location, only if not given), pump emissions,
+        OPEX per m3, CO2 cost per m3 and drought damage per m3. OPEX and the two
+        environmental costs are only calculated when not supplied explicitly.
+        """
+        # Assign source from location only when none was given explicitly
+        if self.source_id is None:
+            source = AvailableFreshWater.objects.filter(
+                geom__contains=self.geom.centroid
+            ).first()
+            if source is None:
+                raise ValidationError(
+                    "No AvailableFreshWater contains this location and no source was given."
+                )
+            self.source = source
+
+        # Emissions (kg CO2) from pump energy rate x emission factor
         if self.pumpEnergyRate_kWh_h is not None and self.pumpEmmissionFactor_kg_CO2_kWh is not None:
             self.pumpEmissionRate_kg_CO2_h = self.pumpEnergyRate_kWh_h * self.pumpEmmissionFactor_kg_CO2_kWh
             self.pumpEmission_day_kg_CO2 = self.pumpEmissionRate_kg_CO2_h * self.OperationTime_h_day
@@ -276,27 +342,33 @@ class ExtractionWater(models.Model):
             self.pumpEmissionRate_kg_CO2_h = None
             self.pumpEmission_day_kg_CO2 = None
             self.pumpEmission_year_kg_CO2 = None
-        
-        # calculate OPEX
-        
+
+        # OPEX per m3 = labor + energy + chemicals + tax (missing parts count as 0,
+        # but leave it unset if none of them is known)
         if self.opex_EUR_m3 is None:
-            self.opex_EUR_m3 = self.labor_EUR_m3 + self.energy_EUR_m3 + self.chemicals_EUR_m3 + self.tax_EUR_m3
-        
-        if self.co2_cost_EUR_m3 is None:
-            self.co2_cost_EUR_m3 = self.pumpEmission_day_kg_CO2 * EnvironmentalCosts.price_EUR_kg_CO2
-        
-        if self.drought_damage_EUR_m3 is None:
-            self.drought_damage_EUR_m3 = self.pumpEmission_day_kg_CO2 * EnvironmentalCosts.price_EUR_droughtDamage_m3
-            
+            parts = [self.labor_EUR_m3, self.energy_EUR_m3, self.chemicals_EUR_m3, self.tax_EUR_m3]
+            if any(p is not None for p in parts):
+                self.opex_EUR_m3 = sum(p or 0 for p in parts)
+
+        # Environmental costs come from the latest EnvironmentalCosts record
+        costs = EnvironmentalCosts.current()
+        volume_m3_day = self.pumpflow_m3_s * self.OperationTime_h_day * 3600
+
+        # CO2 cost per m3 = (kg CO2 per day / m3 per day) * EUR per kg CO2
+        if self.co2_cost_EUR_m3 is None and costs and self.pumpEmission_day_kg_CO2 is not None and volume_m3_day > 0:
+            self.co2_cost_EUR_m3 = self.pumpEmission_day_kg_CO2 / volume_m3_day * costs.price_EUR_kg_CO2
+
+        # Drought damage is already priced per m3
+        if self.drought_damage_EUR_m3 is None and costs:
+            self.drought_damage_EUR_m3 = costs.price_EUR_droughtDamage_m3
+
+        self.last_updated = timezone.now()
         super().save(*args, **kwargs)
-    
+
     class Meta:
         verbose_name = "Extraction Water"
         verbose_name_plural = "Extraction Water"
-    
-    
-    #TODO: Add save method to calculate emissions based on energy rate and emission factor
-    
+
 class ImportedWater(models.Model):
     id=models.AutoField(primary_key=True)
     sourceName = models.CharField(max_length=100, help_text="Name of the imported water source")
@@ -394,7 +466,7 @@ class CoverageWaterSupply(models.Model):
                 dissolved = dissolved.buffer(self.buffer_m)
                 # Ensure MultiPolygon
                 if dissolved.geom_type == 'Polygon':
-                    dissolved = MultiPolygon(dissolved)
+                    dissolved = MultiPolygon(dissolved, srid=dissolved.srid)
                 self.geom = dissolved
                 self.coveredArea_km2 = round(dissolved.area / 1e6, 4)
             else:
@@ -566,26 +638,56 @@ class OPEX(models.Model):
         return f"{self.year}: {self.UnitaryOPEX_EUR_m3} EUR/m3"
     
     def save(self, *args, **kwargs):
-        
-        self.OPEX_recovered_EUR = MeteredResidential.objects.aggregate(Sum('Recovery_EUR'))['Recovery_EUR__sum']
-        
-        result = ExtractionWater.objects.filter(is_active=True).aggregate(
-            total_weighted_opex=Sum(ExpressionWrapper(F('opex_EUR_m3') * F('extraction_volume_m3'), output_field=FloatField())),
-            
-            total_volume=Sum('extraction_volume_m3')
-            )
-        total_volume = result['total_volume'] or 0       
-               
-        self.total_OPEX = result['total_weighted_opex']
-        self.UnitaryOPEX_EUR_m3 = self.total_OPEX / total_volume if total_volume else 0
-        
-        if self.OPEX_recovered_EUR:
-            self.OPEX_recovered_PCT = (self.OPEX_recovered_EUR / self.total_OPEX) * 100
+        """
+        DAG edges: Total_Extraction/Total_Water_Prod -> OPEX
+                   Imported_Water -> OPEX, WT_Cost -> OPEX, Network -> OPEX
+                   Metered_Res_Water -> OPEX_Recovery
+        totalOPEX_EUR = extraction (opex/m3 x current extraction)
+                      + imported water (quantity x price)
+                      + treatment (mean UnitaryOPEX of that year x volume produced)
+                      + network maintenance (EUR/km x length)
+        The inputs (ExtractionWater, ImportedWater, PipeNetwork, MeteredResidential)
+        have no year, so they are read as the current state; treatment is filtered
+        by this record's year. If no cost data exists at all the supplied
+        totalOPEX_EUR / UnitaryOPEX_EUR_m3 are kept.
+        """
+        extraction = ExtractionWater.objects.filter(is_active=True).aggregate(
+            cost=Sum(ExpressionWrapper(
+                F('opex_EUR_m3') * F('current_extraction_Mm3_yr') * 1e6, output_field=FloatField())),
+            volume=Sum(ExpressionWrapper(
+                F('current_extraction_Mm3_yr') * 1e6, output_field=FloatField())),
+        )
+        imported = ImportedWater.objects.filter(is_active=True).aggregate(
+            cost=Sum(ExpressionWrapper(
+                F('quantity_m3_d') * 365.0 * F('price_EUR_m3'), output_field=FloatField())),
+            volume=Sum(ExpressionWrapper(
+                F('quantity_m3_d') * 365.0, output_field=FloatField())),
+        )
+        volume_m3_yr = (extraction['volume'] or 0) + (imported['volume'] or 0)
+
+        treatment_unit = WaterTreatment.objects.filter(year=self.year).aggregate(
+            avg=models.Avg('UnitaryOPEX_EUR_m3'))['avg'] or 0
+        network_maintenance = PipeNetwork.objects.aggregate(
+            cost=Sum(ExpressionWrapper(
+                F('maitenanceCost_EUR_km') * F('length_km'), output_field=FloatField())),
+        )['cost'] or 0
+
+        total = (
+            (extraction['cost'] or 0) + (imported['cost'] or 0)
+            + treatment_unit * volume_m3_yr + network_maintenance
+        )
+        if total > 0:
+            self.totalOPEX_EUR = total
+            self.UnitaryOPEX_EUR_m3 = total / volume_m3_yr if volume_m3_yr else 0
+
+        self.OPEX_recovered_EUR = MeteredResidential.objects.aggregate(
+            total=Sum('Recovery_EUR'))['total']
+        if self.OPEX_recovered_EUR and self.totalOPEX_EUR:
+            self.OPEX_recovered_PCT = self.OPEX_recovered_EUR / self.totalOPEX_EUR * 100
         else:
             self.OPEX_recovered_PCT = None
-        
-        
-        
+
+        self.last_updated = timezone.now()
         super().save(*args, **kwargs)
     
     class Meta:
@@ -616,7 +718,18 @@ class AreaAffectedDrought(models.Model):
     
     def __str__(self):
         return f"{self.year}: {self.areaAffected_km2} km2"
-    
+
+    def save(self, *args, **kwargs):
+        """Derived from the geometry: affected area (km2) and, if not given, the Province."""
+        self.areaAffected_km2 = self.geom.area / 1e6
+        if self.Province_id is None:
+            province = Province.objects.filter(geom__contains=self.geom.centroid).first()
+            if province is None:
+                raise ValidationError("No Province contains this area and none was given.")
+            self.Province = province
+        self.last_updated = timezone.now()
+        super().save(*args, **kwargs)
+
     class Meta:
         verbose_name = "Area Affected by Drought"
         verbose_name_plural = "Area Affected by Drought Records"
@@ -634,53 +747,70 @@ class TotalWaterProduction(models.Model):
     costYR = models.FloatField(null=True, help_text="in EUR per year")  # EUR/year
     last_updated = models.DateTimeField(default=timezone.now)
 
+    # Used when no ElectricityCost record exists for the source's province/year.
+    DEFAULT_ELECTRICITY_EUR_KWH = 0.15
+
     def __str__(self):
-        return f"{self.source.SourceName} - {self.year}: {self.productionDay} Mm3/day"
-    
-    def save(self, *args, **kwargs):
+        return f"Production {self.year}: {self.productionDay} Mm3/day"
+
+    def calculate(self):
+        """
+        Set productionDay/YR (Mm3) and costDay/YR (EUR) from the active wells of
+        the linked sources plus the linked imported water.
+
+        DAG edges: Total_Extraction -> Total_Water_Prod
+                   Imported_Water   -> Total_Water_Prod
+                   Energy_Cost      -> Energy_Consumption
+        Many-to-many links only exist once the row is saved, so on the very first
+        save (no pk yet) production is 0 until the sources are attached; the
+        m2m_changed signal in signals.py then calls save() again.
+        """
         from Energy.models import ElectricityCost
-        
-        # Get all extraction wells that use THIS specific source
-        extraction_wells = ExtractionWater.objects.filter(
-        source=self.source
-    )
-        
-        # Calculate total production from all wells using this source
-        calculated_production = extraction_wells.aggregate(
-            total_production=models.Sum(
-                models.F('pumpflow_m3_s') * models.F('OperationTime_h_day') * 86400 / 1e6  # Convert to Mm3/day
+
+        if not self.pk:
+            self.productionDay = self.productionDay or 0.0
+            self.productionYR = self.productionDay * 365
+            return
+
+        sources = self.source.all()
+        wells = ExtractionWater.objects.filter(is_active=True, source__in=sources)
+        extraction = wells.aggregate(
+            m3_day=Sum(ExpressionWrapper(
+                F('pumpflow_m3_s') * F('OperationTime_h_day') * 3600.0,  # m3/s * h/day * s/h
+                output_field=FloatField())),
+            kwh_day=Sum(ExpressionWrapper(
+                F('pumpEnergyRate_kWh_h') * F('OperationTime_h_day'),
+                output_field=FloatField())),
+        )
+
+        imported = {'m3_day': 0, 'cost_day': 0}
+        if self.imported_boolean:
+            agg = self.source_imported.filter(is_active=True).aggregate(
+                m3_day=Sum('quantity_m3_d'),
+                cost_day=Sum(ExpressionWrapper(
+                    F('quantity_m3_d') * F('price_EUR_m3'), output_field=FloatField())),
             )
-        )['total_production'] or 0.0
-        
-        self.productionDay = calculated_production
+            imported = {k: v or 0 for k, v in agg.items()}
+
+        # Electricity price: province of the first linked source, for this year
+        elec_cost = self.DEFAULT_ELECTRICITY_EUR_KWH
+        first_source = sources.first()
+        if first_source is not None:
+            province = Province.objects.filter(geom__contains=first_source.geom.centroid).first()
+            price = ElectricityCost.objects.filter(province=province, year=self.year).first() if province else None
+            if price is not None:
+                elec_cost = price.cost_EUR_kWh
+
+        self.productionDay = ((extraction['m3_day'] or 0) + imported['m3_day']) / 1e6  # Mm3/day
         self.productionYR = self.productionDay * 365
-        
-        # Find wich Province this source belongs to
-        try:
-            source_Province = Province.objects.get(
-                geom__contains=self.source.geom.centroid
-            )
-        except Province.DoesNotExist:
-            source_Province = None
-        
-        try:
-            elec_cost = ElectricityCost.objects.filter(
-                Province=source_Province,
-                year=self.year
-            ).cost_EUR_kWh
-        except ElectricityCost.DoesNotExist:
-            elec_cost = 0.15 #TODO : set a default value or handle missing cost appropriately
-            
-        calculated_cost_day = extraction_wells.aggregate(
-            total_cost=models.Sum(
-                models.F('pumpEnergyRate_kWh_h') * models.F('OperationTime_h_day') * elec_cost)
-        )['total_cost'] or 0.0
-        
-        self.costDay = calculated_cost_day
+        self.costDay = (extraction['kwh_day'] or 0) * elec_cost + imported['cost_day']
         self.costYR = self.costDay * 365
-        
+
+    def save(self, *args, **kwargs):
+        self.calculate()
+        self.last_updated = timezone.now()
         super().save(*args, **kwargs)
-        
+
     class Meta:
         verbose_name = "Total Water Production"
         verbose_name_plural = "Total Water Production Records"

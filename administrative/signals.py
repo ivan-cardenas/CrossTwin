@@ -1,8 +1,13 @@
 from django.db.models.signals import post_save, post_delete
-from django.dispatch import receiver
+from django.dispatch import Signal, receiver
 from django.db.models import Sum, Avg, Min, Max
 from django.utils import timezone
 from .models import Neighborhood, District, City, Province
+
+# Sent (with `city_id`) after the cascade below rewrites a City's population.
+# The cascade uses queryset.update(), which does not fire post_save, so other
+# apps (e.g. watersupply demand) listen to this instead of post_save(City).
+city_population_changed = Signal()
 
 
 def _recompute_population(model, pk, child_model, child_fk, parent_fk=None):
@@ -38,6 +43,9 @@ def _recompute_population(model, pk, child_model, child_fk, parent_fk=None):
         last_updated=obj.last_updated,
         populationDate=obj.populationDate,
     )
+
+    if model is City:
+        city_population_changed.send(sender=City, city_id=pk)
 
     if parent_fk:
         return getattr(obj, parent_fk)

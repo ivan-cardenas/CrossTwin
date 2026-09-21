@@ -173,7 +173,7 @@ def _get_model_spec(label):
         'model_type': model_type,  # 'raster', 'vector', 'both', or 'tabular'
         'unique_together': unique_together,  # list of tuples
         'unique_fields': unique_fields,      # list of field names
-        'target_srid_default': None,
+        'target_srid_default': COORDINATE_SYSTEM,
         'geom_type_info': geom_type_info,
         'raster_type_info': raster_type_info,  # NEW
         'geometry_field': geom_fields[0] if geom_fields else None,
@@ -222,10 +222,11 @@ def _build_mapping_form(target_model, columns, gdf_crs, data=None):
         )
 
     if spec['has_geometry'] and spec['geometry_field']:
-        default_srid = spec['target_srid_default'] or 4326
+        # Geometries are always stored in COORDINATE_SYSTEM; shown for
+        # information only. `disabled` makes Django ignore any posted value.
         fields['target_srid'] = forms.IntegerField(
-            required=True, initial=default_srid,
-            help_text=f'Target SRID to store geometry (e.g., {default_srid}).'
+            required=False, disabled=True, initial=COORDINATE_SYSTEM,
+            help_text=f'All geometries are stored in EPSG:{COORDINATE_SYSTEM}; uploads in any other CRS are reprojected automatically.'
         )
 
     fields['source_crs'] = forms.IntegerField(
@@ -389,20 +390,32 @@ def _to_multipolygon(geos):
         return geos
     if geos.geom_type == 'Polygon':
         from django.contrib.gis.geos import MultiPolygon
-        return MultiPolygon([geos])
+        return MultiPolygon([geos], srid=geos.srid)  # constructor drops the SRID otherwise
     return None  # skip non-area types
 
 
 @transaction.atomic
-def _generic_import(gdf, target_label, colmap, dry_run=True, target_srid=None):
+def _generic_import(gdf, target_label, colmap, dry_run=True):
     """
     One importer for all models in MODEL_REGISTRY.
+
+    Geometries are always stored in settings.COORDINATE_SYSTEM: the frame is
+    reprojected from its own CRS up front, whatever the caller did beforehand.
     """
     from django.contrib.gis.geos import GEOSGeometry
 
     spec = _get_model_spec(target_label)
     model = spec['model']
     opts = model._meta
+
+    if spec['has_geometry'] and spec['geometry_field'] and hasattr(gdf, 'geometry'):
+        if gdf.crs is None:
+            raise ValueError(
+                "The uploaded data has no CRS; specify the source CRS (EPSG) so it "
+                f"can be reprojected to EPSG:{COORDINATE_SYSTEM}."
+            )
+        if gdf.crs.to_epsg() != COORDINATE_SYSTEM:
+            gdf = gdf.to_crs(COORDINATE_SYSTEM)
 
     total = len(gdf)
     created = updated = skipped = errors = 0
@@ -472,15 +485,8 @@ def _generic_import(gdf, target_label, colmap, dry_run=True, target_srid=None):
                 print(f"  Geometry type: {shp.geom_type if shp else 'None'}, empty: {shp.is_empty if shp else 'N/A'}")
                 
                 if shp is not None and not shp.is_empty:
-                    # Get source SRID from GeoDataFrame
-                    source_srid = gdf.crs.to_epsg() if gdf.crs else 4326
-                    
-                    # Create geometry WITH SRID
-                    geos = GEOSGeometry(shp.wkt, srid=source_srid)
-                    
-                    # Transform to target SRID if different
-                    if target_srid and source_srid != target_srid:
-                        geos.transform(target_srid)
+                    # gdf is already in COORDINATE_SYSTEM (reprojected above)
+                    geos = GEOSGeometry(shp.wkt, srid=COORDINATE_SYSTEM)
                 else:
                     geos = None
                 
@@ -562,9 +568,11 @@ def _generic_import(gdf, target_label, colmap, dry_run=True, target_srid=None):
 
 
 @transaction.atomic
-def _raster_import(raster_path, target_label, field_name, metadata_map, dry_run=True, target_srid=None, date=None):
+def _raster_import(raster_path, target_label, field_name, metadata_map, dry_run=True, date=None):
     """
     Import a raster file into a Django model with RasterField stored in PostGIS.
+
+    Rasters are always reprojected to settings.COORDINATE_SYSTEM.
     """
     from django.contrib.gis.gdal import GDALRaster
     import rasterio
@@ -577,41 +585,39 @@ def _raster_import(raster_path, target_label, field_name, metadata_map, dry_run=
     print(f"target_label: {target_label}")
     print(f"field_name: {field_name}")
     print(f"dry_run: {dry_run}")
-    print(f"target_srid: {target_srid}")
-    
+
     spec = _get_model_spec(target_label)
     model = spec['model']
-    
-    # Get the RasterField to check its SRID
+
+    # The model's RasterField must agree with the storage CRS
     model_field = model._meta.get_field(field_name)
     model_srid = getattr(model_field, 'srid', None)
     print(f"Model RasterField SRID: {model_srid}")
-    
-    # Use model SRID if no target specified
-    if not target_srid and model_srid:
-        target_srid = model_srid
-        print(f"Using model SRID as target: {target_srid}")
-    
+    if model_srid != COORDINATE_SYSTEM:
+        raise ValueError(
+            f"{target_label}.{field_name} is declared with SRID {model_srid}, "
+            f"expected settings.COORDINATE_SYSTEM ({COORDINATE_SYSTEM})."
+        )
+    target_srid = COORDINATE_SYSTEM
+
     temp_file = None
     writable_file = None
     
     try:
         # Get source CRS
         with rasterio.open(raster_path) as src:
-            src_epsg = src.crs.to_epsg() if src.crs else None
+            has_crs = src.crs is not None
+            src_epsg = src.crs.to_epsg() if has_crs else None
             print(f"Source raster: {src.width}x{src.height}, EPSG: {src_epsg}")
-        
-        # Determine final SRID
-        if not target_srid:
-            target_srid = src_epsg if src_epsg else 28992
-            print(f"No target SRID specified, using: {target_srid}")
-        
-        # Check if reprojection is needed
-        needs_reproject = src_epsg and src_epsg != target_srid
-        
+
+        # Reproject whenever the raster has a CRS that isn't the storage CRS.
+        # Test has_crs rather than src_epsg: a valid CRS with no EPSG match
+        # (to_epsg() is None) must still be reprojected, not relabelled.
+        needs_reproject = has_crs and src_epsg != target_srid
+
         if needs_reproject:
-            print(f"Reprojecting from EPSG:{src_epsg} to EPSG:{target_srid}")
-            
+            print(f"Reprojecting from {src_epsg or 'custom CRS'} to EPSG:{target_srid}")
+
             # Create temporary file for reprojected raster
             fd, temp_file = tempfile.mkstemp(suffix='.tif')
             os.close(fd)
@@ -648,9 +654,10 @@ def _raster_import(raster_path, target_label, field_name, metadata_map, dry_run=
             raster_file_to_load = temp_file
             print(f"Reprojection complete")
         else:
-            # If source has no CRS but target_srid specified, need to add CRS
-            if not src_epsg and target_srid:
-                print(f"Source has no CRS, adding EPSG:{target_srid}")
+            # A raster with no CRS at all can only be assumed to already be in
+            # the storage CRS; tag it so PostGIS/Django don't reject it.
+            if not has_crs:
+                print(f"WARNING: source raster has no CRS; assuming it is already in EPSG:{target_srid}")
                 
                 fd, temp_file = tempfile.mkstemp(suffix='.tif')
                 os.close(fd)
@@ -902,6 +909,7 @@ def upload_geodata(request):
                         'target_model': target_model,
                         'raster_info': raster_info,
                         'crs': raster_info['crs'],
+                        'target_srid': COORDINATE_SYSTEM,
                     }
                 )
                 
@@ -1030,8 +1038,8 @@ def upload_geodata(request):
             # ========================================================
             print("=== PROCESSING RASTER IMPORT ===")
             
-            # Get form data specific to raster
-            target_srid = request.POST.get('target_srid')
+            # Get form data specific to raster (the target CRS is fixed:
+            # _raster_import always reprojects to settings.COORDINATE_SYSTEM)
             dry_run = request.POST.get('dry_run') == 'on'
             raster_date = request.POST.get('raster_date')
             raster_name = request.POST.get('raster_name')
@@ -1070,7 +1078,6 @@ def upload_geodata(request):
                     'raster',
                     metadata_map,
                     dry_run=dry_run,
-                    target_srid=int(target_srid) if target_srid else None
                 )
                 print("Raster import report:", report)
             except Exception as e:
@@ -1153,8 +1160,7 @@ def upload_geodata(request):
             print("Cleaned data:", mapping_form.cleaned_data)
 
             dry_run = mapping_form.cleaned_data.get('dry_run')
-            target_srid = mapping_form.cleaned_data.get('target_srid')
-            print(f"dry_run: {dry_run}, target_srid: {target_srid}")
+            print(f"dry_run: {dry_run}")
 
             # Build column mapping dict from dynamic form fields
             spec = _get_model_spec(target_model)
@@ -1186,16 +1192,27 @@ def upload_geodata(request):
             print("Passed missing fields check")
 
 
-            # Reproject if geometry target
-            print(f"Checking geometry reproject: has_geometry={spec.get('has_geometry')}, geometry_field={spec.get('geometry_field')}, target_srid={target_srid}, gdf.crs={gdf.crs}")
+            # Reproject to the storage CRS if geometry target. Every geometry is
+            # stored in settings.COORDINATE_SYSTEM; the user never picks the target.
+            print(f"Checking geometry reproject: has_geometry={spec.get('has_geometry')}, geometry_field={spec.get('geometry_field')}, gdf.crs={gdf.crs}")
 
-            if spec.get('has_geometry') and spec.get('geometry_field') and target_srid and gdf.crs:
+            if spec.get('has_geometry') and spec.get('geometry_field'):
                 try:
-                    gdf = gdf.to_crs(int(target_srid))
-                    print("CRS transform successful")
+                    if gdf.crs is None:
+                        # File carries no CRS: fall back to the one the user entered
+                        # in the mapping form. Never guess.
+                        map_source_crs = mapping_form.cleaned_data.get('source_crs')
+                        if not map_source_crs:
+                            raise ValueError(
+                                "The file has no CRS. Enter the source CRS (EPSG code) so it "
+                                f"can be reprojected to EPSG:{COORDINATE_SYSTEM}."
+                            )
+                        gdf = gdf.set_crs(epsg=int(map_source_crs))
+                    gdf = gdf.to_crs(COORDINATE_SYSTEM)
+                    print(f"CRS transform to EPSG:{COORDINATE_SYSTEM} successful")
                 except Exception as e:
                     print(f"CRS transform FAILED: {e}")
-                    mapping_form.add_error('target_srid', f'CRS transform failed: {e}')
+                    mapping_form.add_error('source_crs', f'CRS transform failed: {e}')
                     return render(
                         request,
                         'importer/FieldMapping.html',
@@ -1210,7 +1227,7 @@ def upload_geodata(request):
             # Import (or dry-run)
             try:
                 print("Starting import...")
-                report = _generic_import(gdf, target_model, colmap, dry_run=dry_run, target_srid=target_srid)
+                report = _generic_import(gdf, target_model, colmap, dry_run=dry_run)
                 print ("Import report:", report)
             except Exception as e:
                 django_messages.error(request, f"Import failed: {e}")

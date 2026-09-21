@@ -35,9 +35,9 @@ const BASEMAPS = {
 // every tool's categories so the administrative boundaries used to select a
 // unit for the indicator panels stay clickable no matter which tool is active.
 const TOOL_CATEGORIES = {
-  overview:      ['administrative', 'urbanHeat', 'watersupply', 'weather', 'builtup', 'Energy', 'housing', 'nature', 'groundwater'],
+  overview:      ['administrative', 'urban_heat', 'watersupply', 'weather', 'builtup', 'Energy', 'housing', 'nature', 'groundwater'],
   administrative:['administrative'],
-  temperature:   ['administrative', 'temperature', 'heat', 'weather', 'urban_heat,'],
+  temperature:   ['administrative', 'temperature', 'heat', 'weather', 'urban_heat'],
   builtup:       ['administrative', 'builtup'],
   energy:        ['administrative', 'Energy'],
   housing:       ['administrative', 'housing'],

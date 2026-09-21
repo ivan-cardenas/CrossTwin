@@ -1,0 +1,24 @@
+{% load humanize %}
+{# Population card of the Dashboard panel. Loaded by Panels.js showDashboardSummary() via htmx. #}
+{% if unit %}
+  <div class="kpi-card" id="dashboard-population-card">
+    <div class="kpi-header">
+      <span>Total population</span><span class="kpi-dot"></span>
+    </div>
+    <div class="kpi-value">{{ unit.currentPopulation|default_if_none:0|intcomma }}</div>
+    <div class="kpi-sub">
+      {{ level_label }} · {{ name }}{% if not is_selection %} <em>(no unit selected – showing the city)</em>{% endif %}
+    </div>
+    <div class="kpi-sub" style="margin-top:6px;">
+      {% if unit.area_km2 %}{{ unit.area_km2|floatformat:1 }} km²{% endif %}
+      {% if unit.populationDensity %} · {{ unit.populationDensity|floatformat:0|intcomma }} people/km²{% endif %}
+      {% if unit.populationDate %} · as of {{ unit.populationDate|date:"Y-m-d" }}{% endif %}
+    </div>
+  </div>
+{% else %}
+  <div class="kpi-card" id="dashboard-population-card">
+    <div class="kpi-header"><span>Total population</span><span class="kpi-dot"></span></div>
+    <div class="kpi-value">—</div>
+    <div class="kpi-sub">Select an administrative unit on the map, or pan to a city.</div>
+  </div>
+{% endif %}

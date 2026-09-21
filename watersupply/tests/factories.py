@@ -1,5 +1,6 @@
 # water/tests/factories.py
 import uuid
+from django.conf import settings
 from django.contrib.gis.geos import Point, MultiPoint, MultiPolygon, Polygon
 from administrative.models import Province, City, District, Neighborhood
 from watersupply.models import (
@@ -8,13 +9,19 @@ from watersupply.models import (
     AvailableFreshWater, OPEX
 )
 
-def make_polygon(x=5.0, y=52.0):
-    """Simple polygon around a point for spatial fields."""
+def make_polygon(x=257000.0, y=470000.0, half_size_m=500.0):
+    """
+    Square (default 1 km x 1 km = 1 km2) around an EPSG:28992 point (default:
+    Enschede) for spatial fields. Metres, so area/density computed in save()
+    are meaningful. The MultiPolygon constructor drops the SRID, so it is
+    passed explicitly.
+    """
+    h = half_size_m
     return MultiPolygon(Polygon((
-        (x-0.1, y-0.1), (x+0.1, y-0.1),
-        (x+0.1, y+0.1), (x-0.1, y+0.1),
-        (x-0.1, y-0.1)
-    ), srid=4326))
+        (x-h, y-h), (x+h, y-h),
+        (x+h, y+h), (x-h, y+h),
+        (x-h, y-h)
+    )), srid=settings.COORDINATE_SYSTEM)
 
 def make_province(**kwargs):
     defaults = dict(ProvinceName="Test Province", geom=make_polygon())

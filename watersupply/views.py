@@ -53,7 +53,7 @@ def _get_province_data(level, location, year):
         .aggregate(total=Sum('clipped_length'))['total']
     )
 
-    demand_m3_d, supply_m3_d, supply_security = calculate_supply_security(adminUnit)
+    demand_m3_d, supply_m3_d, supply_security = calculate_supply_security(adminUnit, year)
 
     # OPEX: average across active wells
     avg_opex_m3 = (

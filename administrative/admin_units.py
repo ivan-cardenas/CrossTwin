@@ -51,6 +51,20 @@ def resolve_admin_unit_at_point(lng, lat):
     return None, None
 
 
+def city_of(unit):
+    """
+    The City an administrative unit belongs to (itself for a City), or None
+    for a Province (it spans many cities) or an unattached District/Neighborhood.
+    """
+    if isinstance(unit, City):
+        return unit
+    if isinstance(unit, District):
+        return unit.city
+    if isinstance(unit, Neighborhood):
+        return unit.district.city if unit.district else None
+    return None
+
+
 def cities_within(unit):
     """City queryset covering the given administrative unit, at any level."""
     if isinstance(unit, Province):

@@ -59,12 +59,15 @@ class GeoUploadForm(forms.Form):
         })
     )
     
+    # Fixed: everything is stored in settings.COORDINATE_SYSTEM. `disabled` makes
+    # Django ignore any posted value, so this is display-only.
     target_srid = forms.IntegerField(
         required=False,
+        disabled=True,
+        initial=settings.COORDINATE_SYSTEM,
         label='Target CRS (EPSG)',
-        help_text=f"Optional: Specify the target coordinate system for transformation (default is {settings.COORDINATE_SYSTEM})",
+        help_text=f"Fixed: all data is reprojected to EPSG:{settings.COORDINATE_SYSTEM} when saved.",
         widget=forms.NumberInput(attrs={
-            'placeholder': f'e.g., {settings.COORDINATE_SYSTEM}',
             'class': 'number-input',
         })
     )
@@ -101,7 +104,12 @@ class GeoUploadForm(forms.Form):
                     "EPSG code should be between 1000 and 100000. "
                     "Common codes: 4326 (WGS84), 28992 (RD New), 3857 (Web Mercator)."
                 )
-        
+            # A number in range can still be an unknown EPSG code; check it resolves.
+            try:
+                SpatialReference(crs)
+            except Exception:
+                raise forms.ValidationError(f"EPSG:{crs} is not a known coordinate reference system.")
+
         return crs
     
     def __init__(self, *args, **kwargs):

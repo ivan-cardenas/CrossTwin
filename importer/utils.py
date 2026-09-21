@@ -7,6 +7,33 @@ import tempfile
 import zipfile
 import os
 
+
+def to_storage_srid(geom, source_srid=None):
+    """
+    Return `geom` expressed in settings.COORDINATE_SYSTEM, the only CRS
+    geometries are stored in.
+
+    `source_srid` is the CRS the coordinates are *actually* in and overrides
+    whatever SRID the geometry carries: GEOSGeometry parses GeoJSON as 4326 by
+    convention regardless of the real coordinates. Refuses to guess when neither
+    is known, since a wrong guess silently stores misplaced geometries.
+
+    Note: wrapping in MultiPolygon/MultiLineString/MultiPoint drops the SRID, so
+    convert to the Multi* type after calling this and pass srid=geom.srid.
+    """
+    if geom is None or geom.empty:
+        return geom
+
+    srid = source_srid or geom.srid
+    if not srid:
+        raise ValueError("Geometry has no CRS and no source CRS was given; refusing to guess.")
+
+    geom.srid = srid
+    if srid != settings.COORDINATE_SYSTEM:
+        geom.transform(settings.COORDINATE_SYSTEM)
+    return geom
+
+
 def gpd_read_any(uploaded_file):
     """
     Read an uploaded file (GeoJSON, Shapefile zip, etc.) into a GeoDataFrame.

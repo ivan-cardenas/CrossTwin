@@ -120,6 +120,55 @@ def admin_unit_at_point(request):
         'population': unit.currentPopulation,
     })
 
+def dashboard_summary(request):
+    """
+    HTMX partial for the Dashboard panel: total population of the selected
+    administrative unit, or of the city around the map center when nothing is
+    selected.
+    URL: /api/dashboard/summary/?level=<level>&location=<name>[&lng=<lng>&lat=<lat>]
+
+    `level`/`location` are the unit the user explicitly picked. Without them (or
+    if they match no record) the WGS84 `lng`/`lat` of the map center is resolved
+    to its smallest unit and then to that unit's City.
+    """
+    from administrative.admin_units import (
+        ADMIN_LEVELS, city_of, resolve_admin_unit, resolve_admin_unit_at_point,
+    )
+
+    level = request.GET.get('level')
+    unit = None
+    is_selection = False
+    if level and request.GET.get('location'):
+        try:
+            unit = resolve_admin_unit(level, request.GET['location'])
+        except Exception:  # e.g. duplicate names: treat as "nothing selected"
+            unit = None
+        is_selection = unit is not None
+
+    if unit is None:
+        try:
+            lng = float(request.GET.get('lng'))
+            lat = float(request.GET.get('lat'))
+        except (TypeError, ValueError):
+            lng = lat = None
+        if lng is not None:
+            level, unit = resolve_admin_unit_at_point(lng, lat)
+            # No explicit selection: report the city (a Province has none)
+            city = city_of(unit) if unit is not None else None
+            if city is not None:
+                level, unit = 'city', city
+
+    context = {'unit': None, 'is_selection': is_selection}
+    if unit is not None:
+        model, name_field = ADMIN_LEVELS[level]
+        context.update({
+            'unit': unit,
+            'level_label': model._meta.verbose_name.title(),
+            'name': getattr(unit, name_field),
+        })
+    return render(request, 'mainMap/partials/dashboard_summary.html', context)
+
+
 def model_geojson(request, app_label, model_name):
     """
     Generic GeoJSON endpoint for any registered model.

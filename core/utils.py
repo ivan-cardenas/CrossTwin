@@ -3,7 +3,7 @@ from django.contrib.gis.db import models as gis_models
 
 def build_model_registry():
     """Build MODEL_REGISTRY dynamically from specified apps."""
-    allowed_apps = ['administrative', 'physicalEnv', 'urbanHeat', 'watersupply', 'weather', 'builtup', 'Energy', 'housing', 'nature']
+    allowed_apps = ['administrative', 'physicalEnv', 'urban_heat', 'watersupply', 'weather', 'builtup', 'Energy', 'housing', 'nature']
     registry = {}
     
     for app_label in allowed_apps:

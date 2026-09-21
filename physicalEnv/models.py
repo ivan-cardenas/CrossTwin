@@ -68,9 +68,7 @@ class LandCoverVector(models.Model):
     last_updated = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
-        # NOTE: pre-existing bug — `self.City` is not a real attribute
-        # (should be `self.city`); left as-is (not in scope).
-        return f"{self.City} - {self.year}: {self.land_cover_type} ({self.percentage}%)"
+        return f"{self.city} - {self.year}: {self.land_cover_type} ({self.percentage}%)"
 
 class LandCoverRaster(models.Model):
     id = models.AutoField(primary_key=True)
@@ -197,11 +195,14 @@ class DigitalSurfaceModelWMS(models.Model):
 class EnvironmentalCosts(models.Model):
     id = models.AutoField(primary_key=True)
     price_EUR_kg_CO2 = models.FloatField()
-    price_EUR_price_EUR_droughtDamage_m3 = models.FloatField()
+    price_EUR_droughtDamage_m3 = models.FloatField()
     last_updated = models.DateTimeField(default=timezone.now)
 
 
     def __str__(self):
-        # NOTE: pre-existing bug — neither `self.Province` nor `self.year`
-        # are real attributes on this model; left as-is (not in scope).
-        return f"{self.Province} - {self.year}: Environment Costs"
+        return f"Environmental costs ({self.last_updated:%Y-%m-%d}): {self.price_EUR_kg_CO2} EUR/kg CO2, {self.price_EUR_droughtDamage_m3} EUR/m3 drought"
+
+    @classmethod
+    def current(cls):
+        """The most recent cost record (the model has no province/year), or None."""
+        return cls.objects.order_by('-last_updated', '-id').first()

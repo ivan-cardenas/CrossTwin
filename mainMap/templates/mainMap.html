@@ -13,12 +13,12 @@
 <link rel="stylesheet" href="{% static 'css/indicators.css' %}" />
 {% endblock %} {% block extra_js %}
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.18.0/mapbox-gl.js"></script>
-<script src="{% static 'js/config.js' %}"></script>
+<script src="{% static 'js/Config.js' %}"></script>
 <script src="{% static 'js/CityName.js' %}"></script>
 <script src="{% static 'js/MapUI.js' %}"></script>
-<script src="{% static 'js/panels.js' %}"></script>
-<script src="{% static 'js/layers.js' %}"></script>
-<script src="{% static 'js/events.js' %}"></script>
+<script src="{% static 'js/Panels.js' %}"></script>
+<script src="{% static 'js/Layers.js' %}"></script>
+<script src="{% static 'js/Events.js' %}"></script>
 <script src="{% static 'js/Map_init.js' %}"></script>
 {% endblock %} {% block content_section_class %}{% endblock %}
 {% block content_wrapper_class %}{% endblock %}
@@ -506,7 +506,10 @@ if (!localStorage.getItem('crosstwin_tour_seen')) {
 document.body.addEventListener('htmx:afterSwap', function(evt) {
   if (evt.detail.target.id === 'panel-body') {
     const title = evt.detail.elt?.dataset?.panelTitle || 'INFO';
-    document.getElementById('side-panel').classList.add('open');
+    // 'visible' is the class the CSS shows the panel with (there is no rule for
+    // 'open'). Tools without a TOOL_CONTENT entry (e.g. Housing) never got it
+    // from the toolbar click handler, so the panel stayed hidden.
+    document.getElementById('side-panel').classList.add('visible');
     document.getElementById('panel-title').textContent = title;
   }
 });
