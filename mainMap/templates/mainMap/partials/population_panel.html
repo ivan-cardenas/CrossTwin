@@ -1,0 +1,101 @@
+{% load humanize %}
+{# Content of the bottom "Population" dock. Loaded by Panels.js loadPopulationPanel(). #}
+{% if unit %}
+<div class="pop-layout">
+
+  <!-- Values -->
+  <div class="pop-stats">
+    <div class="pop-unit">{{ level_label }} · {{ name }}{% if not is_selection %} <em>(city at the map centre)</em>{% endif %}</div>
+
+    <div class="pop-stat">
+      <div class="pop-stat-label">Population today</div>
+      <div class="pop-stat-value" id="pop-value-today">{{ stats.current|intcomma }}</div>
+    </div>
+
+    {% if stats.has_projection %}
+      <div class="pop-stat pop-stat-projected">
+        <div class="pop-stat-label">Projected {{ stats.year }}</div>
+        <div class="pop-stat-value" id="pop-value-projected">{{ stats.projected|intcomma }}</div>
+        <div class="pop-stat-sub">{{ stats.variant_label }}{% if pop_growth %}, {% if pop_growth > 0 %}+{% endif %}{{ pop_growth }}%/yr extra{% endif %}</div>
+        <div class="pop-stat-sub {% if stats.delta > 0 %}up{% elif stats.delta < 0 %}down{% endif %}">
+          {% if stats.delta >= 0 %}+{% endif %}{{ stats.delta|intcomma }}{% if stats.delta_pct is not None %}
+          ({% if stats.delta_pct >= 0 %}+{% endif %}{{ stats.delta_pct }}%){% endif %} vs today
+        </div>
+        <div class="pop-stat-sub">67% interval: {{ stats.low|intcomma }} – {{ stats.high|intcomma }}</div>
+      </div>
+    {% elif stats.year %}
+      <div class="pop-stat">
+        <div class="pop-stat-label">Projected {{ stats.year }}</div>
+        <div class="pop-stat-sub">No projection for this year.</div>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Curves-style graph -->
+  <div class="pop-graph-wrap">
+    {% if chart %}
+      <svg class="pop-graph" viewBox="0 0 {{ chart.width }} {{ chart.height }}" role="img"
+           data-points="{{ chart.points_json }}"
+           aria-label="Population forecast {{ chart.first_year }} to {{ chart.last_year }} with the 67% interval">
+        <rect class="pop-plot" x="{{ chart.x0 }}" y="{{ chart.y0 }}" width="{{ chart.plot_w }}" height="{{ chart.plot_h }}"/>
+
+        {% for g in chart.grid_h %}
+          <line class="pop-grid" x1="{{ chart.x0 }}" x2="{{ chart.x1 }}" y1="{{ g.y }}" y2="{{ g.y }}"/>
+          <text class="pop-tick" x="{{ chart.tick_x }}" y="{{ g.text_y }}" text-anchor="end">{{ g.label }}</text>
+        {% endfor %}
+        {% for g in chart.grid_v %}
+          <line class="pop-grid" x1="{{ g.x }}" x2="{{ g.x }}" y1="{{ chart.y0 }}" y2="{{ chart.y1 }}"/>
+          <text class="pop-tick" x="{{ g.x }}" y="{{ chart.label_y }}" text-anchor="middle">{{ g.label }}</text>
+        {% endfor %}
+        <rect class="pop-frame" x="{{ chart.x0 }}" y="{{ chart.y0 }}" width="{{ chart.plot_w }}" height="{{ chart.plot_h }}"/>
+
+        {% if chart.baseline %}
+          <line class="pop-baseline" x1="{{ chart.x0 }}" x2="{{ chart.x1 }}" y1="{{ chart.baseline.y }}" y2="{{ chart.baseline.y }}"/>
+          <text class="pop-baseline-label" x="{{ chart.baseline_x }}" y="{{ chart.baseline.text_y }}" text-anchor="end">today {{ chart.baseline.label }}</text>
+        {% endif %}
+
+        <path class="pop-band" d="{{ chart.band_path }}"/>
+        <path class="pop-edge" d="{{ chart.low_path }}"/>
+        <path class="pop-edge" d="{{ chart.high_path }}"/>
+        {% if chart.scenario != 'prognose' %}<path class="pop-curve-ref" d="{{ chart.median_path }}"/>{% endif %}
+        <path class="pop-curve" d="{{ chart.selected_path }}"/>
+
+        {% if chart.marker %}
+          <line class="pop-marker-line" x1="{{ chart.marker.x }}" x2="{{ chart.marker.x }}" y1="{{ chart.y0 }}" y2="{{ chart.y1 }}"/>
+        {% endif %}
+        {% for h in chart.handles %}
+          <rect class="pop-handle{% if h.active %} pop-handle-active{% endif %}" x="{{ h.rx }}" y="{{ h.ry }}" width="{{ chart.handle_size }}" height="{{ chart.handle_size }}">
+            <title>{{ h.year }}</title>
+          </rect>
+        {% endfor %}
+
+        <!-- hover read-out, positioned by panels.js -->
+        <g class="pop-hover" style="display:none">
+          <line class="pop-hover-line" y1="{{ chart.y0 }}" y2="{{ chart.y1 }}"/>
+          <circle class="pop-hover-dot pop-hover-high" r="3"/>
+          <circle class="pop-hover-dot pop-hover-median" r="3.5"/>
+          <circle class="pop-hover-dot pop-hover-low" r="3"/>
+        </g>
+      </svg>
+      <div class="pop-readout" aria-live="polite">Move over the graph to read the population per year.</div>
+      <div class="pop-legend">
+        <span><i class="pop-swatch pop-swatch-curve"></i>{{ chart.variant_label }}</span>
+        <span><i class="pop-swatch pop-swatch-band"></i>67% interval</span>
+        {% if chart.baseline %}<span><i class="pop-swatch pop-swatch-base"></i>today</span>{% endif %}
+      </div>
+    {% else %}
+      <div class="pop-empty">
+        No projection for this area yet. Import <em>Population forecast 2023-2050 (85173NED)</em> under
+        “Retrieve Data from APIs” to see the curve.
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- What-if -->
+  <div class="pop-side">
+    {% include 'partials/_population_controls.html' %}
+  </div>
+</div>
+{% else %}
+  <div class="pop-empty">Select an administrative unit on the map, or pan to a city, to see its population.</div>
+{% endif %}

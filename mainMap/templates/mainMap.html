@@ -194,6 +194,16 @@
       <div class="side-panel-tagline">CROSSTWIN · URBAN DIGITAL TWIN</div>
     </div>
 
+    <!-- POPULATION DOCK (bottom). Opened from the Population pill; independent of the
+         side panel, so an indicator panel can stay open beside it. -->
+    <div class="population-panel" id="population-panel">
+      <div class="population-panel-header">
+        <div class="population-panel-title">POPULATION</div>
+        <button class="population-panel-close" id="population-panel-close" aria-label="Close population panel">✕</button>
+      </div>
+      <div class="population-panel-body" id="population-panel-body"></div>
+    </div>
+
     <!-- GROUNDWATER LEGEND -->
     <div id="legend-groundwater" class="map-legend" style="display: none">
       <div class="legend-title">Average Groundwater table depth - GHG (m)</div>
@@ -370,6 +380,7 @@ document.querySelectorAll('.year-btn').forEach(btn => {
 
     // If an admin-unit-driven panel is already open, reload it with new context
     refreshActivePanel();
+    if (typeof loadPopulationPanel === 'function') loadPopulationPanel();   // no-op unless the dock is open
   });
 });
 
@@ -514,6 +525,15 @@ document.body.addEventListener('htmx:afterSwap', function(evt) {
   }
 });
 
+// Population what-if chosen with the controls in the dashboard / indicator
+// panels (applyPopulationControls in Panels.js), passed on to every panel that
+// is year- and population-aware.
+function populationQuery() {
+  const scenario = encodeURIComponent(window.POP_SCENARIO || 'prognose');
+  const growth = encodeURIComponent(window.POP_GROWTH || 0);
+  return `?pop_scenario=${scenario}&pop_growth=${growth}`;
+}
+
 // Registry of toolbar panels driven by the selected administrative unit
 // (level/location[/year]). Add an entry here when wiring up a new
 // indicator panel (e.g. housing, energy) to admin-unit selection —
@@ -521,13 +541,14 @@ document.body.addEventListener('htmx:afterSwap', function(evt) {
 // changes needed in Map_init.js.
 const ADMIN_PANEL_TOOLS = {
   water: (level, location) =>
-    `/watersupply/indicators/${level}/${location}/${window.ACTIVE_YEAR}/`,
+    `/watersupply/indicators/${level}/${location}/${window.ACTIVE_YEAR}/${populationQuery()}`,
+  // Urban heat has no year and does not depend on population.
   temperature: (level, location) =>
     `/urban_heat/indicators/${level}/${location}/`,
-  // Housing indicators are province-scoped only (no level param) — see
-  // housing/views.py::_get_province_data.
+  // Same URL shape as water: housing/urls.py is indicators/<level>/<location>/<year>/
+  // (this entry used to omit <level>, so it matched nothing after a selection).
   Housing: (level, location) =>
-    `/housing/indicators/${location}/${window.ACTIVE_YEAR}/`,
+    `/housing/indicators/${level}/${location}/${window.ACTIVE_YEAR}/${populationQuery()}`,
 };
 
 function syncPanelBtns() {

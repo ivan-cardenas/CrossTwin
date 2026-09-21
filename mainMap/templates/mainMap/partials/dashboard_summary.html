@@ -1,5 +1,5 @@
 {% load humanize %}
-{# Population card of the Dashboard panel. Loaded by Panels.js showDashboardSummary() via htmx. #}
+{# Population value card of the Dashboard panel. Loaded by Panels.js loadDashboardPopulation(). #}
 {% if unit %}
   <div class="kpi-card" id="dashboard-population-card">
     <div class="kpi-header">
@@ -13,6 +13,9 @@
       {% if unit.area_km2 %}{{ unit.area_km2|floatformat:1 }} km²{% endif %}
       {% if unit.populationDensity %} · {{ unit.populationDensity|floatformat:0|intcomma }} people/km²{% endif %}
       {% if unit.populationDate %} · as of {{ unit.populationDate|date:"Y-m-d" }}{% endif %}
+    </div>
+    <div class="kpi-sub" style="margin-top:8px;">
+      Click <strong>👤 Population</strong> in the bottom bar for the forecast and what-if.
     </div>
   </div>
 {% else %}

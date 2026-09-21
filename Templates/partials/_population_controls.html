@@ -1,0 +1,32 @@
+{% load l10n %}
+{% comment %}
+  Population what-if: CBS forecast variant + extra growth per year. Shown in the
+  map's bottom "Population" dock (mainMap/partials/population_panel.html).
+
+  applyPopulationControls() (panels.js) stores the choice in window.POP_SCENARIO /
+  window.POP_GROWTH, which the indicator URL builders in mainMap.html append as
+  ?pop_scenario=&pop_growth=, then reloads the dock and any open indicator panel.
+
+  Context: pop_scenario (default "prognose"), pop_growth (default 0).
+{% endcomment %}
+<div class="pop-controls">
+  <div class="pop-controls-title">What-if</div>
+
+  <label class="pop-row">
+    <span>Forecast variant (CBS 85173NED)</span>
+    <select class="pop-scenario" onchange="applyPopulationControls(this.closest('.pop-controls'))">
+      <option value="prognose" {% if not pop_scenario or pop_scenario == 'prognose' %}selected{% endif %}>Median forecast</option>
+      <option value="low" {% if pop_scenario == 'low' %}selected{% endif %}>Lower bound (67% interval)</option>
+      <option value="high" {% if pop_scenario == 'high' %}selected{% endif %}>Upper bound (67% interval)</option>
+    </select>
+  </label>
+
+  <label class="pop-row">
+    <span>Extra growth from 2025: <strong class="pop-growth-value">{{ pop_growth|default:0|unlocalize }}</strong> %/yr</span>
+    <input class="pop-growth" type="range" min="-2" max="3" step="0.1" value="{{ pop_growth|default:0|unlocalize }}"
+           oninput="this.parentElement.querySelector('.pop-growth-value').textContent = this.value"
+           onchange="applyPopulationControls(this.closest('.pop-controls'))">
+  </label>
+
+  <button type="button" class="pop-reset" onclick="resetPopulationControls(this.closest('.pop-controls'))">Reset</button>
+</div>

@@ -1,17 +1,17 @@
 # Graph Report - CrossTwin  (2026-09-21)
 
 ## Corpus Check
-- 163 files · ~109,749 words
+- 167 files · ~114,749 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 19 file(s) not represented in the graph (top: (none) 5, .css 3, .tif 2)
 
 ## Summary
-- 1110 nodes · 1923 edges · 134 communities (53 shown, 39 thin omitted)
-- Extraction: 89% EXTRACTED · 11% INFERRED · 0% AMBIGUOUS · INFERRED: 216 edges (avg confidence: 0.92)
+- 1231 nodes · 2221 edges · 140 communities (60 shown, 39 thin omitted)
+- Extraction: 89% EXTRACTED · 10% INFERRED · 0% AMBIGUOUS · INFERRED: 233 edges (avg confidence: 0.92)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `8de66ba3`
+- Built from commit: `69378057`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -25,22 +25,22 @@
 - importer/views.py
 - physicalEnv/models.py
 - rasterOperations.py
-- test_water_chain.py
+- make_city
 - weather/views.py
 - Model Registry System (MODEL/VECTOR/RASTER/WMS_REGISTRY)
 - external_data.py
-- urban_heat/calculations.py
+- urban_heat/views.py
 - Indicator Pattern (calculations / views / HTMX templates)
 - GEEAuthManager
 - watersupply indicators_grid.html (HTMX swap partial)
 - housing indicators_grid.html (HTMX swap partial)
 - urban heat indicators_grid.html (HTMX swap partial)
 - nature/models.py
-- Meta
-- .generate_from_measurements
-- Map_init.js
-- GenericImportStorageCrsTests
+- urban_heat/calculations.py
 - housing/views.py
+- Map_init.js
+- CBSPopulationForecastImportTests
+- Neighborhood
 - import_dataset
 - /graphify Command
 - base.html (site shell template)
@@ -48,21 +48,21 @@
 - load_raster_into_target_model
 - .setup_databases
 - requirements.txt
-- Meta
+- weather/models.py
 - mainMap.html (map view template)
 - CrossTwin – Plan: model automation, population scenario, dashboard toggle, KNMI WBGT
 - Config.js
 - _get_git_info
+- get_population
+- DashboardPopulationCurveTests
 - .save
-- NonRevenueWater
-- CBSImporter
 - default_wms_legend_url
 - watersupply/signals.py
 - Digital twin concept: real city (left) mirrored by wireframe model (right)
-- builtup/models.py
+- test_water_chain.py
 - external_data.html Template
 - importer:upload_geodata view
-- PrecipitationRaster
+- population.py
 - TemperatureRaster
 - AdministrativeConfig
 - CoreConfig
@@ -71,7 +71,7 @@
 - 0002_populate_energy_labels.py
 - manage.py
 - InterpolatedRasterBase
-- .fetch_atom
+- ToStorageSridTests
 - Migration
 - WeatherConfig
 - BuiltupConfig
@@ -87,7 +87,8 @@
 - NatureConfig
 - PhysicalEnvConfig
 - UrbanheatConfig
-- WatersupplyConfig
+- PopulationProjection
+- test_population.py
 - administrative/migrations/0001_initial.py
 - builtup/migrations/0001_initial.py
 - CLAUDE.md (project guidance)
@@ -106,20 +107,26 @@
 - 0003_wmslayer_time_refresh_minutes.py
 - 0004_wmslayer_api_key_setting.py
 - AppConfig
+- PopulationDrivesTheIndicatorsTests
+- NonRevenueWater
+- ExtractionWater
 - StyleSuggestion.md (design system suggestion)
 - Project TODO List
+- ModelRegistryTests
+- WatersupplyConfig
+- 0002_population_projection.py
 
 ## God Nodes (most connected - your core abstractions)
-1. `City` - 38 edges
-2. `Province` - 29 edges
-3. `Neighborhood` - 28 edges
-4. `make_city()` - 18 edges
-5. `neighborhoods_within()` - 17 edges
-6. `import_dataset()` - 17 edges
-7. `Meta` - 17 edges
-8. `_get_province_data()` - 17 edges
-9. `InterpolatedRasterBase` - 17 edges
-10. `Building` - 15 edges
+1. `City` - 42 edges
+2. `make_city()` - 33 edges
+3. `Province` - 32 edges
+4. `Neighborhood` - 31 edges
+5. `get_population()` - 21 edges
+6. `PopulationProjection` - 18 edges
+7. `_get_province_data()` - 18 edges
+8. `neighborhoods_within()` - 17 edges
+9. `import_dataset()` - 17 edges
+10. `Meta` - 17 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `External Data Import (PDOK, RIVM, CBS, Sentinel-2, GEE)` --semantically_similar_to--> `Importer System (file upload + external data)`  [INFERRED] [semantically similar]
@@ -143,47 +150,47 @@
 - **CrossTwin icon composition: physical city, digital wireframe, orbit ring** — core_static_ico_android_chrome_512x512_isometric_city_block, core_static_ico_android_chrome_512x512_cyan_wireframe_grid, core_static_ico_android_chrome_512x512_orbit_ring [INFERRED 0.85]
 - **HTMX slider-driven what-if recalculation pattern** — watersupply_templates_watersupply_partials_indicators_panel_consumption_slider, housing_templates_housing_partials_indicators_panel_mortgage_slider, urban_heat_templates_urban_heat_partials_indicators_panel_vegetation_slider, claude_indicator_pattern [INFERRED 0.95]
 
-## Communities (134 total, 39 thin omitted)
+## Communities (140 total, 39 thin omitted)
 
 ### Community 0 - "housing/calculations.py"
-Cohesion: 0.10
-Nodes (23): neighborhoods_within(), Neighborhood queryset covering the given administrative unit, at any level., Property, calculate_mortgage_indicators(), calculate_new_units(), calculate_property_indicators(), calculate_rent_indicators(), calculate_supply_demand() (+15 more)
+Cohesion: 0.11
+Nodes (17): Property, calculate_new_units(), calculate_new_units_for_unit(), calculate_supply_demand(), Housing supply vs demand for a city and year. DAG edges: Urbanization ->…, New housing units in the pipeline. DAG edges: Zoning_Status -> New_Units…, Aggregate new units across all cities within an admin unit., CentralBankPolicy (+9 more)
 
 ### Community 1 - "mainMap/views.py"
-Cohesion: 0.07
-Nodes (38): Point-in-polygon lookup: find the smallest administrative unit (Neighborhood >…, resolve_admin_unit_at_point(), build_landcover_style_and_legend(), get_landcover_color(), Color scheme for LandCoverVector.land_cover_type…, Resolve a stable hex color for a LandCoverClasses.class_name value., Build a Mapbox `match` fill-color expression plus a legend for every class_name…, _cog_statistics() (+30 more)
+Cohesion: 0.06
+Nodes (41): Point-in-polygon lookup: find the smallest administrative unit (Neighborhood >…, resolve_admin_unit_at_point(), build_landcover_style_and_legend(), get_landcover_color(), Color scheme for LandCoverVector.land_cover_type…, Resolve a stable hex color for a LandCoverClasses.class_name value., Build a Mapbox `match` fill-color expression plus a legend for every class_name…, _cog_statistics() (+33 more)
 
 ### Community 2 - "City"
-Cohesion: 0.13
-Nodes (18): CityAdmin, NeighborhoodAdmin, ProvinceAdmin, province_of(), Shared helpers for resolving and aggregating by administrative unit. Lets any…, Resolve the enclosing Province for an admin unit at any level. Needed for…, City, District (+10 more)
+Cohesion: 0.24
+Nodes (13): CityAdmin, NeighborhoodAdmin, ProvinceAdmin, City, District, Meta, Province, city_changed() (+5 more)
 
 ### Community 3 - "watersupply/calculations.py"
 Cohesion: 0.09
-Nodes (39): cities_within(), City queryset covering the given administrative unit, at any level., calculate_available_freshwater(), calculate_co2_emission(), calculate_collection_ratio(), calculate_coverage(), calculate_drought_area(), calculate_energy_consumption() (+31 more)
+Nodes (38): cities_within(), City queryset covering the given administrative unit, at any level., calculate_available_freshwater(), calculate_co2_emission(), calculate_collection_ratio(), calculate_coverage(), calculate_drought_area(), calculate_energy_consumption() (+30 more)
 
 ### Community 4 - "Layers.js"
-Cohesion: 0.10
-Nodes (37): initializeUI(), activateToolLayers(), addAnimatedWmsLayer(), addCategoricalLegend(), addCoordinatesToBounds(), addLayer(), addRasterLayer(), addRasterLayerFromConfig() (+29 more)
+Cohesion: 0.09
+Nodes (40): initializeUI(), activateToolLayers(), addAnimatedWmsLayer(), addCategoricalLegend(), addCoordinatesToBounds(), addLayer(), addRasterLayer(), addRasterLayerFromConfig() (+32 more)
 
 ### Community 5 - "watersupply/models.py"
-Cohesion: 0.11
-Nodes (11): WMSLayerAdmin, AreaAffectedDrought, AvailableFreshWater, ConsumptionCapita, ImportedWater, Meta, MeteredResidential, PipeNetwork (+3 more)
+Cohesion: 0.12
+Nodes (11): WMSLayerAdmin, AvailableFreshWater, ImportedWater, Meta, PipeNetwork, SupplySecurity, TotalWaterDemand, UsersLocation (+3 more)
 
 ### Community 6 - "importer/views.py"
-Cohesion: 0.05
-Nodes (43): atomic, ModelRegistryTests, SimpleTestCase, A typo in allowed_apps is swallowed silently (LookupError), dropping the whole…, build_model_registry(), Build MODEL_REGISTRY dynamically from specified apps., get_catalog_grouped(), Return the catalog grouped by category. Structure: { category: [datasets] }… (+35 more)
+Cohesion: 0.09
+Nodes (30): atomic, build_model_registry(), Build MODEL_REGISTRY dynamically from specified apps., GeoUploadForm, get_target_model_choices(), MappingForm, Get choices for target model field., Dynamic form for field mapping. Fields are added dynamically in the view based… (+22 more)
 
 ### Community 7 - "physicalEnv/models.py"
-Cohesion: 0.11
-Nodes (11): LandCoverClassesAdmin, SurfaceMaterialPropertiesAdmin, DigitalElevationModel, DigitalElevationModelWMS, DigitalSurfaceModelWMS, LandCoverClasses, LandCoverRaster, LandCoverWMS (+3 more)
+Cohesion: 0.09
+Nodes (14): LandCoverClassesAdmin, SurfaceMaterialPropertiesAdmin, DigitalElevationModel, DigitalElevationModelWMS, DigitalSurfaceModel, DigitalSurfaceModelWMS, LandCoverClasses, LandCoverRaster (+6 more)
 
 ### Community 8 - "rasterOperations.py"
-Cohesion: 0.14
-Nodes (16): BaseCommand, Command, _cog_filename(), export_all_rasters(), export_geotiff_to_cog(), export_raster_to_cog(), get_raster_field_name(), Build a COG filename from whatever satellite/process metadata the raster model… (+8 more)
+Cohesion: 0.12
+Nodes (18): BaseCommand, Command, _cog_filename(), export_all_rasters(), export_geotiff_to_cog(), export_raster_to_cog(), get_raster_field_name(), interpolate_raster() (+10 more)
 
-### Community 9 - "test_water_chain.py"
-Cohesion: 0.07
-Nodes (26): EnvironmentalCosts, The most recent cost record (the model has no province/year), or None., DAG edges: Available_FW -> Total_Extraction Total_Extraction ->…, make_city(), make_consumption_capita(), make_district(), make_metered_residential(), make_neighborhood() (+18 more)
+### Community 9 - "make_city"
+Cohesion: 0.14
+Nodes (14): CityOfTests, _lonlat_of_rd(), WGS84 (lng, lat) of an EPSG:28992 point, as the map center is reported., make_city(), make_consumption_capita(), make_district(), make_metered_residential(), make_neighborhood() (+6 more)
 
 ### Community 10 - "weather/views.py"
 Cohesion: 0.16
@@ -194,12 +201,12 @@ Cohesion: 0.12
 Nodes (18): Importer System (file upload + external data), Map Frontend (mainMap, Mapbox GL JS), Model Registry System (MODEL/VECTOR/RASTER/WMS_REGISTRY), Application Layer (Django REST Parsers/Validation), Data Layer (PostgreSQL/PostGIS/GeoDjango ORM), Import Layer (File Upload UI), Visualization Layer (TiTiler/Mapbox GL), Right actions panel (Upload Data, Retrieve Data from APIs) (+10 more)
 
 ### Community 12 - "external_data.py"
-Cohesion: 0.18
-Nodes (13): Exception, GEOSGeometry, ensure_multipolygon(), GEEImporter, _import_geojson_features(), _ImportBlocked, External Data Catalog & Import Logic =====================================…, Import handler for Google Earth Engine datasets. (+5 more)
-
-### Community 13 - "urban_heat/calculations.py"
 Cohesion: 0.09
-Nodes (30): DigitalSurfaceModel, calculate_green_area(), calculate_nbs_coverage(), calculate_urban_morphology(), calculate_vegetation_coverage(), classify_pet(), classify_utci(), get_latest_meteorology() (+22 more)
+Nodes (23): Exception, get_catalog_grouped(), Return the catalog grouped by category. Structure: { category: [datasets] }…, CBSImporter, GEEImporter, _import_geojson_features(), _ImportBlocked, External Data Catalog & Import Logic =====================================… (+15 more)
+
+### Community 13 - "urban_heat/views.py"
+Cohesion: 0.11
+Nodes (22): calculate_urban_morphology(), calculate_vegetation_coverage(), classify_pet(), classify_utci(), get_latest_meteorology(), get_thermal_indices(), _raster_stats_sql(), Get min/max/mean/stddev from a raster clipped to a geometry. (+14 more)
 
 ### Community 14 - "Indicator Pattern (calculations / views / HTMX templates)"
 Cohesion: 0.13
@@ -225,25 +232,25 @@ Nodes (15): initGauges (housing gauges + mortgage bar), heat_indicators.html (st
 Cohesion: 0.16
 Nodes (8): Forests, GreenSpaces, Meta, ProtectedArea, ProtectionType, WaterBodies, WaterWaysLN, WaterWaysPG
 
-### Community 20 - "Meta"
-Cohesion: 0.08
-Nodes (17): MeanRadiantTemperature, Meta, NatureBasedSolutionPoint, NatureBasedSolutionPolygon, PET, Physiological Equivalent Temperature (PET) measurements, Surface Urban Heat Island Intensity (SUHII)) measurements, Nature-Based Solutions (NBS) for urban heat mitigation (+9 more)
+### Community 20 - "urban_heat/calculations.py"
+Cohesion: 0.09
+Nodes (22): calculate_nbs_coverage(), NBS coverage area and count. DAG edges: UTCI → NBS PET → NBS, # NOTE: percentage is stored relative to the *Province* total area, LandSurfaceTemperature, MeanRadiantTemperature, Meta, NatureBasedSolutionPoint, NatureBasedSolutionPolygon (+14 more)
 
-### Community 21 - ".generate_from_measurements"
-Cohesion: 0.15
-Nodes (8): interpolate_raster(), Interpolates raster data using Radial Basis Function (RBF) interpolation.…, HumidityRaster, Determine bounds for interpolation, Get measurements within time window for a specific field Args:…, Generate raster by interpolating measurements Must be implemented by child…, Generic interpolation method - works for all child classes, Interpolated relative humidity raster layer
+### Community 21 - "housing/views.py"
+Cohesion: 0.10
+Nodes (29): neighborhoods_within(), province_of(), Shared helpers for resolving and aggregating by administrative unit. Lets any…, Look up a Province/City/District/Neighborhood instance by level + name., Neighborhood queryset covering the given administrative unit, at any level., Resolve the enclosing Province for an admin unit at any level. Needed for…, resolve_admin_unit(), calculate_affordability() (+21 more)
 
 ### Community 22 - "Map_init.js"
 Cohesion: 0.24
 Nodes (11): updateCityName(), add3DBuildings(), addExternalLayers(), ADMIN_LEVELS, changeBasemap(), getSavedCameraState(), initializeUrbanTwinMap(), onAdminLayerLoaded() (+3 more)
 
-### Community 23 - "GenericImportStorageCrsTests"
-Cohesion: 0.25
-Nodes (6): GenericImportStorageCrsTests, GeoJsonFeatureImportStorageCrsTests, TestCase, _generic_import must store every geometry in COORDINATE_SYSTEM., PDOK/OGC feature imports honour the requested srsName but store in RD., _wgs84_frame()
+### Community 23 - "CBSPopulationForecastImportTests"
+Cohesion: 0.14
+Nodes (8): CBSPopulationForecastImportTests, GenericImportStorageCrsTests, GeoJsonFeatureImportStorageCrsTests, TestCase, CBS 85173NED: region column RegioIndeling2021, x 1000 scale, forecast variants., _generic_import must store every geometry in COORDINATE_SYSTEM., PDOK/OGC feature imports honour the requested srsName but store in RD., _wgs84_frame()
 
-### Community 24 - "housing/views.py"
-Cohesion: 0.13
-Nodes (20): Look up a Province/City/District/Neighborhood instance by level + name., resolve_admin_unit(), calculate_affordability(), calculate_house_price_index(), calculate_new_units_for_unit(), calculate_supply_demand_for_unit(), calculate_zoning(), House price index aggregated across neighborhoods. DAG edges: Housing_Demand ->… (+12 more)
+### Community 24 - "Neighborhood"
+Cohesion: 0.12
+Nodes (12): Neighborhood, Building, BuildingEnergyLabel, Facility, Meta, Park, Proxy onto Building, filed under the Energy app so the energy-label fields…, Street (+4 more)
 
 ### Community 25 - "import_dataset"
 Cohesion: 0.12
@@ -273,9 +280,9 @@ Nodes (5): _patched_prepare_database(), PostGISTestRunner, Replace the PostGIS b
 Cohesion: 0.18
 Nodes (10): django-crispy-forms + crispy-tailwind, Django 5.2.12, earthengine-api 1.7.18, GDAL 3.11.4 (Windows wheel), geopandas 1.1.2, openeo 0.51.0, owslib 0.35.0, rasterio 1.4.4 (+2 more)
 
-### Community 32 - "Meta"
-Cohesion: 0.18
-Nodes (6): Meta, Meteorology, Interpolated wind speed raster layer, Time-series weather measurements from stations, WeatherStation, WindSpeedRaster
+### Community 32 - "weather/models.py"
+Cohesion: 0.13
+Nodes (8): Meta, Meteorology, PrecipitationRaster, Interpolated precipitation raster layer, Interpolated wind speed raster layer, Time-series weather measurements from stations, WeatherStation, WindSpeedRaster
 
 ### Community 33 - "mainMap.html (map view template)"
 Cohesion: 0.31
@@ -293,17 +300,17 @@ Nodes (7): availableLayers, BASEMAPS, CONFIG, layerVisibility, loadedLayers, TOO
 Cohesion: 0.32
 Nodes (6): _derive_version(), _get_git_info(), Derive a semver-ish label from the raw commit count. 0–99 → v0.1, 100–199 →…, Inject git info into every template rendered by Django., Run git commands once and cache the result for the process lifetime. In…, version_context()
 
-### Community 37 - ".save"
+### Community 37 - "get_population"
+Cohesion: 0.16
+Nodes (7): get_population(), Projected population of `unit` in `year` (its current population if `year` is…, CityPopulationTests, LowerLevelTests, PopulationTestBase, project(), ProvinceTests
+
+### Community 38 - "DashboardPopulationCurveTests"
+Cohesion: 0.18
+Nodes (4): DashboardPopulationCurveTests, DashboardSummaryTests, TestCase, The population curve, its variants and the what-if controls in the dashboard…
+
+### Community 39 - ".save"
 Cohesion: 0.11
-Nodes (8): CoverageWaterSupply, DAG edges: Total_Water_Demand -> Supply_Security Total_Water_Prod ->…, DAG edges: Total_Population -> Total_Consumption ConsumptionCapita ->…, DAG edges: Total_Extraction/Total_Water_Prod -> OPEX Imported_Water -> OPEX,…, DAG edges: Total_Population -> Total_Water_Demand ConsumptionCapita ->…, Derived from the geometry: affected area (km2) and, if not given, the Province., Set productionDay/YR (Mm3) and costDay/YR (EUR) from the active wells of the…, TotalWaterDemand
-
-### Community 38 - "NonRevenueWater"
-Cohesion: 0.29
-Nodes (4): LossesChoices, LossesTypes, NonRevenueWater, Create a random NonRevenueWater loss event. Picks a random LossesChoices,…
-
-### Community 39 - "CBSImporter"
-Cohesion: 0.50
-Nodes (3): CBSImporter, Import handler for CBS StatLine OData datasets., Fetch column definitions and units for a CBS table. Useful for building field…
+Nodes (8): MeteredResidential, OPEX, DAG edges: Total_Water_Demand -> Supply_Security Total_Water_Prod ->…, DAG edges: Total_Population -> Total_Consumption ConsumptionCapita ->…, DAG edges: Total_Extraction/Total_Water_Prod -> OPEX Imported_Water -> OPEX,…, DAG edges: Total_Population -> Total_Water_Demand ConsumptionCapita ->…, Derived from the geometry: affected area (km2) and, if not given, the Province., Set productionDay/YR (Mm3) and costDay/YR (EUR) from the active wells of the…
 
 ### Community 40 - "default_wms_legend_url"
 Cohesion: 0.40
@@ -311,15 +318,15 @@ Nodes (4): default_wms_legend_url(), _legend_url_from_capabilities(), Look up a 
 
 ### Community 41 - "watersupply/signals.py"
 Cohesion: 0.15
-Nodes (26): OPEX, SupplySecurity, TotalWaterProduction, city_population_cascaded(), city_saved(), consumption_saved(), demand_saved(), extraction_changed() (+18 more)
+Nodes (26): ConsumptionCapita, CoverageWaterSupply, TotalWaterProduction, city_population_cascaded(), city_saved(), consumption_saved(), demand_saved(), extraction_changed() (+18 more)
 
 ### Community 42 - "Digital twin concept: real city (left) mirrored by wireframe model (right)"
 Cohesion: 0.50
 Nodes (5): CrossTwin App Icon (android-chrome-512x512), Cyan wireframe/grid half representing geospatial digital model, Digital twin concept: real city (left) mirrored by wireframe model (right), Isometric city block with buildings, trees, park and river, Green-to-cyan orbit ring linking physical and digital halves
 
-### Community 43 - "builtup/models.py"
-Cohesion: 0.13
-Nodes (11): Building, BuildingEnergyLabel, Facility, Meta, Park, Proxy onto Building, filed under the Energy app so the energy-label fields…, Street, ZoningArea (+3 more)
+### Community 43 - "test_water_chain.py"
+Cohesion: 0.11
+Nodes (15): ElectricityCost, Meta, AreaAffectedDrought, SensibilityChoices, make_polygon(), make_province(), Square (default 1 km x 1 km = 1 km2) around an EPSG:28992 point (default:…, AreaAffectedDroughtTests (+7 more)
 
 ### Community 44 - "external_data.html Template"
 Cohesion: 0.40
@@ -328,6 +335,10 @@ Nodes (5): Bbox Area-of-Interest Map Selector UI, importer:neighborhoods_geojson
 ### Community 45 - "importer:upload_geodata view"
 Cohesion: 0.50
 Nodes (5): FieldMapping.html Template, RasterMapping.html Template, upload.html Template, upload_result.html Template, importer:upload_geodata view
+
+### Community 46 - "population.py"
+Cohesion: 0.17
+Nodes (15): city_of(), The City an administrative unit belongs to (itself for a City), or None for a…, _adjust(), _city_value(), population_by_year(), population_curve(), projection_years(), Population projection for any administrative unit. CBS table 85173NED is… (+7 more)
 
 ### Community 50 - "CrossTwin App Icon (192x192)"
 Cohesion: 0.67
@@ -338,12 +349,12 @@ Cohesion: 0.50
 Nodes (3): main(), Run administrative tasks., Django's command-line utility for administrative tasks.
 
 ### Community 54 - "InterpolatedRasterBase"
-Cohesion: 0.16
-Nodes (7): InterpolatedRasterBase, Calculate bounds polygon from the raster's extent, Convert extent tuple to Polygon, Extract point data from measurements Args: measurements: QuerySet of…, Convenience method to generate raster for a Province Args: Province: Province…, Override in child classes to specify which measurement field to use, Override in child classes to specify metadata keys Returns tuple: (min_key,…
+Cohesion: 0.10
+Nodes (13): HumidityRaster, InterpolatedRasterBase, Calculate bounds polygon from the raster's extent, Determine bounds for interpolation, Convert extent tuple to Polygon, Get measurements within time window for a specific field Args:…, Extract point data from measurements Args: measurements: QuerySet of…, Generate raster by interpolating measurements Must be implemented by child… (+5 more)
 
-### Community 55 - ".fetch_atom"
-Cohesion: 0.23
-Nodes (7): _import_atom_gml_features(), Stream a plu:SpatialPlan GML file (INSPIRE Planned Land Use) over HTTP and…, SimpleTestCase, ToStorageSridTests, _to_multipolygon(), MultiPolygon, Polygon
+### Community 55 - "ToStorageSridTests"
+Cohesion: 0.17
+Nodes (10): GEOSGeometry, ensure_multipolygon(), _import_atom_gml_features(), Stream a plu:SpatialPlan GML file (INSPIRE Planned Land Use) over HTTP and…, Convert Polygon to MultiPolygon if needed., SimpleTestCase, ToStorageSridTests, _to_multipolygon() (+2 more)
 
 ### Community 60 - "CrossTwin App Icon (apple-touch-icon)"
 Cohesion: 1.00
@@ -357,13 +368,37 @@ Nodes (3): CrossTwin favicon 16x16, Browser tab icon (branding), Teal/blue cube-
 Cohesion: 0.67
 Nodes (3): CrossTwin favicon (32x32), Blue rounded-square app icon with city skyline motif, CrossTwin brand identity (digital twin platform)
 
+### Community 71 - "PopulationProjection"
+Cohesion: 0.25
+Nodes (3): PopulationProjection, Projected total population of a City for one year and forecast variant. Loaded…, Scenario
+
+### Community 72 - "test_population.py"
+Cohesion: 0.18
+Nodes (8): normalize_scenario(), population_params(), (scenario, growth_adjust_pct) from a request's query parameters `pop_scenario`…, Unknown/empty variant names fall back to the median forecast., CitySaveKeepsImportedPopulationTests, PopulationParamsTests, TestCase, A city without district population keeps its own value when re-saved (was reset…
+
+### Community 102 - "PopulationDrivesTheIndicatorsTests"
+Cohesion: 0.23
+Nodes (3): PopulationDrivesTheIndicatorsTests, TestCase, Projected population (year, CBS variant, extra growth) reaches the dashboards.
+
+### Community 115 - "NonRevenueWater"
+Cohesion: 0.22
+Nodes (5): LossesChoices, LossesTypes, NonRevenueWater, Create a random NonRevenueWater loss event. Picks a random LossesChoices,…, NonRevenueWaterTests
+
+### Community 120 - "ExtractionWater"
+Cohesion: 0.29
+Nodes (4): EnvironmentalCosts, The most recent cost record (the model has no province/year), or None., ExtractionWater, DAG edges: Available_FW -> Total_Extraction Total_Extraction ->…
+
+### Community 137 - "ModelRegistryTests"
+Cohesion: 0.33
+Nodes (3): ModelRegistryTests, SimpleTestCase, A typo in allowed_apps is swallowed silently (LookupError), dropping the whole…
+
 ## Ambiguous Edges - Review These
 - `Domain Apps (administrative, physicalEnv, watersupply, urban_heat, housing, builtup, ...)` → `Dynamic Layer Categories (Heat, Green, Water, Groundwater)`  [AMBIGUOUS]
   README.md · relation: conceptually_related_to
 
 ## Knowledge Gaps
-- **101 isolated node(s):** `Migration`, `Migration`, `Migration`, `Migration`, `availableLayers` (+96 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 500 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **103 isolated node(s):** `Migration`, `Migration`, `Migration`, `Migration`, `Scenario` (+98 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 531 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
 - **39 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
@@ -371,15 +406,15 @@ _Questions this graph is uniquely positioned to answer:_
 
 - **What is the exact relationship between `Domain Apps (administrative, physicalEnv, watersupply, urban_heat, housing, builtup, ...)` and `Dynamic Layer Categories (Heat, Green, Water, Groundwater)`?**
   _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
-- **Why does `City` connect `City` to `housing/calculations.py`, `watersupply/calculations.py`, `watersupply/models.py`, `importer/views.py`, `CBSImporter`, `.save`, `watersupply/signals.py`, `test_water_chain.py`, `builtup/models.py`, `external_data.py`, `nature/models.py`, `load_raster_into_target_model`?**
-  _High betweenness centrality (0.126) - this node is a cross-community bridge._
-- **Why does `Province` connect `City` to `housing/calculations.py`, `watersupply/calculations.py`, `watersupply/models.py`, `watersupply/signals.py`, `test_water_chain.py`, `external_data.py`, `InterpolatedRasterBase`, `GenericImportStorageCrsTests`?**
-  _High betweenness centrality (0.052) - this node is a cross-community bridge._
-- **Why does `Neighborhood` connect `City` to `housing/calculations.py`, `watersupply/calculations.py`, `watersupply/models.py`, `importer/views.py`, `.save`, `test_water_chain.py`, `builtup/models.py`?**
-  _High betweenness centrality (0.038) - this node is a cross-community bridge._
-- **Are the 19 inferred relationships involving `City` (e.g. with `CityAdmin` and `cities_within()`) actually correct?**
-  _`City` has 19 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 15 inferred relationships involving `Province` (e.g. with `ProvinceAdmin` and `cities_within()`) actually correct?**
-  _`Province` has 15 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 13 inferred relationships involving `Neighborhood` (e.g. with `NeighborhoodAdmin` and `cities_within()`) actually correct?**
-  _`Neighborhood` has 13 INFERRED edges - model-reasoned connections that need verification._
+- **Why does `City` connect `City` to `weather/models.py`, `watersupply/calculations.py`, `watersupply/models.py`, `importer/views.py`, `PopulationProjection`, `watersupply/signals.py`, `make_city`, `test_water_chain.py`, `external_data.py`, `population.py`, `nature/models.py`, `urban_heat/calculations.py`, `housing/views.py`, `Neighborhood`, `load_raster_into_target_model`?**
+  _High betweenness centrality (0.138) - this node is a cross-community bridge._
+- **Why does `Neighborhood` connect `Neighborhood` to `weather/models.py`, `City`, `watersupply/calculations.py`, `watersupply/models.py`, `PopulationProjection`, `watersupply/signals.py`, `make_city`, `external_data.py`, `population.py`, `urban_heat/calculations.py`, `housing/views.py`?**
+  _High betweenness centrality (0.053) - this node is a cross-community bridge._
+- **Why does `Province` connect `City` to `weather/models.py`, `watersupply/calculations.py`, `watersupply/models.py`, `PopulationProjection`, `watersupply/signals.py`, `make_city`, `test_water_chain.py`, `external_data.py`, `population.py`, `housing/views.py`, `InterpolatedRasterBase`, `CBSPopulationForecastImportTests`, `Neighborhood`?**
+  _High betweenness centrality (0.036) - this node is a cross-community bridge._
+- **Are the 22 inferred relationships involving `City` (e.g. with `CityAdmin` and `cities_within()`) actually correct?**
+  _`City` has 22 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 17 inferred relationships involving `Province` (e.g. with `ProvinceAdmin` and `cities_within()`) actually correct?**
+  _`Province` has 17 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 15 inferred relationships involving `Neighborhood` (e.g. with `NeighborhoodAdmin` and `cities_within()`) actually correct?**
+  _`Neighborhood` has 15 INFERRED edges - model-reasoned connections that need verification._

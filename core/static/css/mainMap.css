@@ -1534,3 +1534,148 @@
     .indicator-label { display: none; }
     .dashboard-grid { grid-template-columns: 1fr; }
 }
+
+
+/* ============================================================
+   POPULATION DOCK (bottom) + Curves-style forecast graph
+   Opened from the Population pill; independent of the side panel, so an
+   indicator panel can stay open next to it (the dock slides left of it).
+   ============================================================ */
+.indicator-pill.active {
+    background: rgba(var(--accent-rgb), 0.12);
+    border-color: rgba(var(--accent-rgb), 0.35);
+}
+
+.population-panel {
+    position: absolute;
+    left: 76px;                 /* right of the toolbar */
+    right: 12px;
+    bottom: 52px;               /* above the bottom bar */
+    max-height: min(400px, 68vh);
+    padding: 10px 14px 12px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-ui);
+    border-radius: 10px;
+    z-index: 12;
+    display: none;
+    flex-direction: column;
+    gap: 6px;
+}
+.population-panel.visible { display: flex; }
+/* leave the side panel (460px wide, max 76vw) uncovered when both are open */
+.side-panel.visible ~ .population-panel { right: calc(min(460px, 76vw) + 24px); }
+
+.population-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border-ui);
+}
+.population-panel-title {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-tertiary);
+    font-weight: 600;
+}
+.population-panel-close {
+    border: none;
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    font-size: 15px;
+}
+.population-panel-close:hover { color: var(--text-main); }
+.population-panel-body { overflow-y: auto; min-height: 0; }
+
+.pop-layout {
+    display: grid;
+    grid-template-columns: 190px minmax(280px, 1fr) 230px;
+    gap: 18px;
+    align-items: start;
+}
+@media (max-width: 1150px) { .pop-layout { grid-template-columns: 1fr; } }
+
+/* values */
+.pop-unit { font-size: 0.78rem; color: var(--text-secondary, rgba(232, 244, 255, 0.7)); margin-bottom: 10px; }
+.pop-stat { margin-bottom: 12px; }
+.pop-stat-label {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+}
+.pop-stat-value { font-size: 1.55rem; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.pop-stat-projected .pop-stat-value { color: var(--accent); filter: brightness(1.6); }
+.pop-stat-sub { font-size: 0.76rem; color: var(--text-tertiary); margin-top: 2px; }
+.pop-stat-sub.up { color: #6fcf97; }
+.pop-stat-sub.down { color: #eb8f8f; }
+
+/* graph — modelled on Photoshop's Curves dialog: dark plot, regular grid, one
+   smooth curve with square handles; the shaded band is the 67% interval */
+.pop-graph { width: 100%; height: auto; display: block; }
+.pop-plot { fill: #121212; }
+.pop-grid { stroke: rgba(255, 255, 255, 0.09); stroke-width: 1; }
+.pop-frame { fill: none; stroke: rgba(255, 255, 255, 0.3); stroke-width: 1; }
+.pop-tick { fill: rgba(232, 244, 255, 0.55); font-size: 10px; }
+.pop-baseline { stroke: rgba(255, 255, 255, 0.4); stroke-width: 1; stroke-dasharray: 5 4; }
+.pop-baseline-label { fill: rgba(255, 255, 255, 0.5); font-size: 9px; }
+.pop-band { fill: var(--accent); fill-opacity: 0.32; stroke: none; }
+.pop-edge { fill: none; stroke: var(--accent); stroke-opacity: 0.8; stroke-width: 1; stroke-dasharray: 3 3; filter: brightness(1.5); }
+.pop-curve-ref { fill: none; stroke: rgba(255, 255, 255, 0.35); stroke-width: 1.2; stroke-dasharray: 2 3; }
+.pop-curve { fill: none; stroke: #f2f2f0; stroke-width: 2.3; stroke-linecap: round; stroke-linejoin: round; }
+.pop-marker-line { stroke: rgba(255, 255, 255, 0.3); stroke-width: 1; stroke-dasharray: 2 3; }
+.pop-handle { fill: #121212; stroke: #f2f2f0; stroke-width: 1.3; }
+.pop-handle-active { fill: #f2f2f0; }
+.pop-hover-line { stroke: rgba(255, 255, 255, 0.55); stroke-width: 1; }
+.pop-hover-dot { stroke: #121212; stroke-width: 1; }
+.pop-hover-median { fill: #f2f2f0; }
+.pop-hover-high, .pop-hover-low { fill: var(--accent); filter: brightness(1.7); }
+.pop-graph .pop-handle:hover { fill: #f2f2f0; }
+
+.pop-readout { margin-top: 6px; min-height: 1.3em; font-size: 0.78rem; font-variant-numeric: tabular-nums; color: rgba(232, 244, 255, 0.75); }
+.pop-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; font-size: 0.7rem; color: var(--text-tertiary); }
+.pop-legend i { display: inline-block; vertical-align: middle; margin-right: 5px; }
+.pop-swatch-curve { width: 16px; height: 2px; background: #f2f2f0; }
+.pop-swatch-band { width: 16px; height: 9px; background: var(--accent); opacity: 0.5; }
+.pop-swatch-base { width: 16px; border-top: 1px dashed rgba(255, 255, 255, 0.6); }
+.pop-empty { font-size: 0.82rem; color: var(--text-tertiary); padding: 10px 2px; }
+
+/* what-if */
+.pop-controls {
+    padding: 10px 12px;
+    border: 1px solid var(--border-ui);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.02);
+}
+.pop-controls-title {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 6px;
+}
+.pop-row { display: block; margin-top: 8px; font-size: 0.78rem; color: rgba(232, 244, 255, 0.7); }
+.pop-row > span { display: block; margin-bottom: 4px; }
+.pop-row select, .pop-row input[type="range"] { width: 100%; }
+.pop-row select {
+    padding: 4px 6px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(0, 0, 0, 0.25);
+    color: inherit;
+}
+.pop-reset {
+    margin-top: 10px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border-ui);
+    background: transparent;
+    color: var(--text-tertiary);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+.pop-reset:hover { color: var(--text-main); border-color: var(--border-ui-strong); }

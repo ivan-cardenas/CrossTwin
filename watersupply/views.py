@@ -8,6 +8,7 @@ from django.apps import apps
 
 from .models import *
 from administrative.admin_units import resolve_admin_unit
+from administrative.population import DEFAULT_SCENARIO, get_population, population_params
 from .calculations import (
     _get_consumption_capita,
     calculate_supply_security,
@@ -32,8 +33,15 @@ MAX_OPEX_EUR      = 10_000_000
 MAX_CONSUMPTION   = 300
 
 # ── shared helper ─────────────────────────────────────────────────────
-def _get_province_data(level, location, year):
-    """Fetch all fixed DB values for an administrative unit/year. Returns a dict."""
+def _get_province_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, pop_growth=0.0):
+    """
+    Fetch all fixed DB values for an administrative unit/year. Returns a dict.
+
+    `population` is the projected population for `year` (CBS forecast variant
+    `pop_scenario` plus `pop_growth` % extra growth per year); without imported
+    projections it equals the current population.
+    DAG edges: Population_Growth -> Total_Population -> Total_Water_Demand
+    """
     adminUnit = resolve_admin_unit(level, location)
     if adminUnit is None:
         return None
@@ -90,7 +98,7 @@ def _get_province_data(level, location, year):
 
     return {
         'province':             adminUnit,
-        'population':           adminUnit.currentPopulation or 0,
+        'population':           get_population(adminUnit, year, pop_scenario, pop_growth),
         'consumption_capita':   _get_consumption_capita(adminUnit, year),
         'demand_m3_d':          demand_m3_d,
         'supply_m3_d':          supply_m3_d,
@@ -182,6 +190,7 @@ def _build_indicators(data, consumption_override=None):
 
     return {
         # ── Existing indicators ──
+        'population':            data['population'],
         'consumption_capita':    consumption,
         'consumption_percent':   min(consumption / MAX_CONSUMPTION * 100, 100),
         'total_supply_Mm3':      round(supply_Mm3_yr, 2),
@@ -226,8 +235,14 @@ def _build_indicators(data, consumption_override=None):
 
 
 # ── views ─────────────────────────────────────────────────────────────
+def _population_context(pop_scenario, pop_growth):
+    """Template context that lets the panel's own controls keep the population what-if."""
+    return {'pop_scenario': pop_scenario, 'pop_growth': pop_growth}
+
+
 def water_indicators(request, level, location, year):
-    data = _get_province_data(level, location, year)
+    pop_scenario, pop_growth = population_params(request.GET)
+    data = _get_province_data(level, location, year, pop_scenario, pop_growth)
     if data is None:
         data = MOCK_DATA
 
@@ -237,6 +252,7 @@ def water_indicators(request, level, location, year):
         'location':   location,
         'year':       year,
         'indicators': _build_indicators(data),
+        **_population_context(pop_scenario, pop_growth),
     }
 
     if request.headers.get('HX-Request'):
@@ -246,7 +262,8 @@ def water_indicators(request, level, location, year):
 
 def recalculate_indicators(request, level, location, year):
     consumption = float(request.GET.get('consumption', 120))
-    data = _get_province_data(level, location, year)
+    pop_scenario, pop_growth = population_params(request.GET)
+    data = _get_province_data(level, location, year, pop_scenario, pop_growth)
     if data is None:
         data = MOCK_DATA
 

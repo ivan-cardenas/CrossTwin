@@ -2,6 +2,7 @@ from django.shortcuts import render
 from django.http import JsonResponse
 
 from administrative.admin_units import resolve_admin_unit, ADMIN_LEVELS
+from administrative.population import DEFAULT_SCENARIO, get_population, population_params
 from .calculations import (
     calculate_supply_demand_for_unit,
     calculate_new_units_for_unit,
@@ -16,8 +17,15 @@ from .calculations import (
 
 # -- shared helper ------------------------------------------------------------
 
-def _get_adminUnit_data(level, location, year):
-    """Fetch all housing-related DB values for an administrative unit/year."""
+def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, pop_growth=0.0):
+    """
+    Fetch all housing-related DB values for an administrative unit/year.
+
+    `population` is the projected population for `year` (CBS variant `pop_scenario`
+    plus `pop_growth` % extra growth per year); it equals the current population
+    when no projections are imported. Supply and demand units still come from the
+    stored HousingSupplyDemand records.
+    """
     adminUnit = resolve_admin_unit(level, location)
     if adminUnit is None:
         return None
@@ -33,7 +41,7 @@ def _get_adminUnit_data(level, location, year):
 
     return {
         'adminUnit': adminUnit,
-        'population': adminUnit.currentPopulation,
+        'population': get_population(adminUnit, year, pop_scenario, pop_growth),
         'supply_demand': supply_demand,
         'new_units': new_units,
         'mortgage': mortgage,
@@ -147,6 +155,7 @@ def _build_indicators(data, interest_rate_override=None):
     stress_total = sum(stress.values()) if stress else 0
 
     return {
+        'population': data.get('population'),
         # -- Supply & Demand --
         'supply_units': sd['supply_units'],
         'demand_units': sd['demand_units'],
@@ -218,7 +227,8 @@ def _build_indicators(data, interest_rate_override=None):
 # -- views --------------------------------------------------------------------
 
 def housing_indicators(request, level, location, year):
-    data = _get_adminUnit_data(level, location, year)
+    pop_scenario, pop_growth = population_params(request.GET)
+    data = _get_adminUnit_data(level, location, year, pop_scenario, pop_growth)
     if data is None:
         data = MOCK_DATA
 
@@ -228,6 +238,8 @@ def housing_indicators(request, level, location, year):
         'location': location,
         'year': year,
         'indicators': _build_indicators(data),
+        'pop_scenario': pop_scenario,
+        'pop_growth': pop_growth,
     }
 
     if request.headers.get('HX-Request'):
@@ -239,7 +251,8 @@ def recalculate_indicators(request, level, location, year):
     interest_rate = request.GET.get('interest_rate')
     interest_rate = float(interest_rate) if interest_rate else None
 
-    data = _get_adminUnit_data(level, location, year)
+    pop_scenario, pop_growth = population_params(request.GET)
+    data = _get_adminUnit_data(level, location, year, pop_scenario, pop_growth)
     if data is None:
         data = MOCK_DATA
 

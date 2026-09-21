@@ -69,7 +69,11 @@ class City(models.Model):
             total = District.objects.filter(city=self).aggregate(
                 total=Sum('currentPopulation')
             )['total']
-            self.currentPopulation = total or 0
+            # The districts are the source of truth *when they report a
+            # population*. A city that has none (e.g. one only imported from CBS)
+            # keeps its own value instead of being reset to 0 on every save.
+            if total:
+                self.currentPopulation = total
 
         self.area_km2 = self.geom.area / 1e6  # Convert m2 to km2
 
@@ -138,3 +142,43 @@ class Neighborhood(models.Model):
     class Meta:
         verbose_name = "Neighborhood"
         verbose_name_plural = "Neighborhoods"
+
+
+class PopulationProjection(models.Model):
+    """
+    Projected total population of a City for one year and forecast variant.
+
+    Loaded from CBS table 85173NED ("Regionale prognose 2023-2050"), which is
+    published per gemeente; City.pk is the gemeente number. Districts,
+    Neighborhoods and the Province are derived from these city values (see
+    administrative/population.py), so nothing is stored below or above the city.
+
+    DAG edge: Population_Growth -> Total_Population
+    """
+
+    class Scenario(models.TextChoices):
+        PROGNOSE = 'prognose', 'CBS forecast (median)'
+        LOW = 'low', 'Lower bound of the 67% interval'
+        HIGH = 'high', 'Upper bound of the 67% interval'
+
+    city = models.ForeignKey(City, on_delete=models.CASCADE, related_name='population_projections', help_text="City code from administrative.City")
+    year = models.IntegerField()
+    scenario = models.CharField(max_length=10, choices=Scenario.choices, default=Scenario.PROGNOSE)
+    population = models.IntegerField(help_text="Projected population on 1 January of the year")
+    source = models.CharField(max_length=100, blank=True, default="CBS 85173NED")
+    last_updated = models.DateTimeField(default=timezone.now)
+
+    def save(self, *args, **kwargs):
+        self.last_updated = timezone.now()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.city} {self.year} ({self.scenario}): {self.population}"
+
+    class Meta:
+        verbose_name = "Population Projection"
+        verbose_name_plural = "Population Projections"
+        ordering = ['city', 'scenario', 'year']
+        constraints = [
+            models.UniqueConstraint(fields=['city', 'year', 'scenario'], name='unique_population_projection'),
+        ]

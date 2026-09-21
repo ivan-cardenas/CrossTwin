@@ -1401,7 +1401,10 @@ class CBSImporter:
                 if not city_pks:
                     return ImportResult("success", "No cities found within the selected area.", 0)
 
-                region_filters = " or ".join(f"startswith(RegioS,'GM{pk:04d}')" for pk in city_pks)
+                # The region column is called RegioS in most tables but differs in
+                # others (e.g. RegioIndeling2021 in 85173NED): params.region_field.
+                region_field = dataset.get("params", {}).get("region_field", "RegioS")
+                region_filters = " or ".join(f"startswith({region_field},'GM{pk:04d}')" for pk in city_pks)
                 filter_parts.append(f"({region_filters})")
 
             params = {"$format": "json"}
@@ -1440,6 +1443,13 @@ class CBSImporter:
             city_source = mapping.get("__city_source__")
             city_field  = mapping.get("__city_field__")
 
+            # Optional value transforms, keyed by CBS column:
+            #   __value_scales__: multiply the value (e.g. a "x 1 000" measure)
+            #   __value_maps__:   translate a coded dimension; rows whose code is not
+            #                     listed are skipped (e.g. keep only known forecast variants)
+            value_scales = mapping.get("__value_scales__", {})
+            value_maps   = mapping.get("__value_maps__", {})
+
             # Pre-fetch city lookup cache if needed
             city_cache = {}
             if city_source and city_field:
@@ -1454,6 +1464,7 @@ class CBSImporter:
                 for row in all_rows:
                     try:
                         field_values = {}
+                        skip_row = False
 
                         for cbs_col, model_field in mapping.items():
                             if cbs_col.startswith("__"):
@@ -1463,7 +1474,16 @@ class CBSImporter:
                                 # Strip trailing spaces common in CBS region codes
                                 if isinstance(value, str):
                                     value = value.strip()
+                                if cbs_col in value_maps:
+                                    value = value_maps[cbs_col].get(value)
+                                    if value is None:
+                                        skip_row = True
+                                        break
+                                if cbs_col in value_scales:
+                                    value = round(value * value_scales[cbs_col])
                                 field_values[model_field] = value
+                        if skip_row:
+                            continue
 
                         # Extract year from Perioden (e.g. "2023KW04" → 2023)
                         if year_source and year_field:

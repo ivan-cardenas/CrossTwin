@@ -1,3 +1,5 @@
+from unittest import mock
+
 import geopandas as gpd
 from django.conf import settings
 from django.contrib.gis.geos import GEOSGeometry, MultiPolygon, Polygon
@@ -6,7 +8,8 @@ from shapely.geometry import Polygon as ShapelyPolygon
 
 from administrative.models import Province
 
-from .external_data import _import_geojson_features
+from .external_catalog import CATALOG_BY_KEY
+from .external_data import CBSImporter, _import_geojson_features
 from .utils import to_storage_srid
 from .views import _generic_import, _to_multipolygon
 
@@ -116,3 +119,68 @@ class GeoJsonFeatureImportStorageCrsTests(TestCase):
         rd = _wgs84_frame().to_crs(RD).geometry.iloc[0]
         province = self._run(self._feature([list(p) for p in rd.exterior.coords]), f"EPSG:{RD}")
         self.assertTrue(AMS_AREA_KM2[0] < province.area_km2 < AMS_AREA_KM2[1], province.area_km2)
+
+
+class CBSPopulationForecastImportTests(TestCase):
+    """CBS 85173NED: region column RegioIndeling2021, x 1000 scale, forecast variants."""
+
+    def setUp(self):
+        from watersupply.tests.factories import make_city
+        self.city = make_city(id=153, cityName="Enschede")  # City.pk is the gemeente number
+        self.dataset = CATALOG_BY_KEY["CBS_PopulationForecast"]
+        self.bbox = [6.8, 52.2, 6.95, 52.25]  # WGS84, overlaps the factory city (around 6.9E 52.2N)
+
+    def _rows(self):
+        def row(region, variant, period, value, age="10000"):
+            return {"RegioIndeling2021": region, "PrognoseInterval": variant,
+                    "Leeftijd": age, "Perioden": period, "TotaleBevolking_1": value}
+        return [
+            row("GM0153", "MW00000", "2030JJ00", 168.9),
+            row("GM0153", "MOG0067", "2030JJ00", 160.1),
+            row("GM0153", "MBG0067", "2030JJ00", 177.4),
+            row("GM0153", "MW00000", "2031JJ00", 169.5),
+            row("GM0153", "XX99999", "2030JJ00", 1.0),   # unknown variant: skipped
+            row("GM0999", "MW00000", "2030JJ00", 5.0),   # city not in the database: skipped
+        ]
+
+    def _fetch(self, rows=None):
+        response = mock.Mock()
+        response.json.return_value = {"value": rows if rows is not None else self._rows()}
+        response.raise_for_status.return_value = None
+        with mock.patch("importer.external_data.requests.get", return_value=response) as get:
+            result = CBSImporter.fetch(self.dataset, bbox=self.bbox)
+        return result, get
+
+    def test_rows_are_scaled_mapped_and_stored_per_city(self):
+        from administrative.models import PopulationProjection
+        result, _ = self._fetch()
+        self.assertEqual(result.status, "success", result.message)
+        self.assertEqual(result.records_created, 4)
+
+        stored = {(p.year, p.scenario): p.population for p in PopulationProjection.objects.filter(city=self.city)}
+        self.assertEqual(stored, {
+            (2030, "prognose"): 168900,   # 168.9 x 1000
+            (2030, "low"): 160100,
+            (2030, "high"): 177400,
+            (2031, "prognose"): 169500,
+        })
+
+    def test_request_uses_the_table_specific_region_column_and_age_total(self):
+        _, get = self._fetch()
+        odata_filter = get.call_args.kwargs["params"]["$filter"]
+        self.assertIn("Leeftijd eq '10000'", odata_filter)
+        self.assertIn("startswith(RegioIndeling2021,'GM0153')", odata_filter)
+        self.assertNotIn("RegioS", odata_filter)
+
+    def test_reimport_updates_instead_of_duplicating(self):
+        from administrative.models import PopulationProjection
+        self._fetch()
+        result, _ = self._fetch()
+        self.assertEqual((result.records_created, result.records_updated), (0, 4))
+        self.assertEqual(PopulationProjection.objects.count(), 4)
+
+    def test_existing_datasets_are_unaffected_by_the_new_options(self):
+        # CBS_Housing has no __value_scales__/__value_maps__/region_field: still RegioS
+        from importer.external_catalog import FIELD_MAPPINGS
+        self.assertNotIn("__value_scales__", FIELD_MAPPINGS["CBS_Housing"])
+        self.assertNotIn("region_field", CATALOG_BY_KEY["CBS_Housing"]["params"])

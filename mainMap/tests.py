@@ -33,6 +33,8 @@ class DashboardSummaryTests(TestCase):
         self.assertContains(response, '1,200')
         self.assertContains(response, 'Test Neighborhood')
         self.assertNotContains(response, 'no unit selected')
+        self.assertContains(response, 'Population</strong> in the bottom bar')   # points to the dock
+        self.assertNotContains(response, '<svg')                                 # the graph moved to the dock
 
     def test_without_selection_the_city_at_the_map_center_is_shown(self):
         response = self.get(lng=self.lng, lat=self.lat)
@@ -68,3 +70,93 @@ class CityOfTests(TestCase):
         self.assertEqual(city_of(district), city)
         self.assertEqual(city_of(neighborhood), city)
         self.assertIsNone(city_of(province))  # a province spans many cities
+
+
+class PopulationDockTests(TestCase):
+    """The bottom dock: values, Curves-style graph with the 67% interval, what-if controls."""
+
+    def setUp(self):
+        from administrative.models import PopulationProjection
+        self.city = make_city(cityName="Testville", currentPopulation=10000)
+        for year, median in ((2025, 10500), (2030, 12000), (2035, 12500)):
+            for scenario, factor in (('prognose', 1.0), ('low', 0.95), ('high', 1.05)):
+                PopulationProjection.objects.create(
+                    city=self.city, year=year, scenario=scenario, population=round(median * factor))
+
+    def get(self, **params):
+        params.setdefault('level', 'city')
+        params.setdefault('location', 'Testville')
+        return self.client.get(reverse('map:population_panel'), params)
+
+    def test_values_today_projected_change_and_interval(self):
+        response = self.get(year=2030)
+        self.assertContains(response, 'id="pop-value-today">10,000<')
+        self.assertContains(response, 'Projected 2030')
+        self.assertContains(response, 'id="pop-value-projected">12,000<')
+        self.assertContains(response, '+2,000')
+        self.assertContains(response, '(+20.0%)')
+        self.assertContains(response, '67% interval: 11,400 – 12,600')
+
+    def test_graph_has_curve_band_interval_edges_handles_and_grid(self):
+        response = self.get(year=2030)
+        self.assertContains(response, '<svg class="pop-graph"')
+        for css in ('class="pop-band"', 'class="pop-curve"', 'class="pop-baseline"',
+                    'class="pop-marker-line"', 'class="pop-handle', 'class="pop-grid"'):
+            self.assertContains(response, css)
+        self.assertContains(response, 'today 10k')            # reference line for the current population
+        self.assertContains(response, 'data-points="[{')      # per-year values for the hover read-out
+        self.assertEqual(response.content.decode().count('class="pop-edge"'), 2)   # lower + upper bound
+
+    def test_the_selected_year_handle_is_highlighted(self):
+        self.assertContains(self.get(year=2030), 'pop-handle pop-handle-active')
+        self.assertNotContains(self.get(year=2031), 'pop-handle pop-handle-active')
+
+    def test_variant_changes_the_projected_value(self):
+        self.assertContains(self.get(year=2030, pop_scenario='low'), 'id="pop-value-projected">11,400<')
+        self.assertContains(self.get(year=2030, pop_scenario='high'), 'id="pop-value-projected">12,600<')
+        self.assertContains(self.get(year=2030, pop_scenario='low'), 'Lower bound')
+
+    def test_growth_adjustment_changes_value_and_interval(self):
+        response = self.get(year=2030, pop_growth='2')
+        factor = 1.02 ** 5
+        self.assertContains(response, f'id="pop-value-projected">{round(12000 * factor):,}<')
+        self.assertContains(response, f'{round(11400 * factor):,} – {round(12600 * factor):,}')
+
+    def test_year_outside_the_data_says_so_instead_of_faking_a_projection(self):
+        response = self.get(year=2040)
+        self.assertContains(response, 'No projection for this year.')
+        self.assertNotContains(response, 'id="pop-value-projected"')
+        self.assertContains(response, '<svg class="pop-graph"')
+        self.assertNotContains(response, 'pop-marker-line')
+
+    def test_controls_are_in_the_dock_and_reflect_the_current_choice(self):
+        response = self.get(pop_scenario='low', pop_growth='1.5')
+        self.assertContains(response, 'class="pop-controls"')
+        self.assertContains(response, '<option value="low" selected>')
+        self.assertContains(response, 'value="1.5"')
+        self.assertContains(response, 'resetPopulationControls')
+
+    def test_no_projections_still_shows_todays_value_and_explains_the_import(self):
+        from administrative.models import PopulationProjection
+        PopulationProjection.objects.all().delete()
+        response = self.get(year=2030)
+        self.assertContains(response, 'id="pop-value-today">10,000<')
+        self.assertContains(response, 'No projection for this area yet')
+        self.assertNotContains(response, '<svg class="pop-graph"')
+
+    def test_neighborhood_is_its_share_of_the_city(self):
+        neighborhood = make_neighborhood(city=self.city, currentPopulation=2500, id="nb-1")
+        self.city.refresh_from_db()   # the cascade made 2500 the whole city, so the share is 100%
+        response = self.get(level='neighborhood', location=neighborhood.neighborhoodName, year=2030)
+        self.assertContains(response, 'id="pop-value-projected">12,000<')
+
+    def test_without_a_unit_the_dock_asks_for_a_selection(self):
+        response = self.client.get(reverse('map:population_panel'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Select an administrative unit')
+
+    def test_city_at_the_map_center_is_used_when_nothing_is_selected(self):
+        lng, lat = _lonlat_of_rd(257000.0, 470000.0)
+        response = self.client.get(reverse('map:population_panel'), {'lng': lng, 'lat': lat, 'year': 2030})
+        self.assertContains(response, 'Testville')
+        self.assertContains(response, 'city at the map centre')

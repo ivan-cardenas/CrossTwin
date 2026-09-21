@@ -100,6 +100,20 @@ function initializeUI() {
     syncDashboardBtn();
   }
 
+  // ---- Population dock --------------------------------------------------
+  const populationPanel = document.getElementById('population-panel');
+  const populationPill = document.querySelector('.indicator-pill[data-indicator="population"]');
+  document.getElementById('population-panel-close')?.addEventListener('click', () => {
+    populationPanel?.classList.remove('visible');
+  });
+  if (populationPanel && populationPill) {
+    const syncPopulationPill = () =>
+      populationPill.classList.toggle('active', populationPanel.classList.contains('visible'));
+    new MutationObserver(syncPopulationPill)
+      .observe(populationPanel, { attributes: true, attributeFilter: ['class'] });
+    syncPopulationPill();
+  }
+
   // ---- Indicator pills --------------------------------------------------
   document.querySelectorAll('.indicator-pill').forEach(pill => {
     pill.addEventListener('click', () => {
@@ -108,6 +122,9 @@ function initializeUI() {
         layersPanel?.classList.toggle('visible');
         sidePanel?.classList.remove('visible');
       }
+      // The population dock is independent of the side panel: an indicator
+      // panel stays open while it is shown.
+      if (type === 'population') togglePopulationPanel();
     });
   });
 }

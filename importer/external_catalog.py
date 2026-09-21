@@ -58,7 +58,24 @@ FIELD_MAPPINGS = {
         "SaldoVoorraad_21": "supply_units",
         "VergundeNieuwbouw_2": "demand_units",
     },
-    
+    # CBS 85173NED "Regionale prognose 2023-2050": one row per gemeente x year x
+    # forecast variant, population in thousands.
+    "CBS_PopulationForecast": {
+        "__unique_fields__": ["city", "year", "scenario"],
+        "__year_source__": "Perioden",
+        "__year_field__": "year",
+        "__city_source__": "RegioIndeling2021",
+        "__city_field__": "city",
+        "PrognoseInterval": "scenario",
+        "TotaleBevolking_1": "population",
+        "__value_scales__": {"TotaleBevolking_1": 1000},   # x 1 000 -> people
+        "__value_maps__": {"PrognoseInterval": {
+            "MW00000": "prognose",   # Prognose (median)
+            "MOG0067": "low",        # lower bound of the 67% interval
+            "MBG0067": "high",       # upper bound of the 67% interval
+        }},
+    },
+
     # -------------------------------- Infrastructure / Built Environment -------------------------------
     
     "pdok_buildings": {
@@ -291,6 +308,24 @@ EXTERNAL_DATA_CATALOG = [
       "params": {
           "filter": "Gebruiksfunctie eq 'A045364' and startswith(RegioS,'GM') and substringof('KW04',Perioden)",
           "select": ["RegioS", "Perioden", "SaldoVoorraad_21", "VergundeNieuwbouw_2"],
+      },
+      "enabled": True,
+    },
+
+    {
+      "key": "CBS_PopulationForecast",
+      "source": "CBS",
+      "category": "Population",
+      "name": "Population forecast 2023-2050 (85173NED)",
+      "description": "CBS regional population forecast per municipality: median and the lower/upper bound of the 67% interval, 2023-2050. Feeds the population curve of the dashboard.",
+      "target_model": "administrative.PopulationProjection",
+      "table_id": "85173NED",
+      "format": "odata",
+      "requires_bbox": True,
+      "params": {
+          "filter": "Leeftijd eq '10000' and startswith(RegioIndeling2021,'GM')",
+          "select": ["RegioIndeling2021", "PrognoseInterval", "Perioden", "TotaleBevolking_1"],
+          "region_field": "RegioIndeling2021",
       },
       "enabled": True,
     },

@@ -120,53 +120,92 @@ def admin_unit_at_point(request):
         'population': unit.currentPopulation,
     })
 
-def dashboard_summary(request):
+def _resolve_summary_unit(request):
     """
-    HTMX partial for the Dashboard panel: total population of the selected
-    administrative unit, or of the city around the map center when nothing is
-    selected.
-    URL: /api/dashboard/summary/?level=<level>&location=<name>[&lng=<lng>&lat=<lat>]
+    The administrative unit the population views talk about, as
+    (level, unit, is_selection).
 
     `level`/`location` are the unit the user explicitly picked. Without them (or
     if they match no record) the WGS84 `lng`/`lat` of the map center is resolved
-    to its smallest unit and then to that unit's City.
+    to its smallest unit and then to that unit's City (a Province has none, so a
+    point that only falls inside a province reports the province).
     """
-    from administrative.admin_units import (
-        ADMIN_LEVELS, city_of, resolve_admin_unit, resolve_admin_unit_at_point,
-    )
+    from administrative.admin_units import city_of, resolve_admin_unit, resolve_admin_unit_at_point
 
     level = request.GET.get('level')
-    unit = None
-    is_selection = False
     if level and request.GET.get('location'):
         try:
             unit = resolve_admin_unit(level, request.GET['location'])
         except Exception:  # e.g. duplicate names: treat as "nothing selected"
             unit = None
-        is_selection = unit is not None
+        if unit is not None:
+            return level, unit, True
+
+    try:
+        lng = float(request.GET.get('lng'))
+        lat = float(request.GET.get('lat'))
+    except (TypeError, ValueError):
+        return None, None, False
+
+    level, unit = resolve_admin_unit_at_point(lng, lat)
+    city = city_of(unit) if unit is not None else None
+    if city is not None:
+        return 'city', city, False
+    return level, unit, False
+
+
+def _unit_context(level, unit, is_selection):
+    from administrative.admin_units import ADMIN_LEVELS
 
     if unit is None:
-        try:
-            lng = float(request.GET.get('lng'))
-            lat = float(request.GET.get('lat'))
-        except (TypeError, ValueError):
-            lng = lat = None
-        if lng is not None:
-            level, unit = resolve_admin_unit_at_point(lng, lat)
-            # No explicit selection: report the city (a Province has none)
-            city = city_of(unit) if unit is not None else None
-            if city is not None:
-                level, unit = 'city', city
+        return {'unit': None, 'is_selection': is_selection}
+    model, name_field = ADMIN_LEVELS[level]
+    return {
+        'unit': unit,
+        'is_selection': is_selection,
+        'level_label': model._meta.verbose_name.title(),
+        'name': getattr(unit, name_field),
+    }
 
-    context = {'unit': None, 'is_selection': is_selection}
+
+def dashboard_summary(request):
+    """
+    HTMX partial for the Dashboard panel: total population of the selected
+    administrative unit, or of the city around the map center when nothing is
+    selected. (The forecast graph and what-if controls live in the bottom dock,
+    see population_panel.)
+    URL: /api/dashboard/summary/?level=<level>&location=<name>[&lng=<lng>&lat=<lat>]
+    """
+    level, unit, is_selection = _resolve_summary_unit(request)
+    return render(request, 'mainMap/partials/dashboard_summary.html',
+                  _unit_context(level, unit, is_selection))
+
+
+def population_panel(request):
+    """
+    HTML for the bottom dock opened from the Population pill: today's population,
+    the projection for the selected year, the forecast graph and the what-if
+    controls. It is separate from the side panel so an indicator panel can stay
+    open next to it.
+    URL: /api/population/panel/?level=&location=&lng=&lat=&year=&pop_scenario=&pop_growth=
+    """
+    from administrative.population import population_params
+    from .charts import build_population_chart, build_population_stats
+
+    level, unit, is_selection = _resolve_summary_unit(request)
+    pop_scenario, pop_growth = population_params(request.GET)
+    try:
+        year = int(request.GET.get('year'))
+    except (TypeError, ValueError):
+        year = None
+
+    context = _unit_context(level, unit, is_selection)
+    context.update({'pop_scenario': pop_scenario, 'pop_growth': pop_growth, 'year': year})
     if unit is not None:
-        model, name_field = ADMIN_LEVELS[level]
-        context.update({
-            'unit': unit,
-            'level_label': model._meta.verbose_name.title(),
-            'name': getattr(unit, name_field),
-        })
-    return render(request, 'mainMap/partials/dashboard_summary.html', context)
+        current = unit.currentPopulation or 0
+        context['chart'] = build_population_chart(unit, pop_scenario, pop_growth, year, current)
+        context['stats'] = build_population_stats(unit, pop_scenario, pop_growth, year, current)
+    return render(request, 'mainMap/partials/population_panel.html', context)
 
 
 def model_geojson(request, app_label, model_name):
