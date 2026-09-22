@@ -76,6 +76,12 @@ SENTINEL_CLIENT_SECRET = os.environ.get("SENTINEL_CLIENT_SECRET")
 # Authorization header — see weather/views.py::_wms_auth_headers.
 KNMI_API_KEY = os.environ.get("KNMI_API_KEY")
 
+# Google Earth Engine project used for `ee.Initialize(project=...)`.
+# Authentication itself is a one-time `ee.Authenticate()` run per machine
+# (opens a browser, caches an OAuth token under the OS user profile) — see
+# importer/external_data.py::GEEAuthManager.
+GEE_PROJECT_ID = os.environ.get("GEE_PROJECT_ID")
+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
 ALLOWED_HOSTS = []

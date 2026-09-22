@@ -229,8 +229,8 @@ def export_raster_to_cog(instance):
     model_key: registry key like "urbanHeat.LandSurfaceTemp"
     """
     model = instance.__class__
-    table_name = model._meta.db_table
-    raster_field = get_raster_field_name(model)
+    table_name = connection.ops.quote_name(model._meta.db_table)
+    raster_field = connection.ops.quote_name(get_raster_field_name(model))
 
     # --- Read raster bytes from PostGIS ---
     with connection.cursor() as cursor:

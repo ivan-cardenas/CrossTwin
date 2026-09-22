@@ -98,33 +98,6 @@
     <!-- Panels (max 2 columns via flex-wrap) -->
     <div class="flex flex-wrap gap-4">
 
-    <!-- GEE Credentials Panel (shown when GEE datasets selected) -->
-    <div id="gee-credentials-panel" class="hidden flex-1 min-w-[280px] glass rounded-xl overflow-hidden">
-        <div class="px-5 py-3 border-b border-white/5 flex items-center gap-3">
-            <div class="flex-shrink-0 h-7 w-7 rounded-lg bg-amber-500/15 border border-amber-500/25 flex items-center justify-center">
-                <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
-                </svg>
-            </div>
-            <div>
-                <h3 class="text-sm font-medium text-slate-400">Google Earth Engine Authentication</h3>
-                <p class="text-xs text-slate-400">Paste your service account JSON to access GEE datasets</p>
-            </div>
-        </div>
-        <div class="px-5 py-4 space-y-3">
-            <textarea id="gee-credentials-input"
-                      rows="6"
-                      placeholder='{"type": "service_account", "project_id": "...", "private_key": "...", ...}'
-                      class="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200 placeholder-amber-300/50 font-mono focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 focus:outline-none resize-none"></textarea>
-            <p class="text-xs text-slate-250">
-                <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-                Create a service account in Google Cloud Console with Earth Engine API enabled. Download the JSON key file and paste its contents here.
-            </p>
-        </div>
-    </div>
-
     <!-- Sentinel-2 openEO Credentials Panel (shown when an openEO dataset is selected) -->
     <div id="sentinel-token-panel" class="hidden flex-1 min-w-[280px] glass rounded-xl overflow-hidden">
         <div class="px-5 py-3 border-b border-white/5 flex items-center gap-3">
@@ -348,8 +321,6 @@ document.addEventListener('DOMContentLoaded', function () {
     const selectAllBtn = document.getElementById('select-all-btn');
     const deselectAllBtn = document.getElementById('deselect-all-btn');
     const countEl = document.getElementById('count-number');
-    const geeCredentialsPanel = document.getElementById('gee-credentials-panel');
-    const geeCredentialsInput = document.getElementById('gee-credentials-input');
     const sentinelTokenPanel = document.getElementById('sentinel-token-panel');
     const openeoClientIdInput = document.getElementById('openeo-client-id-input');
     const openeoClientSecretInput = document.getElementById('openeo-client-secret-input');
@@ -678,10 +649,6 @@ document.addEventListener('DOMContentLoaded', function () {
         // Auto-activate draw mode when pdok_cities is selected and city mode makes no sense yet
         if (needsDraw && !needsBbox) setDrawMode(false);  // reset if deselected
 
-        // Show GEE credentials panel if any GEE dataset is selected
-        const needsGeeAuth = selected.some(k => catalog[k] && catalog[k].source === 'gee');
-        geeCredentialsPanel.classList.toggle('hidden', !needsGeeAuth);
-
         // Show openEO credentials panel if any Sentinel-2 openEO dataset is selected
         // (Sentinel-2 also has WMS/WCS datasets that don't need credentials — only
         // requires_auth ones do, mirroring the same flag used for the "auth" badge)
@@ -803,14 +770,6 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        // Check if GEE credentials needed but not provided
-        const needsGeeAuth = selected.some(k => catalog[k] && catalog[k].source === 'gee');
-        if (needsGeeAuth && !geeCredentialsInput.value.trim()) {
-            alert('Please paste your Google Earth Engine service account JSON credentials.');
-            geeCredentialsInput.focus();
-            return;
-        }
-
         // openEO (CDSE) datasets try the server's default credentials first
         // (see importer/external_data.py:fetch_openeo), so an empty panel is
         // fine — only complain about a half-filled pair, which is almost
@@ -819,19 +778,6 @@ document.addEventListener('DOMContentLoaded', function () {
             alert('Please enter both the openEO client ID and client secret, or leave both blank to use the server default.');
             (openeoClientIdInput.value.trim() ? openeoClientSecretInput : openeoClientIdInput).focus();
             return;
-        }
-
-        // Validate GEE credentials JSON if provided
-        let geeCredentials = null;
-        if (geeCredentialsInput.value.trim()) {
-            try {
-                geeCredentials = geeCredentialsInput.value.trim();
-                JSON.parse(geeCredentials); // Validate it's valid JSON
-            } catch (e) {
-                alert('Invalid JSON in GEE credentials. Please check the format.');
-                geeCredentialsInput.focus();
-                return;
-            }
         }
 
         // Clear any stale credentials-failure notice from a previous attempt
@@ -877,10 +823,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
             if (currentBbox) {
                 payload.bbox = currentBbox;  // [west, south, east, north] WGS84
-            }
-
-            if (geeCredentials) {
-                payload.gee_credentials = geeCredentials;
             }
 
             if (openeoClientIdInput.value.trim() && openeoClientSecretInput.value.trim()) {

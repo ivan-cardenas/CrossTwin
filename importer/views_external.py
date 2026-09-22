@@ -149,7 +149,6 @@ def start_external_import(request):
 
     selected_keys = body.get("datasets", [])
     bbox = body.get("bbox", None)
-    gee_credentials = body.get("gee_credentials", None)
     openeo_client_id = body.get("openeo_client_id", None)
     openeo_client_secret = body.get("openeo_client_secret", None)
     date_from = body.get("date_from", None)
@@ -189,7 +188,6 @@ def start_external_import(request):
             bbox=bbox,
             date_from=date_from,
             date_to=date_to,
-            gee_credentials=gee_credentials,
             openeo_client_id=openeo_client_id,
             openeo_client_secret=openeo_client_secret,
         )

@@ -4,13 +4,20 @@ The DPSIR causal graph in [`core/DAG.dot`](core/DAG.dot) defines 102 edges. **On
 
 This file tracks the gaps, grouped by app. When one is closed, move it to the "Done" note at the bottom (or delete the line) and add the `# DAG edges:` comment to the implementing function per the convention in `CLAUDE.md`.
 
+## Import bugs
+
+- [ ] GEE importer needs to be verified against the actual configuration of each layer in the catalog see https://developers.google.com/earth-engine/datasets/catalog 
+
 ## administrative
 
 - [x] `City.popGrowthRate` — now derived in `City.save()` from `population.annual_growth_rate()` (CBS compound annual growth rate over the city's imported projection years)
+- [ ] Population curve moves with change, it should be a static curve for bounds and the change can move, the bounds work as comparative 
 - [ ] `urbanizationRate` — still a flat field, never consumed by the population projection in `administrative/population.py`
 - [ ] Housing supply/demand does not depend on the projected population — `HousingSupplyDemand` demand still comes from stored rows, not `get_population()`
 - [ ] Urban heat does not depend on the projected population
 - [ ] No `Urbanization` model exists — `Urbanization -> CityArea/Buildings/Streets/LandCover` has nowhere to live
+
+
 
 ## physicalEnv
 

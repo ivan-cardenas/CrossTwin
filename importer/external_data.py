@@ -460,71 +460,54 @@ def load_raster_into_target_model(
 
 class GEEAuthManager:
     """Manages Google Earth Engine authentication."""
-    
+
     _initialized = False
-    _credentials = None
     _project_id = None
-    
+
     @classmethod
-    def initialize(cls, service_account_json: str) -> Tuple[bool, str]:
+    def initialize(cls, project_id: str) -> Tuple[bool, str]:
         """
-        Initialize GEE with service account credentials.
+        Initialize GEE for the given Cloud project.
+
+        `ee.Authenticate()` is a one-time-per-machine interactive step: it
+        opens a browser for Google sign-in and caches the resulting OAuth
+        token under the OS user profile, so subsequent calls here return
+        without prompting again.
         """
         try:
             import ee
-            
-            # Parse and validate JSON
-            try:
-                credentials_dict = json.loads(service_account_json)
-            except json.JSONDecodeError as e:
-                return False, f"Invalid JSON: {e}"
-            
-            # Check required fields
-            required_fields = ['type', 'project_id', 'private_key', 'client_email']
-            missing = [f for f in required_fields if f not in credentials_dict]
-            if missing:
-                return False, f"Missing required fields: {', '.join(missing)}"
-            
-            if credentials_dict.get('type') != 'service_account':
-                return False, "JSON must be a service account key (type='service_account')"
-            
-            # Create credentials
-            from google.oauth2 import service_account
-            credentials = service_account.Credentials.from_service_account_info(
-                credentials_dict,
-                scopes=['https://www.googleapis.com/auth/earthengine']
-            )
-            
-            # Initialize Earth Engine
-            ee.Initialize(credentials=credentials, project=credentials_dict['project_id'])
-            
+
+            if not project_id:
+                return False, "GEE_PROJECT_ID is not set on the server. Add it to .env."
+
+            ee.Authenticate()
+            ee.Initialize(project=project_id)
+
             # Test connection
             ee.Number(1).getInfo()
-            
+
             cls._initialized = True
-            cls._credentials = credentials
-            cls._project_id = credentials_dict['project_id']
-            
-            return True, f"Successfully authenticated as {credentials_dict['client_email']}"
-            
+            cls._project_id = project_id
+
+            return True, f"Successfully authenticated against GEE project {project_id}"
+
         except ImportError:
-            return False, "Google Earth Engine library not installed. Run: pip install earthengine-api google-auth"
+            return False, "Google Earth Engine library not installed. Run: pip install earthengine-api"
         except Exception as e:
             cls._initialized = False
             return False, f"GEE authentication failed: {str(e)}"
-    
+
     @classmethod
     def is_initialized(cls) -> bool:
         return cls._initialized
-    
+
     @classmethod
     def get_project_id(cls) -> Optional[str]:
         return cls._project_id
-    
+
     @classmethod
     def reset(cls):
         cls._initialized = False
-        cls._credentials = None
         cls._project_id = None
 
 
@@ -2214,7 +2197,6 @@ def import_dataset(
     bbox: Optional[list] = None,
     date_from: str = None,
     date_to: str = None,
-    gee_credentials: str = None,
     openeo_client_id: str = None,
     openeo_client_secret: str = None,
 ) -> ImportResult:
@@ -2226,7 +2208,6 @@ def import_dataset(
         bbox: Bounding box [xmin, ymin, xmax, ymax]
         date_from: Start date for temporal datasets
         date_to: End date for temporal datasets
-        gee_credentials: GEE service account JSON (for GEE sources)
         openeo_client_id: CDSE OIDC client id (for Sentinel-2 openEO datasets)
         openeo_client_secret: CDSE OIDC client secret (for Sentinel-2 openEO datasets)
 
@@ -2247,13 +2228,10 @@ def import_dataset(
         return ImportResult("skipped", "This dataset requires a bounding box.")
     
     # Initialize GEE if needed
-    if dataset["source"] == "gee":
-        if gee_credentials:
-            success, msg = GEEAuthManager.initialize(gee_credentials)
-            if not success:
-                return ImportResult("error", msg)
-        elif not GEEAuthManager.is_initialized():
-            return ImportResult("error", "GEE requires authentication. Please provide service account JSON.")
+    if dataset["source"] == "gee" and not GEEAuthManager.is_initialized():
+        success, msg = GEEAuthManager.initialize(getattr(settings, "GEE_PROJECT_ID", None))
+        if not success:
+            return ImportResult("error", msg)
     
     # Dispatch based on source and format
     source = dataset["source"]
