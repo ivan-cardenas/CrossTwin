@@ -180,6 +180,51 @@ class CBSPopulationForecastImportTests(TestCase):
         self.assertEqual((result.records_created, result.records_updated), (0, 4))
         self.assertEqual(PopulationProjection.objects.count(), 4)
 
+    def test_request_carries_top_but_no_skip_on_the_plain_odata_api(self):
+        # CBS's older ODataApi endpoint 500s on an unpaginated request against a large
+        # source table even when the filtered result is small, so $top is mandatory --
+        # but that same endpoint rejects $skip outright, so it must never be sent
+        # unless the catalog entry opts into the newer ODataFeed (params.use_feed).
+        _, get = self._fetch()
+        params = get.call_args.kwargs["params"]
+        self.assertEqual(params["$top"], 10000)
+        self.assertNotIn("$skip", params)
+
+    def test_a_full_page_is_not_repaged_without_use_feed(self):
+        # Only one request is made, even if the page comes back "full" -- $skip
+        # isn't supported here, so a second request would just repeat page one.
+        # GM0999 is an unknown city (see _rows()), so these rows are skipped
+        # during import without touching the database -- keeps the test fast.
+        full_page = [
+            {"RegioIndeling2021": "GM0999", "PrognoseInterval": "MW00000",
+             "Leeftijd": "10000", "Perioden": "2030JJ00", "TotaleBevolking_1": 100.0}
+        ] * 10000
+        _, get = self._fetch(rows=full_page)
+        self.assertEqual(get.call_count, 1)
+
+    def test_use_feed_datasets_paginate_with_skip(self):
+        dataset = {**self.dataset, "params": {**self.dataset["params"], "use_feed": True}}
+        full_page = [
+            {"RegioIndeling2021": "GM0999", "PrognoseInterval": "MW00000",
+             "Leeftijd": "10000", "Perioden": f"{2000 + i}JJ00", "TotaleBevolking_1": 100.0}
+            for i in range(10000)
+        ]
+        response_full = mock.Mock()
+        response_full.json.return_value = {"value": full_page}
+        response_full.raise_for_status.return_value = None
+        response_empty = mock.Mock()
+        response_empty.json.return_value = {"value": []}
+        response_empty.raise_for_status.return_value = None
+
+        with mock.patch(
+            "importer.external_data.requests.get", side_effect=[response_full, response_empty]
+        ) as get:
+            CBSImporter.fetch(dataset, bbox=self.bbox)
+
+        self.assertEqual(get.call_count, 2)
+        skips = [call.kwargs["params"]["$skip"] for call in get.call_args_list]
+        self.assertEqual(skips, [0, 10000])
+
     def test_existing_datasets_are_unaffected_by_the_new_options(self):
         # CBS_Housing has no __value_scales__/__value_maps__/region_field: still RegioS
         from importer.external_catalog import FIELD_MAPPINGS

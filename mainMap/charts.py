@@ -10,13 +10,20 @@ per-year `points` list.
 import json
 import math
 
-from administrative.population import population_by_year, population_curve, projection_years
+from administrative.population import (
+    REFERENCE_YEAR, population_by_year, population_curve, projection_years,
+)
 
 WIDTH, HEIGHT = 760, 230
 MARGIN = {'left': 54, 'right': 16, 'top': 12, 'bottom': 26}
+# CBS 85173NED forecasts out to 2050; the axis always spans at least this
+# horizon even when only part of it has been imported yet, so the empty
+# years on the right read as "not imported" rather than making the graph
+# look like it stops early.
+FORECAST_END_YEAR = 2050
 VARIANTS = ('low', 'prognose', 'high')
 VARIANT_LABELS = {'low': 'Lower bound', 'prognose': 'Median forecast', 'high': 'Upper bound'}
-HANDLE_SIZE = 7    # px side of a handle square
+HANDLE_SIZE = 5.5  # px side of a handle square
 HANDLE_EVERY = 5   # a square handle every N years (plus first, last and the selected year)
 
 
@@ -135,7 +142,10 @@ def build_population_chart(unit, scenario, growth, year, current):
 
     years = [p['year'] for p in main]
     by_year = {s: {p['year']: p['population'] for p in curves[s]} for s in VARIANTS}
-    first, last = years[0], years[-1]
+    data_first, data_last = years[0], years[-1]
+    # The axis always spans at least REFERENCE_YEAR..FORECAST_END_YEAR (2025-2050),
+    # widening around whatever has actually been imported.
+    first, last = min(data_first, REFERENCE_YEAR), max(data_last, FORECAST_END_YEAR)
 
     all_values = [v for s in VARIANTS for v in by_year[s].values()] + [current or 0]
     lo, hi = min(all_values), max(all_values)
@@ -166,7 +176,7 @@ def build_population_chart(unit, scenario, growth, year, current):
     grid_v = [{'x': round(x_of(y), 1), 'label': str(y)} for y in _year_ticks(first, last)]
 
     selected = by_year[scenario] or by_year['prognose']
-    handle_years = {y for y in years if (y - first) % HANDLE_EVERY == 0} | {first, last}
+    handle_years = {y for y in years if (y - data_first) % HANDLE_EVERY == 0} | {data_first, data_last}
     if year in selected:
         handle_years.add(year)
     handles = [{

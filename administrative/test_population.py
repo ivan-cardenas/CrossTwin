@@ -4,8 +4,8 @@ from watersupply.tests.factories import make_city, make_district, make_neighborh
 
 from .models import PopulationProjection
 from .population import (
-    REFERENCE_YEAR, get_population, normalize_scenario, population_by_year, population_curve,
-    projection_years,
+    REFERENCE_YEAR, extrapolate, get_population, normalize_scenario, population_by_year,
+    population_curve, projection_years,
 )
 
 
@@ -91,6 +91,49 @@ class LowerLevelTests(PopulationTestBase):
         self.assertEqual(get_population(district, 2030), 0)
 
 
+class IncompleteCityDataTests(TestCase):
+    """
+    A district/neighborhood must scale by CBS's own growth rate, not by its
+    share of `city.currentPopulation` -- because that field is only the sum
+    of whichever districts happen to be imported locally, which can be far
+    smaller than the real city CBS's numbers describe.
+    """
+
+    def setUp(self):
+        self.province = make_province()
+        # Only one district of a much larger real city has been imported, so
+        # city.currentPopulation (5000, via the cascade) drastically
+        # understates the real city population CBS's forecast is for.
+        self.city = make_city(province=self.province, cityName="Undercounted", currentPopulation=1)
+        self.district = make_district(city=self.city, currentPopulation=5000)
+        self.city.refresh_from_db()
+        self.assertEqual(self.city.currentPopulation, 5000)   # precondition: badly incomplete
+
+        # CBS's real, whole-city numbers: +10% over five years.
+        project(self.city, 2025, 100000)
+        project(self.city, 2030, 110000)
+
+    def test_district_grows_by_the_citys_percentage_not_its_inflated_share(self):
+        # The old share-based formula would have computed share = 5000/5000 = 1.0
+        # and returned the *entire* projected city population (110000) for a
+        # district that only actually has 5000 people. The fix must instead
+        # apply the city's real +10% growth to the district's own 5000.
+        self.assertEqual(get_population(self.district, 2030), 5500)
+
+    def test_growth_adjustment_still_compounds_on_top(self):
+        expected = round(5000 * 1.1 * 1.02 ** (2030 - REFERENCE_YEAR))
+        self.assertEqual(get_population(self.district, 2030, growth_adjust_pct=2), expected)
+
+    def test_single_imported_year_falls_back_to_the_old_share_based_estimate(self):
+        # With only one year of CBS data there's no rate to derive -- the
+        # best remaining estimate is still the naive share, same as before.
+        only_one_year_city = make_city(province=self.province, cityName="OneYear", currentPopulation=1)
+        district = make_district(city=only_one_year_city, currentPopulation=3000)
+        only_one_year_city.refresh_from_db()
+        project(only_one_year_city, 2030, 12000)
+        self.assertEqual(get_population(district, 2030), 12000)   # share = 3000/3000 = 1.0
+
+
 class ProvinceTests(PopulationTestBase):
     def test_province_is_the_sum_of_its_cities(self):
         other = make_city(province=self.province, cityName="B", currentPopulation=1)
@@ -132,6 +175,51 @@ class CitySaveKeepsImportedPopulationTests(TestCase):
         city.refresh_from_db()
         city.save()
         self.assertEqual(city.currentPopulation, 10000)
+
+
+class ExtrapolationTests(TestCase):
+    def test_none_with_fewer_than_two_years(self):
+        self.assertIsNone(extrapolate({}, 2060))
+        self.assertIsNone(extrapolate({2030: 12000}, 2060))
+
+    def test_none_when_the_starting_value_is_not_positive(self):
+        self.assertIsNone(extrapolate({2025: 0, 2050: 12000}, 2060))
+
+    def test_extrapolates_forward_at_the_implied_growth_rate(self):
+        # 10 000 -> 12 000 over 25 years: 25-year CAGR carried 10 more years.
+        series = {2025: 10000, 2050: 12000}
+        growth = (12000 / 10000) ** (1 / 25) - 1
+        self.assertAlmostEqual(extrapolate(series, 2060), 12000 * (1 + growth) ** 10)
+
+    def test_extrapolates_backward_at_the_same_rate(self):
+        series = {2025: 10000, 2050: 12000}
+        growth = (12000 / 10000) ** (1 / 25) - 1
+        self.assertAlmostEqual(extrapolate(series, 2020), 10000 * (1 + growth) ** -5)
+
+    def test_year_inside_the_range_is_not_extrapolated_here(self):
+        # extrapolate() always projects from the endpoints; callers only use it
+        # for years missing from the series, so an in-range year is just an
+        # example of the same formula, not a special case.
+        series = {2025: 10000, 2050: 12000}
+        self.assertGreater(extrapolate(series, 2040), 10000)
+        self.assertLess(extrapolate(series, 2040), 12000)
+
+
+class ProjectionExtrapolationIntegrationTests(PopulationTestBase):
+    """get_population() falls through to extrapolate() beyond the imported horizon."""
+
+    def setUp(self):
+        super().setUp()
+        project(self.city, 2050, 15000)   # now two imported years: 2030 and 2050
+
+    def test_year_past_the_last_import_is_extrapolated_not_flat(self):
+        value = get_population(self.city, 2060)
+        self.assertNotEqual(value, self.city.currentPopulation)
+        self.assertGreater(value, 15000)   # still growing past the last imported point
+
+    def test_year_before_the_first_import_is_extrapolated_too(self):
+        value = get_population(self.city, 2020)
+        self.assertLess(value, 12000)
 
 
 class PopulationParamsTests(TestCase):

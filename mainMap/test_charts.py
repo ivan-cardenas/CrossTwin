@@ -3,7 +3,8 @@ import json
 from django.test import SimpleTestCase, TestCase
 
 from administrative.models import PopulationProjection
-from watersupply.tests.factories import make_city
+from administrative.population import population_by_year
+from watersupply.tests.factories import make_city, make_district
 
 from .charts import (
     band_d, build_population_chart, build_population_stats, monotone_segments, nice_step,
@@ -119,6 +120,106 @@ class ChartTests(TestCase):
     def test_selected_variant_is_labelled(self):
         self.assertEqual(self.chart('low')['variant_label'], 'Lower bound')
         self.assertEqual(self.chart('nonsense')['variant_label'], 'Median forecast')
+
+
+class DistrictChartTests(TestCase):
+    """
+    CBS 85173NED only ever forecasts a whole city; there's no district-level
+    projection to import. The district's curve must be its own current
+    population scaled by the city's percentage growth, not the city's
+    absolute forecast numbers -- otherwise a district holding a quarter of
+    the city would show a curve for the *whole* city's future population.
+    """
+
+    def setUp(self):
+        self.city = make_city(cityName="Bigcity", currentPopulation=1)  # cascaded below
+        self.district = make_district(city=self.city, currentPopulation=25000)   # 25% share
+        make_district(city=self.city, currentPopulation=75000)
+        self.city.refresh_from_db()
+        for year in (2025, 2050):
+            for scenario, factor in (('prognose', 1.0), ('low', 0.9), ('high', 1.1)):
+                PopulationProjection.objects.create(
+                    city=self.city, year=year, scenario=scenario,
+                    population=round((100000 + (year - 2025) * 4000) * factor))
+
+    def test_curve_scales_the_districts_own_population_not_the_citys(self):
+        chart = build_population_chart(self.district, 'prognose', 0, 2050, self.district.currentPopulation)
+        points = {p['year']: p for p in json.loads(chart['points_json'])}
+
+        city_2050 = population_by_year(self.city, [2050], 'prognose')[2050]
+        expected = round(self.district.currentPopulation / self.city.currentPopulation * city_2050)
+
+        self.assertEqual(points[2050]['median'], expected)
+        self.assertNotEqual(points[2050]['median'], city_2050)   # not the raw city figure
+
+    def test_two_districts_of_the_same_city_share_the_growth_rate_not_the_absolute_curve(self):
+        other_district = self.city.district_set.exclude(pk=self.district.pk).get()
+        chart_a = build_population_chart(self.district, 'prognose', 0, 2050, self.district.currentPopulation)
+        chart_b = build_population_chart(other_district, 'prognose', 0, 2050, other_district.currentPopulation)
+        a = {p['year']: p for p in json.loads(chart_a['points_json'])}
+        b = {p['year']: p for p in json.loads(chart_b['points_json'])}
+
+        # Same growth ratio (city curve), different absolute numbers (own population).
+        self.assertAlmostEqual(a[2050]['median'] / self.district.currentPopulation,
+                                b[2050]['median'] / other_district.currentPopulation, places=3)
+        self.assertNotEqual(a[2050]['median'], b[2050]['median'])
+
+
+class DistrictYearlyGrowthTests(TestCase):
+    """
+    The district doesn't just end up at the same overall change as the city by
+    2050 -- it grows (or shrinks) at the *same year-to-year rate* the city does
+    for every single year, even when that rate isn't constant (a +2% year
+    followed by a +1% year, say). "The city grows 1% this year" must mean
+    "the district grows 1% this year" too, not just "by the same total % by
+    the end of the forecast."
+    """
+
+    def setUp(self):
+        self.city = make_city(cityName="Bigcity", currentPopulation=1)
+        self.district = make_district(city=self.city, currentPopulation=25000)   # 25% share
+        make_district(city=self.city, currentPopulation=75000)
+        self.city.refresh_from_db()
+        # Deliberately irregular: +2% in 2026, +1% in 2027 -- not a flat rate.
+        for year, population in ((2025, 100000), (2026, 102000), (2027, 103020)):
+            PopulationProjection.objects.create(
+                city=self.city, year=year, scenario='prognose', population=population)
+
+    def test_each_years_growth_rate_matches_the_citys_for_that_year(self):
+        chart = build_population_chart(self.district, 'prognose', 0, 2027, self.district.currentPopulation)
+        points = {p['year']: p['median'] for p in json.loads(chart['points_json'])}
+        city = population_by_year(self.city, [2025, 2026, 2027], 'prognose')
+
+        city_growth_2026 = city[2026] / city[2025] - 1
+        city_growth_2027 = city[2027] / city[2026] - 1
+        district_growth_2026 = points[2026] / points[2025] - 1
+        district_growth_2027 = points[2027] / points[2026] - 1
+
+        self.assertAlmostEqual(city_growth_2026, 0.02, places=4)     # sanity: +2% as set up
+        self.assertAlmostEqual(city_growth_2027, 0.01, places=4)     # sanity: +1% as set up
+        self.assertAlmostEqual(district_growth_2026, city_growth_2026, places=4)
+        self.assertAlmostEqual(district_growth_2027, city_growth_2027, places=4)
+
+
+class PartialImportChartTests(TestCase):
+    """Only some of the 2025-2050 forecast horizon has been imported yet."""
+
+    def setUp(self):
+        self.city = make_city(cityName="Half-imported", currentPopulation=50000)
+        for year in range(2025, 2031):   # stops well short of 2050
+            for scenario, factor in (('prognose', 1.0), ('low', 0.95), ('high', 1.05)):
+                PopulationProjection.objects.create(
+                    city=self.city, year=year, scenario=scenario, population=round(50000 * factor))
+
+    def test_axis_still_spans_the_full_forecast_horizon(self):
+        chart = build_population_chart(self.city, 'prognose', 0, 2028, self.city.currentPopulation)
+        self.assertEqual(chart['first_year'], 2025)
+        self.assertEqual(chart['last_year'], 2050)
+        self.assertEqual(chart['grid_v'][-1]['label'], '2050')
+
+    def test_handles_stop_at_the_last_imported_year_not_2050(self):
+        chart = build_population_chart(self.city, 'prognose', 0, 2028, self.city.currentPopulation)
+        self.assertEqual(max(h['year'] for h in chart['handles']), 2030)
 
 
 class StatsTests(TestCase):

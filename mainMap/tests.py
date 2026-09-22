@@ -144,11 +144,15 @@ class PopulationDockTests(TestCase):
         self.assertContains(response, 'No projection for this area yet')
         self.assertNotContains(response, '<svg class="pop-graph"')
 
-    def test_neighborhood_is_its_share_of_the_city(self):
+    def test_neighborhood_grows_by_the_citys_percentage_not_its_local_share(self):
         neighborhood = make_neighborhood(city=self.city, currentPopulation=2500, id="nb-1")
-        self.city.refresh_from_db()   # the cascade made 2500 the whole city, so the share is 100%
+        self.city.refresh_from_db()   # cascade: 2500 is now the whole *locally imported* city
         response = self.get(level='neighborhood', location=neighborhood.neighborhoodName, year=2030)
-        self.assertContains(response, 'id="pop-value-projected">12,000<')
+        # The neighborhood's own 2500 scaled by CBS's real city growth (2025's
+        # 10500 -> 2030's 12000, +14.3%), not the city's raw forecast number --
+        # city.currentPopulation only reflects whichever units are imported so
+        # far and must never be used as the growth baseline.
+        self.assertContains(response, 'id="pop-value-projected">2,857<')
 
     def test_without_a_unit_the_dock_asks_for_a_selection(self):
         response = self.client.get(reverse('map:population_panel'))

@@ -4,11 +4,22 @@ Population projection for any administrative unit.
 CBS table 85173NED is published per gemeente, so projections are stored per City
 (PopulationProjection). Every other level is derived from those city values:
 
-  City          the stored projection for the year (falls back to the current
-                population when the year/variant has no projection)
-  District /    the city's projected population x the unit's share of the city's
-  Neighborhood  current population, so the units of a city always add up to the
-                city total
+  City          the stored projection for the year, extrapolated (see
+                `extrapolate`) for a year outside the imported horizon, and
+                falling back to the current population when there isn't
+                enough data to extrapolate from
+  District /    the unit's own current population, scaled by how much CBS
+  Neighborhood  expects the *city* to grow between its earliest imported
+                year and the target year (see `_city_growth_factor`) --
+                never by the unit's share of `city.currentPopulation`. That
+                field is the sum of whichever districts/neighborhoods of the
+                city happen to be imported locally, which is very often far
+                smaller than CBS's own (real, whole-city) numbers, so a
+                share computed against it would overstate every unit's
+                projection. Applying the city's percentage growth directly
+                to the unit's own (accurate) current population sidesteps
+                that entirely -- it only ever needs CBS's numbers to agree
+                with themselves, not with local administrative coverage.
   Province      the sum of its cities, i.e. the result of the changes below it
 
 `growth_adjust_pct` is the what-if control: extra growth in percent per year,
@@ -53,14 +64,61 @@ def _adjust(value, year, growth_adjust_pct):
     return value * (1 + growth_adjust_pct / 100) ** years
 
 
+def extrapolate(city_series, year):
+    """
+    Population for `year` outside the years CBS actually published for one
+    city, projected from the compound annual growth rate implied by the
+    first and last imported years (e.g. a year past 2050 once the current
+    85173NED horizon is exhausted, or one before its earliest year).
+
+    None when there's nothing to extrapolate from (fewer than two imported
+    years, or a non-positive starting value) -- the caller then falls back
+    to the current population instead.
+    """
+    years = sorted(city_series)
+    if len(years) < 2:
+        return None
+    y0, y1 = years[0], years[-1]
+    v0, v1 = city_series[y0], city_series[y1]
+    if v0 <= 0 or y1 == y0:
+        return None
+    annual_growth = (v1 / v0) ** (1 / (y1 - y0)) - 1
+    anchor_year, anchor_value = (y1, v1) if year > y1 else (y0, v0)
+    return anchor_value * (1 + annual_growth) ** (year - anchor_year)
+
+
 def _city_value(city, series, year, growth_adjust_pct):
     """Projected population of one city for `year` (or its current one if year is None)."""
     if year is None:
         return city.currentPopulation or 0
-    base = series.get(city.pk, {}).get(year)
+    city_series = series.get(city.pk, {})
+    base = city_series.get(year)
+    if base is None:
+        base = extrapolate(city_series, year)
     if base is None:
         base = city.currentPopulation or 0
     return _adjust(base, year, growth_adjust_pct)
+
+
+def _city_growth_factor(city, series, year, growth_adjust_pct):
+    """
+    How much CBS expects the city itself to grow between its earliest
+    imported projection year (REFERENCE_YEAR when that's one of them) and
+    `year`, using only CBS's own numbers on both sides of the ratio --
+    never `city.currentPopulation`.
+
+    None when there are fewer than two imported years for the city, since a
+    single data point carries no growth information to extrapolate from;
+    the caller then falls back to the older share-of-city approach.
+    """
+    city_series = series.get(city.pk, {})
+    if len(city_series) < 2:
+        return None
+    baseline_year = REFERENCE_YEAR if REFERENCE_YEAR in city_series else min(city_series)
+    baseline = _city_value(city, series, baseline_year, growth_adjust_pct)
+    if not baseline:
+        return None
+    return _city_value(city, series, year, growth_adjust_pct) / baseline
 
 
 def population_by_year(unit, years, scenario=DEFAULT_SCENARIO, growth_adjust_pct=0.0):
@@ -86,11 +144,24 @@ def population_by_year(unit, years, scenario=DEFAULT_SCENARIO, growth_adjust_pct
     if isinstance(unit, (District, Neighborhood)):
         city = city_of(unit)
         current = unit.currentPopulation or 0
-        if city is None or not city.currentPopulation:
+        if city is None:
             return {y: current for y in years}   # nothing to scale by
-        share = current / city.currentPopulation
         series = _series([city.pk], scenario)
-        return {y: round(share * _city_value(city, series, y, growth)) for y in years}
+        result = {}
+        for y in years:
+            factor = _city_growth_factor(city, series, y, growth)
+            if factor is not None:
+                result[y] = round(current * factor)
+            elif city.currentPopulation:
+                # Only one imported year for the city: no growth rate to
+                # derive, so fall back to scaling by the unit's share of
+                # `city.currentPopulation` (accurate only when every
+                # district/neighborhood of the city has been imported).
+                share = current / city.currentPopulation
+                result[y] = round(share * _city_value(city, series, y, growth))
+            else:
+                result[y] = current
+        return result
 
     raise TypeError(f"population_by_year: unsupported unit type {type(unit)!r}")
 

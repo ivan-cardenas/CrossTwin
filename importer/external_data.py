@@ -1382,8 +1382,16 @@ class CBSImporter:
             # Use startswith on the year prefix for a safe range filter.
             # date_from/date_to arrive as full ISO dates (e.g. "2026-08-01") from the
             # date-range picker, so only the leading 4-digit year is relevant to CBS.
-            year_from = date_from[:4] if date_from else None
-            year_to = date_to[:4] if date_to else None
+            # Datasets that don't declare requires_date_range (e.g. the population
+            # forecast, which must always import its whole 2023-2050 horizon for the
+            # curve to be accurate) ignore date_from/date_to entirely, so a range left
+            # over from a temporal dataset batched in the same import can't truncate
+            # them.
+            if dataset.get("requires_date_range"):
+                year_from = date_from[:4] if date_from else None
+                year_to = date_to[:4] if date_to else None
+            else:
+                year_from = year_to = None
 
             if year_from and year_to:
                 year_filters = " or ".join(
@@ -1424,7 +1432,17 @@ class CBSImporter:
                 region_filters = " or ".join(f"startswith({region_field},'GM{pk:04d}')" for pk in city_pks)
                 filter_parts.append(f"({region_filters})")
 
-            params = {"$format": "json"}
+            # CBS's older OData v2 endpoint (ODataApi) refuses (500) an unpaginated
+            # request against a large source table -- "please redefine your query so
+            # that it returns less than 10 000 records" -- even when the filtered
+            # result is tiny, because it estimates cost before applying the filter.
+            # An explicit $top avoids that. That same endpoint, however, rejects
+            # $skip outright ("only available on the ODataFeed endpoint"), so it can
+            # never page past 10 000 rows -- only a dataset that opts into the newer
+            # ODataFeed (params.use_feed, which does support $skip) can.
+            CBS_PAGE_SIZE = 10000
+
+            params = {"$format": "json", "$top": CBS_PAGE_SIZE}
             if filter_parts:
                 params["$filter"] = " and ".join(filter_parts)
 
@@ -1434,17 +1452,25 @@ class CBSImporter:
 
             logger.info(f"Fetching CBS OData: table={table_id} filter={params.get('$filter', 'none')}")
 
-            # Paginate
             all_rows = []
-            next_url = url
+            skip = 0
 
-            while next_url:
-                response = requests.get(next_url, params=params, timeout=120)
+            while True:
+                page_params = {**params, "$skip": skip} if use_feed else params
+                response = requests.get(url, params=page_params, timeout=120)
                 response.raise_for_status()
-                data = response.json()
-                all_rows.extend(data.get("value", []))
-                next_url = data.get("odata.nextLink") or data.get("@odata.nextLink")
-                params = {}
+                rows = response.json().get("value", [])
+                all_rows.extend(rows)
+                if len(rows) < CBS_PAGE_SIZE:
+                    break
+                if not use_feed:
+                    logger.warning(
+                        f"CBS {table_id}: hit the {CBS_PAGE_SIZE}-row cap on the ODataApi "
+                        "endpoint, which doesn't support paging -- results may be truncated. "
+                        "Set params.use_feed=True on this catalog entry to page through more."
+                    )
+                    break
+                skip += CBS_PAGE_SIZE
 
             if not all_rows:
                 return ImportResult("success", "No rows returned from CBS.", 0)

@@ -1591,9 +1591,10 @@
 
 .pop-layout {
     display: grid;
-    grid-template-columns: 190px minmax(280px, 1fr) 230px;
+    grid-template-columns: 190px minmax(0, 1fr) 230px;
     gap: 18px;
     align-items: start;
+    min-width: 0;
 }
 @media (max-width: 1150px) { .pop-layout { grid-template-columns: 1fr; } }
 
@@ -1613,22 +1614,31 @@
 .pop-stat-sub.down { color: #eb8f8f; }
 
 /* graph — modelled on Photoshop's Curves dialog: dark plot, regular grid, one
-   smooth curve with square handles; the shaded band is the 67% interval */
-.pop-graph { width: 100%; height: auto; display: block; }
+   smooth curve with square handles; the shaded band is the 67% interval.
+   Every element inside the <svg> is drawn in the same 760x230 coordinate
+   space (see mainMap/charts.py), so if the wrapper is ever allowed to grow
+   past that native width, text, handles and strokes all enlarge together
+   with it. Capping max-width keeps the chart at (or below) its designed
+   size regardless of how wide the dock's middle column gets. */
+.pop-graph-wrap { min-width: 0; max-width: 760px; }
+.pop-graph { width: 100%; max-width: 100%; height: auto; display: block; }
 .pop-plot { fill: #121212; }
-.pop-grid { stroke: rgba(255, 255, 255, 0.09); stroke-width: 1; }
-.pop-frame { fill: none; stroke: rgba(255, 255, 255, 0.3); stroke-width: 1; }
-.pop-tick { fill: rgba(232, 244, 255, 0.55); font-size: 10px; }
+.pop-grid { stroke: rgba(255, 255, 255, 0.08); stroke-width: 1; }
+.pop-frame { fill: none; stroke: rgba(255, 255, 255, 0.28); stroke-width: 1; }
+.pop-tick { fill: rgba(232, 244, 255, 0.55); font-size: 9px; }
 .pop-baseline { stroke: rgba(255, 255, 255, 0.4); stroke-width: 1; stroke-dasharray: 5 4; }
-.pop-baseline-label { fill: rgba(255, 255, 255, 0.5); font-size: 9px; }
-.pop-band { fill: var(--accent); fill-opacity: 0.32; stroke: none; }
-.pop-edge { fill: none; stroke: var(--accent); stroke-opacity: 0.8; stroke-width: 1; stroke-dasharray: 3 3; filter: brightness(1.5); }
-.pop-curve-ref { fill: none; stroke: rgba(255, 255, 255, 0.35); stroke-width: 1.2; stroke-dasharray: 2 3; }
-.pop-curve { fill: none; stroke: #f2f2f0; stroke-width: 2.3; stroke-linecap: round; stroke-linejoin: round; }
+.pop-baseline-label { fill: rgba(255, 255, 255, 0.5); font-size: 8px; }
+.pop-band { fill: var(--accent); fill-opacity: 0.28; stroke: none; }
+.pop-edge { fill: none; stroke: var(--accent); stroke-opacity: 0.85; stroke-width: 1; stroke-dasharray: 3 3; filter: brightness(1.5); }
+.pop-curve-ref { fill: none; stroke: rgba(255, 255, 255, 0.35); stroke-width: 1; stroke-dasharray: 2 3; }
+.pop-curve {
+    fill: none; stroke: #f2f2f0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+    filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.55));
+}
 .pop-marker-line { stroke: rgba(255, 255, 255, 0.3); stroke-width: 1; stroke-dasharray: 2 3; }
-.pop-handle { fill: #121212; stroke: #f2f2f0; stroke-width: 1.3; }
+.pop-handle { fill: #121212; stroke: #f2f2f0; stroke-width: 1.1; }
 .pop-handle-active { fill: #f2f2f0; }
-.pop-hover-line { stroke: rgba(255, 255, 255, 0.55); stroke-width: 1; }
+.pop-hover-line { stroke: rgba(255, 255, 255, 0.5); stroke-width: 1; }
 .pop-hover-dot { stroke: #121212; stroke-width: 1; }
 .pop-hover-median { fill: #f2f2f0; }
 .pop-hover-high, .pop-hover-low { fill: var(--accent); filter: brightness(1.7); }

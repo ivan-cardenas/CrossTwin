@@ -317,7 +317,7 @@ EXTERNAL_DATA_CATALOG = [
     {
       "key": "CBS_PopulationForecast",
       "source": "CBS",
-      "category": "Population",
+      "category": "Demography",
       "name": "Population forecast 2023-2050 (85173NED)",
       "description": "CBS regional population forecast per municipality: median and the lower/upper bound of the 67% interval, 2023-2050. Feeds the population curve of the dashboard.",
       "target_model": "administrative.PopulationProjection",
