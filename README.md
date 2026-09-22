@@ -171,7 +171,7 @@ The full causal graph lives in [`core/DAG.dot`](core/DAG.dot) (Graphviz). Each d
 # DAG edges: Central_Bank -> Mortgage
 ```
 
-**Of the 102 edges in the graph, only 28 are backed by real derivation logic** (a `save()` or `calculations.py` function that reads the source field — not just a docstring claiming the edge). See [`.claude/CLAUDE.md`](.claude/CLAUDE.md#dag-edge-coverage-gaps) for the full per-app gap analysis before extending any dashboard's calculations.
+**Of the 102 edges in the graph, only 28 are backed by real derivation logic** (a `save()` or `calculations.py` function that reads the source field — not just a docstring claiming the edge). See [`TODO.md`](TODO.md) for the full per-app gap analysis and checklist before extending any dashboard's calculations.
 
 ## 📥 Importer System
 
