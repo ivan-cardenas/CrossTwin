@@ -71,7 +71,10 @@ async function loadLayerCatalog(appLabels) {
   for (const layer of data.layers) {
     if (!existingKeys.has(layer.key)) {
       availableLayers.push(layer);
-      layerVisibility[layer.key] = true;
+      // is_active is only set on WMS layers; a slow-loading one (e.g. the
+      // KNMI radar) can be flagged inactive so it starts unchecked instead
+      // of auto-loading when its panel opens.
+      layerVisibility[layer.key] = layer.is_active !== false;
     }
   }
 

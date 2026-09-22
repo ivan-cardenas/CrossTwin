@@ -1,0 +1,42 @@
+{% comment %}
+indicators_base.html — shared shell for the standalone indicator
+dashboard pages (water_indicators.html, heat_indicators.html,
+housing_indicators.html). Each of these is a self-contained page (not
+embedded in mainMap.html), so it needs its own <html>/<head>/htmx
+script — this factors that boilerplate out once. Domain-specific markup
+(the what-if slider, the indicators grid, the page's own JS) stays in
+each child template via the blocks below, since that content genuinely
+differs per domain rather than being copy-pasted.
+{% endcomment %}
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}CrossTwin Dashboard{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'css/indicators.css' %}" />
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+
+  <header>
+    <span class="label-tag">{% block label_tag %}CrossTwin{% endblock %}</span>
+    <h1>{{ location }}</h1>
+    {% block year_badge %}{% endblock %}
+  </header>
+
+  {% block slider %}{% endblock %}
+
+  {% block grid_wrapper %}
+  <!-- HTMX swaps this div on every slider change -->
+  <div id="indicators-grid">
+    {% block grid %}{% endblock %}
+  </div>
+  {% endblock %}
+
+  {% block extra_js %}{% endblock %}
+
+</body>
+</html>

@@ -47,10 +47,10 @@
 ## TODOS
 
 1. CHECK FOR IMPROVING AND ADDING INDICES FROM NEW RESEARCH EXAMPLE NDWI - I know there are betters.
-2. Have overview of active layers
+2. ~Have overview of active layers~
 2. Create an update button to search changes in the database to 
 
-2. -Max 10% cloud coverage-
+2. ~-Max 10% cloud coverage-~
 
 2. Check from Destination Earth -------- This is 5km scale
 

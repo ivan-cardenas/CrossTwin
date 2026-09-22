@@ -641,6 +641,7 @@ def available_layers(request):
                 'legend_url': legend_url,
                 'opacity': wms.opacity,
                 'has_time_dimension': has_time_dimension,
+                'is_active': wms.is_active,
             }
             if has_time_dimension:
                 layer_entry['time_frame_count'] = wms.time_frame_count

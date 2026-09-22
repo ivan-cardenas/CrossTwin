@@ -1,20 +1,10 @@
-{% comment %} heat_indicators.html {% endcomment %}
+{% extends 'indicators_base.html' %}
 {% load static %}
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Urban Heat Dashboard</title>
-  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-</head>
-<body>
 
-  <header>
-    <span class="label-tag">CrossTwin · Urban Heat Intelligence</span>
-    <h1>{{ location }}</h1>
-  </header>
+{% block title %}Urban Heat Dashboard{% endblock %}
+{% block label_tag %}CrossTwin · Urban Heat Intelligence{% endblock %}
 
+{% block slider %}
   <!-- Vegetation slider — outside the swap target so it persists -->
   <div class="slider-container">
     <div class="slider-header">
@@ -61,85 +51,8 @@
       <span id="zone-tag" class="threshold-tag ok">Good</span>
     </div>
   </div>
+{% endblock %}
 
-  <!-- HTMX swaps this div -->
-  <div id="indicators-grid">
-    {% include 'urban_heat/partials/indicators_grid.html' %}
-  </div>
+{% block grid %}{% include 'urban_heat/partials/indicators_grid.html' %}{% endblock %}
 
-  <script>
-    function zoneStyle(val) {
-      if (val >= 30)      return { col: '#22c55e', label: 'Good',     cls: 'ok'   };
-      else if (val >= 15) return { col: '#f59e0b', label: 'Moderate', cls: 'warn' };
-      else                return { col: '#ef4444', label: 'Low',      cls: 'bad'  };
-    }
-
-    function applyZone(val) {
-      const z   = zoneStyle(val);
-      const sl  = document.getElementById('vegetation-slider');
-      const tag = document.getElementById('zone-tag');
-      const disp = document.getElementById('slider-display');
-      if (disp) disp.textContent = val;
-      if (sl)  sl.style.setProperty('--thumb-col', z.col);
-      if (tag) { tag.textContent = z.label; tag.className = 'threshold-tag ' + z.cls; }
-    }
-
-    const slider = document.getElementById('vegetation-slider');
-    if (slider) {
-      applyZone(parseFloat(slider.value));
-      slider.addEventListener('input', e => applyZone(parseFloat(e.target.value)));
-    }
-  </script>
-
-  <script>
-function initGauges() {
-  document.querySelectorAll('[data-gauge-id]').forEach(card => {
-    const val     = parseFloat(card.dataset.gaugeVal) || 0;
-    const id      = card.dataset.gaugeId;
-    const display = card.dataset.gaugeDisplay || '';
-    const path    = document.getElementById(id);
-    const txt     = document.getElementById(id + '-txt');
-    if (!path) return;
-
-    if (id === 'gauge-svf') {
-      // Full ring gauge (SVF 0-100%)
-      const circ   = 238.76;
-      const capped = Math.min(val, 100);
-      let col;
-      if      (val > 70) col = '#2E6478';
-      else if (val > 40) col = '#f59e0b';
-      else               col = '#ef4444';
-      path.setAttribute('stroke', col);
-      requestAnimationFrame(() => {
-        path.style.strokeDashoffset = circ - (circ * capped / 100);
-      });
-      if (txt) txt.textContent = display;
-    } else {
-      // Semicircle gauges (LST, PET, UTCI)
-      const total  = 157.08;
-      const capped = Math.min(val, 100);
-      let col;
-      if      (val > 75) col = '#ff5252';
-      else if (val > 50) col = '#ef4444';
-      else if (val > 30) col = '#f59e0b';
-      else               col = '#22c55e';
-      path.setAttribute('stroke', col);
-      requestAnimationFrame(() => {
-        path.style.strokeDashoffset = total - (total * capped / 100);
-      });
-      if (txt) txt.textContent = display ? display + '°' : '–';
-    }
-  });
-}
-
-initGauges();
-
-document.body.addEventListener('htmx:afterSwap', function(evt) {
-  if (evt.detail.target.id === 'indicators-grid') {
-    initGauges();
-  }
-});
-</script>
-
-</body>
-</html>
+{% block extra_js %}<script src="{% static 'js/indicators/heat.js' %}"></script>{% endblock %}

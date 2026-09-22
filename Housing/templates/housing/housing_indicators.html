@@ -1,23 +1,11 @@
-{% comment %} housing_indicators.html {% endcomment %}
-{% load static %}
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Province Housing Dashboard</title>
-  <link rel="stylesheet" href="{% static 'css/indicators.css' %}" />
-  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-</head>
-<body>
+{% extends 'indicators_base.html' %}
 
-  <header>
-    <span class="label-tag">CrossTwin · Housing Intelligence</span>
-    <h1>{{ location }}</h1>
-    <div class="year-badge">{{ year }}</div>
-  </header>
+{% block title %}Province Housing Dashboard{% endblock %}
+{% block label_tag %}CrossTwin · Housing Intelligence{% endblock %}
+{% block year_badge %}<div class="year-badge">{{ year }}</div>{% endblock %}
 
-  {% include 'housing/partials/indicators_panel.html' %}
-
-</body>
-</html>
+{# housing/partials/indicators_panel.html already contains its own slider
+   and #indicators-grid div, so it replaces both the base's slider and
+   grid_wrapper blocks rather than nesting inside them. #}
+{% block slider %}{% endblock %}
+{% block grid_wrapper %}{% include 'housing/partials/indicators_panel.html' %}{% endblock %}
