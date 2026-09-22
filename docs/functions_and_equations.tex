@@ -1,0 +1,490 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{siunitx}
+
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\dagedge}[1]{\textit{DAG edge: #1}}
+\newcommand{\statusdone}{\textcolor{green!50!black}{implemented}}
+\newcommand{\statuspartial}{\textcolor{orange!80!black}{partial}}
+\newcommand{\statusgap}{\textcolor{red!70!black}{gap}}
+
+\title{CrossTwin: Function and Equation Registry\\
+\large A traceability record between the DPSIR causal graph and its computational implementation}
+\author{CrossTwin Project}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This document catalogs every quantitative computation currently implemented in the CrossTwin platform's domain apps (\code{administrative}, \code{watersupply}, \code{housing}, \code{urban\_heat}), records the exact equation each function evaluates, the variables and their units, the source data model(s), and the corresponding edge(s) in the project's Driver--Pressure--State--Impact--Response (DPSIR) causal graph (\code{core/DAG.dot}). It is intended as a working reference while preparing a manuscript describing CrossTwin's indicator methodology, and as a running record of which causal relationships are backed by executable derivation logic versus flat, manually entered fields. Status tags (\statusdone{} / \statuspartial{} / \statusgap{}) follow the coverage audit in \code{TODO.md}.
+\end{abstract}
+
+\tableofcontents
+
+\section{Scope and conventions}
+
+Each entry below documents one function or model \code{save()} method from the codebase. Entries are grouped by Django app, matching the project's domain decomposition. For every entry we record:
+
+\begin{itemize}[nosep]
+  \item \textbf{Location} --- file and line number in the repository at time of writing.
+  \item \textbf{Equation} --- the exact arithmetic the code performs, in mathematical notation.
+  \item \textbf{Variables} --- symbol, meaning, unit, and source field/model.
+  \item \textbf{DAG edge(s)} --- the causal edge(s) in \code{core/DAG.dot} this computation is claimed to implement.
+  \item \textbf{Status} --- whether the DAG edge is genuinely derived from its source field (\statusdone{}), derived but with a known caveat or partial dependency (\statuspartial{}), or claimed in a docstring without being computed (\statusgap{}).
+\end{itemize}
+
+Units follow the project convention: population counts are dimensionless integers; areas are $\mathrm{km^2}$ unless noted; water volumes are $\mathrm{m^3}$ or $\mathrm{Mm^3}$ (explicitly distinguished per entry, since several models mix the two); monetary values are EUR.
+
+\section{Administrative app --- population projection}
+\label{sec:administrative}
+
+Source: \code{administrative/population.py}, \code{administrative/models.py}. Population data originates from CBS table 85173NED (\textit{Regionale prognose 2023--2050}), published per \textit{gemeente} (city) \cite{CBS85173NED}.
+
+\subsection{Compound annual growth rate --- \code{extrapolate()}}
+\textbf{Location:} \code{administrative/population.py:67}
+
+Projects a city's population for a year outside the imported CBS horizon, using the compound annual growth rate implied by the earliest and latest imported years.
+
+\begin{align}
+  r &= \left(\frac{v_1}{v_0}\right)^{\frac{1}{y_1 - y_0}} - 1 \\
+  P(y) &= v_a \, (1 + r)^{\,(y - y_a)}
+\end{align}
+
+\textbf{Variables:}
+\begin{itemize}[nosep]
+  \item $y_0, y_1$ --- earliest / latest year with an imported \code{PopulationProjection} record for the city
+  \item $v_0, v_1$ --- projected population at $y_0, y_1$
+  \item $r$ --- implied compound annual growth rate
+  \item $y_a, v_a$ --- anchor year/value: $(y_1, v_1)$ if $y > y_1$, else $(y_0, v_0)$
+\end{itemize}
+
+\textbf{DAG edge:} \dagedge{Population\_Growth $\rightarrow$ Total\_Population} --- \statusdone{}
+
+\subsection{City-level growth factor --- \code{\_city\_growth\_factor()}}
+\textbf{Location:} \code{administrative/population.py:103}
+
+Ratio of a city's CBS-projected population between a baseline year and a target year, used to scale District/Neighbourhood populations without relying on possibly-incomplete local administrative coverage.
+
+\begin{equation}
+  f(y) = \frac{P_{\text{city}}(y)}{P_{\text{city}}(y_{\text{baseline}})}, \qquad
+  y_{\text{baseline}} = \begin{cases} 2025 & \text{if imported} \\ \min(y_{\text{imported}}) & \text{otherwise} \end{cases}
+\end{equation}
+
+\textbf{DAG edge:} \dagedge{Population\_Growth $\rightarrow$ Total\_Population} (District/Neighbourhood level) --- \statusdone{}
+
+\subsection{District/Neighbourhood projection --- \code{population\_by\_year()}}
+\textbf{Location:} \code{administrative/population.py:124}
+
+\begin{equation}
+  P_{\text{unit}}(y) = P_{\text{unit}}^{\text{current}} \times f(y)
+\end{equation}
+
+Applied to the unit's own accurate current population rather than its share of \code{city.currentPopulation}, because the latter reflects only the districts/neighbourhoods imported locally, not CBS's whole-city total (see docstring, \code{administrative/population.py:11--22}).
+
+Fallback (fewer than two imported years for the city): share-of-city approach,
+\begin{equation}
+  P_{\text{unit}}(y) = \frac{P_{\text{unit}}^{\text{current}}}{P_{\text{city}}^{\text{current}}} \times P_{\text{city}}(y)
+\end{equation}
+
+\textbf{DAG edge:} \dagedge{Population\_Growth $\rightarrow$ Total\_Population} --- \statusdone{}
+
+\subsection{Province projection}
+\textbf{Location:} \code{administrative/population.py:132--138}
+
+\begin{equation}
+  P_{\text{province}}(y) = \sum_{c \,\in\, \text{cities of province}} P_c(y)
+\end{equation}
+
+\textbf{DAG edge:} \dagedge{Population\_Growth $\rightarrow$ Total\_Population} --- \statusdone{}
+
+\subsection{What-if growth adjustment --- \code{\_adjust()}}
+\textbf{Location:} \code{administrative/population.py:59}
+
+\begin{equation}
+  v_{\text{adjusted}} = v \times \left(1 + \frac{g}{100}\right)^{\max(y - 2025,\ 0)}
+\end{equation}
+where $g$ is \code{growth\_adjust\_pct}, a user-supplied what-if slider bounded to $[-5, +5]$ (\code{population\_params()}, \code{administrative/population.py:205}).
+
+\subsection{City annual growth rate --- \code{annual\_growth\_rate()}}
+\textbf{Location:} \code{administrative/population.py:90} (as of the \code{City.popGrowthRate} implementation)
+
+\begin{equation}
+  \texttt{popGrowthRate} = \left(\left(\frac{v_1}{v_0}\right)^{\frac{1}{y_1-y_0}} - 1\right) \times 100
+\end{equation}
+Same CAGR as \code{extrapolate()}, expressed in percent per year and written onto \code{City.popGrowthRate} in \code{City.save()} (\code{administrative/models.py}) whenever at least two \code{PopulationProjection} years exist for the city.
+
+\textbf{DAG edge:} \dagedge{Population\_Growth $\rightarrow$ Total\_Population} (\code{City.popGrowthRate}) --- \statusdone{}
+
+\subsection{Population and density cascade --- \code{City.save()}, \code{Province.save()}}
+\textbf{Location:} \code{administrative/models.py}
+
+\begin{align}
+  P_{\text{city}} &= \sum_{d \,\in\, \text{districts of city}} P_d \quad \text{(only if districts report a nonzero total)}\\
+  P_{\text{province}} &= \sum_{c \,\in\, \text{cities of province}} P_c \\
+  \rho &= \frac{P}{A}, \qquad A = \frac{\text{geom.area}}{10^6}\ \si{km^2}
+\end{align}
+Density $\rho$ in people$/\mathrm{km^2}$. The Neighbourhood $\rightarrow$ District $\rightarrow$ City $\rightarrow$ Province cascade is signal-driven (\code{administrative/signals.py}), using \code{QuerySet.update()} rather than \code{.save()} to avoid re-triggering \code{post\_save} recursively.
+
+\textbf{DAG edge:} (population aggregation, not a numbered DAG node) --- \statusdone{}
+
+\section{Water supply app}
+\label{sec:watersupply}
+
+Source: \code{watersupply/calculations.py}, \code{watersupply/models.py}, \code{watersupply/signals.py}.
+
+\subsection{Per-capita consumption --- \code{\_get\_consumption\_capita()}}
+\textbf{Location:} \code{watersupply/calculations.py:16}
+\begin{equation}
+  \bar{c} = \operatorname{avg}_{\,c\, \in\, \text{cities}(u)}\big(\texttt{consumption\_capita\_L\_d}\big), \qquad [\bar{c}] = \si{L/person/day}
+\end{equation}
+
+\subsection{Total water demand --- \code{calculate\_total\_demand()}, \code{TotalWaterDemand.save()}}
+\textbf{Location:} \code{watersupply/calculations.py:27}; \code{watersupply/models.py:70}
+\begin{align}
+  D_{\text{day}} &= \frac{\bar{c}}{1000} \times P \qquad [\si{m^3/day}] \\
+  \texttt{demandDay} &= \frac{P \times \bar{c}}{10^9} \qquad [\si{Mm^3/day}] \\
+  \texttt{demandYR} &= \texttt{demandDay} \times 365
+\end{align}
+where $P$ is \code{city.currentPopulation}. Note the two representations differ by a factor of $10^6$ ($\si{m^3}$ vs.\ $\si{Mm^3}$); \code{calculate\_supply\_security()} converts explicitly (\S\ref{sec:supplysecurity}).
+
+\textbf{DAG edges:} \dagedge{Total\_Population $\rightarrow$ Total\_Water\_Demand}, \dagedge{ConsumptionCapita $\rightarrow$ Total\_Water\_Demand} --- \statusdone{}
+
+\subsection{Total consumption --- \code{ConsumptionCapita.save()}}
+\textbf{Location:} \code{watersupply/models.py:38}
+\begin{equation}
+  \texttt{total\_consumption\_m3\_yr} = \frac{\texttt{consumption\_capita\_L\_d}}{1000} \times P \times 365
+\end{equation}
+\textbf{DAG edges:} \dagedge{Total\_Population $\rightarrow$ Total\_Consumption}, \dagedge{ConsumptionCapita $\rightarrow$ Total\_Consumption} --- \statusdone{}
+
+\subsection{Total extraction --- \code{calculate\_total\_extraction()}}
+\textbf{Location:} \code{watersupply/calculations.py:38}
+\begin{equation}
+  E = \left(\sum_{w\,\in\,\text{active wells} \,\cap\, \text{geom}(u)} q_w\right) \times 86400, \qquad [q_w] = \si{m^3/s},\ [E] = \si{m^3/day}
+\end{equation}
+\textbf{DAG edge:} \dagedge{Available\_FW $\rightarrow$ Total\_Extraction} --- \statusdone{}
+
+\subsection{Total production --- \code{calculate\_total\_production\_day()}}
+\textbf{Location:} \code{watersupply/calculations.py:51}
+\begin{equation}
+  \Pi = E + I, \qquad I = \sum_{\,\text{active imports}} \texttt{quantity\_m3\_d}
+\end{equation}
+\textbf{DAG edges:} \dagedge{Total\_Extraction $\rightarrow$ Total\_Water\_Prod}, \dagedge{Imported\_Water $\rightarrow$ Total\_Water\_Prod} --- \statusdone{}
+
+\subsection{Supply security \& service time}
+\label{sec:supplysecurity}
+\textbf{Location:} \code{calculate\_supply\_security()} (\code{watersupply/calculations.py:73}); \code{SupplySecurity.save()} (\code{watersupply/models.py:107})
+\begin{align}
+  D_{\si{m^3/day}} &= \texttt{demandDay} \times 10^6 \\
+  S &= \frac{\Pi}{D_{\si{m^3/day}}} \qquad \text{(ratio; } \times 100 \text{ for \%)}\\
+  T_{\text{service}} &=
+  \begin{cases}
+    24 & \Pi \geq D_{\si{m^3/day}} \\
+    24 \times \dfrac{\Pi}{D_{\si{m^3/day}}} & \Pi < D_{\si{m^3/day}}
+  \end{cases}
+  \qquad [\si{h/day}]
+\end{align}
+\textbf{DAG edges:} \dagedge{Total\_Water\_Demand $\rightarrow$ Supply\_Security}, \dagedge{Total\_Water\_Prod $\rightarrow$ Supply\_Security}, \dagedge{Supply\_Security $\rightarrow$ Service\_Time} --- \statusdone{}
+
+\subsection{Energy consumption --- \code{calculate\_energy\_consumption()}}
+\textbf{Location:} \code{watersupply/calculations.py:100}
+\begin{equation}
+  K = \sum_{w} \big(\texttt{pumpEnergyRate\_kWh\_h}_w \times \texttt{OperationTime\_h\_day}_w\big) + 1000 \times \sum \texttt{EnergyConsumption\_MW\_day}
+\end{equation}
+$[K] = \si{kWh/day}$. \textbf{DAG edges:} \dagedge{Total\_Extraction $\rightarrow$ Energy\_Consumption}, \dagedge{Total\_Water\_Prod $\rightarrow$ Energy\_Consumption}, \dagedge{Energy\_Cost $\rightarrow$ Energy\_Consumption} --- \statuspartial{} (Energy\_Cost side of the edge is not read back into this function)
+
+\subsection{Pump emissions --- \code{ExtractionWater.save()}}
+\textbf{Location:} \code{watersupply/models.py:317}
+\begin{align}
+  R_{\text{CO}_2} &= \texttt{pumpEnergyRate\_kWh\_h} \times \texttt{pumpEmmissionFactor\_kg\_CO2\_kWh} \\
+  M_{\text{day}} &= R_{\text{CO}_2} \times \texttt{OperationTime\_h\_day}, \qquad M_{\text{yr}} = M_{\text{day}} \times 365
+\end{align}
+\textbf{DAG edge:} \dagedge{Total\_Extraction $\rightarrow$ CO2\_Emission} --- \statusdone{} (per-well; \code{calculate\_co2\_emission()} sums across wells)
+
+\subsection{Extraction OPEX and environmental cost --- \code{ExtractionWater.save()}}
+\textbf{Location:} \code{watersupply/models.py:346--357}
+\begin{equation}
+  \texttt{opex\_EUR\_m3} = \texttt{labor} + \texttt{energy} + \texttt{chemicals} + \texttt{tax} \quad (\text{only when at least one component is known})
+\end{equation}
+\begin{equation}
+  \text{CO}_2\text{ cost} = \frac{M_{\text{day}}}{V_{\text{day}}} \times \text{price}_{\text{CO}_2}, \qquad V_{\text{day}} = q \times \texttt{OperationTime\_h\_day} \times 3600
+\end{equation}
+
+\subsection{Consolidated OPEX --- \code{OPEX.save()}}
+\textbf{Location:} \code{watersupply/models.py:640}
+\begin{align}
+  \text{Cost}_{\text{extraction}} &= \sum \big(\texttt{opex\_EUR\_m3} \times \texttt{current\_extraction\_Mm3\_yr} \times 10^6\big) \\
+  \text{Cost}_{\text{imported}} &= \sum \big(\texttt{quantity\_m3\_d} \times 365 \times \texttt{price\_EUR\_m3}\big) \\
+  \text{Cost}_{\text{treatment}} &= \overline{\texttt{UnitaryOPEX\_EUR\_m3}}_{\,\text{year}} \times V_{\text{yr}} \\
+  \text{Cost}_{\text{network}} &= \sum \big(\texttt{maitenanceCost\_EUR\_km} \times \texttt{length\_km}\big) \\
+  \texttt{totalOPEX\_EUR} &= \text{Cost}_{\text{extraction}} + \text{Cost}_{\text{imported}} + \text{Cost}_{\text{treatment}} + \text{Cost}_{\text{network}} \\
+  \texttt{UnitaryOPEX\_EUR\_m3} &= \frac{\texttt{totalOPEX\_EUR}}{V_{\text{yr}}}, \qquad V_{\text{yr}} = V_{\text{extraction}} + V_{\text{imported}}
+\end{align}
+\code{TotalWaterProduction}'s own energy cost is deliberately excluded, since it is already embedded in $\texttt{opex\_EUR\_m3}$ (see inline comment, \code{watersupply/models.py}).
+\begin{equation}
+  \texttt{OPEX\_recovered\_PCT} = \frac{\sum \texttt{Recovery\_EUR}}{\texttt{totalOPEX\_EUR}} \times 100
+\end{equation}
+\textbf{DAG edges:} \dagedge{Total\_Extraction/Total\_Water\_Prod $\rightarrow$ OPEX}, \dagedge{Imported\_Water $\rightarrow$ OPEX}, \dagedge{WT\_Cost $\rightarrow$ OPEX}, \dagedge{Network $\rightarrow$ OPEX}, \dagedge{Metered\_Res\_Water $\rightarrow$ OPEX\_Recovery} --- \statusdone{}
+
+\subsection{OPEX recovery (dashboard) --- \code{calculate\_opex\_recovery()}}
+\textbf{Location:} \code{watersupply/calculations.py:205}
+\begin{equation}
+  \text{Recovery\%} = \frac{\sum_{\text{metered users}} \texttt{Recovery\_EUR}}{\texttt{totalOPEX\_EUR}_{\,\text{year}}} \times 100
+\end{equation}
+\textbf{DAG edges:} \dagedge{OPEX $\rightarrow$ OPEX\_Recovery}, \dagedge{CollectionRatio $\rightarrow$ OPEX\_Recovery}, \dagedge{NRW $\rightarrow$ OPEX\_Recovery} --- \statuspartial{} (computes directly from stored totals; does not call \code{calculate\_collection\_ratio()} or reference NRW, despite the docstring)
+
+\subsection{Billed consumption and revenue --- \code{MeteredResidential.save()}}
+\textbf{Location:} \code{watersupply/models.py:172}
+\begin{align}
+  \gamma &= \frac{\texttt{collected\_meters}}{\texttt{installed\_meters}} \\
+  V_{\text{yr}} &= \frac{\texttt{consumption\_capita\_L\_d}}{1000} \times 365 \times \texttt{populationServed} \times \gamma \\
+  \texttt{Recovery\_EUR} &= V_{\text{yr}} \times \texttt{userTariff\_EUR\_m3}
+\end{align}
+Uses the city's most recent \code{ConsumptionCapita} record (not filtered by year), applied to local \code{populationServed} rather than the whole-city \code{total\_consumption\_m3\_yr}.
+
+\subsection{Collection ratio --- \code{calculate\_collection\_ratio()}}
+\textbf{Location:} \code{watersupply/calculations.py:184}
+\begin{equation}
+  \text{CR\%} = \frac{\sum \texttt{collected\_meters}}{\sum \texttt{installed\_meters}} \times 100
+\end{equation}
+\textbf{DAG edges:} \dagedge{Metered\_Res\_Water $\rightarrow$ CollectionRatio}, \dagedge{User\_Acceptance\_WS $\rightarrow$ CollectionRatio}, \dagedge{Water\_Tariff\_Afford $\rightarrow$ CollectionRatio} --- \statuspartial{} (ignores \code{userAffordability\_PCT} and acceptance rate despite the docstring)
+
+\subsection{Coverage --- \code{calculate\_coverage()}, \code{CoverageWaterSupply.save()}}
+\textbf{Location:} \code{watersupply/calculations.py:239}; \code{watersupply/models.py:448}
+\begin{align}
+  G_{\text{buffer}} &= \bigcup_{\,p\, \in\, \text{pipes}(c)} \operatorname{buffer}(p,\ 500\,\si{m}) \\
+  A_{\text{covered}} &= \frac{\operatorname{area}(G_{\text{buffer}})}{10^6}\ [\si{km^2}] \\
+  \text{Coverage\%} &= \frac{H_{\text{covered}}}{H_{\text{total}}} \times 100
+\end{align}
+where $H_{\text{covered}}$ counts households in \code{UsersLocation} points spatially within $G_{\text{buffer}}$, and $H_{\text{total}}$ sums \code{usersTotal} across the city's neighbourhoods. \textbf{DAG edges:} \dagedge{Network $\rightarrow$ Coverage\_WS\_Area}, \dagedge{CityArea $\rightarrow$ Coverage\_WS\_Area}, \dagedge{NumberUsers $\rightarrow$ Coverage\_WS} --- \statusdone{}
+
+\subsection{Non-Revenue Water and ILI}
+\textbf{Location:} \code{calculate\_nrw()} (\code{watersupply/calculations.py:275}); \code{NonRevenueWater.save()} (\code{watersupply/models.py:551})
+\begin{align}
+  \text{NRW}_{\text{apparent}} &= \sum_{\,\text{type}=A} \texttt{loss\_Quantity\_m3} \\
+  \text{NRW}_{\text{real}} &= \sum_{\,\text{type}=R} \texttt{loss\_Quantity\_m3} \\
+  \text{CARL} &= \sum_{\,\text{type}=R,\ \text{year}} \texttt{loss\_Quantity\_m3} \\
+  \text{UARL} &= \sum_{\,\text{type}=R,\ \text{year}} \texttt{loss\_Quantity\_m3} \times \frac{\texttt{UnavoidableLossses\_PCT}}{100} \\
+  \text{ILI} &= \frac{\text{CARL}}{\text{UARL}}
+\end{align}
+The Infrastructure Leakage Index formulation follows the IWA Water Loss Task Force methodology \cite{IWA_WLTF}. \textbf{DAG edges:} \dagedge{Real\_Losses $\rightarrow$ NRW, ILI}, \dagedge{Apparent\_Losses $\rightarrow$ NRW, ILI} --- \statuspartial{} (ILI is only defined for Real losses; \dagedge{Apparent\_Losses $\rightarrow$ ILI} is unimplemented; \code{NonRevenueWater} records are entered directly rather than linked to \code{PipeNetwork}, so \dagedge{Network $\rightarrow$ Real\_Losses} is a \statusgap{})
+
+\subsection{Water quality --- \code{calculate\_water\_quality()}}
+\textbf{Location:} \code{watersupply/calculations.py:144}
+\begin{equation}
+  \text{Compliance\%} = \frac{\sum \texttt{samplesWaterQuality\_OK}}{\sum \texttt{samplesWaterQualityTaken}} \times 100
+\end{equation}
+\textbf{DAG edges:} \dagedge{WT\_Efficiency $\rightarrow$ Samples\_WQ}, \dagedge{Samples\_Taken $\rightarrow$ Samples\_WQ}, \dagedge{Samples\_WQ $\rightarrow$ User\_Acceptance\_WS} --- \statusgap{} (\code{acceptance\_rate} in the return value is $\operatorname{avg}(\texttt{acceptanceRate})$, an independent stored field unrelated to the computed compliance percentage)
+
+\subsection{Available fresh water and drought area}
+\textbf{Location:} \code{watersupply/calculations.py:308, 323}
+\begin{align}
+  \text{AFW} &= \sum_{\,\text{intersecting } u} \texttt{totalQuantity\_Mm3} \\
+  A_{\text{drought}} &= \sum_{\,\text{intersecting } u,\ \text{year}} \texttt{areaAffected\_km2}
+\end{align}
+\textbf{DAG edges:} \dagedge{Infiltration $\rightarrow$ Available\_FW}, \dagedge{Meteorology $\rightarrow$ Available\_FW}, \dagedge{Total\_Extraction $\rightarrow$ Area\_Drought} --- \statusgap{} for the Infiltration side (\code{AvailableFreshWater.infiltrationRate\_cm\_h} is a flat, manually entered field --- see \code{TODO.md})
+
+\subsection{Pipe geometry --- \code{PipeNetwork.save()}}
+\textbf{Location:} \code{watersupply/models.py:420}
+\begin{equation}
+  L_{\si{km}} = \frac{\operatorname{length}(\texttt{geom})}{1000}, \qquad d_{\si{in}} = \frac{d_{\si{mm}}}{25.4}
+\end{equation}
+
+\section{Housing app}
+\label{sec:housing}
+
+Source: \code{housing/calculations.py}, \code{housing/models.py}.
+
+\subsection{Supply/demand deficit}
+\textbf{Location:} \code{calculate\_supply\_demand()} (\code{housing/calculations.py:14}), \code{calculate\_supply\_demand\_for\_unit()} (\code{:43})
+\begin{align}
+  \text{Deficit} &= D - S \\
+  \text{Deficit\%} &= \frac{D - S}{D} \times 100
+\end{align}
+where $S = \texttt{supply\_units}$, $D = \texttt{demand\_units}$ (stored, not derived from population). \textbf{DAG edges:} \dagedge{Urbanization $\rightarrow$ Housing\_Demand}, \dagedge{New\_Units $\rightarrow$ Housing\_Supply}, \dagedge{Housing\_Demand $\rightarrow$ House\_Price\_Index} --- \statusgap{} (\texttt{demand\_units} is a stored value, not derived from \S\ref{sec:administrative}'s population projection; no \code{Urbanization} model exists)
+
+\subsection{Pipeline units --- \code{calculate\_new\_units()}}
+\textbf{Location:} \code{housing/calculations.py:66}
+\begin{align}
+  U_{\text{completed}} &= \sum_{\,\texttt{year\_expected\_completion} \le y} \texttt{project\_units} \\
+  U_{\text{pipeline}} &= \sum_{\,\texttt{year\_expected\_completion} > y} \texttt{project\_units}
+\end{align}
+\textbf{DAG edges:} \dagedge{Zoning\_Status $\rightarrow$ New\_Units}, \dagedge{Network $\rightarrow$ New\_Units}, \dagedge{New\_Units $\rightarrow$ Housing\_Supply}, \dagedge{New\_Units $\rightarrow$ LandCover} --- \statuspartial{} (counts completions/pipeline; never writes back to \code{LandCover} or reads \code{Zoning\_Status}/\code{Network} as inputs)
+
+\subsection{Mortgage indicators --- \code{calculate\_mortgage\_indicators()}}
+\textbf{Location:} \code{housing/calculations.py:123}
+\begin{equation}
+  \overline{m} = \operatorname{avg}(\texttt{monthlyPayment}), \quad
+  \bar{\iota} = \operatorname{avg}(\texttt{interestRate}), \quad
+  \overline{L} = \operatorname{avg}(\texttt{totalLoanAmount})
+\end{equation}
+plus province-level policy fields (\code{interest\_rate}, \code{LTV\_limit}, \code{LTI\_limit}, \code{mortgageRate}) read as-is. \textbf{DAG edges:} \dagedge{Central\_Bank $\rightarrow$ Mortgage}, \dagedge{Credit\_Supply $\rightarrow$ Mortgage}, \dagedge{Mortgage $\rightarrow$ Affordability\_Stress}, \dagedge{Mortgage $\rightarrow$ Income\_Expenses} --- \statusgap{} for the two outgoing edges (averages are exposed on the dashboard but never fed back into \code{HousingAffordability})
+
+\subsection{House Price Index --- \code{calculate\_house\_price\_index()}}
+\textbf{Location:} \code{housing/calculations.py:200}
+\begin{equation}
+  \Delta_{\text{YoY}}\% = \frac{\overline{\text{HPI}}_{y} - \overline{\text{HPI}}_{y-1}}{\overline{\text{HPI}}_{y-1}} \times 100
+\end{equation}
+\textbf{DAG edges:} \dagedge{Housing\_Demand $\rightarrow$ House\_Price\_Index}, \dagedge{Property $\rightarrow$ House\_Price\_Index} --- \statusgap{} (\code{HousePriceIndex} has no \code{save()}; \code{index\_value} is a flat stored field, and this function only averages it)
+
+\subsection{Affordability index --- \code{HousingAffordability.save()}}
+\textbf{Location:} \code{housing/models.py:150}
+\begin{align}
+  \text{AI} &= \frac{\texttt{medianHousePrice}}{\texttt{medianIncome}} \\
+  \text{Income}_{\text{disposable}} &= \texttt{medianIncome} - \texttt{medianExpenditure}
+\end{align}
+The house-price-to-income ratio formulation is the standard affordability metric used in comparative housing-affordability studies (e.g.\ Demographia's Median Multiple) \cite{Demographia}. \textbf{DAG edges:} \dagedge{Property $\rightarrow$ Affordability\_Stress}, \dagedge{Income\_Expenses $\rightarrow$ Affordability\_Stress}, \dagedge{Mortgage $\rightarrow$ Affordability\_Stress}, \dagedge{Water\_Tariff\_Afford $\rightarrow$ Income\_Expenses}, \dagedge{Rent $\rightarrow$ Income\_Expenses}, \dagedge{Mortgage $\rightarrow$ Income\_Expenses} --- \statusgap{} (computed only from this model's own stored fields; never reads \code{Mortgage}, \code{Rentals}, or watersupply tariff data --- an open TODO in \code{housing/models.py} also questions whether disposable income should replace median income in the numerator's denominator)
+
+\subsection{Zoning composition --- \code{calculate\_zoning()}}
+\textbf{Location:} \code{housing/calculations.py:285}
+\begin{equation}
+  \text{Area\%}_{\text{type}} = \frac{\sum_{\,\text{zone\_type}} \texttt{area}}{\sum_{\text{all zones}} \texttt{area}} \times 100
+\end{equation}
+\textbf{DAG edges:} \dagedge{Housing\_Demand $\rightarrow$ Zoning\_Status}, \dagedge{Zoning\_Status $\rightarrow$ Property}, \dagedge{Zoning\_Status $\rightarrow$ New\_Units} --- \statusgap{} (descriptive aggregation only; no model consumes \code{Zoning\_Status} as an input)
+
+\subsection{Property market and vacancy --- \code{calculate\_property\_indicators()}}
+\textbf{Location:} \code{housing/calculations.py:236}
+\begin{equation}
+  \overline{p} = \operatorname{avg}(\texttt{salePrice\_EUR}), \qquad
+  \overline{p}_{\si{EUR/m^2}} = \operatorname{avg}(\texttt{unitaryPrice\_EUR\_per\_sqm}), \qquad
+  \overline{v} = \operatorname{avg}(\texttt{vacancyRate})
+\end{equation}
+\textbf{DAG edges:} \dagedge{Housing\_Supply $\rightarrow$ Property}, \dagedge{Zoning\_Status $\rightarrow$ Property}, \dagedge{Accessibility $\rightarrow$ Property}, \dagedge{Property $\rightarrow$ Affordability\_Stress}, \dagedge{Property $\rightarrow$ Rent}, \dagedge{Property $\rightarrow$ House\_Price\_Index}, \dagedge{Property $\rightarrow$ Mortgage} --- \statusgap{} (no \code{Accessibility} model exists; none of the outgoing edges are computed --- this function only averages stored fields)
+
+\section{Urban heat app}
+\label{sec:urbanheat}
+
+Source: \code{urban\_heat/calculations.py}. Thermal-comfort rasters (SVF, $T_{mrt}$, PET, UTCI) are expected to arrive pre-computed from an external SOLWEIG run \cite{Lindberg2008SOLWEIG}; CrossTwin currently only reads and classifies them, it does not derive one raster from another.
+
+\subsection{Green area and vegetation coverage}
+\textbf{Location:} \code{calculate\_green\_area()} (\code{urban\_heat/calculations.py:18}), \code{calculate\_vegetation\_coverage()} (\code{:55})
+\begin{align}
+  A_{\text{green,lc}} &= A_{\text{unit}} \times \frac{\sum \texttt{percentage}_{\,\text{green classes}}}{100} \\
+  A_{\text{green,total}} &= A_{\text{parks}} + A_{\text{green,lc}} \\
+  \text{VegCov\%} &= \frac{A_{\text{green,total}}}{A_{\text{unit}}} \times 100
+\end{align}
+$\texttt{percentage}$ is stored relative to the \emph{Province} total area regardless of the queried unit (documented limitation, see \code{TODO.md}). \textbf{DAG edges:} \dagedge{LandCover $\rightarrow$ Green\_Area}, \dagedge{Green\_Area $\rightarrow$ Vegetation\_Coverage} --- \statuspartial{}; \dagedge{Vegetation\_Coverage $\rightarrow$ DSM} --- \statusgap{}
+
+\subsection{Urban morphology / canyon aspect proxy --- \code{calculate\_urban\_morphology()}}
+\textbf{Location:} \code{urban\_heat/calculations.py:75}
+\begin{equation}
+  \text{Aspect ratio} \equiv \frac{H}{W} = \frac{\overline{\texttt{height\_m}}_{\,\text{buildings}}}{\overline{\texttt{width}}_{\,\text{streets}}}
+\end{equation}
+The height-to-width ($H/W$) canyon aspect ratio is the standard urban-canyon geometry descriptor used in urban climatology \cite{Oke1987}. \textbf{DAG edges:} \dagedge{Buildings $\rightarrow$ DSM, Canyon\_Aspect}, \dagedge{Streets $\rightarrow$ Canyon\_Aspect} --- \statuspartial{} ($H/W$ is computed as a scalar proxy over the whole admin unit, not written back onto a \code{Canyon\_Aspect} or \code{DSM} model)
+
+\subsection{Raster statistics --- \code{\_raster\_stats\_sql()}, \code{get\_thermal\_indices()}}
+\textbf{Location:} \code{urban\_heat/calculations.py:112, 145}
+\begin{equation}
+  \{\min, \max, \mu, \sigma\} = \operatorname{ST\_SummaryStats}\big(\operatorname{ST\_Clip}(R,\ \texttt{geom}(u))\big)
+\end{equation}
+computed via PostGIS raster functions over the most recently dated raster of each type (LST, $T_{mrt}$, PET, UTCI, WBGT, SVF, SUHII) intersecting the admin unit. \textbf{DAG edges:} \dagedge{Meteorology $\rightarrow$ Tmrt, PET, UTCI}, \dagedge{DSM $\rightarrow$ SVF $\rightarrow$ Tmrt, PET}, \dagedge{LST $\rightarrow$ PET}, \dagedge{Tmrt $\rightarrow$ PET, UTCI} --- \statusgap{} (statistics \emph{over} existing rasters only; no raster is derived from another)
+
+\subsection{Thermal stress classification}
+\textbf{Location:} \code{classify\_pet()} (\code{:201}), \code{classify\_utci()} (\code{:225}), \code{classify\_wbgt()} (\code{:267})
+
+PET thresholds (in \si{\celsius}) follow the physiologically-based 9-class scheme of Matzarakis and Mayer \cite{Matzarakis1996}:
+\begin{equation}
+  \text{class}(\text{PET}) =
+  \begin{cases}
+    \text{Very Cold Stress} & \text{PET} < 4 \\
+    \text{Cold Stress} & 4 \le \text{PET} < 8 \\
+    \text{Slight Cold Stress} & 8 \le \text{PET} < 13 \\
+    \text{No Thermal Stress (cool)} & 13 \le \text{PET} < 18 \\
+    \text{Comfortable} & 18 \le \text{PET} < 23 \\
+    \text{No Thermal Stress (warm)} & 23 \le \text{PET} < 29 \\
+    \text{Slight Heat Stress} & 29 \le \text{PET} < 35 \\
+    \text{Moderate Heat Stress} & 35 \le \text{PET} < 41 \\
+    \text{Extreme Heat Stress} & \text{PET} \ge 41
+  \end{cases}
+\end{equation}
+UTCI thresholds follow the 10-class scheme defined by the COST Action 730 UTCI framework \cite{Blazejczyk2013UTCI}:
+\begin{equation}
+  \text{class}(\text{UTCI}) =
+  \begin{cases}
+    \text{Extreme Cold Stress} & \text{UTCI} < -40 \\
+    \vdots & \vdots \\
+    \text{Extreme Heat Stress} & \text{UTCI} \ge 46
+  \end{cases}
+  \quad (\text{9 intermediate bands; see } \code{urban\_heat/calculations.py:225})
+\end{equation}
+WBGT bands (\si{\celsius}: 25/28/30/33 thresholds) are marked \textbf{provisional} in the source (\code{urban\_heat/calculations.py:251--253}) pending confirmation against a named standard.
+
+\subsection{Nature-Based Solutions coverage --- \code{calculate\_nbs\_coverage()}}
+\textbf{Location:} \code{urban\_heat/calculations.py:283}
+\begin{equation}
+  A_{\text{NBS}} = \sum_{\,\text{NBS polygons} \,\cap\, \texttt{geom}(u)} \texttt{area}
+\end{equation}
+\textbf{DAG edges:} \dagedge{UTCI $\rightarrow$ NBS}, \dagedge{PET $\rightarrow$ NBS} --- \statusgap{} (counts NBS geometries only; never reads PET or UTCI values to relate NBS placement to thermal stress)
+
+\section{Summary table}
+
+\begin{longtable}{p{3.2cm} p{4.6cm} p{3.5cm} c}
+\toprule
+\textbf{App} & \textbf{Function} & \textbf{DAG edge(s) (abbrev.)} & \textbf{Status} \\
+\midrule
+\endhead
+administrative & \code{extrapolate()} & Population\_Growth$\to$Total\_Pop & \statusdone{} \\
+administrative & \code{\_city\_growth\_factor()} & Population\_Growth$\to$Total\_Pop & \statusdone{} \\
+administrative & \code{annual\_growth\_rate()} & Population\_Growth$\to$Total\_Pop & \statusdone{} \\
+administrative & \code{City.save()} / \code{Province.save()} & (population cascade) & \statusdone{} \\
+watersupply & \code{calculate\_total\_demand()} / \code{TotalWaterDemand.save()} & Total\_Pop$\to$Total\_Water\_Demand & \statusdone{} \\
+watersupply & \code{ConsumptionCapita.save()} & Total\_Pop$\to$Total\_Consumption & \statusdone{} \\
+watersupply & \code{calculate\_total\_extraction()} & Available\_FW$\to$Total\_Extraction & \statusdone{} \\
+watersupply & \code{calculate\_total\_production\_day()} & Total\_Extraction/Imported\_Water$\to$Total\_Water\_Prod & \statusdone{} \\
+watersupply & \code{calculate\_supply\_security()} / \code{SupplySecurity.save()} & Total\_Water\_Demand/Prod$\to$Supply\_Security$\to$Service\_Time & \statusdone{} \\
+watersupply & \code{calculate\_energy\_consumption()} & Total\_Extraction/Prod$\to$Energy\_Consumption & \statuspartial{} \\
+watersupply & \code{ExtractionWater.save()} (emissions) & Total\_Extraction$\to$CO2\_Emission & \statusdone{} \\
+watersupply & \code{OPEX.save()} & Extraction/Imported/WT\_Cost/Network$\to$OPEX & \statusdone{} \\
+watersupply & \code{calculate\_opex\_recovery()} & OPEX/CollectionRatio/NRW$\to$OPEX\_Recovery & \statuspartial{} \\
+watersupply & \code{MeteredResidential.save()} & Metered\_Res\_Water$\to$OPEX\_Recovery & \statusdone{} \\
+watersupply & \code{calculate\_collection\_ratio()} & Metered\_Res\_Water/User\_Acceptance/Water\_Tariff$\to$CollectionRatio & \statuspartial{} \\
+watersupply & \code{calculate\_coverage()} / \code{CoverageWaterSupply.save()} & Network/CityArea$\to$Coverage\_WS\_Area & \statusdone{} \\
+watersupply & \code{calculate\_nrw()} / \code{NonRevenueWater.save()} & Real/Apparent\_Losses$\to$NRW, ILI & \statuspartial{} \\
+watersupply & \code{calculate\_water\_quality()} & Samples\_WQ$\to$User\_Acceptance\_WS & \statusgap{} \\
+watersupply & \code{calculate\_available\_freshwater()} & Infiltration/Meteorology$\to$Available\_FW & \statusgap{} \\
+housing & \code{calculate\_supply\_demand()} & Urbanization$\to$Housing\_Demand & \statusgap{} \\
+housing & \code{calculate\_new\_units()} & New\_Units$\to$Housing\_Supply/LandCover & \statuspartial{} \\
+housing & \code{calculate\_mortgage\_indicators()} & Central\_Bank/Credit\_Supply$\to$Mortgage & \statuspartial{} \\
+housing & \code{calculate\_house\_price\_index()} & Housing\_Demand/Property$\to$HPI & \statusgap{} \\
+housing & \code{HousingAffordability.save()} & Rent/Mortgage/Water\_Tariff$\to$Income\_Expenses$\to$Affordability\_Stress & \statusgap{} \\
+housing & \code{calculate\_zoning()} & Zoning\_Status$\to$Property/New\_Units & \statusgap{} \\
+housing & \code{calculate\_property\_indicators()} & Housing\_Supply/Accessibility$\to$Property & \statusgap{} \\
+urban\_heat & \code{calculate\_green\_area()} / \code{calculate\_vegetation\_coverage()} & LandCover$\to$Green\_Area$\to$Vegetation\_Coverage & \statuspartial{} \\
+urban\_heat & \code{calculate\_urban\_morphology()} & Buildings/Streets$\to$Canyon\_Aspect & \statuspartial{} \\
+urban\_heat & \code{get\_thermal\_indices()} & DSM$\to$SVF$\to$Tmrt/PET$\to$UTCI & \statusgap{} \\
+urban\_heat & \code{calculate\_nbs\_coverage()} & UTCI/PET$\to$NBS & \statusgap{} \\
+\bottomrule
+\end{longtable}
+
+\section*{Notes on use}
+
+This document is generated from a manual audit of the codebase at the commit referenced in the accompanying \code{TODO.md}. Line numbers will drift as the code evolves; re-verify against \code{grep -n "def save"} in the relevant module before citing a location in a manuscript. The status tags mirror the coverage figures reported in the project's DPSIR gap analysis: of 102 edges in \code{core/DAG.dot}, 28 are backed by real derivation logic as of this audit.
+
+\begin{thebibliography}{9}
+
+\bibitem{CBS85173NED} Centraal Bureau voor de Statistiek (CBS). \textit{Regionale prognose 2023--2050} (Table 85173NED). \url{https://opendata.cbs.nl/}.
+
+\bibitem{IWA_WLTF} Lambert, A., Brown, T. G., Takizawa, M., \& Weimer, D. (1999). A review of performance indicators for real losses from water supply systems. \textit{Journal of Water Supply: Research and Technology-AQUA}, 48(6), 227--237. (International Water Association Water Loss Task Force ILI methodology.)
+
+\bibitem{Demographia} Demographia. \textit{International Housing Affordability Survey} --- Median Multiple methodology (median house price / median household income). \url{http://www.demographia.com/}.
+
+\bibitem{Lindberg2008SOLWEIG} Lindberg, F., Holmer, B., \& Thorsson, S. (2008). SOLWEIG 1.0 -- Modelling spatial variations of 3D radiant fluxes and mean radiant temperature in complex urban settings. \textit{International Journal of Biometeorology}, 52(7), 697--713.
+
+\bibitem{Oke1987} Oke, T. R. (1987). \textit{Boundary Layer Climates} (2nd ed.). Routledge. (Urban canyon height-to-width aspect ratio.)
+
+\bibitem{Matzarakis1996} Matzarakis, A., \& Mayer, H. (1996). Another kind of environmental stress: thermal stress. \textit{WHO Newsletter}, 18, 7--10. (Physiological Equivalent Temperature classification.)
+
+\bibitem{Blazejczyk2013UTCI} Bröde, P., Fiala, D., Błażejczyk, K., et al. (2012). Deriving the operational procedure for the Universal Thermal Climate Index (UTCI). \textit{International Journal of Biometeorology}, 56(3), 481--494.
+
+\end{thebibliography}
+
+\end{document}

@@ -82,6 +82,13 @@ class City(models.Model):
         else:
             self.populationDensity = None
 
+        if self.pk:
+            # Local import: population.py imports City from this module.
+            from .population import annual_growth_rate
+            rate = annual_growth_rate(self)
+            if rate is not None:
+                self.popGrowthRate = rate
+
         self.last_updated = timezone.now()
 
         super().save(*args, **kwargs)

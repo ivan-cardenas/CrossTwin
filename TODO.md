@@ -6,7 +6,8 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 
 ## administrative
 
-- [ ] `City.popGrowthRate` / `urbanizationRate` — flat fields, never consumed by the population projection in `administrative/population.py`
+- [x] `City.popGrowthRate` — now derived in `City.save()` from `population.annual_growth_rate()` (CBS compound annual growth rate over the city's imported projection years)
+- [ ] `urbanizationRate` — still a flat field, never consumed by the population projection in `administrative/population.py`
 - [ ] Housing supply/demand does not depend on the projected population — `HousingSupplyDemand` demand still comes from stored rows, not `get_population()`
 - [ ] Urban heat does not depend on the projected population
 - [ ] No `Urbanization` model exists — `Urbanization -> CityArea/Buildings/Streets/LandCover` has nowhere to live

@@ -87,6 +87,29 @@ def extrapolate(city_series, year):
     return anchor_value * (1 + annual_growth) ** (year - anchor_year)
 
 
+def annual_growth_rate(city, scenario=DEFAULT_SCENARIO):
+    """
+    CBS's compound annual population growth rate for `city`, in percent per
+    year -- the same rate `extrapolate` derives internally from the earliest
+    and latest imported PopulationProjection years for `scenario`.
+
+    None when fewer than two years are imported for the city (nothing to
+    derive a rate from yet); City.save() then leaves popGrowthRate untouched.
+
+    DAG edge: Population_Growth -> Total_Population (City.popGrowthRate)
+    """
+    scenario = normalize_scenario(scenario)
+    city_series = _series([city.pk], scenario).get(city.pk, {})
+    years = sorted(city_series)
+    if len(years) < 2:
+        return None
+    y0, y1 = years[0], years[-1]
+    v0, v1 = city_series[y0], city_series[y1]
+    if v0 <= 0 or y1 == y0:
+        return None
+    return ((v1 / v0) ** (1 / (y1 - y0)) - 1) * 100
+
+
 def _city_value(city, series, year, growth_adjust_pct):
     """Projected population of one city for `year` (or its current one if year is None)."""
     if year is None:
