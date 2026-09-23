@@ -185,3 +185,9 @@ graphify-out/cache/
 # Rasters ignore for data volume handling
 *.tif
 *.aux.xml
+
+# docs
+*.tex
+*.fls
+*.aux
+docs/crossTwin-paper/

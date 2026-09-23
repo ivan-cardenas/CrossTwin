@@ -137,6 +137,19 @@ Density $\rho$ in people$/\mathrm{km^2}$. The Neighbourhood $\rightarrow$ Distri
 
 \textbf{DAG edge:} (population aggregation, not a numbered DAG node) --- \statusdone{}
 
+\subsection{Urban area cascade and source computation --- \code{administrative/signals.py}, \code{physicalEnv/signals.py}}
+\textbf{Location:} \code{administrative/signals.py} (cascade), \code{physicalEnv/signals.py} (source)
+
+\begin{align}
+  A^{\text{urban}}_{\text{nbhd}} &= \sum_{v \,\in\, \text{qualifying LandCoverVector, latest year}} \left| \mathrm{geom}_{\text{nbhd}} \cap \mathrm{geom}_v \right| / 10^6\ \si{km^2} \\
+  A^{\text{urban}}_{\text{district}} &= \sum_{n \,\in\, \text{neighbourhoods of district}} A^{\text{urban}}_n \\
+  A^{\text{urban}}_{\text{city}} &= \sum_{d \,\in\, \text{districts of city}} A^{\text{urban}}_d \\
+  A^{\text{urban}}_{\text{province}} &= \sum_{c \,\in\, \text{cities of province}} A^{\text{urban}}_c
+\end{align}
+A \code{physicalEnv.LandCoverVector} polygon qualifies if its \code{land\_cover\_type.class\_name} case-insensitively contains any of \emph{urban fabric}, \emph{road}, \emph{rail}, \emph{transport}, restricted to the most recent \code{year} present for that city (older survey years are not summed, to avoid double-counting repeat surveys). The intersection area is computed in PostGIS via \code{ST\_Intersection} (Django's \code{Intersection}/\code{Area} functions). Neighbourhood $\rightarrow$ District $\rightarrow$ City $\rightarrow$ Province propagation reuses the same \code{\_recompute\_population()} helper as the population cascade above, generalised to sum \code{urban\_area} alongside \code{currentPopulation} in one aggregate; both use \code{QuerySet.update()}, not \code{.save()}. Unlike population, an aggregate with no children reporting a value is left \code{None} (unknown) rather than coerced to \num{0}. Because a \code{LandCoverVector} write only fires \code{post\_save} on itself (not on \code{Neighborhood}), the \code{physicalEnv} signal re-enters the \code{administrative} cascade manually after writing each affected Neighbourhood's \code{urban\_area}.
+
+\textbf{DAG edge:} \code{LandCover -> Urbanization} is the closest existing edge in \code{core/DAG.dot}, but it runs in the opposite direction of what this computes (LandCover only feeds a not-yet-modelled \code{Urbanization} node, per \code{TODO.md}), and no Neighbourhood/District/City/Province/LandCoverVector nodes exist in the DAG at all --- \statuspartial{} (cascade and source computation fully implemented; no \code{Urbanization} model backs a DAG edge for it)
+
 \section{Water supply app}
 \label{sec:watersupply}
 
@@ -469,9 +482,13 @@ urban\_heat & \code{calculate\_nbs\_coverage()} & UTCI/PET$\to$NBS & \statusgap{
 
 This document is generated from a manual audit of the codebase at the commit referenced in the accompanying \code{TODO.md}. Line numbers will drift as the code evolves; re-verify against \code{grep -n "def save"} in the relevant module before citing a location in a manuscript. The status tags mirror the coverage figures reported in the project's DPSIR gap analysis: of 102 edges in \code{core/DAG.dot}, 28 are backed by real derivation logic as of this audit.
 
+Beyond the CBS 85173NED forecasts used for the \texttt{Population\_Growth}$\to$\texttt{Total\_Population} projection, the external data catalog also offers a finer-grained, Google Earth Engine-hosted population source, the High Resolution Settlement Layer (HRSL) \cite{HRSL2016}, for direct raster ingestion where a sub-neighbourhood estimate is preferable to the CBS city-level forecast.
+
 \begin{thebibliography}{9}
 
 \bibitem{CBS85173NED} Centraal Bureau voor de Statistiek (CBS). \textit{Regionale prognose 2023--2050} (Table 85173NED). \url{https://opendata.cbs.nl/}.
+
+\bibitem{HRSL2016} Facebook Connectivity Lab and Center for International Earth Science Information Network (CIESIN), Columbia University (2016). \textit{High Resolution Settlement Layer (HRSL)}. Source imagery for HRSL Copyright 2016 DigitalGlobe. \url{https://gee-community-catalog.org/projects/hrsl/}.
 
 \bibitem{IWA_WLTF} Lambert, A., Brown, T. G., Takizawa, M., \& Weimer, D. (1999). A review of performance indicators for real losses from water supply systems. \textit{Journal of Water Supply: Research and Technology-AQUA}, 48(6), 227--237. (International Water Association Water Loss Task Force ILI methodology.)
 

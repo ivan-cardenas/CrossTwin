@@ -49,12 +49,23 @@ INDEX_STYLES = {
     "LABEL": ("tab20", (0, 8), "Dynamic World Land Cover", ""),
     "SM_SURFACE": ("blues", (0, 1), "Soil Moisture", "m³/m³"),
     "POPULATION": ("ylorrd", None, "Population Density", "people/ha"),
+    "HRSL_POP": ("reds", None, "Population Density (HRSL)", "people/pixel (30m)"),
     "AVG_RAD": ("inferno", None, "Nighttime Lights", "nW/cm²/sr"),
 }
 
 # Categorical products: legend still shows a gradient over the value range,
 # but callers can use this to skip drawing a continuous scale if desired.
 CATEGORICAL_INDICES = {"LGN2021", "WORLDCOVER_2021_MAP", "LABEL"}
+
+# TiTiler's tile endpoint defaults to nearest-neighbour resampling, which is
+# correct for categorical rasters (land cover classes, forest loss year)
+# where blending pixel values would invent classes that don't exist, but
+# looks blocky for continuous data at high zoom -- e.g. HRSL's 30m
+# population pixels. Only override per index where smoothing is actually
+# wanted; everything else keeps TiTiler's nearest default.
+RESAMPLING_OVERRIDES = {
+    "HRSL_POP": "cubic",
+}
 
 # Fallback by "app_label.model_name", used when the raster has no `index`
 # value (SOLWEIG thermal-comfort outputs, elevation models, etc).
@@ -133,12 +144,15 @@ def resolve_raster_style(instance, registry_key):
     if colormap is not None and rescale is None:
         rescale = _cog_statistics(instance.cog_path)
 
+    index_value = (getattr(instance, "index", None) or "").strip().upper()
+
     return {
         "colormap": colormap,
         "rescale": rescale,
         "label": label,
         "unit": unit,
         "categorical": categorical,
+        "resampling": RESAMPLING_OVERRIDES.get(index_value),
     }
 
 

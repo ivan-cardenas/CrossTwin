@@ -44,47 +44,16 @@
 
 14. should I use docker for deployment?
 
-## TODOS
+14. The urbanization degree is defined by CBS as the number of addresses per square kilometre. Should I calculate it like that? I am more interested in urban sprawl growth. How to add this?
+    
+    Degree of urbanisation
+    The classification of surrounding address density based on five categories:
+    - extremely urbanised: 2,500 addresses or more per square kilometre;
+    - strongly urbanised: 1,500 to 2,500 addresses per square kilometre;
+    - moderately urbanised: 1,000 to 1,500 addresses per square kilometre;
+    - hardly urbanised: 500 to 1,000 addresses per square kilometre;
+    - not urbanised: fewer than 500 addresses per square kilometre. 
 
-1. CHECK FOR IMPROVING AND ADDING INDICES FROM NEW RESEARCH EXAMPLE NDWI - I know there are betters.
-2. ~Have overview of active layers~
-2. Create an update button to search changes in the database to 
+14. On which sector should I leave Population Density Raster?
 
-2. ~-Max 10% cloud coverage-~
-
-2. Check from Destination Earth -------- This is 5km scale
-
-2. Climate Atlas -- Check Maps and updates.... 
-
-3. Pre write outputs
-
-4. Howq to create alarmns and messages to give instant things ---
-
-5. Check with Carolina Pereria --- See her appwith climate data. --- This is WBGT only, and quick proxy. Requires getting a CSV and parsing to the stations. Might be easy.
-
-
-5. **See the kind of choices and steps on the development .... Write Methodology for paper --- What are the different steps you do and why?**
-
-5. Work with mila to see how everyone is doing it?? --- Rakibun example
-
-3. on nature/models/Park, Import parks --- where to store?
-3. on builtup/models/facilities, How to import from OSM or GoogleMaps?
-3. on builtup/models/Property, add Define green visibility index and calculation method
-3. on landcoverVector how to get the albedo using the same satellite info or how to calculate from different bands in the raster?
-
-3. define where to store zoning data and how to import
-3. Add policy options and restriction in pop up
-3. verify functions of water supply to render HTMX
-3. Get data for water, or mock it up
-3. How to calculate changes on land cover and then calculate inflitration changes? reflection changes, etc?
-
-3. create HTMX for indicators of built up
-3. How to connect buildings and properties to housing? --- check woonfuctie
-3. create HTMX for indicators of housing 
-4. create HTMX for indicators of energy
-4. Create live stream of weather data 
-    - move indicator of weather to top
-    - see if mapbox rain render can be activated live with this
-    - How to connect with weather stations?
-5. create functions for LST, PET, SVF, SUHHI calculations - see Soliweg or similar
-6. create HTMX for indicators of nature 
+(The former "TODOS" section here has moved to [`TODO.md`](../TODO.md)'s "Product / feature backlog" section, with each item's description clarified.)

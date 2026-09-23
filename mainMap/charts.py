@@ -130,24 +130,30 @@ def build_population_chart(unit, scenario, growth, year, current):
     """
     Chart data for `unit`, or None when no projection is imported for it.
 
-    scenario: the highlighted variant; growth: extra %/yr (applied to all three
-    variants so the band moves with the curve); year: the selected year (marker,
-    may be None); current: the unit's current population (dashed reference line).
+    scenario: the highlighted variant; growth: extra %/yr, applied only to the
+    highlighted variant so the 67% band always reflects the original CBS
+    prediction and only the tested curve moves; year: the selected year
+    (marker, may be None); current: the unit's current population (dashed
+    reference line).
     """
     scenario = scenario if scenario in VARIANTS else 'prognose'
-    curves = {s: population_curve(unit, s, growth) for s in VARIANTS}
-    main = curves[scenario] or curves['prognose']
+    # The band (low/high) and the dashed median reference always reflect the
+    # original CBS prediction, unaffected by the what-if slider; only the
+    # highlighted 'selected' curve is computed with `growth` applied, so
+    # dragging the slider moves that curve without moving the band under it.
+    by_year = {s: {p['year']: p['population'] for p in population_curve(unit, s, 0)} for s in VARIANTS}
+    selected = {p['year']: p['population'] for p in population_curve(unit, scenario, growth)}
+    main = selected or by_year['prognose']
     if not main:
         return None
 
-    years = [p['year'] for p in main]
-    by_year = {s: {p['year']: p['population'] for p in curves[s]} for s in VARIANTS}
+    years = sorted(by_year['prognose'].keys() | by_year['low'].keys() | by_year['high'].keys() | selected.keys())
     data_first, data_last = years[0], years[-1]
     # The axis always spans at least REFERENCE_YEAR..FORECAST_END_YEAR (2025-2050),
     # widening around whatever has actually been imported.
     first, last = min(data_first, REFERENCE_YEAR), max(data_last, FORECAST_END_YEAR)
 
-    all_values = [v for s in VARIANTS for v in by_year[s].values()] + [current or 0]
+    all_values = [v for s in VARIANTS for v in by_year[s].values()] + list(selected.values()) + [current or 0]
     lo, hi = min(all_values), max(all_values)
     step = nice_step((hi - lo) / 4 or max(hi, 1) / 4)
     y_min = math.floor(lo / step) * step
@@ -165,8 +171,8 @@ def build_population_chart(unit, scenario, growth, year, current):
     def y_of(v):
         return y1 - (v - y_min) / (y_max - y_min) * (y1 - y0)
 
-    def pts(scn):
-        return [(x_of(y), y_of(by_year[scn][y])) for y in years if y in by_year[scn]]
+    def pts(series):
+        return [(x_of(y), y_of(series[y])) for y in years if y in series]
 
     grid_h, value = [], y_min
     while value <= y_max + step / 100:
@@ -175,7 +181,6 @@ def build_population_chart(unit, scenario, growth, year, current):
         value += step
     grid_v = [{'x': round(x_of(y), 1), 'label': str(y)} for y in _year_ticks(first, last)]
 
-    selected = by_year[scenario] or by_year['prognose']
     handle_years = {y for y in years if (y - data_first) % HANDLE_EVERY == 0} | {data_first, data_last}
     if year in selected:
         handle_years.add(year)
@@ -201,10 +206,10 @@ def build_population_chart(unit, scenario, growth, year, current):
         'x0': x0, 'x1': x1, 'y0': y0, 'y1': y1, 'plot_w': x1 - x0, 'plot_h': y1 - y0,
         'label_y': y1 + 15,
         'grid_h': grid_h, 'grid_v': grid_v,
-        'band_path': band_d(pts('high'), pts('low')),
-        'low_path': path_d(pts('low')), 'high_path': path_d(pts('high')),
-        'median_path': path_d(pts('prognose')),
-        'selected_path': path_d(pts(scenario)),
+        'band_path': band_d(pts(by_year['high']), pts(by_year['low'])),
+        'low_path': path_d(pts(by_year['low'])), 'high_path': path_d(pts(by_year['high'])),
+        'median_path': path_d(pts(by_year['prognose'])),
+        'selected_path': path_d(pts(selected)),
         'scenario': scenario, 'variant_label': VARIANT_LABELS[scenario],
         'baseline': {
             'y': round(y_of(current), 1), 'text_y': round(y_of(current) - 4, 1),
@@ -228,13 +233,15 @@ def build_population_stats(unit, scenario, growth, year, current):
     stats = {'current': current or 0, 'year': year, 'has_projection': False}
     if year is None or year not in projection_years(unit):
         return stats
-    values = {s: population_by_year(unit, [year], s, growth)[year] for s in VARIANTS}
-    projected = values[scenario]
+    # The interval is the original CBS prediction (growth=0); only the
+    # highlighted scenario's projected value moves with the what-if slider.
+    band = {s: population_by_year(unit, [year], s, 0)[year] for s in VARIANTS}
+    projected = population_by_year(unit, [year], scenario, growth)[year]
     stats.update({
         'has_projection': True,
         'variant_label': VARIANT_LABELS[scenario],
         'projected': projected,
-        'low': values['low'], 'high': values['high'],
+        'low': band['low'], 'high': band['high'],
         'delta': projected - (current or 0),
         'delta_pct': round((projected - current) / current * 100, 1) if current else None,
     })

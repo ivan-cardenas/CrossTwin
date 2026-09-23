@@ -14,6 +14,7 @@ class Province(models.Model):
     populationDensity = models.FloatField(null=True, help_text="Population density in people per square kilometer", verbose_name="Population Density") # people/km2
     populationDate = models.DateField(null=True, help_text="Date of the population data", verbose_name="Population Date")
     area_km2 = models.FloatField(null=True, help_text="Area in square kilometers")
+    urban_area = models.FloatField(null=True, help_text="Urban area in square kilometers")
     geom = models.MultiPolygonField(srid=CoordinateSystem)
     last_updated = models.DateTimeField(default=timezone.now)
 
@@ -108,6 +109,7 @@ class District(models.Model):
     populationDate = models.DateField(null=True)
     area_km2 = models.FloatField(null=True, blank=True, help_text="Area in square kilometers")
     populationDensity = models.FloatField(null=True, blank=True, help_text="Population density in people per square kilometer", verbose_name="Population Density")
+    urban_area = models.FloatField(null=True, help_text="Urban area in square kilometers")
     geom = models.MultiPolygonField(srid=CoordinateSystem)
     last_updated = models.DateTimeField(default=timezone.now)
 
@@ -133,6 +135,7 @@ class Neighborhood(models.Model):
     populationDate = models.DateField(null=True)
     area_km2 = models.FloatField(null=True, blank=True, help_text="Area in square kilometers")
     populationDensity = models.FloatField(null=True, blank=True, help_text="Population density in people per square kilometer", verbose_name="Population Density")
+    urban_area = models.FloatField(null=True, help_text="Urban area in square kilometers")
     geom = models.MultiPolygonField(srid=CoordinateSystem)
     last_updated = models.DateTimeField(default=timezone.now)
 

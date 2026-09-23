@@ -12,15 +12,21 @@ city_population_changed = Signal()
 
 def _recompute_population(model, pk, child_model, child_fk, parent_fk=None):
     """
-    Recompute currentPopulation and populationDensity for a parent record
-    by summing its children's currentPopulation.
+    Recompute currentPopulation, populationDensity and urban_area for a
+    parent record by summing its children's currentPopulation / urban_area.
 
     If parent_fk is given, returns (parent_model, parent_pk) so the caller
     can cascade further up the hierarchy.
     """
-    total = child_model.objects.filter(**{child_fk: pk}).aggregate(
-        total=Sum('currentPopulation')
-    )['total'] or 0
+    totals = child_model.objects.filter(**{child_fk: pk}).aggregate(
+        total=Sum('currentPopulation'),
+        urban_area_total=Sum('urban_area'),
+    )
+    total = totals['total'] or 0
+    # Unlike population, leave this None (unknown) rather than coercing to 0
+    # when no child has a value yet -- "no urban_area data" isn't the same
+    # as "0 km2 urban", whereas 0 population is a legitimate value.
+    urban_area_total = totals['urban_area_total']
 
     obj = model.objects.filter(pk=pk).first()
     if obj is None:
@@ -31,6 +37,7 @@ def _recompute_population(model, pk, child_model, child_fk, parent_fk=None):
     )['populationDate']
 
     obj.currentPopulation = total
+    obj.urban_area = urban_area_total
     if obj.area_km2 and obj.area_km2 > 0:
         obj.populationDensity = total / obj.area_km2
     else:
@@ -40,6 +47,7 @@ def _recompute_population(model, pk, child_model, child_fk, parent_fk=None):
     model.objects.filter(pk=pk).update(
         currentPopulation=obj.currentPopulation,
         populationDensity=obj.populationDensity,
+        urban_area=obj.urban_area,
         last_updated=obj.last_updated,
         populationDate=obj.populationDate,
     )

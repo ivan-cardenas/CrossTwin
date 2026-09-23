@@ -76,7 +76,7 @@ Of the 102 edges in `core/DAG.dot`, only 28 are backed by real derivation logic 
 
 Each domain app contains spatial models related to a topic:
 
-- **`administrative`** — Administrative hierarchy: Province > City > District > Neighborhood. Population cascades upward via signals.
+- **`administrative`** — Administrative hierarchy: Province > City > District > Neighborhood. Population and urban area cascade upward via signals.
 - **`physicalEnv`** — LandCover (vector + raster), DEM, DSM, satellite imagery, surface/wall material properties, environmental costs.
 - **`watersupply`** — Water infrastructure: extraction, treatment, pipe networks, coverage, NRW (non-revenue water), OPEX. Has `calculations.py` (pure query functions) + `views.py` (indicator assembly + HTMX recalculation).
 - **`urban_heat`** — Thermal comfort rasters (UTCI, PET, MRT, LST, SVF, SUHII) and Nature-Based Solutions.
@@ -101,7 +101,8 @@ Each domain's standalone dashboard (`water_indicators.html`, `heat_indicators.ht
 
 ### Signal-Driven Computations
 
-- **`administrative/signals.py`** — When a Neighborhood is saved/deleted, population and density cascade up through District > City > Province using `_recompute_population()`. Uses `update()` (not `save()`) to avoid infinite loops.
+- **`administrative/signals.py`** — When a Neighborhood is saved/deleted, population, density and urban_area cascade up through District > City > Province using `_recompute_population()` (sums both `currentPopulation` and `urban_area` per level). Uses `update()` (not `save()`) to avoid infinite loops.
+- **`physicalEnv/signals.py`** — When a `LandCoverVector` row is saved/deleted, recomputes the affected City's Neighborhoods' `urban_area` from PostGIS intersection area against qualifying (urban fabric/road/rail/transport) land-cover polygons for the most recent `year`, then manually re-enters `administrative/signals.py`'s cascade (`_recompute_population`) since `Neighborhood.objects.update()` does not fire `post_save`.
 - **`core/signals.py`** — `post_save` on every RASTER_REGISTRY model auto-exports to COG via `export_raster_to_cog()`.
 
 ### Importer System (`importer/`)

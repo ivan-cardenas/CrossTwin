@@ -475,11 +475,11 @@ function addRasterLegend(key, title, legend) {
   legendEl.id = `legend-${key}`;
   legendEl.className = 'map-legend dynamic-legend';
   legendEl.innerHTML = `
-    <div class="legend-title">${legend.label || title}</div>
+    <div class="legend-title">${legend.label || title} ${unitSuffix}</div>
     <div class="legend-gradient" style="background: ${gradientCss}"></div>
     <div class="legend-range">
-      <span>${legend.min}${unitSuffix}</span>
-      <span>${legend.max}${unitSuffix}</span>
+      <span>${Number(legend.min).toFixed(2)}</span>
+      <span>${Number(legend.max).toFixed(2)}</span>
     </div>
   `;
   document.querySelector('.map-wrapper').appendChild(legendEl);

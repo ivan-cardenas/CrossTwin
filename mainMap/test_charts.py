@@ -109,13 +109,16 @@ class ChartTests(TestCase):
         self.assertIsNone(self.chart(year=2060)['marker'])
         self.assertIsNone(self.chart(year=None)['marker'])
 
-    def test_growth_adjustment_moves_the_band_with_the_curve(self):
+    def test_growth_adjustment_moves_the_curve_but_not_the_band(self):
+        # The band (low/median/high) is always the original CBS prediction, so the
+        # what-if slider must never move it -- only the highlighted curve should move.
         base = {p['year']: p for p in json.loads(self.chart()['points_json'])}
         grown = {p['year']: p for p in json.loads(self.chart(growth=2)['points_json'])}
-        self.assertEqual(grown[2025]['median'], base[2025]['median'])          # nothing up to 2025
-        self.assertGreater(grown[2040]['median'], base[2040]['median'])
-        self.assertGreater(grown[2040]['high'], base[2040]['high'])
-        self.assertGreater(grown[2040]['low'], base[2040]['low'])
+        for year in (2025, 2040):
+            self.assertEqual(grown[year]['median'], base[year]['median'])
+            self.assertEqual(grown[year]['high'], base[year]['high'])
+            self.assertEqual(grown[year]['low'], base[year]['low'])
+        self.assertNotEqual(self.chart(growth=2)['selected_path'], self.chart()['selected_path'])
 
     def test_selected_variant_is_labelled(self):
         self.assertEqual(self.chart('low')['variant_label'], 'Lower bound')

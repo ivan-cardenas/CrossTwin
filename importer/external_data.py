@@ -421,7 +421,17 @@ def load_raster_into_target_model(
         if "satellite_type" in model_field_names and dataset.get("satellite_type"):
             field_values["satellite_type"] = dataset["satellite_type"]
         if "index" in model_field_names:
-            index_value = dataset.get("openeo_process") or dataset.get("layer") or dataset.get("band") or dataset.get("name")
+            # index_override lets a catalog entry point at a specific
+            # core/rasterStyles.py INDEX_STYLES key when its GEE band name
+            # (e.g. HRSL's "b1") is too generic/meaningless to match one on
+            # its own -- see gee_population_density.
+            index_value = (
+                dataset.get("index_override")
+                or dataset.get("openeo_process")
+                or dataset.get("layer")
+                or dataset.get("band")
+                or dataset.get("name")
+            )
             if index_value:
                 field_values["index"] = index_value
         if "resolution" in model_field_names and dataset.get("resolution_m") is not None:
@@ -1909,8 +1919,13 @@ class GEEImporter:
                 # Try as ImageCollection first
                 collection = ee.ImageCollection(asset_id)
 
-                # Apply date filter if needed
-                if date_from and date_to:
+                # Apply date filter if needed. Only for datasets that actually
+                # declare a date range requirement: a static, non-temporal
+                # collection (e.g. HRSL) has no meaningful system:time_start
+                # to filter on, and the frontend sends a default date_from/
+                # date_to regardless of dataset type, so filtering on it here
+                # would silently empty the collection for those datasets.
+                if date_from and date_to and dataset.get("requires_date_range"):
                     collection = collection.filterDate(date_from, date_to)
 
                 # Filter by region
@@ -1930,17 +1945,24 @@ class GEEImporter:
                 except Exception as e:
                     logger.warning(f"Could not look up GEE acquisition date for {asset_id}: {e}")
 
+                # Select the band on each feature *before* compositing: the
+                # collection itself carries no bands (only its member Images
+                # do), so selecting after a mean()/mosaic() over zero or
+                # band-mismatched features silently yields a 0-band Image
+                # that fails downstream. Selecting per-image also fails fast
+                # here if a feature is missing the band, instead of later.
+                if band:
+                    collection = collection.select(band)
+
                 # Composite (mean)
                 image = collection.mean()
 
             except Exception:
                 # Fall back to single Image
                 image = ee.Image(asset_id)
-            
-            # Select band if specified
-            if band:
-                image = image.select(band)
-            
+                if band:
+                    image = image.select(band)
+
             # Clip to region
             image = image.clip(region)
             

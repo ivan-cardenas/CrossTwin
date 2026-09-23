@@ -80,6 +80,14 @@ def get_raster_tiles(request, app_label, layer_name):
         f"?url={encoded_url}"
     )
 
+    # TiTiler defaults to nearest-neighbour resampling (blocky at high zoom);
+    # only override it where core/rasterStyles.py's RESAMPLING_OVERRIDES asks
+    # for smoother interpolation, e.g. HRSL's 30m population pixels. The
+    # query param is `resampling` on the wire (RIOResampling's FastAPI
+    # alias), not the Python field name `resampling_method`.
+    if style["resampling"]:
+        tile_url += f"&resampling={style['resampling']}"
+
     # rescale applies whenever the raster's values aren't already in a
     # directly-displayable 0-255 range — including multi-band RGB composites
     # (e.g. Sentinel-2 true color, which downloads as float reflectance-like

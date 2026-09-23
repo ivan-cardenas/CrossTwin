@@ -116,11 +116,12 @@ class PopulationDockTests(TestCase):
         self.assertContains(self.get(year=2030, pop_scenario='high'), 'id="pop-value-projected">12,600<')
         self.assertContains(self.get(year=2030, pop_scenario='low'), 'Lower bound')
 
-    def test_growth_adjustment_changes_value_and_interval(self):
+    def test_growth_adjustment_moves_the_value_but_not_the_interval(self):
         response = self.get(year=2030, pop_growth='2')
         factor = 1.02 ** 5
         self.assertContains(response, f'id="pop-value-projected">{round(12000 * factor):,}<')
-        self.assertContains(response, f'{round(11400 * factor):,} – {round(12600 * factor):,}')
+        # The 67% interval reflects the original CBS prediction, unaffected by the what-if slider.
+        self.assertContains(response, '67% interval: 11,400 – 12,600')
 
     def test_year_outside_the_data_says_so_instead_of_faking_a_projection(self):
         response = self.get(year=2040)
