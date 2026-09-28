@@ -19,6 +19,7 @@ Run the measurements in [§0](#0-measure-first) before and after each change to 
 | 9 | Connection / cache settings | No `CONN_MAX_AGE`, no `CACHES` | 🟡 Medium | XS |
 | 10 | Raster stats | `ST_Clip` + `ST_SummaryStats` on untiled PostGIS rasters, with the geometry sent as WKT | 🟡 Medium | M |
 | 11 | Population cascade | Redundant aggregates, a full-row load, and repeated City/Province recomputes | 🟢 Low-Med | S |
+| 12 | GPU (CUDA) | Not a fix for the query problems above. Speeds up raster derivations (DSM → SVF → Tmrt), bulk zonal statistics and voxel simulations | 🔵 New capability | M–L |
 
 Recommended order: **9 → 8 → 6 → 5 → 4 → 7 → 1 → 2/3 → 10 → 11.** The first five are small and low-risk. Items 1–3 give the biggest gains.
 
@@ -331,6 +332,137 @@ PostgreSQL server settings also matter. The defaults are sized for a very small 
 
 ---
 
+## 12. GPU (CUDA) acceleration
+
+### Where a GPU helps, and where it doesn't
+
+A GPU speeds up **compute-bound array work**: the same arithmetic over millions of cells. Most of what is slow in CrossTwin today is **I/O- and query-bound**: whole-table scans, row-by-row inserts, round trips, and missing indexes (§1–§11). PostgreSQL/PostGIS runs on the CPU, and a GPU does nothing for those problems. Fix §1–§11 first. Then move the numeric workloads below to CUDA.
+
+| Workload | GPU helps? | Why |
+|---|---|---|
+| Dashboard `calculate_*` aggregates, GeoJSON, catalog | ❌ No | DB-bound; a few rows of arithmetic after a query |
+| Population projection / what-if (`administrative/population.py`) | ❌ No | Tens of values; NumPy vectorisation is plenty |
+| **Deriving rasters from rasters**: DSM → SVF → Tmrt/PET/UTCI, shadow casting, the DAG gaps in `urban_heat` | ✅ **Yes, 10–100×** | Per-pixel ray marching over millions of pixels × dozens of azimuths × hours of the day |
+| **Zonal statistics** over many rasters/timesteps (§10), e.g. hourly UTCI for every neighborhood | ✅ Yes, at volume | For one raster and one city, copying to the GPU takes most of the time. Hundreds of timesteps × hundreds of zones is where it pays off |
+| **Voxel simulations** (sky/green view, solar irradiance), see [VOXCITY.md](VOXCITY.md) | ✅ Yes | VoxCity ships a Taichi GPU simulator (`pip install "voxcity[gpu]"`) |
+| Scenario sweeps (e.g. Monte-Carlo over consumption × population × tariff) | ⚠️ Only if ≥ 10⁶ scenarios | Vectorise with NumPy first; CuPy is a drop-in replacement when the arrays get large |
+| Bulk polygon overlay (land cover × neighborhoods, §2) | ⚠️ Rarely | The set-based PostGIS `UPDATE` in §2 usually removes the bottleneck. GPU spatial joins (RAPIDS cuSpatial / cuDF) are Linux/WSL2-only, and RAPIDS has been winding cuSpatial down, so check its status before depending on it |
+
+### Tooling
+
+| Library | Use | Windows? |
+|---|---|---|
+| **CuPy** | NumPy-compatible arrays on the GPU (`cp.asarray`, `cp.nanmean`, masks, convolutions via `cupyx.scipy.ndimage`) | ✅ |
+| **Numba CUDA** (`numba.cuda.jit`) | Custom kernels written in Python (ray marching, SVF, shadows) | ✅ |
+| **Taichi** | Used internally by VoxCity's GPU simulator; CUDA/Vulkan/Metal backends | ✅ |
+| RAPIDS (cuDF, cuSpatial) | GPU dataframes / spatial joins | ❌ Linux or WSL2 only |
+
+The project is developed on Windows (`.venv\Scripts\Activate`), so **CuPy + Numba CUDA** are the practical choice. Install the CUDA Toolkit version matching your driver, then e.g. `pip install cupy-cuda12x numba`.
+
+### Architecture: keep the GPU out of the request cycle
+
+- **Never run CUDA work inside a Django view or a `post_save` signal.** Kernels on a city-sized raster take seconds to minutes, and the GPU context is per process. Run them in a **management command** (like `export_cogs`) or a background worker (Celery / django-q / RQ) on the machine with the GPU.
+- **Input and output are COGs, not PostGIS rasters.** Read the source DEM/DSM from its `cog_path` with rasterio, compute on the GPU, write a COG with `rio-cogeo`, and create the model row with `cog_path` set. `core/signals.py::auto_export_cog` skips export when `cog_path` is already set, and TiTiler serves the result with no further changes.
+- **Always keep a CPU fallback** so tests and machines without a GPU still work:
+  ```python
+  # core/gpu.py
+  try:
+      import cupy as xp
+      from numba import cuda
+      GPU = cuda.is_available()
+  except ImportError:
+      import numpy as xp
+      GPU = False
+  ```
+- Set `measurement_method` / `source` on the output rows (e.g. `"CrossTwin SVF (GPU horizon method)"`) so GPU-derived rasters can be told apart from SOLWEIG imports.
+
+### Example 1: Sky View Factor from the DSM (Numba CUDA)
+
+This fills the `DSM -> SVF` edge in `core/DAG.dot`, currently unimplemented (see CLAUDE.md, *DAG Edge Coverage Gaps*). It uses the horizon-angle method. Each GPU thread handles one pixel, marches outward along `n_az` azimuths, keeps the steepest horizon angle γ on each, and computes `SVF = 1 − mean(sin²γ)`. This is the cosine-weighted form used for radiation. The visualisation form in Zakšek et al. (2011) uses `sin γ` instead.
+
+```python
+# urban_heat/gpu/svf.py
+import math
+import numpy as np
+import rasterio
+from numba import cuda
+
+@cuda.jit
+def _svf_kernel(dsm, cell, n_az, max_steps, out):
+    i, j = cuda.grid(2)
+    rows, cols = dsm.shape
+    if i >= rows or j >= cols:
+        return
+    z0 = dsm[i, j]
+    acc = 0.0
+    for a in range(n_az):
+        ang = 2.0 * math.pi * a / n_az
+        di = -math.cos(ang)          # north-up raster: north = decreasing row
+        dj = math.sin(ang)
+        max_tan = 0.0
+        for s in range(1, max_steps + 1):
+            ii = int(math.floor(i + di * s + 0.5))
+            jj = int(math.floor(j + dj * s + 0.5))
+            if ii < 0 or jj < 0 or ii >= rows or jj >= cols:
+                break
+            t = (dsm[ii, jj] - z0) / (s * cell)
+            if t > max_tan:
+                max_tan = t
+        acc += max_tan * max_tan / (1.0 + max_tan * max_tan)   # sin²(atan t)
+    out[i, j] = 1.0 - acc / n_az
+
+
+def compute_svf(dsm_cog_path, out_path, n_az=36, radius_m=200):
+    with rasterio.open(dsm_cog_path) as src:
+        dsm = src.read(1).astype(np.float32)
+        profile = src.profile
+        cell = abs(src.transform.a)
+    d_dsm = cuda.to_device(dsm)
+    d_out = cuda.device_array_like(d_dsm)
+    threads = (16, 16)
+    blocks = ((dsm.shape[0] + 15) // 16, (dsm.shape[1] + 15) // 16)
+    _svf_kernel[blocks, threads](d_dsm, cell, n_az, int(radius_m / cell), d_out)
+    svf = d_out.copy_to_host()
+    profile.update(dtype="float32", count=1, nodata=None)
+    with rasterio.open(out_path, "w", **profile) as dst:
+        dst.write(svf, 1)
+    return out_path    # then cog_translate(...) and SkyViewFactor.objects.create(cog_path=..., ...)
+```
+
+A 5 × 5 km tile at 0.5 m (AHN) is 10⁸ pixels. At 36 azimuths × 400 steps that is about 10¹² memory reads, a job of hours on a CPU and minutes on a mid-range GPU. For areas larger than GPU memory, process overlapping tiles with a halo of `radius_m` and crop the halo before writing. Before replacing SOLWEIG's SVF with this output, check it against SOLWEIG for a test tile.
+
+The same pattern (one thread per pixel, loops over azimuths and sun positions) extends to **shadow masks per hour** (march toward the sun's azimuth, compare with the sun altitude). Those feed Tmrt. The full Tmrt/PET/UTCI chain also needs longwave fluxes and meteorology, so porting SOLWEIG is a separate, larger project.
+
+### Example 2: GPU zonal statistics for many timesteps (CuPy)
+
+```python
+import cupy as cp
+import rasterio
+from rasterio.features import geometry_mask
+from rasterio.windows import from_bounds
+
+def zonal_mean_over_time(cog_paths, zone_geom):   # zone_geom in the rasters' CRS
+    means = []
+    for path in cog_paths:                          # e.g. 24 hourly UTCI COGs
+        with rasterio.open(path) as src:
+            win = from_bounds(*zone_geom.bounds, transform=src.transform)
+            arr = src.read(1, window=win, masked=False).astype("float32")
+            mask = geometry_mask([zone_geom.__geo_interface__], arr.shape,
+                                 src.window_transform(win), invert=True)
+        g = cp.asarray(arr)
+        g[~cp.asarray(mask)] = cp.nan
+        means.append(float(cp.nanmean(g)))
+    return means
+```
+
+The per-file read is still CPU work, so this pays off only when the per-pixel work is substantial: many zones per raster, percentiles, or exceedance-hour counts. Stack the timesteps into one 3-D array (`cp.stack`) and reduce along axis 0 so the GPU transfer happens once.
+
+### Measuring the gain
+
+Time each kernel with `cupyx.profiler.benchmark` or with `cuda.synchronize()` around `time.perf_counter()`, and compare against the NumPy fallback on the same tile. Include the host↔device copy in the timing, since for small rasters it dominates.
+
+---
+
 ## Checklist
 
 - [ ] §0 Install debug-toolbar/silk and `pg_stat_statements`; record baseline query counts and times
@@ -344,3 +476,5 @@ PostgreSQL server settings also matter. The defaults are sized for a very small 
 - [ ] §2/§3 Deferred signals, set-based urban-area update, prepared geometries, `bulk_create`
 - [ ] §10 Compute raster stats from COGs or tiled rasters; cache them
 - [ ] §11 Merge the aggregates in `_recompute_population`
+- [ ] §12 Add `core/gpu.py` with a CPU fallback; add a GPU SVF management command; validate its output against SOLWEIG
+- [ ] Prototype the VoxCity pipeline ([VOXCITY.md](VOXCITY.md))
