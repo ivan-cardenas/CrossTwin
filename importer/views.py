@@ -1,4 +1,5 @@
 from pyexpat.errors import messages
+import logging
 import tempfile, os
 import uuid
 
@@ -13,6 +14,7 @@ from django.apps import apps
 import pandas as pd
 import geopandas as gpd
 
+from .batching import deferred_cascades
 from .forms import GeoUploadForm, MappingForm, get_target_model_choices
 from .utils import gpd_read_any
 from core.utils import MODEL_REGISTRY
@@ -22,6 +24,8 @@ from django.contrib.gis.db.models import GeometryField, RasterField, MultiPolygo
 
 
 COORDINATE_SYSTEM = settings.COORDINATE_SYSTEM
+
+logger = logging.getLogger(__name__)
 
 
 # Optional, tiny per-model overrides (only what can't be inferred)
@@ -427,131 +431,112 @@ def _generic_import(gdf, target_label, colmap, dry_run=True):
     geom_field_name = spec['geometry_field'] if spec['has_geometry'] else None
     geom_field_obj = field_by_name.get(geom_field_name) if geom_field_name else None
 
-    print(f"=== IMPORT DEBUG ===")
-    print(f"Model: {target_label}")
-    print(f"Total rows: {total}")
-    print(f"Column mapping: {colmap}")
-    print(f"Upsert keys: {spec['upsert_keys']}")
-    print(f"Geometry field: {geom_field_name}")
-    print(f"Required fields: {spec['required']}")
-    
+    logger.debug(
+        "Import into %s: %d rows, mapping=%s, upsert keys=%s, geometry=%s, required=%s",
+        target_label, total, colmap, spec['upsert_keys'], geom_field_name, spec['required'],
+    )
 
-    for idx, row in gdf.iterrows():
-        sid=transaction.savepoint()
-        try:
-            print(f"\n--- Row {idx} ---")
-            
-            # Build lookup for upsert
-            lookup = {}
-            for key in (spec['upsert_keys'] or []):
-                if key == 'id':
-                    continue
-                src = colmap.get(key)
-                print(f"  Upsert key '{key}' -> source column '{src}'")
-                if not src:
-                    raise ValueError(f"Missing mapping for upsert key '{key}'")
-                raw = row[src]
-                print(f"  Raw value: {raw}")
-                f = field_by_name.get(key)
-                if isinstance(f, (ForeignKey, OneToOneField)):
-                    val = _resolve_fk(model, key, raw)
-                    if val is None:
-                        raise ValueError(f"FK not found for '{key}': {raw}")
-                    lookup[key] = val
-                else:
-                    lookup[key] = _cast_value(raw, f)
-            
-            print(f"  Lookup dict: {lookup}")
+    # Constant for the whole import, so resolved once rather than per row
+    assign_city = (
+        geom_field_name is not None
+        and any(f.name == 'city' and isinstance(f, ForeignKey) for f in opts.get_fields())
+    )
+    if assign_city:
+        from administrative.models import City
 
-            # Defaults / updates
-            defaults = {}
-            for fname, f in field_by_name.items():
-                if fname in lookup or fname == geom_field_name:
-                    continue
-                if fname not in colmap or not colmap[fname]:
-                    continue
-                raw = row[colmap[fname]]
-                if isinstance(f, (ForeignKey, OneToOneField)):
-                    defaults[fname] = _resolve_fk(model, fname, raw)
-                elif isinstance(f, GeometryField):
-                    pass
-                else:
-                    defaults[fname] = _cast_value(raw, f)
-
-
-            # Geometry handling (if any)
-            if geom_field_name and hasattr(gdf, 'geometry'):
-                shp = row.geometry
-                print(f"  Geometry type: {shp.geom_type if shp else 'None'}, empty: {shp.is_empty if shp else 'N/A'}")
-                
-                if shp is not None and not shp.is_empty:
-                    # gdf is already in COORDINATE_SYSTEM (reprojected above)
-                    geos = GEOSGeometry(shp.wkt, srid=COORDINATE_SYSTEM)
-                else:
-                    geos = None
-                
-
-                if geos and isinstance(geom_field_obj, MultiPolygonField):
-                    geos = _to_multipolygon(geos)
-                    print(f"  Converted to MultiPolygon: {geos is not None}")
-
-                if geos is None:
-                    if geom_field_name in spec['required']:
-                        print(f"  SKIPPING: geometry is None/empty but required")
-                        skipped += 1
+    # One population / urban-area cascade per affected parent at the end,
+    # not one per imported row. Inside the transaction, so a dry run rolls
+    # the recompute back together with the rows.
+    with deferred_cascades():
+        for idx, row in gdf.iterrows():
+            sid = transaction.savepoint()
+            try:
+                # Build lookup for upsert
+                lookup = {}
+                for key in (spec['upsert_keys'] or []):
+                    if key == 'id':
                         continue
+                    src = colmap.get(key)
+                    if not src:
+                        raise ValueError(f"Missing mapping for upsert key '{key}'")
+                    raw = row[src]
+                    f = field_by_name.get(key)
+                    if isinstance(f, (ForeignKey, OneToOneField)):
+                        val = _resolve_fk(model, key, raw)
+                        if val is None:
+                            raise ValueError(f"FK not found for '{key}': {raw}")
+                        lookup[key] = val
+                    else:
+                        lookup[key] = _cast_value(raw, f)
+
+                # Defaults / updates
+                defaults = {}
+                for fname, f in field_by_name.items():
+                    if fname in lookup or fname == geom_field_name:
+                        continue
+                    if fname not in colmap or not colmap[fname]:
+                        continue
+                    raw = row[colmap[fname]]
+                    if isinstance(f, (ForeignKey, OneToOneField)):
+                        defaults[fname] = _resolve_fk(model, fname, raw)
+                    elif isinstance(f, GeometryField):
+                        pass
+                    else:
+                        defaults[fname] = _cast_value(raw, f)
+
+                # Geometry handling (if any)
+                if geom_field_name and hasattr(gdf, 'geometry'):
+                    shp = row.geometry
+                    if shp is not None and not shp.is_empty:
+                        # gdf is already in COORDINATE_SYSTEM (reprojected above)
+                        geos = GEOSGeometry(shp.wkt, srid=COORDINATE_SYSTEM)
+                    else:
+                        geos = None
+
+                    if geos and isinstance(geom_field_obj, MultiPolygonField):
+                        geos = _to_multipolygon(geos)
+
+                    if geos is None:
+                        if geom_field_name in spec['required']:
+                            logger.debug("Row %s skipped: geometry is empty but required", idx)
+                            skipped += 1
+                            transaction.savepoint_commit(sid)
+                            continue
+                    else:
+                        defaults[geom_field_name] = geos
+
+                        # Auto-assign the city containing the feature if the model has a city FK
+                        if assign_city and 'city' not in lookup and 'city' not in defaults:
+                            city = City.objects.filter(geom__contains=geos.point_on_surface).first()
+                            if city:
+                                defaults['city'] = city
+
+                # One lookup, then write only when something actually changed.
+                # (update_or_create always issues the UPDATE, and the old
+                # compare-after-update counted every update as "skipped".)
+                obj = model.objects.filter(**lookup).first() if lookup else None
+                if obj is None:
+                    model.objects.create(**lookup, **defaults)
+                    created += 1
                 else:
-                    defaults[geom_field_name] = geos
+                    changed = False
+                    for k, v in defaults.items():
+                        if getattr(obj, k) != v:
+                            setattr(obj, k, v)
+                            changed = True
+                    if changed:
+                        obj.save()
+                        updated += 1
+                    else:
+                        skipped += 1
+                transaction.savepoint_commit(sid)
 
-                    # Auto-assign city via centroid intersection if model has a city FK
-                    city_field = next(
-                        (f for f in opts.get_fields()
-                         if f.name == 'city' and isinstance(f, ForeignKey)),
-                        None
-                    )
-                    if city_field and 'city' not in lookup and 'city' not in defaults:
-                        from administrative.models import City
-                        centroid = geos.centroid
-                        city = City.objects.filter(geom__contains=centroid).first()
-                        if city:
-                            defaults['city'] = city
-                            print(f"  City resolved via centroid: {city}")
-                        else:
-                            print(f"  City not found for centroid {centroid}")
-
-            # get_or_create / update
-            print(f"  Calling get_or_create with lookup={lookup}")
-            if not lookup:
-                obj = model.objects.create(**defaults)
-                was_created = True
-            else:
-                obj, was_created = model.objects.update_or_create(**lookup, defaults=defaults)
-            if was_created:
-                print(f"  CREATED: {obj}")
-                created += 1
-            else:
-                changed = False
-                for k, v in defaults.items():
-                    if getattr(obj, k) != v:
-                        setattr(obj, k, v)
-                        changed = True
-                if changed:
-                    obj.save()
-                    print(f"  UPDATED: {obj}")
-                    updated += 1
-                else:
-                    print(f"  SKIPPED (no changes): {obj}")
-                    skipped += 1
-            transaction.savepoint_commit(sid)
-
-        except Exception as e:
-            transaction.savepoint_rollback(sid)
-            print(f"  ERROR: {e}")
-            import traceback
-            traceback.print_exc()
-            errors += 1
-            if len(sample_errors) < 10:
-                sample_errors.append(f"Row {idx}: {e}")
+            except Exception as e:
+                transaction.savepoint_rollback(sid)
+                logger.warning("Import row %s into %s failed: %s", idx, target_label, e, exc_info=True)
+                errors += 1
+                if len(sample_errors) < 10:
+                    sample_errors.append(f"Row {idx}: {e}")
 
     if dry_run:
         transaction.set_rollback(True)

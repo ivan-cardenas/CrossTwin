@@ -1,13 +1,84 @@
+import logging
+import threading
+from contextlib import contextmanager
+
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import Signal, receiver
 from django.db.models import Sum, Avg, Min, Max
 from django.utils import timezone
+
+from core.cache import bump_layer_version
 from .models import Neighborhood, District, City, Province
+
+logger = logging.getLogger(__name__)
 
 # Sent (with `city_id`) after the cascade below rewrites a City's population.
 # The cascade uses queryset.update(), which does not fire post_save, so other
 # apps (e.g. watersupply demand) listen to this instead of post_save(City).
 city_population_changed = Signal()
+
+# Per-thread set of parents whose cascade is postponed; None when not deferring.
+_deferred = threading.local()
+
+
+@contextmanager
+def deferred_population_cascade():
+    """
+    Postpone the District -> City -> Province cascade until the block ends,
+    then run it once per affected parent. Without this a bulk import re-runs
+    the whole cascade (plus the city_population_changed fan-out into
+    watersupply) for every Neighborhood it saves. Nested uses defer to the
+    outermost one. See docs/PERFORMANCE.md §3/§11.
+    """
+    if getattr(_deferred, "pending", None) is not None:
+        yield
+        return
+
+    _deferred.pending = {"district": set(), "city": set(), "province": set()}
+    try:
+        yield
+    except BaseException:
+        pending, _deferred.pending = _deferred.pending, None
+        try:
+            _flush_population_cascade(pending)
+        except Exception:
+            # e.g. the transaction is already broken; don't mask the original error
+            logger.exception("Deferred population cascade failed after an aborted block")
+        raise
+    else:
+        pending, _deferred.pending = _deferred.pending, None
+        _flush_population_cascade(pending)
+
+
+def _defer(level, pk):
+    """Queue `pk` for the pending cascade and return True, or False when not deferring."""
+    pending = getattr(_deferred, "pending", None)
+    if pending is None:
+        return False
+    pending[level].add(pk)
+    return True
+
+
+def _flush_population_cascade(pending):
+    """Bottom-up: each district once, then each resulting city once, then each province once."""
+    cities = set(pending["city"])
+    provinces = set(pending["province"])
+    for district_id in pending["district"]:
+        city_id = _recompute_population(
+            District, district_id,
+            child_model=Neighborhood, child_fk='district_id', parent_fk='city_id',
+        )
+        if city_id:
+            cities.add(city_id)
+    for city_id in cities:
+        province_id = _recompute_population(
+            City, city_id,
+            child_model=District, child_fk='city_id', parent_fk='province_id',
+        )
+        if province_id:
+            provinces.add(province_id)
+    for province_id in provinces:
+        _recompute_population(Province, province_id, child_model=City, child_fk='province_id')
 
 
 def _recompute_population(model, pk, child_model, child_fk, parent_fk=None):
@@ -51,6 +122,8 @@ def _recompute_population(model, pk, child_model, child_fk, parent_fk=None):
         last_updated=obj.last_updated,
         populationDate=obj.populationDate,
     )
+    # update() bypasses post_save, so the map's cached GeoJSON has to be told
+    bump_layer_version(model)
 
     if model is City:
         city_population_changed.send(sender=City, city_id=pk)
@@ -65,7 +138,7 @@ def _recompute_population(model, pk, child_model, child_fk, parent_fk=None):
 @receiver(post_delete, sender=Neighborhood, dispatch_uid="neigh_delete_to_district")
 def neighborhood_changed(sender, instance, **kwargs):
     district_id = instance.district_id
-    if not district_id:
+    if not district_id or _defer("district", district_id):
         return
 
     # District ← sum of its Neighborhoods
@@ -100,7 +173,7 @@ def neighborhood_changed(sender, instance, **kwargs):
 @receiver(post_delete, sender=District, dispatch_uid="district_delete_to_city")
 def district_changed(sender, instance, **kwargs):
     city_id = instance.city_id
-    if not city_id:
+    if not city_id or _defer("city", city_id):
         return
 
     province_id = _recompute_population(
@@ -123,7 +196,7 @@ def district_changed(sender, instance, **kwargs):
 @receiver(post_delete, sender=City, dispatch_uid="city_delete_to_province")
 def city_changed(sender, instance, **kwargs):
     province_id = instance.province_id
-    if not province_id:
+    if not province_id or _defer("province", province_id):
         return
 
     _recompute_population(

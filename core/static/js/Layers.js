@@ -97,12 +97,13 @@ async function addLayer(layerConfig) {
   if (layer_type === 'raster') { await addRasterLayerFromConfig(layerConfig); return; }
 
   // Vector layer
-  console.log(`Loading layer "${key}"...`);
+  const viewport = usesViewportLoading(layerConfig);
+  console.log(`Loading layer "${key}"${viewport ? ' (viewport only)' : ''}...`);
 
   try {
     showLoader(true);
 
-    const response = await fetch(url);
+    const response = await fetch(viewport ? `${url}?${viewportQuery()}` : url);
     if (!response.ok) throw new Error(`Failed to load ${key}`);
 
     const geojson = await response.json();
@@ -155,7 +156,8 @@ async function addLayer(layerConfig) {
       layerIds.push(`${key}-fill`, `${key}-outline`);
     }
 
-    loadedLayers[key] = { layerIds, geojson, config: layerConfig };
+    loadedLayers[key] = { layerIds, geojson, config: layerConfig, viewport };
+    if (viewport) bindViewportReload();
 
     if (layerConfig.legend && layerConfig.legend.length) {
       addCategoricalLegend(key, display_name, layerConfig.legend);
@@ -182,6 +184,68 @@ async function addLayer(layerConfig) {
     console.error(`Error loading layer "${key}":`, error);
   } finally {
     showLoader(false);
+  }
+}
+
+// ---- Viewport-loaded vector layers --------------------------------------
+//
+// A layer with many features (buildings, streets, land cover) would
+// otherwise be fetched whole, however little of it is on screen. These
+// layers ask the GeoJSON endpoint for the current viewport only (it filters
+// on the spatial index and simplifies geometry below zoom 14) and re-fetch
+// after each pan/zoom. Superseded requests are aborted so a fast pan never
+// paints an older viewport over a newer one.
+
+let viewportReloadBound = false;
+let viewportReloadTimer = null;
+
+function usesViewportLoading(layerConfig) {
+  return layerConfig.app_label !== 'administrative'
+    && Number(layerConfig.count) >= VIEWPORT_LOAD_MIN_FEATURES;
+}
+
+function viewportQuery() {
+  const b = map.getBounds();
+  const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+  const bbox = [
+    clamp(b.getWest(), -180, 180), clamp(b.getSouth(), -90, 90),
+    clamp(b.getEast(), -180, 180), clamp(b.getNorth(), -90, 90),
+  ].map(v => v.toFixed(5)).join(',');
+  return `bbox=${bbox}&zoom=${Math.floor(map.getZoom())}`;
+}
+
+function bindViewportReload() {
+  if (viewportReloadBound) return;
+  viewportReloadBound = true;
+  map.on('moveend', () => {
+    clearTimeout(viewportReloadTimer);
+    viewportReloadTimer = setTimeout(() => {
+      for (const [key, entry] of Object.entries(loadedLayers)) {
+        if (entry.viewport) reloadViewportLayer(key);
+      }
+    }, VIEWPORT_RELOAD_DELAY_MS);
+  });
+}
+
+async function reloadViewportLayer(key) {
+  const entry = loadedLayers[key];
+  if (!entry || !entry.viewport || layerVisibility[key] === false) return;
+
+  entry.abortController?.abort();
+  const controller = new AbortController();
+  entry.abortController = controller;
+
+  try {
+    const response = await fetch(`${entry.config.url}?${viewportQuery()}`, { signal: controller.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const geojson = await response.json();
+    // The layer may have been removed (basemap switch) while this was in flight
+    if (loadedLayers[key] !== entry) return;
+    map.getSource(key)?.setData(geojson);
+    entry.geojson = geojson;
+    updateIndicators();
+  } catch (error) {
+    if (error.name !== 'AbortError') console.error(`Error reloading layer "${key}":`, error);
   }
 }
 
@@ -583,6 +647,8 @@ function toggleLayerVisibility(key, visible) {
     }
   } else if (visible && loadedLayers[key]) {
     loadedLayers[key].layerIds.forEach(id => map.setLayoutProperty(id, 'visibility', 'visible'));
+    // The map may have moved while the layer was hidden
+    if (loadedLayers[key].viewport) reloadViewportLayer(key);
     if (wmsAnimations[key]) {
       const scrubber = document.getElementById(`scrubber-${key}`);
       if (scrubber) scrubber.style.display = 'flex';
@@ -592,9 +658,22 @@ function toggleLayerVisibility(key, visible) {
   updateIndicators();
 }
 
-function zoomToLayer(key) {
+async function zoomToLayer(key) {
   if (!loadedLayers[key]) return;
-  const { geojson } = loadedLayers[key];
+  const { geojson, viewport, config } = loadedLayers[key];
+
+  // A viewport-loaded layer only holds what is on screen; ask the server
+  // for the extent of the whole layer instead.
+  if (viewport) {
+    try {
+      const response = await fetch(`/api/layers/${config.app_label}/${config.model_name}/bounds/`);
+      const data = await response.json();
+      if (data.bounds) safeFitBounds(data.bounds, { padding: 50, duration: 800 });
+    } catch (error) {
+      console.error(`Error fetching bounds of "${key}":`, error);
+    }
+    return;
+  }
   const bounds = new mapboxgl.LngLatBounds();
 
   geojson.features.forEach(f => {

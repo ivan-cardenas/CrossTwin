@@ -1,10 +1,13 @@
+import json
+import re
+
 from django.conf import settings
-from django.contrib.gis.geos import Point
-from django.test import TestCase
+from django.contrib.gis.geos import MultiPolygon, Point
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from administrative.admin_units import city_of
-from watersupply.tests.factories import make_city, make_district, make_neighborhood, make_province
+from watersupply.tests.factories import make_city, make_district, make_neighborhood, make_polygon, make_province
 
 URL = 'map:dashboard_summary'
 
@@ -165,3 +168,122 @@ class PopulationDockTests(TestCase):
         response = self.client.get(reverse('map:population_panel'), {'lng': lng, 'lat': lat, 'year': 2030})
         self.assertContains(response, 'Testville')
         self.assertContains(response, 'city at the map centre')
+
+
+# ── Map GeoJSON endpoint (docs/PERFORMANCE.md §1) ─────────────────────────────
+
+def _geojson_url(app_label, model_name):
+    return reverse('map:model_geojson', args=[app_label, model_name])
+
+
+def _bbox_around_rd(x, y, half_size_m=600.0):
+    west, south = _lonlat_of_rd(x - half_size_m, y - half_size_m)
+    east, north = _lonlat_of_rd(x + half_size_m, y + half_size_m)
+    return f"{west},{south},{east},{north}"
+
+
+def _coordinate_count(feature_collection):
+    return len(re.findall(r'-?\d+\.\d+', json.dumps([f['geometry'] for f in feature_collection['features']])))
+
+
+class ModelGeoJsonTests(TestCase):
+    def setUp(self):
+        from core.cache import get_cache
+        get_cache('geojson').clear()
+        self.province = make_province(ProvinceName="Overijssel")
+        self.enschede = make_city(province=self.province, cityName="Enschede", geom=make_polygon(257000.0, 470000.0))
+        self.zwolle = make_city(province=self.province, cityName="Zwolle", geom=make_polygon(203000.0, 502000.0))
+
+    def get(self, app_label='administrative', model_name='City', **params):
+        return self.client.get(_geojson_url(app_label, model_name), params)
+
+    def test_whole_layer_in_a_single_query_with_fk_names(self):
+        with self.assertNumQueries(1):   # the FK name comes from a JOIN, not a query per row
+            response = self.get()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/json')
+        data = response.json()
+        self.assertEqual(data['type'], 'FeatureCollection')
+        self.assertEqual(sorted(f['properties']['cityName'] for f in data['features']), ['Enschede', 'Zwolle'])
+        self.assertEqual({f['properties']['province'] for f in data['features']}, {'Overijssel'})
+        lng, lat = data['features'][0]['geometry']['coordinates'][0][0][0]
+        self.assertTrue(3 < lng < 8 and 50 < lat < 54, (lng, lat))   # WGS84, not RD metres
+
+    def test_coordinates_have_at_most_six_decimals(self):
+        decimals = re.findall(r'\.(\d+)', json.dumps([f['geometry'] for f in self.get().json()['features']]))
+        self.assertTrue(decimals)
+        self.assertLessEqual(max(len(d) for d in decimals), 6)
+
+    def test_bbox_returns_only_the_features_in_view(self):
+        data = self.get(bbox=_bbox_around_rd(257000.0, 470000.0)).json()
+        self.assertEqual([f['properties']['cityName'] for f in data['features']], ['Enschede'])
+
+    def test_malformed_bbox_is_rejected(self):
+        for bbox in ('1,2,3', 'a,b,c,d', '7,53,6,52'):   # too short, not numbers, min > max
+            with self.subTest(bbox=bbox):
+                self.assertEqual(self.get(bbox=bbox).status_code, 400)
+
+    def test_low_zoom_simplifies_detailed_geometry(self):
+        from nature.models import Forests
+        round_forest = Point(257000.0, 470000.0, srid=settings.COORDINATE_SYSTEM).buffer(400, quadsegs=64)
+        Forests.objects.create(name="Round wood", geom=MultiPolygon(round_forest, srid=round_forest.srid))
+
+        full = self.get('nature', 'Forests').json()
+        simplified = self.get('nature', 'Forests', zoom=9).json()
+        self.assertEqual(len(simplified['features']), 1)
+        self.assertLess(_coordinate_count(simplified), _coordinate_count(full) / 4)
+        # from zoom 14 on nothing is simplified
+        self.assertEqual(_coordinate_count(self.get('nature', 'Forests', zoom=15).json()), _coordinate_count(full))
+
+    def test_repeated_request_is_served_from_the_cache(self):
+        self.assertEqual(self.get()['X-Cache'], 'MISS')
+        with self.assertNumQueries(0):
+            response = self.get()
+        self.assertEqual(response['X-Cache'], 'HIT')
+        self.assertEqual(len(response.json()['features']), 2)
+
+    def test_saving_a_row_invalidates_the_cached_layer(self):
+        self.get()
+        make_city(province=self.province, cityName="Deventer", geom=make_polygon(208000.0, 474000.0))
+        response = self.get()
+        self.assertEqual(response['X-Cache'], 'MISS')
+        self.assertEqual(len(response.json()['features']), 3)
+
+    def test_population_cascade_invalidates_the_parent_layer(self):
+        """The cascade writes District/City with update(), which fires no post_save."""
+        district = make_district(city=self.enschede, currentPopulation=0)
+        self.get('administrative', 'District')
+        make_neighborhood(district=district, currentPopulation=1500)
+
+        response = self.get('administrative', 'District')
+        self.assertEqual(response['X-Cache'], 'MISS')
+        self.assertEqual(response.json()['features'][0]['properties']['currentPopulation'], 1500)
+
+    def test_unknown_layer_is_404(self):
+        self.assertEqual(self.get('administrative', 'Nope').status_code, 404)
+
+
+class LayerBoundsTests(TestCase):
+    def test_bounds_are_wgs84_west_south_east_north(self):
+        make_city(cityName="Enschede", geom=make_polygon(257000.0, 470000.0))
+        response = self.client.get(reverse('map:layer_bounds', args=['administrative', 'City']))
+        (west, south), (east, north) = response.json()['bounds']
+        self.assertTrue(6.8 < west < east < 7.0, (west, east))
+        self.assertTrue(52.1 < south < north < 52.3, (south, north))
+
+    def test_empty_layer_has_no_bounds(self):
+        response = self.client.get(reverse('map:layer_bounds', args=['nature', 'Forests']))
+        self.assertIsNone(response.json()['bounds'])
+
+
+class QueryStatsMiddlewareTests(TestCase):
+    """§0: every response reports its query count and DB time."""
+
+    def test_headers_report_queries_and_db_time(self):
+        middleware = ['core.middleware.QueryStatsMiddleware'] + [
+            m for m in settings.MIDDLEWARE if m != 'core.middleware.QueryStatsMiddleware']
+        make_city(cityName="Enschede")
+        with override_settings(MIDDLEWARE=middleware):
+            response = self.client.get(_geojson_url('administrative', 'City'))
+        self.assertEqual(response['X-DB-Queries'], '1')
+        self.assertRegex(response['Server-Timing'], r'^db;dur=[\d.]+;desc="1 queries", app;dur=[\d.]+$')

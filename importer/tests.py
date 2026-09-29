@@ -549,3 +549,225 @@ class KNMIWbgtImportTests(TestCase):
             result = self._fetch()
         self.assertEqual(result.status, "error")
         self.assertIn("no files", result.message)
+
+
+# ── Import throughput (docs/PERFORMANCE.md §2/§3) ──────────────────────────────
+
+def _rd_square(x0, y0, x1, y1):
+    return MultiPolygon(Polygon(((x0, y0), (x1, y0), (x1, y1), (x0, y1), (x0, y0))), srid=RD)
+
+
+def _rd_feature(x0, y0, x1, y1, **props):
+    ring = [[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]
+    return {"type": "Feature", "properties": props, "geometry": {"type": "Polygon", "coordinates": [ring]}}
+
+
+RD_DATASET = {"key": "test", "params": {"srsName": f"EPSG:{RD}"}}
+
+
+class SpatialParentIndexTests(SimpleTestCase):
+    def setUp(self):
+        from types import SimpleNamespace
+        from .batching import SpatialParentIndex
+        self.west = SimpleNamespace(name="west", geom=_rd_square(0, 0, 1000, 1000))
+        self.east = SimpleNamespace(name="east", geom=_rd_square(1000, 0, 2000, 1000))
+        self.index = SpatialParentIndex([self.west, self.east])
+
+    def test_feature_is_attributed_to_the_parent_it_lies_in(self):
+        self.assertIs(self.index.find(_rd_square(1200, 200, 1400, 400)), self.east)
+        self.assertIs(self.index.find(GEOSGeometry("POINT (100 900)", srid=RD)), self.west)
+
+    def test_point_on_a_shared_boundary_still_finds_a_parent(self):
+        self.assertIn(self.index.find(GEOSGeometry("POINT (1000 500)", srid=RD)), (self.west, self.east))
+
+    def test_feature_outside_every_parent(self):
+        self.assertIsNone(self.index.find(_rd_square(5000, 5000, 5100, 5100)))
+
+    def test_ring_shaped_feature_uses_a_point_on_itself_not_its_centroid(self):
+        # A U-shape inside `west` whose centroid falls in the gap, outside the feature.
+        u_shape = GEOSGeometry(
+            "POLYGON ((100 100, 900 100, 900 900, 700 900, 700 300, 300 300, 300 900, 100 900, 100 100))",
+            srid=RD,
+        )
+        self.assertFalse(u_shape.contains(u_shape.centroid))
+        self.assertIs(self.index.find(u_shape), self.west)
+
+
+class BulkLandCoverImportTests(TestCase):
+    """pdok_landcover_brt goes through bulk_create, and the urban-area recompute runs once per city."""
+
+    def setUp(self):
+        from administrative.models import City, District, Neighborhood
+        from .external_catalog import FIELD_MAPPINGS
+        square = _rd_square(0, 0, 1000, 1000)
+        province = Province.objects.create(ProvinceName="P", geom=square)
+        self.city = City.objects.create(cityName="C", province=province, geom=square)
+        district = District.objects.create(id="D1", districtName="D", city=self.city, geom=square, currentPopulation=0)
+        self.neighborhood = Neighborhood.objects.create(
+            id="N1", neighborhoodName="N", district=district, geom=square, currentPopulation=0)
+        self.mapping = FIELD_MAPPINGS["pdok_landcover_brt"]
+
+    def _features(self):
+        common = {"observationDate": "2024-05-01T00:00:00Z"}
+        return [
+            _rd_feature(0, 0, 250, 1000, landCoverObservationClass="urban fabric", **common),   # 0.25 km2
+            _rd_feature(250, 0, 500, 1000, landCoverObservationClass="road", **common),         # 0.25 km2
+            _rd_feature(500, 0, 1000, 1000, landCoverObservationClass="arable land", **common),  # not urban
+        ]
+
+    def test_rows_are_bulk_written_with_parent_percentage_and_one_recompute(self):
+        from physicalEnv import signals as landcover_signals
+        from physicalEnv.models import LandCoverVector
+
+        with mock.patch.object(landcover_signals, "_recompute_neighborhood_urban_area",
+                               wraps=landcover_signals._recompute_neighborhood_urban_area) as recompute:
+            created, updated, errors = _import_geojson_features(
+                self._features(), RD_DATASET, LandCoverVector, self.mapping)
+
+        self.assertEqual((created, updated, errors), (3, 0, []))
+        recompute.assert_called_once_with(self.city.pk)   # not once per polygon
+
+        rows = LandCoverVector.objects.order_by("id")
+        self.assertEqual({r.city_id for r in rows}, {self.city.pk})
+        self.assertEqual([r.year for r in rows], [2024, 2024, 2024])
+        self.assertEqual([round(r.percentage) for r in rows], [25, 25, 50])
+        self.neighborhood.refresh_from_db()
+        self.assertAlmostEqual(self.neighborhood.urban_area, 0.5)
+        self.city.refresh_from_db()
+        self.assertAlmostEqual(self.city.urban_area, 0.5)
+
+    def test_parents_are_loaded_without_their_other_columns(self):
+        from physicalEnv.models import LandCoverVector
+        from .batching import SpatialParentIndex
+
+        loaded = {}
+        original = SpatialParentIndex.for_model.__func__
+
+        def spy(cls, ParentModel, extra_fields=()):
+            index = original(cls, ParentModel, extra_fields)
+            loaded["deferred"] = next(iter(index._entries))[0].get_deferred_fields()
+            return index
+
+        with mock.patch.object(SpatialParentIndex, "for_model", classmethod(spy)):
+            _import_geojson_features(self._features()[:1], RD_DATASET, LandCoverVector, self.mapping)
+        self.assertIn("cityName", loaded["deferred"])
+        self.assertNotIn("area_km2", loaded["deferred"])   # read by __percentage_of_parent__
+
+
+class BulkUpsertImportTests(TestCase):
+    """Upserts through INSERT ... ON CONFLICT keep update_or_create's behaviour."""
+
+    MAPPING = {
+        "__geometry__": "geom",
+        "__unique__": "localId",
+        "__unique_field__": "localId",
+        "geographicalName": "name",
+        "type": "type",
+    }
+
+    def _import(self, features):
+        from nature.models import WaterBodies
+        return _import_geojson_features(features, RD_DATASET, WaterBodies, self.MAPPING)
+
+    def test_reimport_updates_changed_rows_and_creates_new_ones(self):
+        from nature.models import WaterBodies
+
+        self.assertEqual(self._import([
+            _rd_feature(0, 0, 10, 10, localId="a", geographicalName="Lake A", type="lake"),
+            _rd_feature(20, 0, 30, 10, localId="b", geographicalName="Pond B", type="pond"),
+        ]), (2, 0, []))
+
+        # "a" comes back renamed and without its optional `type`; "c" is new
+        self.assertEqual(self._import([
+            _rd_feature(0, 0, 10, 10, localId="a", geographicalName="Lake A (renamed)"),
+            _rd_feature(40, 0, 50, 10, localId="c", geographicalName="Canal C", type="canal"),
+        ]), (1, 1, []))
+
+        rows = {w.localId: w for w in WaterBodies.objects.all()}
+        self.assertEqual(sorted(rows), ["a", "b", "c"])
+        self.assertEqual(rows["a"].name, "Lake A (renamed)")
+        self.assertEqual(rows["a"].type, "lake")   # a missing property doesn't blank the stored value
+
+    def test_one_bad_row_does_not_lose_the_rest_of_its_batch(self):
+        from nature.models import WaterBodies
+
+        created, updated, errors = self._import([
+            _rd_feature(0, 0, 10, 10, localId="ok-1", geographicalName="Fine"),
+            _rd_feature(20, 0, 30, 10, localId="bad", geographicalName="x" * 300),   # name max_length=200
+            _rd_feature(40, 0, 50, 10, localId="ok-2", geographicalName="Also fine"),
+        ])
+        self.assertEqual((created, updated), (2, 0))
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(sorted(WaterBodies.objects.values_list("localId", flat=True)), ["ok-1", "ok-2"])
+
+    def test_bulk_writes_invalidate_the_cached_layer(self):
+        from core.cache import layer_version
+        from nature.models import WaterBodies
+
+        before = layer_version(WaterBodies)
+        self._import([_rd_feature(0, 0, 10, 10, localId="a", geographicalName="Lake A")])
+        self.assertNotEqual(layer_version(WaterBodies), before)
+
+
+class BulkImportRegistryTests(SimpleTestCase):
+    def test_bulk_models_have_no_save_logic_that_bulk_create_would_skip(self):
+        from django.apps import apps
+        from django.db import models
+        from .batching import BULK_IMPORT_MODELS
+
+        for label in BULK_IMPORT_MODELS:
+            with self.subTest(label):
+                self.assertIs(apps.get_model(label).save, models.Model.save)
+
+    def test_models_with_save_logic_keep_the_row_path(self):
+        from administrative.models import Neighborhood
+        from builtup.models import Building
+        from .batching import BulkWriter
+
+        self.assertIsNone(BulkWriter.for_model(Building, "id"))
+        self.assertIsNone(BulkWriter.for_model(Neighborhood, "id"))
+
+
+class DeferredCascadeImportTests(TestCase):
+    """Neighborhoods saved inside deferred_cascades() cascade once per parent, at the end."""
+
+    def setUp(self):
+        from administrative.models import City, District
+        square = _rd_square(0, 0, 1000, 1000)
+        self.province = Province.objects.create(ProvinceName="P", geom=square)
+        self.city = City.objects.create(cityName="C", province=self.province, geom=square)
+        self.district = District.objects.create(id="D1", districtName="D", city=self.city, geom=square)
+
+    def test_each_parent_is_recomputed_once_with_the_final_totals(self):
+        from administrative import signals as population_signals
+        from administrative.models import Neighborhood
+        from .batching import deferred_cascades
+
+        with mock.patch.object(population_signals, "_recompute_population",
+                               wraps=population_signals._recompute_population) as recompute:
+            with deferred_cascades():
+                for i, population in enumerate((100, 200, 300)):
+                    Neighborhood.objects.create(
+                        id=f"N{i}", neighborhoodName=f"N{i}", district=self.district,
+                        geom=_rd_square(i * 100, 0, i * 100 + 100, 100), currentPopulation=population)
+                self.assertEqual(recompute.call_count, 0)   # nothing until the block ends
+
+        # district, city and province once each, instead of 3 x 3
+        self.assertEqual(recompute.call_count, 3)
+        for unit in (self.district, self.city, self.province):
+            unit.refresh_from_db()
+            self.assertEqual(unit.currentPopulation, 600, unit)
+
+    def test_cascade_still_runs_when_the_block_fails(self):
+        from administrative.models import Neighborhood
+        from .batching import deferred_cascades
+
+        with self.assertRaises(RuntimeError):
+            with deferred_cascades():
+                Neighborhood.objects.create(
+                    id="N1", neighborhoodName="N1", district=self.district,
+                    geom=_rd_square(0, 0, 100, 100), currentPopulation=42)
+                raise RuntimeError("feed dropped mid-import")
+        # the row that was written before the failure is reflected upward
+        self.district.refresh_from_db()
+        self.assertEqual(self.district.currentPopulation, 42)

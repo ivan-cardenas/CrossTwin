@@ -22,6 +22,14 @@ let CONFIG = {
   initialBearing: -35
 };
 
+// Vector layers with at least this many features load only what is in view
+// (?bbox=&zoom= on the GeoJSON endpoint) and reload after the map moves,
+// instead of the whole table at once. Administrative layers always load
+// whole: their click handlers and the admin-unit panels need every unit.
+// See docs/PERFORMANCE.md §1.
+const VIEWPORT_LOAD_MIN_FEATURES = 5000;
+const VIEWPORT_RELOAD_DELAY_MS = 350;
+
 // Basemap styles
 const BASEMAPS = {
   light:     'mapbox://styles/mapbox/light-v11',

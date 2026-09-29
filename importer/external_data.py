@@ -22,6 +22,7 @@ import math
 import os
 import re
 import time
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple, List
 from datetime import date, datetime, timedelta, timezone as dt_timezone
@@ -35,6 +36,7 @@ from django.contrib.gis.geos import GEOSGeometry, Point, Polygon, MultiPolygon
 from django.conf import settings
 from django.utils import timezone
 
+from .batching import BulkWriter, SpatialParentIndex, deferred_cascades
 from .external_catalog import FIELD_MAPPINGS, CATALOG_BY_KEY
 from .utils import to_storage_srid
 
@@ -123,11 +125,11 @@ def _import_atom_gml_features(href: str, bbox_polygon: Polygon, Model, mapping: 
 
     geom_field = mapping.get("__geometry__", "geom")
     spatial_fk_conf = mapping.get("__spatial_fk__")
-    parent_objects = []
+    parent_index = None
     if spatial_fk_conf:
         ParentModel = get_model_class(spatial_fk_conf["model"])
-        parent_objects = list(ParentModel.objects.all())
-        if not parent_objects and spatial_fk_conf.get("required", True):
+        parent_index = SpatialParentIndex.for_model(ParentModel)
+        if not parent_index and spatial_fk_conf.get("required", True):
             return 0, [
                 f"No {spatial_fk_conf['model']} records found — cannot resolve "
                 f"'{spatial_fk_conf['field']}' FK. Import the parent records first."
@@ -189,10 +191,7 @@ def _import_atom_gml_features(href: str, bbox_polygon: Polygon, Model, mapping: 
                 field_values.update(mapping.get("__static__", {}))
 
                 if spatial_fk_conf:
-                    centroid = geom.centroid
-                    parent = next((p for p in parent_objects if p.geom.contains(centroid)), None)
-                    if parent is None:
-                        parent = next((p for p in parent_objects if p.geom.intersects(centroid)), None)
+                    parent = parent_index.find(geom) if parent_index else None
                     if parent:
                         field_values[spatial_fk_conf["field"]] = parent
                     elif spatial_fk_conf.get("required", True):
@@ -573,26 +572,63 @@ def _import_geojson_features(features: List[Dict], dataset: Dict, Model, mapping
             )
         features = deduped
 
-    created_count = 0
-    updated_count = 0
     errors = []
     fk_lookup_cache = {}  # {model_field: {source_value: model_instance}}, shared across all features in this batch
 
-    # Pre-load parent model objects for spatial FK resolution (done once per batch)
+    # Pre-load parent geometries for spatial FK resolution (once per batch),
+    # prepared and loaded with only the columns the lookup reads.
     spatial_fk_conf = mapping.get("__spatial_fk__")
-    parent_objects = []
+    pct_conf = mapping.get("__percentage_of_parent__")
+    parent_index = None
     if spatial_fk_conf:
         ParentModel = get_model_class(spatial_fk_conf["model"])
-        parent_objects = list(ParentModel.objects.all())
-        if not parent_objects and spatial_fk_conf.get("required", True):
+        extra = (
+            [pct_conf["parent_area_attr"]]
+            if pct_conf and pct_conf["parent_field"] == spatial_fk_conf["field"] else []
+        )
+        parent_index = SpatialParentIndex.for_model(ParentModel, extra)
+        if not parent_index and spatial_fk_conf.get("required", True):
             raise _ImportBlocked(
                 f"No {spatial_fk_conf['model']} records found — cannot resolve '{spatial_fk_conf['field']}' FK. "
                 f"Import the parent records first."
             )
 
+    # Models without save() logic of their own are written in batches with
+    # bulk_create; everything else keeps the per-row path below.
+    writer = BulkWriter.for_model(
+        Model, unique_model_field if unique_wfs_prop and unique_model_field else None
+    )
+
+    with deferred_cascades():
+        created_count, updated_count = _import_feature_rows(
+            features, dataset, Model, mapping, geom_field, unique_wfs_prop, unique_model_field,
+            spatial_fk_conf, pct_conf, parent_index, fk_lookup_cache, writer, errors,
+        )
+        if writer is not None:
+            bulk_created, bulk_updated, bulk_errors = writer.finish()
+            created_count += bulk_created
+            updated_count += bulk_updated
+            errors.extend(bulk_errors)
+
+    return created_count, updated_count, errors
+
+
+def _import_feature_rows(features, dataset, Model, mapping, geom_field, unique_wfs_prop, unique_model_field,
+                         spatial_fk_conf, pct_conf, parent_index, fk_lookup_cache, writer, errors):
+    """
+    The per-feature half of _import_geojson_features: build each feature's
+    field values and either hand them to the bulk `writer` or save them row
+    by row. Returns the (created, updated) counts of the row path; the
+    writer keeps its own.
+    """
+    created_count = 0
+    updated_count = 0
+
     for feat in features:
         try:
-            with transaction.atomic():
+            # The row path isolates each feature in its own transaction; the
+            # bulk path writes nothing here, so it skips that per-row BEGIN/COMMIT.
+            with (nullcontext() if writer is not None else transaction.atomic()):
                 props = feat.get("properties", {})
                 geom_json = feat.get("geometry")
 
@@ -705,13 +741,9 @@ def _import_geojson_features(features: List[Dict], dataset: Dict, Model, mapping
                 if skip_feature:
                     continue
 
-                # Resolve spatial FK: find the parent whose geometry contains this feature's centroid
-                if spatial_fk_conf and parent_objects:
-                    centroid = geom.centroid
-                    parent = next((p for p in parent_objects if p.geom.contains(centroid)), None)
-                    if parent is None:
-                        # Boundary edge case: fall back to intersection
-                        parent = next((p for p in parent_objects if p.geom.intersects(centroid)), None)
+                # Resolve spatial FK: the parent whose geometry contains a point of this feature
+                if spatial_fk_conf and parent_index:
+                    parent = parent_index.find(geom)
                     if parent:
                         field_values[spatial_fk_conf["field"]] = parent
                     elif spatial_fk_conf.get("required", True):
@@ -727,7 +759,6 @@ def _import_geojson_features(features: List[Dict], dataset: Dict, Model, mapping
                 # polygon's share of its City's area_km2). Requires the
                 # parent FK to already be in field_values, so this runs
                 # after spatial FK resolution above.
-                pct_conf = mapping.get("__percentage_of_parent__")
                 if pct_conf and pct_conf["parent_field"] in field_values:
                     parent_obj = field_values[pct_conf["parent_field"]]
                     parent_area_km2 = getattr(parent_obj, pct_conf["parent_area_attr"], None)
@@ -737,8 +768,14 @@ def _import_geojson_features(features: List[Dict], dataset: Dict, Model, mapping
                             (geom.area / (parent_area_km2 * 1_000_000)) * 100, 6
                         )
 
+                if writer is not None:
+                    if unique_wfs_prop and unique_model_field and unique_wfs_prop in props:
+                        # The lookup value, as update_or_create would have set it
+                        field_values[unique_model_field] = props[unique_wfs_prop]
+                    writer.add(field_values)
+
                 # Use update_or_create if unique field is defined
-                if unique_wfs_prop and unique_model_field and unique_wfs_prop in props:
+                elif unique_wfs_prop and unique_model_field and unique_wfs_prop in props:
                     lookup = {unique_model_field: props[unique_wfs_prop]}
                     defaults = {k: v for k, v in field_values.items() if k != unique_model_field}
 
@@ -772,7 +809,7 @@ def _import_geojson_features(features: List[Dict], dataset: Dict, Model, mapping
             if len(errors) > 10:
                 break  # Stop after too many errors
 
-    return created_count, updated_count, errors
+    return created_count, updated_count
 
 
 class PDOKImporter:

@@ -1,3 +1,5 @@
+from unittest import mock
+
 from django.contrib.gis.geos import MultiPolygon, Polygon
 from django.test import TestCase
 
@@ -90,3 +92,58 @@ class UrbanAreaSourceComputationTests(TestCase):
         self.assertEqual(self.district.urban_area, 0.0)
         self.assertEqual(self.city.urban_area, 0.0)
         self.assertEqual(self.province.urban_area, 0.0)
+
+
+class UrbanAreaSetBasedUpdateTests(TestCase):
+    """The single-statement recompute (docs/PERFORMANCE.md §2): clipping, cascade count, deferral."""
+
+    def setUp(self):
+        wide = _square(0, 0, 2000, 1000)
+        self.province = Province.objects.create(ProvinceName="P", geom=wide)
+        self.city = City.objects.create(cityName="C", province=self.province, geom=wide)
+        self.district = District.objects.create(
+            id="D1", districtName="D", city=self.city, geom=wide, currentPopulation=0)
+        self.west = Neighborhood.objects.create(
+            id="W", neighborhoodName="W", district=self.district, geom=_square(0, 0, 1000, 1000), currentPopulation=0)
+        self.east = Neighborhood.objects.create(
+            id="E", neighborhoodName="E", district=self.district, geom=_square(1000, 0, 2000, 1000), currentPopulation=0)
+        self.urban = LandCoverClasses.objects.create(class_name="Railway", description="test")  # 'rail'
+
+    def _landcover(self, geom, year=2024):
+        return LandCoverVector.objects.create(
+            city=self.city, year=year, land_cover_type=self.urban, land_use="Rail", geom=geom, percentage=0)
+
+    def test_polygon_crossing_a_boundary_is_split_between_neighborhoods(self):
+        self._landcover(_square(500, 0, 1500, 1000))    # half in W, half in E
+        self._landcover(_square(1600, 0, 1800, 1000))   # entirely inside E: counted unclipped
+
+        self.west.refresh_from_db()
+        self.east.refresh_from_db()
+        self.district.refresh_from_db()
+        self.assertAlmostEqual(self.west.urban_area, 0.5)
+        self.assertAlmostEqual(self.east.urban_area, 0.7)
+        self.assertAlmostEqual(self.district.urban_area, 1.2)
+
+    def test_each_parent_is_recomputed_once(self):
+        from physicalEnv import signals
+
+        with mock.patch.object(signals, "_recompute_population", wraps=signals._recompute_population) as cascade:
+            self._landcover(_square(0, 0, 100, 100))
+        # one district + the city + the province, not the full chain per district
+        self.assertEqual(cascade.call_count, 3)
+
+    def test_deferred_block_recomputes_once_per_city(self):
+        from physicalEnv import signals
+
+        with mock.patch.object(signals, "_recompute_neighborhood_urban_area",
+                               wraps=signals._recompute_neighborhood_urban_area) as recompute:
+            with signals.deferred_urban_area():
+                for x in (0, 200, 400, 1200, 1400):
+                    self._landcover(_square(x, 0, x + 100, 1000))
+                recompute.assert_not_called()
+        recompute.assert_called_once_with(self.city.pk)
+
+        self.west.refresh_from_db()
+        self.east.refresh_from_db()
+        self.assertAlmostEqual(self.west.urban_area, 0.3)
+        self.assertAlmostEqual(self.east.urban_area, 0.2)

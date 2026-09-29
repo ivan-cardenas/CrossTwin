@@ -1,8 +1,8 @@
 # Performance Review: Database & Query Optimization
 
-Status: analysis only, nothing here is implemented yet. The findings come from reading the code.
-No profiling was done against a populated database, so the impact ratings are estimates.
-Run the measurements in [§0](#0-measure-first) before and after each change to confirm them.
+Status: §0–§3 are implemented (see the *Implemented* note under each). §4–§12 are still analysis only.
+The findings come from reading the code. No profiling was done against a populated database, so the
+impact ratings are estimates. Run the measurements in [§0](#0-measure-first) before and after each change to confirm them.
 
 ## Summary: where the time goes
 
@@ -41,6 +41,13 @@ LOGGING = {
 - For any slow statement, run `EXPLAIN (ANALYZE, BUFFERS)`. A `Seq Scan` on a large table, or a `SubPlan` executed once per row, is the thing to fix.
 - In tests, pin the query count with `self.assertNumQueries(n)` so regressions show up.
 
+**Implemented.** `core/middleware.py::QueryStatsMiddleware` (on when `QUERY_STATS=true`, default = `DEBUG`) adds a
+`Server-Timing` header (DB time + query count, shown in DevTools → Network → Timing) and `X-DB-Queries` to every
+response, and logs each request on `crosstwin.querystats` (WARNING above `QUERY_STATS_SLOW_MS`, default 500).
+`SQL_LOG=true` prints every statement (needs `DEBUG=true`). `python manage.py db_stats [--order mean] [--reset]`
+lists the top `pg_stat_statements` entries, or explains how to enable the extension. No new dependencies.
+`mainMap/tests.py` pins the GeoJSON endpoint at one query.
+
 ---
 
 ## 1. `model_geojson`: the map's main bottleneck
@@ -73,6 +80,19 @@ CREATE INDEX ON builtup_building USING gist (geom_4326);
 ```
 
 `layer_bounds` (`mainMap/views.py:685`) runs `Extent()` over the whole table. `ST_EstimatedExtent('<table>','geom')` returns the answer from planner statistics almost instantly and is accurate enough for a zoom-to-layer.
+
+**Implemented** (fixes 1–4; MVT tiles and the generated 4326 column are not done):
+- `model_geojson` takes optional `?bbox=minLng,minLat,maxLng,maxLat&zoom=z`, filters with `&&`, emits 6 decimals,
+  simplifies lines/polygons to ~1 px below zoom 14, joins FK names with `LEFT JOIN`, and returns PostgreSQL's JSON
+  text directly instead of parsing and re-serialising it.
+- Responses are cached in the `geojson` cache (`CACHES` in settings, local memory, 64 entries, bodies ≤ 8 MB, 2 min — short because edits made outside Django don't invalidate it)
+  under a per-model version from `core/cache.py`. `core/signals.py` bumps the version on every `post_save`/`post_delete`
+  of a vector model; the writers that bypass signals (the population cascade, the urban-area `UPDATE`, the importer's
+  bulk path) bump it themselves. With several worker processes, move `CACHES` to Redis (§9) so invalidation reaches all of them.
+- The map (`Layers.js`) loads layers with ≥ `VIEWPORT_LOAD_MIN_FEATURES` (5 000) features by viewport and reloads them
+  after each pan/zoom, aborting superseded requests. Administrative layers still load whole.
+- `layer_bounds` now returns WGS84 (it returned RD New metres) and uses `ST_EstimatedExtent` only for tables with
+  ≥ 100 000 rows: the estimate is as old as the last `ANALYZE`, and was visibly wrong on smaller, recently changed tables.
 
 ---
 
@@ -129,6 +149,11 @@ Fixes:
 3. `ST_Intersection` is expensive on large, detailed polygons. When a land-cover polygon is fully inside the neighborhood (`ST_Within`), use `ST_Area(l.geom)` directly and only clip the polygons that cross the boundary:
    `CASE WHEN ST_Within(l.geom, n.geom) THEN ST_Area(l.geom) ELSE ST_Area(ST_Intersection(l.geom, n.geom)) END`.
 
+**Implemented** (all three). `physicalEnv/signals.py` recomputes a city with one `UPDATE … FROM … RETURNING` using the
+`ST_Within` shortcut, then cascades each district once and the city and province once. `deferred_urban_area()` and
+`schedule_urban_area_recompute()` postpone it to the end of a block; `administrative/signals.py::deferred_population_cascade()`
+does the same for the population cascade.
+
 ---
 
 ## 3. Importer throughput
@@ -158,6 +183,20 @@ Fixes:
    ```
    `ST_PointOnSurface` is guaranteed to lie inside the polygon, unlike `centroid`, which also removes the boundary fallback.
 4. Use a single transaction for the whole batch, with a savepoint only when you need to skip one bad feature. For very large loads, `COPY` into a staging table and `INSERT … SELECT` is faster again.
+
+**Implemented** in `importer/batching.py` (fixes 1, 2 and 4; SQL-side FK resolution and `COPY` are not done):
+- `SpatialParentIndex`: parents loaded with `.only("pk", "geom", <area attr>)`, prepared geometries, bbox pre-check,
+  probe point `point_on_surface` instead of the centroid. Used by the WFS/OGC and GML importers.
+- `deferred_cascades()` wraps `_import_geojson_features` and `_generic_import`, so both cascades run once per affected parent.
+- `BulkWriter` writes the models in `BULK_IMPORT_MODELS` (land cover, streets, the nature layers) 500 rows per
+  `bulk_create`, with `ON CONFLICT DO UPDATE` for upserts. Rows are grouped by their set of mapped fields so a missing
+  property never blanks a stored value; a failing batch is retried row by row. Models with `save()` logic (Building,
+  the administrative hierarchy, GreenSpaces, …) keep the per-row path; a test guards the registry.
+- `_generic_import` no longer prints per row, and does one lookup + a `save()` only when a value changed (it used to
+  `update_or_create` every row and then count every update as "skipped").
+
+Known gap, not fixed here: `_generic_import` builds `field_by_name` from geometry and raster fields only, so mapped
+attribute columns (names, populations, FKs) are ignored by the file-upload importer.
 
 ---
 
@@ -465,15 +504,16 @@ Time each kernel with `cupyx.profiler.benchmark` or with `cuda.synchronize()` ar
 
 ## Checklist
 
-- [ ] §0 Install debug-toolbar/silk and `pg_stat_statements`; record baseline query counts and times
+- [x] §0 Query-stats middleware, `db_stats` command, pinned query count *(still to do on the server: enable `pg_stat_statements` and record a baseline)*
 - [ ] §9 Set `CONN_MAX_AGE` and `CACHES`; tune `postgresql.conf`
 - [ ] §8 Add B-tree indexes (one migration per app)
 - [ ] §6 Add `.only()`/`.defer()` on the listed queries
 - [ ] §5 Use `Subquery` for admin geometries; merge duplicate aggregates
 - [ ] §4 Cache `_get_province_data` in water, housing and heat; debounce the sliders
 - [ ] §7 Use `reltuples` counts, `.only()` for rasters, and a cached catalog
-- [ ] §1 Add bbox, precision, JOINs and caching to GeoJSON; then MVT tiles for large layers
-- [ ] §2/§3 Deferred signals, set-based urban-area update, prepared geometries, `bulk_create`
+- [x] §1 Add bbox, precision, JOINs and caching to GeoJSON; viewport loading in the map
+- [ ] §1 MVT tiles for large layers
+- [x] §2/§3 Deferred signals, set-based urban-area update, prepared geometries, `bulk_create`
 - [ ] §10 Compute raster stats from COGs or tiled rasters; cache them
 - [ ] §11 Merge the aggregates in `_recompute_population`
 - [ ] §12 Add `core/gpu.py` with a CPU fallback; add a GPU SVF management command; validate its output against SOLWEIG

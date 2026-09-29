@@ -23,15 +23,22 @@ uvicorn tiler:app --port 8001 --reload
 python manage.py makemigrations
 python manage.py migrate
 
-# Run all tests (uses custom PostGIS test runner)
-python manage.py test --settings=DigitalTwin.settings_test
+# Run all tests (uses custom PostGIS test runner). Always pass --keepdb: without it
+# Django drops the test DB the runner prepared and recreates it without PostGIS
+# ("type geometry does not exist"). --noinput avoids the interactive prompt.
+python manage.py test --settings=DigitalTwin.settings_test --keepdb --noinput
 
 # Run tests for a single app
-python manage.py test importer --settings=DigitalTwin.settings_test
+python manage.py test importer --settings=DigitalTwin.settings_test --keepdb --noinput
 
 # Export COGs for raster models
 python manage.py export_cogs
+
+# Slowest SQL statements from pg_stat_statements (--order mean|calls|rows, --reset)
+python manage.py db_stats
 ```
+
+Measurement flags in `.env` (see `docs/PERFORMANCE.md` §0): `QUERY_STATS=true` (default = `DEBUG`) adds a `Server-Timing` header (DB time + query count, visible in DevTools → Network → Timing) and `X-DB-Queries` to every response and logs each request on `crosstwin.querystats` (WARNING above `QUERY_STATS_SLOW_MS`, default 500). `SQL_LOG=true` prints every SQL statement (only when `DEBUG=true`).
 
 ## Architecture
 
@@ -102,14 +109,21 @@ Each domain's standalone dashboard (`water_indicators.html`, `heat_indicators.ht
 ### Signal-Driven Computations
 
 - **`administrative/signals.py`** — When a Neighborhood is saved/deleted, population, density and urban_area cascade up through District > City > Province using `_recompute_population()` (sums both `currentPopulation` and `urban_area` per level). Uses `update()` (not `save()`) to avoid infinite loops.
-- **`physicalEnv/signals.py`** — When a `LandCoverVector` row is saved/deleted, recomputes the affected City's Neighborhoods' `urban_area` from PostGIS intersection area against qualifying (urban fabric/road/rail/transport) land-cover polygons for the most recent `year`, then manually re-enters `administrative/signals.py`'s cascade (`_recompute_population`) since `Neighborhood.objects.update()` does not fire `post_save`.
-- **`core/signals.py`** — `post_save` on every RASTER_REGISTRY model auto-exports to COG via `export_raster_to_cog()`.
+- **`physicalEnv/signals.py`** — When a `LandCoverVector` row is saved/deleted, recomputes the affected City's Neighborhoods' `urban_area` from PostGIS intersection area against qualifying (urban fabric/road/rail/transport) land-cover polygons for the most recent `year`, in **one set-based `UPDATE … RETURNING`** (polygons fully inside a neighborhood skip `ST_Intersection`). It then re-enters `administrative/signals.py`'s cascade (`_recompute_population`) once per district and once for the city and province, since the `UPDATE` does not fire `post_save`. Area is `ST_Area` in the storage CRS's metres (geography cast if the CRS is geodetic).
+- **`core/signals.py`** — `post_save` on every RASTER_REGISTRY model auto-exports to COG via `export_raster_to_cog()`; `post_save`/`post_delete` on every VECTOR_REGISTRY model bumps its cache version (`core/cache.py`), which invalidates the map's cached GeoJSON. Code that writes vector rows with `update()`/`bulk_create` must call `bump_layer_version()` itself.
+- **Bulk writes** — wrap them in `importer/batching.py::deferred_cascades()` (= `administrative.signals.deferred_population_cascade()` + `physicalEnv.signals.deferred_urban_area()`) so the cascades run once per affected parent when the block ends instead of once per row. Both flush even if the block raises (errors during that flush are logged, not raised over the original). Use `physicalEnv.signals.schedule_urban_area_recompute(city_id)` rather than calling the recompute directly, so it respects an enclosing deferral.
 
 ### Importer System (`importer/`)
 
 Two import paths:
 1. **File upload** (`views.py`) — Upload GeoJSON/Shapefile, map fields to any registered model, preview, then import with savepoints. Uses `MODEL_OVERRIDES` dict for per-model upsert keys.
 2. **External data** (`views_external.py`, `external_catalog.py`, `external_data.py`) — Catalog-driven import from PDOK, CBS, Sentinel-2, Google Earth Engine and the KNMI Data Platform. The KNMI source (`KNMIImporter.fetch_latest`, e.g. `knmi_wbgt` → `urban_heat.WetBulbGlobeTemperature`) uses the server-side `KNMI_API_KEY`, needs no bbox, and skips a file whose valid time is already stored. For districts and neighborhoods the import map picks the area of interest from cities and districts respectively (`bbox_from` in the catalog).
+
+**Batching (`importer/batching.py`):**
+- `SpatialParentIndex` resolves `__spatial_fk__` parents with prepared geometries + a bbox pre-check, probing each feature's `point_on_surface` (not its centroid). Parents are loaded with `.only("pk", "geom", <attrs read off them>)`.
+- `BulkWriter` writes models listed in `BULK_IMPORT_MODELS` (LandCoverVector, Street, the nature layers) with `bulk_create`, 500 rows at a time, `ON CONFLICT DO UPDATE` for upserts on a unique field. Rows are grouped by their set of mapped fields so a missing property never blanks a stored value, and a failing batch is retried row by row. `bulk_create` skips `save()` and signals: a model belongs in the registry only if it has no `save()` override (`BulkImportRegistryTests` checks this) and its receivers are replayed by its finalizer. Add a `post_save` receiver to one of these models → add it to the finalizer or remove the model from the registry.
+- `_import_geojson_features` and `_generic_import` run inside `deferred_cascades()`.
+- Known gap: `_generic_import` (file upload) builds `field_by_name` from geometry/raster fields only, so mapped attribute columns (names, populations, FKs) are not imported.
 
 ### Raster Pipeline (`core/rasterOperations.py`)
 
@@ -123,7 +137,12 @@ Two import paths:
 
 - `map_view` renders `mainMap.html` with Mapbox token
 - `available_layers` returns the full layer catalog (vector + WMS + raster) as JSON
-- `model_geojson` uses raw SQL with `ST_AsGeoJSON(ST_Transform(..., 4326))` for any vector model
+- `model_geojson` builds one raw SQL statement per request (`_geojson_sql`): `ST_AsGeoJSON(ST_Transform(..., 4326), 6)`, FK display names via `LEFT JOIN` (not per-row sub-SELECTs), optional `?bbox=minLng,minLat,maxLng,maxLat` (`&&` on the GiST index) and `?zoom=z` (`ST_SimplifyPreserveTopology` to ~1 px below zoom 14; points never simplified). It returns PostgreSQL's JSON text as-is (`HttpResponse`, not `JsonResponse`) with an `X-Cache: HIT|MISS` header.
+- GeoJSON responses are cached in the `geojson` cache alias (`CACHES` in settings: local memory, 64 entries, bodies ≤ 8 MB, 2 min) under a per-model version from `core/cache.py` (`layer_version` / `bump_layer_version`). The version only changes on writes made through Django, so edits from QGIS/psql/other scripts show up only when the entry expires — hence the short TTL (`GEOJSON_CACHE_TTL`). Local memory is per process: with several workers, point `CACHES` at Redis so invalidation reaches all of them.
+- `layer_bounds` returns WGS84 `[[west, south], [east, north]]`, using `ST_EstimatedExtent` only for tables with ≥ `ESTIMATED_EXTENT_MIN_ROWS` (100 000) rows. The estimate is as old as the last `ANALYZE`, so smaller tables get an exact `ST_Extent`.
+- `Layers.js`: vector layers with ≥ `VIEWPORT_LOAD_MIN_FEATURES` (5 000, in `Config.js`) features load by viewport and reload on `moveend` (debounced, superseded requests aborted); `zoomToLayer` uses `/bounds/` for them. Administrative layers always load whole — their click handlers and the admin-unit panels need every unit.
+- Floating map overlays (toolbar, layers panel, side panel, population dock, legends, WMS scrubber, tour card) share `--overlay-bg`/`--overlay-blur`/`--overlay-shadow` tokens in `mainMap.css` and are draggable by their header via `core/static/js/Draggable.js::makeDraggable(el, handleSelector)` (delegated, so handles added later work; double-click the handle to reset; disabled below 768 px). Wiring is in `Events.js::initializeUI`.
+- All legends live in `#legend-stack`; `Layers.js::repositionDynamicLegends()` moves the stack so it clears the side panel and the population dock (re-run by observers in `Events.js`), unless the user has dragged it. Append new legends to `#legend-stack`, not `.map-wrapper`.
 - Templates live in `Templates/` (capital T, configured in settings)
 - `core/static/js/mainMap.js` holds `mainMap.html`'s page-level wiring (map init, right-panel button handlers, year selector, guided tour, the admin-unit-driven panel registry). It depends on `Config.js`/`map_init.js` and on `window.MAPBOX_ACCESS_TOKEN` being set inline by `mainMap.html` before it loads. As with the indicator dashboards, keep new map-page behavior in this file rather than adding inline `<script>` blocks to `mainMap.html`.
 
@@ -133,8 +152,8 @@ Two import paths:
 |---|---|
 | `/` | Main map view |
 | `/api/layers/` | Layer catalog JSON |
-| `/api/layers/<app>/<model>/geojson/` | GeoJSON for vector model |
-| `/api/layers/<app>/<model>/bounds/` | Bounding box extent |
+| `/api/layers/<app>/<model>/geojson/` | GeoJSON for vector model (`?bbox=` WGS84, `?zoom=`; cached) |
+| `/api/layers/<app>/<model>/bounds/` | Bounding box extent in WGS84 |
 | `/api/raster/<app>/<model>/tiles/` | TiTiler tile URL for raster |
 | `/api/raster/<app>/<model>/info/` | Raster metadata |
 | `/importer/` | File upload import |
@@ -144,7 +163,7 @@ Two import paths:
 
 ### Testing
 
-Tests use `PostGISTestRunner` (`DigitalTwin/test_runner.py`) which creates the test DB, installs PostGIS extensions, and patches Django's `prepare_database` to avoid superuser requirement. Always use `--settings=DigitalTwin.settings_test`.
+Tests use `PostGISTestRunner` (`DigitalTwin/test_runner.py`) which creates the test DB, installs PostGIS extensions, and patches Django's `prepare_database` to avoid superuser requirement. Always use `--settings=DigitalTwin.settings_test --keepdb` (see Common Commands). Tests that hit the GeoJSON endpoint should clear the `geojson` cache in `setUp` (`core.cache.get_cache('geojson').clear()`): `TestCase` rolls back the DB but not the cache. Pin query counts with `assertNumQueries` on hot endpoints (`ModelGeoJsonTests` keeps `model_geojson` at one query).
 
 ## Key Patterns to Follow
 
@@ -154,6 +173,7 @@ Tests use `PostGISTestRunner` (`DigitalTwin/test_runner.py`) which creates the t
 - Population cascading uses `update()` not `save()` to prevent signal recursion
 - Raster models need a `cog_path` field to participate in the COG auto-export pipeline
 - The GeoJSON API transforms to EPSG:4326 at query time via `ST_Transform`
+- Performance work is tracked in `docs/PERFORMANCE.md`: §0–§3 are implemented (measurement, GeoJSON endpoint, land-cover signal, importer batching); §4–§12 are still proposals
 - Frontend CSS uses Tailwind with crispy-tailwind for forms
 - Frontend JS lives in `core/static/js/` (page-level files like `mainMap.js`, domain files under `indicators/`), not in inline `<script>` blocks in templates — see [Indicator Pattern](#indicator-pattern-watersupply-housing-urban_heat) and [Map Frontend](#map-frontend-mainmap)
 

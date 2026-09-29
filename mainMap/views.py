@@ -2,10 +2,10 @@ from django.shortcuts import render, redirect
 
 import re
 import json
-from django.http import JsonResponse, Http404
+from django.http import HttpResponse, JsonResponse, Http404
 from django.core.serializers import serialize
 from django.contrib.gis.db import models as gis_models
-from django.db import connection
+from django.db import connection, transaction
 from django.apps import apps
 
 from django.conf import settings
@@ -208,95 +208,160 @@ def population_panel(request):
     return render(request, 'mainMap/partials/population_panel.html', context)
 
 
-def model_geojson(request, app_label, model_name):
+# ── GeoJSON endpoint tuning (docs/PERFORMANCE.md §1) ─────────────────────────
+# 6 decimal places of a degree is ~10 cm, well below one screen pixel at any
+# zoom Mapbox renders; PostGIS's default of 9 only makes the payload bigger.
+GEOJSON_PRECISION = 6
+# Below this zoom, lines and polygons are simplified to about one screen pixel.
+GEOJSON_SIMPLIFY_BELOW_ZOOM = 14
+# Metres per pixel at zoom 0 on the equator for Mapbox GL's 512 px tiles.
+_MAPBOX_METRES_PER_PIXEL_Z0 = 78271.517
+_METRES_PER_DEGREE = 111_320.0
+GEOJSON_CACHE_ALIAS = 'geojson'
+# Short on purpose: edits made outside Django (QGIS, psql, other people's
+# scripts) don't invalidate the cache, so this bounds how stale the map can get.
+GEOJSON_CACHE_TTL = 120
+# Whole-table responses of large layers are not cached: a local-memory cache
+# would hold every one of them per process. Those layers load by viewport.
+GEOJSON_CACHE_MAX_BYTES = 8 * 1024 * 1024
+
+
+def _parse_bbox(raw):
+    """`minLng,minLat,maxLng,maxLat` (WGS84) -> tuple of floats; ValueError if malformed."""
+    parts = [float(v) for v in raw.split(',')]
+    if len(parts) != 4:
+        raise ValueError("bbox needs 4 comma-separated numbers")
+    min_lng, min_lat, max_lng, max_lat = parts
+    if not (-180 <= min_lng < max_lng <= 180 and -90 <= min_lat < max_lat <= 90):
+        raise ValueError("bbox must be minLng,minLat,maxLng,maxLat in WGS84")
+    return min_lng, min_lat, max_lng, max_lat
+
+
+def _simplify_tolerance(zoom, lat, geodetic):
+    """About one screen pixel at `zoom`, in the storage CRS's units (metres, or degrees if geodetic)."""
+    import math
+    metres = _MAPBOX_METRES_PER_PIXEL_Z0 * math.cos(math.radians(lat)) / (2 ** zoom)
+    return metres / _METRES_PER_DEGREE if geodetic else metres
+
+
+def _geojson_sql(model, geom_field, bbox=None, zoom=None):
     """
-    Generic GeoJSON endpoint for any registered model.
-    URL: /api/<app_label>/<model_name>/geojson/
+    (sql, params) returning the layer as one FeatureCollection JSON text.
+
+    - FK columns come from LEFT JOINs on the related table (one hash join
+      per FK) instead of a correlated sub-SELECT evaluated once per row.
+    - `bbox` restricts the rows with `&&`, which uses the geometry's GiST index.
+    - `zoom` below GEOJSON_SIMPLIFY_BELOW_ZOOM simplifies lines/polygons to
+      about one pixel before reprojecting.
     """
-    # Find the model in registry
-    key = f"{app_label}.{model_name}"
-    
-    if key not in VECTOR_REGISTRY:
-        raise Http404(f"Model {key} not found in registry")
-    
-    model = VECTOR_REGISTRY[key]
-    
-    # Find the geometry field automatically
-    geom_field = None
-    for field in model._meta.get_fields():
-        if isinstance(field, gis_models.GeometryField):
-            geom_field = field.name
-            break
-    
-    if not geom_field:
-        raise Http404(f"Model {key} has no geometry field")
-    
-    # Get all non-geometry fields for properties (use db_column if available)
-    # EXCLUDE ManyToMany and reverse relations
-    table_name = model._meta.db_table
-    property_fields = []
+    table = model._meta.db_table
+    joins = []
+    parts = []
     for f in model._meta.get_fields():
-        # Skip if it's a geometry field
         if isinstance(f, gis_models.GeometryField):
             continue
-
-        # Skip ManyToMany fields and reverse relations
-        if f.many_to_many or f.one_to_many:
+        if f.many_to_many or f.one_to_many or not hasattr(f, 'column'):
             continue
-
-        # Only include fields that have actual database columns
-        if not hasattr(f, 'column'):
-            continue
-
         if f.is_relation and f.many_to_one:
             # FK fields: show the related object's name instead of its raw id
             related_model = f.related_model
-            related_field = _display_field(related_model)
-            related_table = related_model._meta.db_table
-            expr = (
-                f'(SELECT "{related_field.column}" FROM "{related_table}" '
-                f'WHERE "{related_table}"."{related_model._meta.pk.column}" = '
-                f'"{table_name}"."{f.column}")'
+            alias = f"j{len(joins)}"
+            joins.append(
+                f'LEFT JOIN "{related_model._meta.db_table}" {alias} '
+                f'ON {alias}."{related_model._meta.pk.column}" = t."{f.column}"'
             )
-            property_fields.append({'name': f.name, 'expr': expr})
+            parts.append(f"'{f.name}', {alias}.\"{_display_field(related_model).column}\"")
         else:
-            property_fields.append({
-                'name': f.name,
-                'column': f.column  # Actual database column name
-            })
+            parts.append(f"'{f.name}', t.\"{f.column}\"")
+    props_expr = f"json_build_object({', '.join(parts)})" if parts else "'{}'::json"
 
-    # Build properties JSON object with quoted column names
-    if property_fields:
-        parts = [
-            f"'{pf['name']}', {pf['expr']}" if 'expr' in pf
-            else f"'{pf['name']}', \"{pf['column']}\""
-            for pf in property_fields
-        ]
-        props_sql = ", ".join(parts)
-        props_expr = f"json_build_object({props_sql})"
-    else:
-        props_expr = "'{}'::json"
-    
-    # Quote the geometry field name too
+    params = []
+    geom_expr = f't."{geom_field.column}"'
+    is_point = geom_field.geom_type in ('POINT', 'MULTIPOINT')
+    if zoom is not None and zoom < GEOJSON_SIMPLIFY_BELOW_ZOOM and not is_point:
+        lat = (bbox[1] + bbox[3]) / 2 if bbox else 52.0   # the Netherlands, when no viewport is given
+        geom_expr = f"ST_SimplifyPreserveTopology({geom_expr}, %s)"
+        params.append(_simplify_tolerance(zoom, lat, geom_field.geodetic(connection)))
+
+    where = ""
+    if bbox:
+        where = (
+            f'WHERE t."{geom_field.column}" && '
+            f'ST_Transform(ST_MakeEnvelope(%s, %s, %s, %s, 4326), {geom_field.srid})'
+        )
+        params.extend(bbox)
+
     sql = f"""
         SELECT json_build_object(
             'type', 'FeatureCollection',
-            'features', COALESCE(json_agg(
-                json_build_object(
-                    'type', 'Feature',
-                    'geometry', ST_AsGeoJSON(ST_Transform("{geom_field}", 4326))::json,
-                    'properties', {props_expr}
-                )
-            ), '[]'::json)
-        )
-        FROM "{table_name}"
+            'features', COALESCE(json_agg(f.feature), '[]'::json)
+        )::text
+        FROM (
+            SELECT json_build_object(
+                'type', 'Feature',
+                'geometry', ST_AsGeoJSON(ST_Transform({geom_expr}, 4326), {GEOJSON_PRECISION})::json,
+                'properties', {props_expr}
+            ) AS feature
+            FROM "{table}" t
+            {' '.join(joins)}
+            {where}
+        ) f
     """
-    
-    with connection.cursor() as cursor:
-        cursor.execute(sql)
-        result = cursor.fetchone()[0]
-    
-    return JsonResponse(result, safe=False)
+    return sql, params
+
+
+def model_geojson(request, app_label, model_name):
+    """
+    Generic GeoJSON endpoint for any registered vector model.
+    URL: /api/layers/<app_label>/<model_name>/geojson/[?bbox=minLng,minLat,maxLng,maxLat][&zoom=z]
+
+    Without `bbox` the whole layer is returned. The map requests large
+    layers by viewport instead (Layers.js, VIEWPORT_LOAD_MIN_FEATURES).
+    Responses are cached per (layer, bbox, whole zoom level) and invalidated
+    whenever the layer's rows change (core/cache.py).
+    """
+    from core.cache import get_cache, layer_version
+
+    key = f"{app_label}.{model_name}"
+    if key not in VECTOR_REGISTRY:
+        raise Http404(f"Model {key} not found in registry")
+    model = VECTOR_REGISTRY[key]
+
+    geom_field = next(
+        (f for f in model._meta.get_fields() if isinstance(f, gis_models.GeometryField)), None
+    )
+    if geom_field is None:
+        raise Http404(f"Model {key} has no geometry field")
+
+    try:
+        bbox = _parse_bbox(request.GET['bbox']) if request.GET.get('bbox') else None
+        # Whole zoom levels only: the simplification tolerance and the cache
+        # key then change once per level instead of on every wheel tick.
+        zoom = int(float(request.GET['zoom'])) if request.GET.get('zoom') else None
+    except ValueError as exc:
+        return JsonResponse({'error': str(exc)}, status=400)
+
+    cache = get_cache(GEOJSON_CACHE_ALIAS)
+    bbox_key = ','.join(f'{v:.5f}' for v in bbox) if bbox else 'all'
+    zoom_key = zoom if zoom is not None and zoom < GEOJSON_SIMPLIFY_BELOW_ZOOM else 'full'
+    cache_key = f"geojson:{key}:{layer_version(model)}:{bbox_key}:{zoom_key}"
+
+    body = cache.get(cache_key)
+    cache_status = 'HIT'
+    if body is None:
+        cache_status = 'MISS'
+        sql, params = _geojson_sql(model, geom_field, bbox, zoom)
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            body = cursor.fetchone()[0]
+        if len(body) <= GEOJSON_CACHE_MAX_BYTES:
+            cache.set(cache_key, body, GEOJSON_CACHE_TTL)
+
+    # PostgreSQL already produced the JSON text; parsing it into Python and
+    # re-serialising it (JsonResponse) would only cost time and memory.
+    response = HttpResponse(body, content_type='application/json')
+    response['X-Cache'] = cache_status
+    return response
 
 
 LAYER_STYLES = {
@@ -682,35 +747,59 @@ def available_layers(request):
     return JsonResponse({'layers': layers})
 
 
+# Below this many rows (planner estimate) an exact ST_Extent scan is cheap
+# enough, and unlike the estimate it is never stale.
+ESTIMATED_EXTENT_MIN_ROWS = 100_000
+
+
 def layer_bounds(request, app_label, model_name):
     """
-    Returns the bounding box extent of a layer.
-    URL: /api/<app_label>/<model_name>/bounds/
+    Returns the bounding box of a layer in WGS84, as [[west, south], [east, north]]
+    (what Mapbox GL's fitBounds takes).
+    URL: /api/layers/<app_label>/<model_name>/bounds/
+
+    For large tables it uses ST_EstimatedExtent, which answers from the
+    planner's statistics instead of scanning the table. Those statistics are
+    only as fresh as the last ANALYZE, so smaller tables (where a scan is
+    cheap anyway) and tables without statistics get the exact ST_Extent.
     """
     key = f"{app_label}.{model_name}"
-    
     if key not in MODEL_REGISTRY:
         raise Http404(f"Model '{key}' not found in registry")
-    
     model = MODEL_REGISTRY[key]
-    
-    # Find the geometry field
-    geom_field = None
-    for field in model._meta.get_fields():
-        if isinstance(field, gis_models.GeometryField):
-            geom_field = field.name
-            break
-    
-    if not geom_field:
+
+    geom_field = next(
+        (f for f in model._meta.get_fields() if isinstance(f, gis_models.GeometryField)), None
+    )
+    if geom_field is None:
         raise Http404(f"Model '{key}' has no geometry field")
-    
-    # Get extent
-    from django.contrib.gis.db.models import Extent
-    extent = model.objects.aggregate(extent=Extent(geom_field))['extent']
-    
-    if extent:
-        return JsonResponse({
-            'bounds': [[extent[0], extent[1]], [extent[2], extent[3]]]
-        })
-    else:
-        return JsonResponse({'bounds': None})
+
+    table = model._meta.db_table
+    to_wgs84 = (
+        "SELECT ST_XMin(b), ST_YMin(b), ST_XMax(b), ST_YMax(b) "
+        f"FROM (SELECT ST_Transform(ST_SetSRID(%s::box2d::geometry, {geom_field.srid}), 4326)::box2d AS b) s"
+    )
+    with connection.cursor() as cursor:
+        extent = None
+        cursor.execute("SELECT reltuples FROM pg_class WHERE oid = to_regclass(%s)", [f'"{table}"'])
+        row = cursor.fetchone()
+        if row and row[0] >= ESTIMATED_EXTENT_MIN_ROWS:
+            try:
+                with transaction.atomic():   # a failure here must not poison the fallback query
+                    cursor.execute(
+                        "SELECT ST_EstimatedExtent(current_schema()::text, %s, %s)::text",
+                        [table, geom_field.column],
+                    )
+                    extent = cursor.fetchone()[0]
+            except Exception:
+                extent = None
+        if extent is None:
+            cursor.execute(f'SELECT ST_Extent("{geom_field.column}")::text FROM "{table}"')
+            extent = cursor.fetchone()[0]
+        if extent is None:
+            return JsonResponse({'bounds': None})
+
+        cursor.execute(to_wgs84, [extent])
+        west, south, east, north = cursor.fetchone()
+
+    return JsonResponse({'bounds': [[west, south], [east, north]]})

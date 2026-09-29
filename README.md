@@ -14,10 +14,11 @@ The project follows the **DPSIR framework** (Driver → Pressure → State → I
 
 | 📁 Folder | 📝 Contains | Description |
 |---|---|---|
-| `DigitalTwin/` | `settings.py`, `urls.py`, `test_runner.py` | Django project config, env loading, custom PostGIS test runner |
-| `core/` | `utils.py`, `signals.py`, `rasterOperations.py`, `DAG.dot`, `static/js/` | Model registry, raster→COG export pipeline, DPSIR causal graph, shared frontend JS |
-| `mainMap/` | `views.py`, `urls.py`, `charts.py` | Interactive map view, layer catalog API, population dock charts |
-| `importer/` | `views.py`, `views_external.py`, `external_catalog.py`, `external_data.py` | File-upload import + external catalog import (PDOK, CBS, Sentinel-2, GEE, KNMI) |
+| `DigitalTwin/` | `settings.py`, `urls.py`, `test_runner.py` | Django project config, env loading, caches, custom PostGIS test runner |
+| `core/` | `utils.py`, `signals.py`, `cache.py`, `middleware.py`, `rasterOperations.py`, `DAG.dot`, `static/js/` | Model registry, layer-cache versions, query-stats middleware, raster→COG export pipeline, DPSIR causal graph, shared frontend JS |
+| `mainMap/` | `views.py`, `urls.py`, `charts.py` | Interactive map view, layer catalog + GeoJSON API, population dock charts |
+| `importer/` | `views.py`, `views_external.py`, `external_catalog.py`, `external_data.py`, `batching.py` | File-upload import + external catalog import (PDOK, CBS, Sentinel-2, GEE, KNMI); bulk writes and deferred cascades |
+| `docs/` | `PERFORMANCE.md`, … | Performance review and implementation status |
 | `administrative/` | `models.py`, `population.py`, `signals.py` | Province > City > District > Neighborhood hierarchy, population projection |
 | `watersupply/` | `models.py`, `calculations.py`, `views.py`, `signals.py` | Water infrastructure, indicator dashboard |
 | `urban_heat/` | `models.py`, `calculations.py`, `views.py` | Thermal comfort rasters (UTCI, PET, MRT, LST, SVF), NBS |
@@ -93,6 +94,11 @@ COORDINATE_SYSTEM=28992  # EPSG code for Dutch RD New
 SENTINEL_CLIENT_ID=your-cdse-client-id
 SENTINEL_CLIENT_SECRET=your-cdse-client-secret
 KNMI_API_KEY=your-knmi-api-key
+
+# Optional — performance measurement (see docs/PERFORMANCE.md §0)
+QUERY_STATS=True          # per-request query count + DB time (default: same as DEBUG)
+QUERY_STATS_SLOW_MS=500   # log requests slower than this as warnings
+SQL_LOG=False             # print every SQL statement (needs DEBUG=True)
 ```
 
 **Migrate and create a superuser:**
@@ -130,13 +136,18 @@ These drive the generic layer API, the map's layer catalog, and the importer's f
 ### Signal-driven computation
 
 - `administrative/signals.py` — cascades population/density Neighborhood → District → City → Province via `_recompute_population()`, using `update()` (not `save()`) to avoid signal recursion.
-- `core/signals.py` — `post_save` on every `RASTER_REGISTRY` model auto-exports it to a COG (see [Raster pipeline](#🛰️-raster-pipeline)).
+- `physicalEnv/signals.py` — when land cover changes, recomputes every neighborhood's `urban_area` in the city with one set-based SQL `UPDATE`, then cascades each parent once.
+- `core/signals.py` — `post_save` on every `RASTER_REGISTRY` model auto-exports it to a COG (see [Raster pipeline](#🛰️-raster-pipeline)); `post_save`/`post_delete` on every vector model invalidates that layer's cached GeoJSON.
+- Bulk imports wrap their writes in `importer/batching.py::deferred_cascades()`, so the cascades run **once per affected parent** at the end instead of once per imported row.
 - `watersupply/signals.py` — cascades population → `ConsumptionCapita` → `TotalWaterDemand` → `SupplySecurity`, and re-derives `OPEX`/`CoverageWaterSupply`/NRW indicators from their upstream inputs.
 
 ### Map frontend (`mainMap/`)
 
-- `map_view` renders `Templates/mainMap.html` with the Mapbox token; `available_layers` returns the full layer catalog as JSON; `model_geojson` serves any registered vector model via raw SQL (`ST_AsGeoJSON(ST_Transform(..., 4326))`).
-- `core/static/js/mainMap.js` holds page-level wiring (map init, right panel, year selector, guided tour). New map-page behavior belongs there, not in inline `<script>` blocks.
+- `map_view` renders `Templates/mainMap.html` with the Mapbox token; `available_layers` returns the full layer catalog as JSON.
+- `model_geojson` serves any registered vector model in one SQL statement: coordinates at 6 decimals (~10 cm), FK names via joins, optional viewport filter (`?bbox=`) and zoom-based simplification (`?zoom=`, below zoom 14). Responses are cached per layer and invalidated when its rows change.
+- Large layers (≥ 5 000 features, except administrative boundaries) load **only the current viewport** and reload after each pan/zoom.
+- Floating panels, legends and the toolbar are translucent and **draggable by their header** (double-click the header to reset). Legends are stacked in one container that moves out of the way of the side panel and population dock.
+- `core/static/js/mainMap.js` holds page-level wiring (map init, right panel, year selector, guided tour); `Draggable.js`, `Layers.js`, `Events.js` hold dragging, layer loading and UI events. New map-page behavior belongs in these files, not in inline `<script>` blocks.
 
 ### Indicator dashboards (watersupply, housing, urban_heat)
 
@@ -177,7 +188,7 @@ The full causal graph lives in [`core/DAG.dot`](core/DAG.dot) (Graphviz). Each d
 
 Two paths, both under `/importer/`:
 
-1. **File upload** — upload GeoJSON or a zipped Shapefile, map source fields to any registered model, preview, then import inside DB savepoints.
+1. **File upload** — upload GeoJSON or a zipped Shapefile, map source fields to any registered model, preview, then import inside DB savepoints. *Known gap: only geometry and upsert-key columns are imported today; other mapped attribute columns are ignored.*
 2. **External catalog** — catalog-driven import:
 
 | Source | Provides | Auth |
@@ -190,6 +201,8 @@ Two paths, both under `/importer/`:
 | Google Earth Engine | Arbitrary GEE assets, exported as GeoTIFF | Service-account JSON pasted per import |
 
 For districts/neighborhoods, the import map picks the area of interest from the parent city/district (`bbox_from` in the catalog).
+
+Large imports are batched (`importer/batching.py`): spatial parents (the city a polygon lies in, …) are found with prepared geometries, and models without their own `save()` logic — land cover, streets, the nature layers — are written 500 rows at a time with `bulk_create` / `INSERT … ON CONFLICT`. Models with `save()` logic (buildings, the administrative hierarchy) are still saved row by row.
 
 ## 🛰️ Raster Pipeline
 
@@ -213,8 +226,8 @@ python manage.py export_cogs
 |---|---|
 | `/` | Main map view |
 | `/api/layers/` | Layer catalog JSON — `?app_labels=administrative,builtup` restricts which apps are queried |
-| `/api/layers/<app>/<model>/geojson/` | GeoJSON for a vector model |
-| `/api/layers/<app>/<model>/bounds/` | Bounding box extent |
+| `/api/layers/<app>/<model>/geojson/` | GeoJSON for a vector model — optional `?bbox=minLng,minLat,maxLng,maxLat` (WGS84) and `?zoom=z` |
+| `/api/layers/<app>/<model>/bounds/` | Bounding box as WGS84 `[[west, south], [east, north]]` |
 | `/api/raster/<app>/<model>/tiles/` | TiTiler tile URL for a raster model |
 | `/api/raster/<app>/<model>/info/` | Raster metadata |
 | `/importer/` | File upload import |
@@ -229,9 +242,19 @@ python manage.py export_cogs
 Tests use `PostGISTestRunner` (`DigitalTwin/test_runner.py`), which creates the test DB, installs PostGIS extensions, and patches Django's `prepare_database` to skip the superuser requirement.
 
 ```bash
-python manage.py test --settings=DigitalTwin.settings_test
-python manage.py test importer --settings=DigitalTwin.settings_test   # single app
+python manage.py test --settings=DigitalTwin.settings_test --keepdb --noinput
+python manage.py test importer --settings=DigitalTwin.settings_test --keepdb --noinput   # single app
 ```
+
+Always pass `--keepdb`: without it Django drops the test database the runner prepared and recreates it without PostGIS, and migrations fail with `type "geometry" does not exist`.
+
+## 📊 Performance
+
+[`docs/PERFORMANCE.md`](docs/PERFORMANCE.md) is the performance review and tracks what is done: §0–§3 (measurement, the GeoJSON endpoint, the land-cover signal, importer batching) are implemented; the rest are proposals.
+
+- With `QUERY_STATS=True`, every response carries a `Server-Timing` header — open DevTools → Network → Timing to see DB time and query count per API call.
+- `python manage.py db_stats` lists the slowest statements from `pg_stat_statements` (it explains how to enable the extension if it's missing).
+- The caches are in local process memory. With several worker processes, switch `CACHES` in `settings.py` to Redis so a data change invalidates every worker's copy.
 
 ## 📐 Key Conventions
 
@@ -250,4 +273,7 @@ python manage.py test importer --settings=DigitalTwin.settings_test   # single a
 | Import fails despite a valid file | File encoding (UTF-8), geometry validity (`ST_IsValid`), SRID, required field mappings |
 | Mapbox map is blank | `MAPBOX_ACCESS_TOKEN` set/valid; browser console + network tab for failed requests |
 | Imported layer missing from map | Model's app is in `allowed_apps` (`core/utils.py`) and `INSTALLED_APPS`; `/api/layers/<app>/<model>/geojson/` returns valid GeoJSON |
+| Map shows old data after a direct DB edit | Rows changed outside Django (SQL, `psql`) don't invalidate the GeoJSON cache — restart the server, or wait for the 2-minute expiry |
+| Large layer shows only part of the city | Expected: layers with ≥ 5 000 features load by viewport; pan or zoom out to load more |
+| Tests fail with `type "geometry" does not exist` | Rerun with `--keepdb` |
 | Sentinel-2 (openEO) import fails / asks for credentials | `SENTINEL_CLIENT_ID`/`SECRET` set + server restarted; CDSE OAuth client still valid at [shapps.dataspace.copernicus.eu/dashboard](https://shapps.dataspace.copernicus.eu/dashboard); otherwise paste a personal client ID/secret into the UI panel (used once, not saved) |
