@@ -40,7 +40,7 @@ function renderLayerList() {
                    ${checked}
                    onchange="toggleLayerVisibility('${layer.key}', this.checked)">
             ${legendIcon}
-            <span class="layer-name">${layer.display_name}</span>
+            <span class="layer-name" title="${layer.display_name}">${layer.display_name}</span>
             <span class="layer-count">${layer.count}</span>
           </div>
           <div class="layer-actions">

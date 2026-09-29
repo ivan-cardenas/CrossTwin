@@ -20,7 +20,28 @@
     --border-ui:        var(--border);
     --border-ui-strong: var(--border-strong);
     /* --accent and --accent-rgb already in theme.css */
+
+    /* Floating overlays on top of the map (toolbar, panels, legends, docks)
+       share one translucent-glass treatment so the map stays visible behind
+       them, plus theme.css's --shadow-soft to lift them off the map. */
+    --overlay-bg:     rgba(17, 17, 17, 0.78);   /* --bg-1 at 78% */
+    --overlay-blur:   blur(8px);
+    --overlay-shadow: var(--shadow-soft);
 }
+
+/* ============================================================
+   DRAGGABLE OVERLAYS (see Draggable.js)
+   ============================================================ */
+
+/* Applied to any floating overlay while the user is actively dragging it:
+   suppresses text selection and gives immediate cursor feedback regardless
+   of which handle child triggered the drag. */
+.dragging {
+    cursor: grabbing !important;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.dragging * { cursor: grabbing !important; }
 
 /* ============================================================
    APP SHELL
@@ -219,7 +240,10 @@
     transform: translateY(-50%);
     width: 56px;           /* wide enough for icon + short label */
     padding: 8px 6px;
-    background: var(--bg-panel);
+    background: var(--overlay-bg);
+    backdrop-filter: var(--overlay-blur);
+    -webkit-backdrop-filter: var(--overlay-blur);
+    box-shadow: var(--overlay-shadow);
     border: 1px solid var(--border-ui);
     border-radius: 28px;
     display: flex;
@@ -228,6 +252,18 @@
     gap: 8px;              /* breathing room between buttons */
     z-index: 10;
 }
+
+/* Small drag grip at the top of the toolbar — see Draggable.js */
+.toolbar-grip {
+    text-align: center;
+    color: var(--text-tertiary);
+    font-size: 12px;
+    line-height: 1;
+    padding: 2px 0 4px;
+    cursor: grab;
+    user-select: none;
+}
+.toolbar-grip:active { cursor: grabbing; }
 
 /* Rectangular buttons that stretch to toolbar width */
 .tool-button {
@@ -348,7 +384,10 @@
     top: 44px;
     width: 264px;
     max-height: calc(100vh - 144px);
-    background: var(--bg-panel);
+    background: var(--overlay-bg);
+    backdrop-filter: var(--overlay-blur);
+    -webkit-backdrop-filter: var(--overlay-blur);
+    box-shadow: var(--overlay-shadow);
     border-radius: 10px;
     border: 1px solid var(--border-ui);
     z-index: 11;
@@ -365,7 +404,9 @@
     align-items: center;
     padding: 10px 12px 8px;
     border-bottom: 1px solid var(--border-ui);
+    cursor: grab;
 }
+.layers-panel-header:active { cursor: grabbing; }
 
 .layers-panel-title {
     font-size: 10px;
@@ -419,7 +460,7 @@
 
 .layer-item {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 7px;
     padding: 5px 7px;
     border-radius: 5px;
@@ -432,7 +473,7 @@
 
 .layer-info {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 6px;
     flex: 1;
     min-width: 0;
@@ -441,20 +482,22 @@
 .layer-info input[type="checkbox"] {
     width: 13px;
     height: 13px;
+    margin-top: 2px;    /* align with the first line of a wrapped layer-name */
     accent-color: var(--accent);
     cursor: pointer;
     flex-shrink: 0;
 }
 
-.layer-icon { flex-shrink: 0; }
+.layer-icon { flex-shrink: 0; margin-top: 2px; }
 
 .layer-name {
     font-size: 12px;
     color: var(--text-main);
     flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
+    line-height: 1.3;
 }
 
 .layer-count {
@@ -462,6 +505,7 @@
     color: var(--text-tertiary);
     background: var(--bg-raised);
     padding: 1px 5px;
+    margin-top: 1px;   /* align with the first line of a wrapped layer-name */
     border-radius: 3px;
     flex-shrink: 0;
     font-family: var(--font-mono);
@@ -503,23 +547,31 @@
     align-items: stretch;
     gap: 2px;
     padding: 8px 14px 10px;
-    background: var(--bg-panel);
+    background: var(--overlay-bg);
+    backdrop-filter: var(--overlay-blur);
+    -webkit-backdrop-filter: var(--overlay-blur);
     border: 1px solid var(--border-ui);
     border-radius: 14px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    box-shadow: var(--overlay-shadow);
     pointer-events: auto;
     width: 320px;
     max-width: calc(100vw - 32px);
+    /* Explicit so it still stacks correctly if Draggable.js reparents it
+       out of #wms-time-dock (whose z-index: 5 this matches) into .map-wrapper. */
+    z-index: 5;
 }
 
 .wms-time-name {
+    display: block;
     font-size: 10px;
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
     color: var(--text-secondary);
     white-space: nowrap;
+    cursor: grab;
 }
+.wms-time-name:active { cursor: grabbing; }
 
 .wms-time-scrubber input[type="range"].zone-slider {
     width: 100%;
@@ -633,7 +685,10 @@
     width: 460px;
     max-width: 76vw;
     padding: 12px 14px;
-    background: var(--bg-panel);
+    background: var(--overlay-bg);
+    backdrop-filter: var(--overlay-blur);
+    -webkit-backdrop-filter: var(--overlay-blur);
+    box-shadow: var(--overlay-shadow);
     border-radius: 10px;
     border: 1px solid var(--border-ui);
     z-index: 11;
@@ -652,7 +707,9 @@
     gap: 8px;
     padding-bottom: 8px;
     border-bottom: 1px solid var(--border-ui);
+    cursor: grab;
 }
+.side-panel-header:active { cursor: grabbing; }
 
 .side-panel-title {
     font-size: 10px;
@@ -867,7 +924,10 @@
     gap: 2px;
     padding: 3px 6px;
     border-radius: 999px;
-    background: var(--bg-panel);
+    background: var(--overlay-bg);
+    backdrop-filter: var(--overlay-blur);
+    -webkit-backdrop-filter: var(--overlay-blur);
+    box-shadow: var(--overlay-shadow);
     border: 1px solid var(--border-ui);
 }
 
@@ -891,7 +951,10 @@
     min-width: 86px;
     padding: 4px 8px;
     border-radius: 999px;
-    background: var(--bg-panel);
+    background: var(--overlay-bg);
+    backdrop-filter: var(--overlay-blur);
+    -webkit-backdrop-filter: var(--overlay-blur);
+    box-shadow: var(--overlay-shadow);
     border: 1px solid var(--border-ui);
     display: flex;
     align-items: center;
@@ -943,7 +1006,10 @@
     text-transform: uppercase;
     padding: 4px 10px;
     border-radius: 999px;
-    background: var(--bg-panel);
+    background: var(--overlay-bg);
+    backdrop-filter: var(--overlay-blur);
+    -webkit-backdrop-filter: var(--overlay-blur);
+    box-shadow: var(--overlay-shadow);
     border: 1px solid var(--border-ui);
     color: var(--text-main);
 }
@@ -952,7 +1018,10 @@
     padding: 4px 9px;
     border-radius: 999px;
     border: 1px solid var(--border-ui);
-    background: var(--bg-panel);
+    background: var(--overlay-bg);
+    backdrop-filter: var(--overlay-blur);
+    -webkit-backdrop-filter: var(--overlay-blur);
+    box-shadow: var(--overlay-shadow);
     color: var(--text-tertiary);
     font-size: 10px;
     letter-spacing: 0.04em;
@@ -983,7 +1052,10 @@
     top: 50%;
     transform: translateY(-50%);
     max-width: 200px;
-    background: var(--bg-panel);
+    background: var(--overlay-bg);
+    backdrop-filter: var(--overlay-blur);
+    -webkit-backdrop-filter: var(--overlay-blur);
+    box-shadow: var(--overlay-shadow);
     border: 1px solid var(--border-ui);
     color: var(--text-main);
     padding: 10px 12px;
@@ -1049,15 +1121,22 @@
     gap: 10px;
     min-width: 360px;
     max-width: 460px;
-    background: var(--bg-panel);
+    background: var(--overlay-bg);
+    backdrop-filter: var(--overlay-blur);
+    -webkit-backdrop-filter: var(--overlay-blur);
     border: 1px solid var(--border-ui-strong);
     border-radius: 12px;
     padding: 14px 16px;
-    box-shadow: var(--shadow-soft), 0 0 0 1px rgba(var(--accent-rgb), 0.12);
+    box-shadow: var(--overlay-shadow), 0 0 0 1px rgba(var(--accent-rgb), 0.12);
     animation: tourFadeIn 0.22s ease;
 }
 
 .demo-tour.hidden { display: none; }
+
+/* Once dragged, the element carries explicit inline left/top (Draggable.js)
+   instead of the centering transform the entry animation below relies on —
+   skip it so the drag position isn't fought/overwritten. */
+.demo-tour[data-dragged] { animation: none; }
 
 @keyframes tourFadeIn {
     from { opacity: 0; transform: translateX(-50%) translateY(8px); }
@@ -1100,7 +1179,9 @@
     border-radius: 8px;
     color: #fff;
     flex-shrink: 0;
+    cursor: grab;
 }
+.tour-step-badge:active { cursor: grabbing; }
 
 .tour-step-num {
     font-size: 20px;
@@ -1206,12 +1287,28 @@
    MAP LEGEND
    ============================================================ */
 
-.map-legend {
+/* The stack that holds the static groundwater legend plus every dynamic
+   raster/WMS/categorical legend (see repositionDynamicLegends() in
+   Layers.js). It owns the fixed corner positioning and drag behavior;
+   individual .map-legend cards below are just its flex children, stacked
+   bottom-up (most recently added legend ends up on top). */
+.legend-stack {
     position: absolute;
     right: 10px;
     bottom: 66px;
-    z-index: 8;
-    background: var(--bg-panel);
+    z-index: 13;
+    display: none;
+    flex-direction: column-reverse;
+    gap: 10px;
+    max-height: calc(100% - 90px);
+    overflow-y: auto;
+}
+
+.map-legend {
+    background: var(--overlay-bg);
+    backdrop-filter: var(--overlay-blur);
+    -webkit-backdrop-filter: var(--overlay-blur);
+    box-shadow: var(--overlay-shadow);
     border: 1px solid var(--border-ui);
     color: var(--text-main);
     padding: 8px 10px;
@@ -1226,7 +1323,11 @@
     letter-spacing: 0.08em;
     color: var(--text-tertiary);
     margin-bottom: 6px;
+    max-width: 200px;
+    overflow-wrap: anywhere;
+    cursor: grab;
 }
+.map-legend .legend-title:active { cursor: grabbing; }
 
 .map-legend img {
     display: block;
@@ -1292,7 +1393,10 @@
     align-items: center;
     gap: 7px;
     padding: 5px 12px;
-    background: var(--bg-panel);
+    background: var(--overlay-bg);
+    backdrop-filter: var(--overlay-blur);
+    -webkit-backdrop-filter: var(--overlay-blur);
+    box-shadow: var(--overlay-shadow);
     border: 1px solid var(--border-ui);
     color: var(--text-secondary);
     border-radius: 999px;
@@ -1309,11 +1413,13 @@
    ============================================================ */
 
 .mapboxgl-popup-content {
-    background: var(--bg-panel);
+    background: var(--overlay-bg);
+    backdrop-filter: var(--overlay-blur);
+    -webkit-backdrop-filter: var(--overlay-blur);
     color: var(--text-main);
     border-radius: 7px;
     padding: 10px 12px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+    box-shadow: var(--overlay-shadow), 0 4px 20px rgba(0, 0, 0, 0.6);
     border: 1px solid var(--border-ui);
     max-width: 280px;
 }
@@ -1371,17 +1477,19 @@
     background: transparent;
 }
 
-.mapboxgl-popup-anchor-bottom .mapboxgl-popup-tip { border-top-color: var(--bg-panel); }
-.mapboxgl-popup-anchor-top    .mapboxgl-popup-tip { border-bottom-color: var(--bg-panel); }
-.mapboxgl-popup-anchor-left   .mapboxgl-popup-tip { border-right-color: var(--bg-panel); }
-.mapboxgl-popup-anchor-right  .mapboxgl-popup-tip { border-left-color: var(--bg-panel); }
+.mapboxgl-popup-anchor-bottom .mapboxgl-popup-tip { border-top-color: var(--overlay-bg); }
+.mapboxgl-popup-anchor-top    .mapboxgl-popup-tip { border-bottom-color: var(--overlay-bg); }
+.mapboxgl-popup-anchor-left   .mapboxgl-popup-tip { border-right-color: var(--overlay-bg); }
+.mapboxgl-popup-anchor-right  .mapboxgl-popup-tip { border-left-color: var(--overlay-bg); }
 
 .mapboxgl-ctrl-group {
-    background: var(--bg-panel) !important;
+    background: var(--overlay-bg) !important;
+    backdrop-filter: var(--overlay-blur);
+    -webkit-backdrop-filter: var(--overlay-blur);
     border: 1px solid var(--border-ui) !important;
     border-radius: 6px !important;
     overflow: hidden;
-    box-shadow: none !important;
+    box-shadow: var(--overlay-shadow) !important;
 }
 
 .mapboxgl-ctrl-group button {
@@ -1414,10 +1522,12 @@
    ============================================================ */
 
 .mapboxgl-ctrl-geocoder {
-    background-color: var(--bg-panel);
+    background-color: var(--overlay-bg);
+    backdrop-filter: var(--overlay-blur);
+    -webkit-backdrop-filter: var(--overlay-blur);
     border: 1px solid var(--border-ui);
     border-radius: 6px;
-    box-shadow: none;
+    box-shadow: var(--overlay-shadow);
     min-width: 200px;
     color: var(--text-main);
     font-family: var(--font-body);
@@ -1447,7 +1557,9 @@
 }
 
 .mapboxgl-ctrl-geocoder--suggestions {
-    background-color: var(--bg-panel);
+    background-color: var(--overlay-bg);
+    backdrop-filter: var(--overlay-blur);
+    -webkit-backdrop-filter: var(--overlay-blur);
     border: 1px solid var(--border-ui);
     border-top: none;
     border-radius: 0 0 6px 6px;
@@ -1553,7 +1665,10 @@
     bottom: 52px;               /* above the bottom bar */
     max-height: min(400px, 68vh);
     padding: 10px 14px 12px;
-    background: var(--bg-panel);
+    background: var(--overlay-bg);
+    backdrop-filter: var(--overlay-blur);
+    -webkit-backdrop-filter: var(--overlay-blur);
+    box-shadow: var(--overlay-shadow);
     border: 1px solid var(--border-ui);
     border-radius: 10px;
     z-index: 12;
@@ -1562,8 +1677,10 @@
     gap: 6px;
 }
 .population-panel.visible { display: flex; }
-/* leave the side panel (460px wide, max 76vw) uncovered when both are open */
-.side-panel.visible ~ .population-panel { right: calc(min(460px, 76vw) + 24px); }
+/* leave the side panel (460px wide, max 76vw) uncovered when both are open —
+   dropped once the dock has been dragged (Draggable.js sets its own inline
+   left/top, which this selector's `right` would otherwise fight). */
+.side-panel.visible ~ .population-panel:not([data-dragged]) { right: calc(min(460px, 76vw) + 24px); }
 
 .population-panel-header {
     display: flex;
@@ -1571,7 +1688,9 @@
     align-items: center;
     padding-bottom: 6px;
     border-bottom: 1px solid var(--border-ui);
+    cursor: grab;
 }
+.population-panel-header:active { cursor: grabbing; }
 .population-panel-title {
     font-size: 10px;
     text-transform: uppercase;

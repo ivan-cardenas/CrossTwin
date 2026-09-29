@@ -15,6 +15,7 @@
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.18.0/mapbox-gl.js"></script>
 <script src="{% static 'js/Config.js' %}"></script>
 <script src="{% static 'js/CityName.js' %}"></script>
+<script src="{% static 'js/Draggable.js' %}"></script>
 <script src="{% static 'js/MapUI.js' %}"></script>
 <script src="{% static 'js/Panels.js' %}"></script>
 <script src="{% static 'js/Layers.js' %}"></script>
@@ -29,6 +30,7 @@
 
     <!-- LEFT TOOLBAR -->
     <div class="toolbar" id="toolbar">
+      <div class="toolbar-grip" title="Drag to move">⠿</div>
       <button class="tool-button active" data-tool="overview">
         <span>👁️</span>
         <div class="tool-tooltip">Overview</div>
@@ -204,14 +206,19 @@
       <div class="population-panel-body" id="population-panel-body"></div>
     </div>
 
-    <!-- GROUNDWATER LEGEND -->
-    <div id="legend-groundwater" class="map-legend" style="display: none">
-      <div class="legend-title">Average Groundwater table depth - GHG (m)</div>
-      <img
-        id="legend-img"
-        src="https://service.pdok.nl/bzk/bro-grondwaterspiegeldiepte/wms/v2_0/legend/bro-grondwaterspiegeldieptemetingen-GHG/mediaan.png"
-        alt="GHG legend"
-      />
+    <!-- LEGEND STACK — holds the static groundwater legend plus every
+         dynamic raster/WMS/categorical legend added by Layers.js. Kept as
+         a single draggable, repositionable unit so multiple legends never
+         overlap each other or the side panel / population dock. -->
+    <div class="legend-stack" id="legend-stack">
+      <div id="legend-groundwater" class="map-legend" style="display: none">
+        <div class="legend-title">Average Groundwater table depth - GHG (m)</div>
+        <img
+          id="legend-img"
+          src="https://service.pdok.nl/bzk/bro-grondwaterspiegeldiepte/wms/v2_0/legend/bro-grondwaterspiegeldieptemetingen-GHG/mediaan.png"
+          alt="GHG legend"
+        />
+      </div>
     </div>
 
     <!-- MAP LOADER -->

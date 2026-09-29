@@ -225,7 +225,7 @@ function addWmsLegend(key, title, legendUrl) {
     <div class="legend-title">${title}</div>
     <img src="${legendUrl}" alt="${title} legend" />
   `;
-  document.querySelector('.map-wrapper').appendChild(legend);
+  document.getElementById('legend-stack')?.appendChild(legend);
   legend.querySelector('img').addEventListener('load', repositionDynamicLegends);
   repositionDynamicLegends();
 }
@@ -381,6 +381,10 @@ function renderWmsScrubberDock(key, layerConfig) {
   const existing = document.getElementById(`scrubber-${key}`);
   if (existing) existing.remove();
   dock.appendChild(scrubber);
+
+  if (typeof makeDraggable === 'function') {
+    makeDraggable(scrubber, '.wms-time-name');
+  }
 }
 
 // ---- Raster (TiTiler) layers -----------------------------------------
@@ -482,7 +486,7 @@ function addRasterLegend(key, title, legend) {
       <span>${Number(legend.max).toFixed(2)}</span>
     </div>
   `;
-  document.querySelector('.map-wrapper').appendChild(legendEl);
+  document.getElementById('legend-stack')?.appendChild(legendEl);
   repositionDynamicLegends();
 }
 
@@ -515,27 +519,48 @@ function addCategoricalLegend(key, title, categories) {
     <div class="legend-title">${title}</div>
     <div class="legend-list">${items}</div>
   `;
-  document.querySelector('.map-wrapper').appendChild(legendEl);
+  document.getElementById('legend-stack')?.appendChild(legendEl);
   repositionDynamicLegends();
 }
 
 /**
- * All legends (dynamic raster/WMS ones, plus the static #legend-groundwater
- * block) share the same fixed corner via .map-legend's CSS, so with more than
- * one visible at once they'd render stacked exactly on top of each other.
- * Stack them vertically by their actual rendered height instead of a guessed
- * fixed height — WMS legend images vary a lot in size, so a fixed offset
- * either leaves gaps or overlaps depending on which legend is involved.
+ * Legends (dynamic raster/WMS/categorical ones, plus the static
+ * #legend-groundwater block) all live inside #legend-stack, which lays them
+ * out vertically itself (flex + gap) — this function only has to place the
+ * *stack* so it never overlaps the side panel or the population dock, both
+ * of which can independently open in the same bottom-right corner of the
+ * map. If the stack has been dragged by the user (Draggable.js sets
+ * data-dragged), leave its position alone.
  */
 function repositionDynamicLegends() {
-  const legends = Array.from(document.querySelectorAll('.map-legend'))
-    .filter(el => el.style.display !== 'none');
-  const gap = 10;
+  const stack = document.getElementById('legend-stack');
+  if (!stack) return;
+
+  const hasVisibleLegend = Array.from(stack.querySelectorAll('.map-legend'))
+    .some(el => el.style.display !== 'none');
+  stack.style.display = hasVisibleLegend ? 'flex' : 'none';
+  if (!hasVisibleLegend || stack.dataset.dragged) return;
+
+  const wrapper = document.querySelector('.map-wrapper');
+  const sidePanel = document.getElementById('side-panel');
+  const populationPanel = document.getElementById('population-panel');
+  if (!wrapper) return;
+
+  const wrapperRect = wrapper.getBoundingClientRect();
+  let right = 10;
   let bottom = 66;
-  legends.forEach(el => {
-    el.style.bottom = `${bottom}px`;
-    bottom += el.offsetHeight + gap;
-  });
+
+  if (sidePanel && sidePanel.classList.contains('visible')) {
+    const panelRect = sidePanel.getBoundingClientRect();
+    right = Math.max(right, wrapperRect.right - panelRect.left + 12);
+  }
+  if (populationPanel && populationPanel.classList.contains('visible')) {
+    const dockRect = populationPanel.getBoundingClientRect();
+    bottom = Math.max(bottom, wrapperRect.bottom - dockRect.top + 10);
+  }
+
+  stack.style.right = `${right}px`;
+  stack.style.bottom = `${bottom}px`;
 }
 
 // ---- Visibility & zoom ------------------------------------------------
