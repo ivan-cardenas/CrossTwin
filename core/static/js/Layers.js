@@ -846,4 +846,4 @@ function _popupTable(properties, fields = {}, skipKey = null) {
 
 // Expose to global scope
 window.toggleLayerVisibility = toggleLayerVisibility;
-window.zoomToLayer = zoomToLayer;
+window.zoomToLayer = zoomToLayer;
