@@ -3,10 +3,12 @@ import re
 
 from django.conf import settings
 from django.contrib.gis.geos import MultiPolygon, Point
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
 from administrative.admin_units import city_of
+from builtup.models import Building
+from .views import _field_label, _humanize_field_name
 from watersupply.tests.factories import make_city, make_district, make_neighborhood, make_polygon, make_province
 
 URL = 'map:dashboard_summary'

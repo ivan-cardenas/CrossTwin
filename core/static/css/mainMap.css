@@ -1412,69 +1412,200 @@
    MAPBOX OVERRIDES
    ============================================================ */
 
+/* ---- Feature popup ------------------------------------------------------
+   Each feature carries its layer's legend colour (--layer-color, set inline
+   by Layers.js) as a rule beside its name, so a stacked popup reads back to
+   the same swatches as the layers panel. Everything else stays neutral. */
+
 .mapboxgl-popup-content {
+    --popup-label: #9b9b9b;   /* ~6.8:1 on --bg-panel; the theme's --text-tertiary is as bright as a value */
     background: var(--overlay-bg);
     backdrop-filter: var(--overlay-blur);
     -webkit-backdrop-filter: var(--overlay-blur);
     color: var(--text-main);
-    border-radius: 7px;
-    padding: 10px 12px;
-    box-shadow: var(--overlay-shadow), 0 4px 20px rgba(0, 0, 0, 0.6);
-    border: 1px solid var(--border-ui);
-    max-width: 280px;
+    border-radius: 8px;
+    padding: 12px 14px 10px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+    border: 1px solid var(--border-ui-strong);
+    font-family: var(--font-body);
+    max-width: 300px;
 }
 
-.mapboxgl-popup-content h6,
-.mapboxgl-popup-content .popup-header {
-    color: var(--text-secondary);
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+.feature-popup .mapboxgl-popup-content {
+    animation: popup-in 140ms ease-out;
+}
+
+@keyframes popup-in {
+    from { opacity: 0; transform: translateY(3px); }
+    to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .feature-popup .mapboxgl-popup-content { animation: none; }
+}
+
+/* Name + layer, with the layer-colour rule */
+.mapboxgl-popup-content .popup-head {
+    border-left: 3px solid var(--layer-color);
+    padding: 1px 28px 1px 9px;   /* right: clear of the close button */
+    margin-bottom: 8px;
+}
+
+.mapboxgl-popup-content .popup-title {
+    font-family: var(--font-base);
     font-weight: 600;
-    margin: 0 0 6px 0;
-    padding-bottom: 5px;
-    border-bottom: 1px solid var(--border-ui);
+    font-size: 14px;
+    line-height: 1.25;
+    color: var(--text-main);
+    overflow-wrap: anywhere;
 }
 
-.mapboxgl-popup-content table,
-.mapboxgl-popup-content .popup-table {
-    width: 100%;
+.mapboxgl-popup-content .popup-layer {
     font-size: 11px;
-    border-collapse: collapse;
+    line-height: 1.35;
+    color: var(--popup-label);
+    margin-top: 1px;
 }
 
-.mapboxgl-popup-content td {
-    padding: 2px 0;
-    vertical-align: top;
+/* Attribute rows: label left, value right, figures aligned */
+.mapboxgl-popup-content .popup-rows {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.4;
 }
 
-.mapboxgl-popup-content td:first-child,
-.mapboxgl-popup-content .popup-label {
-    color: var(--text-tertiary);
-    padding-right: 10px;
-    cursor: default;
+.mapboxgl-popup-content .popup-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    padding: 3px 0;
 }
 
-.mapboxgl-popup-content .popup-value {
+.mapboxgl-popup-content .popup-row + .popup-row {
+    border-top: 1px solid var(--border-ui);
+}
+
+.mapboxgl-popup-content .popup-row dt {
+    color: var(--popup-label);
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+.mapboxgl-popup-content .popup-row dt[title] {
+    cursor: help;
+}
+
+.mapboxgl-popup-content .popup-row dd {
+    margin: 0;
+    color: var(--text-main);
     text-align: right;
     font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+    max-width: 60%;
 }
 
 .mapboxgl-popup-content .popup-unit {
-    color: var(--text-tertiary);
-    font-size: 9px;
+    color: var(--popup-label);
+    font-size: 11px;
     margin-left: 2px;
 }
 
+/* Several features under one click */
+.mapboxgl-popup-content .popup-count {
+    font-size: 11px;
+    color: var(--popup-label);
+    margin: 0 28px 8px 0;
+}
+
+.mapboxgl-popup-content .popup-multi {
+    max-height: 340px;
+    overflow-y: auto;
+    margin: 0 -6px;
+    padding: 0 6px;
+    scrollbar-width: thin;
+}
+
+.mapboxgl-popup-content .popup-section + .popup-section {
+    margin-top: 4px;
+}
+
+.mapboxgl-popup-content .popup-section > summary {
+    list-style: none;
+    cursor: pointer;
+    border-radius: 4px;
+    position: relative;
+}
+
+.mapboxgl-popup-content .popup-section > summary::-webkit-details-marker {
+    display: none;
+}
+
+.mapboxgl-popup-content .popup-section > summary .popup-head {
+    margin-bottom: 0;
+    padding-top: 4px;
+    padding-bottom: 4px;
+}
+
+.mapboxgl-popup-content .popup-section[open] > summary .popup-head {
+    margin-bottom: 6px;
+}
+
+/* Chevron: points right when closed, down when open */
+.mapboxgl-popup-content .popup-section > summary::after {
+    content: '';
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    width: 6px;
+    height: 6px;
+    border-right: 1.5px solid var(--popup-label);
+    border-bottom: 1.5px solid var(--popup-label);
+    transform: translateY(-65%) rotate(-45deg);
+    transition: transform 120ms ease-out;
+}
+
+.mapboxgl-popup-content .popup-section[open] > summary::after {
+    transform: translateY(-80%) rotate(45deg);
+}
+
+.mapboxgl-popup-content .popup-section > summary:hover {
+    background: var(--bg-raised);
+}
+
+.mapboxgl-popup-content .popup-section > .popup-rows {
+    padding: 0 0 6px 12px;   /* line up with the text beside the colour rule */
+}
+
+.mapboxgl-popup-content .popup-section:not([open]) .popup-title {
+    font-size: 13px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .mapboxgl-popup-content .popup-section > summary::after { transition: none; }
+}
+
+/* Keyboard focus in the theme's accent, lightened to clear 3:1 on the panel */
+.mapboxgl-popup-content .popup-section > summary:focus-visible,
+.mapboxgl-popup-close-button:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--accent) 65%, #ffffff);
+    outline-offset: 1px;
+}
+
 .mapboxgl-popup-close-button {
-    color: var(--text-tertiary);
-    font-size: 15px;
-    padding: 3px 6px;
+    color: var(--popup-label, #9b9b9b);
+    font-size: 18px;
+    line-height: 1;
+    width: 26px;
+    height: 26px;
+    top: 6px;
+    right: 6px;
+    border-radius: 4px;
 }
 
 .mapboxgl-popup-close-button:hover {
     color: var(--text-main);
-    background: transparent;
+    background: var(--bg-raised);
 }
 
 .mapboxgl-popup-anchor-bottom .mapboxgl-popup-tip { border-top-color: var(--overlay-bg); }
