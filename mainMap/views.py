@@ -47,6 +47,25 @@ def _extract_unit(help_text: str) -> str | None:
     return None
 
 
+def _humanize_field_name(name: str) -> str:
+    """'usageFunction' -> 'Usage function', 'height_m' -> 'Height m',
+    'totalOPEX_EUR' -> 'Total OPEX EUR': camelCase and snake_case split into
+    sentence-case words, all-caps acronyms kept."""
+    words = re.sub(r'(?<=[a-z0-9])(?=[A-Z])', ' ', name).replace('_', ' ').split()
+    words = [w if len(w) > 1 and w.isupper() else w.lower() for w in words]
+    text = ' '.join(words)
+    return text[:1].upper() + text[1:]
+
+
+def _field_label(field) -> str:
+    """The field's explicit verbose_name, else a readable version of its name.
+    Django's automatic verbose_name only swaps '_' for ' ', which turns
+    camelCase fields into 'usageFunction' (and .title() into 'Usagefunction')."""
+    if getattr(field, '_verbose_name', None):
+        return str(field.verbose_name)[:1].upper() + str(field.verbose_name)[1:]
+    return _humanize_field_name(field.name)
+
+
 def _field_metadata(model) -> dict:
     """Return {field_name: {label, help_text, unit}} for simple (non-geometry) fields."""
     meta = {}
@@ -66,7 +85,7 @@ def _field_metadata(model) -> dict:
         else:
             field_type = 'other'
         meta[f.name] = {
-            'label': f.verbose_name.title() if hasattr(f, 'verbose_name') else f.name.replace('_', ' ').title(),
+            'label': _field_label(f),
             'help_text': str(help_text),
             'unit': _extract_unit(str(help_text)),
             'type': field_type,

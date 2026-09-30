@@ -1,9 +1,11 @@
 from django.conf import settings
 from django.contrib.gis.geos import Point
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
 from administrative.admin_units import city_of
+from builtup.models import Building
+from .views import _field_label, _humanize_field_name
 from watersupply.tests.factories import make_city, make_district, make_neighborhood, make_province
 
 URL = 'map:dashboard_summary'
@@ -165,3 +167,21 @@ class PopulationDockTests(TestCase):
         response = self.client.get(reverse('map:population_panel'), {'lng': lng, 'lat': lat, 'year': 2030})
         self.assertContains(response, 'Testville')
         self.assertContains(response, 'city at the map centre')
+
+
+class FieldLabelTests(SimpleTestCase):
+    """Popup labels: camelCase field names become readable sentence-case words."""
+
+    def test_humanize_splits_camel_and_snake_case(self):
+        self.assertEqual(_humanize_field_name('usageFunction'), 'Usage function')
+        self.assertEqual(_humanize_field_name('constructionYear'), 'Construction year')
+        self.assertEqual(_humanize_field_name('area_km2'), 'Area km2')
+
+    def test_humanize_keeps_acronyms(self):
+        self.assertEqual(_humanize_field_name('totalOPEX_EUR'), 'Total OPEX EUR')
+
+    def test_explicit_verbose_name_wins(self):
+        self.assertEqual(_field_label(Building._meta.get_field('neighborhood')), 'Neighborhood')
+
+    def test_automatic_verbose_name_is_humanized(self):
+        self.assertEqual(_field_label(Building._meta.get_field('usageFunction')), 'Usage function')

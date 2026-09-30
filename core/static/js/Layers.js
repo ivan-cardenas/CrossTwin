@@ -166,7 +166,7 @@ async function addLayer(layerConfig) {
     // Popup on click: handled once for all layers by initFeaturePopup(), so
     // overlapping features from several layers share a single popup.
     const clickLayerId = layerIds[0];
-    popupLayers.set(clickLayerId, { key, name: display_name, fields: layerConfig.fields || {} });
+    popupLayers.set(clickLayerId, { key, name: display_name, fields: layerConfig.fields || {}, color });
     map.on('mouseenter', clickLayerId, () => { map.getCanvas().style.cursor = 'pointer'; });
     map.on('mouseleave', clickLayerId, () => { map.getCanvas().style.cursor = ''; });
 
@@ -675,35 +675,52 @@ function addCoordinatesToBounds(coords, bounds, type) {
 
 const _numFmt    = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2, useGrouping: true });
 const _intFmt    = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0, useGrouping: true });
-const _dateFmt   = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+const _dateTimeFmt = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+// Date-only values ('2025-01-01') parse as UTC midnight: format them in UTC,
+// or every timezone west of Greenwich shows the day before.
+const _dateFmt   = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' });
 const _skipKeys  = new Set(['pk', 'id']);
 
-function _formatValue(value, fieldMeta) {
+function _formatValue(value, fieldMeta, key = '') {
   if (value === null || value === undefined || value === '') return '—';
 
   if (fieldMeta?.type === 'datetime' || fieldMeta?.type === 'date') {
     const date = new Date(value);
-    if (!isNaN(date)) return _dateFmt.format(date);
+    if (!isNaN(date)) return (fieldMeta.type === 'date' ? _dateFmt : _dateTimeFmt).format(date);
   }
 
   if (typeof value === 'number' || (typeof value === 'string' && !isNaN(value) && value.trim() !== '')) {
     const num = Number(value);
+    // Years (constructionYear, year) are labels, not quantities: 1912, not 1,912
+    if (Number.isInteger(num) && /year$/i.test(key)) return String(num);
     const formatted = Number.isInteger(num) ? _intFmt.format(num) : _numFmt.format(num);
     const unit = fieldMeta?.unit;
     return unit ? `${formatted} <span class="popup-unit">${unit}</span>` : formatted;
   }
 
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+
+  // Mapbox serialises array properties (e.g. Building.usageFunction) to JSON strings
+  if (typeof value === 'string' && value.startsWith('[')) {
+    try {
+      const list = JSON.parse(value);
+      if (Array.isArray(list)) return list.length ? list.join(', ') : '—';
+    } catch (e) { /* not JSON: show as-is */ }
+  }
   return String(value);
 }
 
-function createPopupContent(properties, layerName, fields = {}) {
-  return `<div class="popup-header">${layerName}</div>${_popupTable(properties, fields)}`;
+function createPopupContent(properties, layerName, fields = {}, color = null) {
+  const titleKey = _featureTitleKey(properties);
+  return `<div class="popup-feature" style="--layer-color:${color || 'var(--text-dim)'}">
+    ${_popupHead(properties, layerName, titleKey)}
+    ${_popupTable(properties, fields, titleKey)}
+  </div>`;
 }
 
 // ---- Shared feature popup ----------------------------------------------
 
-// Mapbox layer id → { key, name, fields } for every vector layer whose
+// Mapbox layer id → { key, name, fields, color } for every vector layer whose
 // features open the popup. Filled by addLayer(); read by initFeaturePopup().
 const popupLayers = new Map();
 let featurePopup = null;
@@ -727,7 +744,7 @@ function initFeaturePopup() {
     if (!entries.length) return;
 
     if (featurePopup) featurePopup.remove();
-    featurePopup = new mapboxgl.Popup({ maxWidth: '280px' })  // matches .mapboxgl-popup-content in mainMap.css
+    featurePopup = new mapboxgl.Popup({ maxWidth: '300px', className: 'feature-popup' })  // width matches mainMap.css
       .setLngLat(e.lngLat)
       .setHTML(createMultiFeaturePopupContent(entries))
       .addTo(map);
@@ -735,9 +752,9 @@ function initFeaturePopup() {
 }
 
 /**
- * [{ name, fields, properties }] for the clicked features, topmost first.
- * queryRenderedFeatures can return the same feature more than once (a
- * polygon split across tile boundaries), so drop repeats per layer.
+ * [{ name, fields, color, properties }] for the clicked features, topmost
+ * first. queryRenderedFeatures can return the same feature more than once
+ * (a polygon split across tile boundaries), so drop repeats per layer.
  */
 function _uniquePopupEntries(features) {
   const seen = new Set();
@@ -748,60 +765,82 @@ function _uniquePopupEntries(features) {
     const id = `${layer.key}|${f.id ?? JSON.stringify(f.properties)}`;
     if (seen.has(id)) continue;
     seen.add(id);
-    entries.push({ name: layer.name, fields: layer.fields, properties: f.properties });
+    entries.push({ name: layer.name, fields: layer.fields, color: layer.color, properties: f.properties });
   }
   return entries;
 }
 
-/** First "…name" property (cityName, neighborhoodName, name, …) to tell features apart. */
-function _featureTitle(properties) {
-  const key = Object.keys(properties).find(k => /name$/i.test(k) && properties[k]);
-  return key ? String(properties[key]) : '';
+/**
+ * Key of the property that names the feature: the first "…name" property
+ * (cityName, neighborhoodName, name, …), else an address (buildings).
+ */
+function _featureTitleKey(properties) {
+  const keys = Object.keys(properties).filter(k => properties[k] !== null && properties[k] !== '');
+  return keys.find(k => /name$/i.test(k)) || keys.find(k => /^address$/i.test(k)) || null;
+}
+
+/** Feature name as the title, its layer underneath; just the layer when the feature has no name. */
+function _popupHead(properties, layerName, titleKey) {
+  if (!titleKey) return `<div class="popup-head"><div class="popup-title">${layerName}</div></div>`;
+  return `<div class="popup-head">
+    <div class="popup-title">${properties[titleKey]}</div>
+    <div class="popup-layer">${layerName}</div>
+  </div>`;
 }
 
 /**
- * Popup HTML for one or more features at the clicked point. A single
- * feature looks exactly like before; several are stacked in one scrollable
- * box, one collapsible section each, with the topmost feature expanded.
+ * Popup HTML for one or more features at the clicked point. Several
+ * features are stacked in one scrollable box, one collapsible section each,
+ * with the topmost feature expanded.
  */
 function createMultiFeaturePopupContent(entries) {
   if (entries.length === 1) {
-    const { properties, name, fields } = entries[0];
-    return createPopupContent(properties, name, fields);
+    const { properties, name, fields, color } = entries[0];
+    return createPopupContent(properties, name, fields, color);
   }
 
-  const sections = entries.map(({ properties, name, fields }, i) => {
-    const title = _featureTitle(properties);
-    return `<details class="popup-section"${i === 0 ? ' open' : ''}>
-      <summary class="popup-header">${name}${title ? ` <span class="popup-feature-title">· ${title}</span>` : ''}</summary>
-      ${_popupTable(properties, fields)}
+  const sections = entries.map(({ properties, name, fields, color }, i) => {
+    const titleKey = _featureTitleKey(properties);
+    return `<details class="popup-feature popup-section" style="--layer-color:${color || 'var(--text-dim)'}"${i === 0 ? ' open' : ''}>
+      <summary>${_popupHead(properties, name, titleKey)}</summary>
+      ${_popupTable(properties, fields, titleKey)}
     </details>`;
   }).join('');
 
-  return `<div class="popup-count">${entries.length} features at this location</div>
+  return `<div class="popup-count">${entries.length} features here</div>
     <div class="popup-multi">${sections}</div>`;
 }
 
-function _popupTable(properties, fields = {}) {
-  let html = '<table class="popup-table">';
+/** "Current Population" → "Current population"; all-caps words (OPEX, NRW) stay as they are. */
+function _sentenceCase(label) {
+  return label.replace(/(\s)([A-Z])([a-z])/g, (m, sp, first, next) => sp + first.toLowerCase() + next);
+}
+
+/** "Area km2" → "Area" when the value already shows km², so the unit isn't said twice. */
+function _withoutUnit(label, unit) {
+  if (!unit) return label;
+  const words = label.split(' ');
+  const last = (words[words.length - 1] || '').replace(/2$/, '²').replace(/3$/, '³');
+  return words.length > 1 && last === unit ? words.slice(0, -1).join(' ') : label;
+}
+
+function _popupTable(properties, fields = {}, skipKey = null) {
+  let html = '<dl class="popup-rows">';
 
   for (const [key, value] of Object.entries(properties)) {
-    if (value === null || value === undefined || _skipKeys.has(key)) continue;
+    if (value === null || value === undefined || _skipKeys.has(key) || key === skipKey) continue;
 
     // Skip raw FK id columns (e.g. province_id, city_id) — not meaningful in a popup
     if (key.endsWith('_id') && fields[key.slice(0, -3)]) continue;
 
     const meta  = fields[key] || null;
-    const label = meta?.label || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const label = _withoutUnit(_sentenceCase(meta?.label || key.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase())), meta?.unit);
     const title = meta?.help_text ? ` title="${meta.help_text}"` : '';
 
-    html += `<tr>
-      <td class="popup-label"${title}>${label}</td>
-      <td class="popup-value">${_formatValue(value, meta)}</td>
-    </tr>`;
+    html += `<div class="popup-row"><dt${title}>${label}</dt><dd>${_formatValue(value, meta, key)}</dd></div>`;
   }
 
-  html += '</table>';
+  html += '</dl>';
   return html;
 }
 
