@@ -163,15 +163,10 @@ async function addLayer(layerConfig) {
 
     if (typeof onAdminLayerLoaded === 'function') onAdminLayerLoaded(key, layerIds);
 
-    // Popup on click
+    // Popup on click: handled once for all layers by initFeaturePopup(), so
+    // overlapping features from several layers share a single popup.
     const clickLayerId = layerIds[0];
-    map.on('click', clickLayerId, (e) => {
-      const properties = e.features[0].properties;
-      new mapboxgl.Popup()
-        .setLngLat(e.lngLat)
-        .setHTML(createPopupContent(properties, display_name, layerConfig.fields || {}))
-        .addTo(map);
-    });
+    popupLayers.set(clickLayerId, { key, name: display_name, fields: layerConfig.fields || {} });
     map.on('mouseenter', clickLayerId, () => { map.getCanvas().style.cursor = 'pointer'; });
     map.on('mouseleave', clickLayerId, () => { map.getCanvas().style.cursor = ''; });
 
@@ -703,7 +698,92 @@ function _formatValue(value, fieldMeta) {
 }
 
 function createPopupContent(properties, layerName, fields = {}) {
-  let html = `<div class="popup-header">${layerName}</div><table class="popup-table">`;
+  return `<div class="popup-header">${layerName}</div>${_popupTable(properties, fields)}`;
+}
+
+// ---- Shared feature popup ----------------------------------------------
+
+// Mapbox layer id → { key, name, fields } for every vector layer whose
+// features open the popup. Filled by addLayer(); read by initFeaturePopup().
+const popupLayers = new Map();
+let featurePopup = null;
+
+/**
+ * One map-level click handler for every vector layer, instead of one
+ * map.on('click', layerId) per layer: with per-layer handlers a click on
+ * overlapping features opened one popup per layer (and only ever showed the
+ * top feature of each). Registered once from Map_init.js's 'load' handler;
+ * map-level listeners survive setStyle(), so a basemap switch doesn't
+ * stack duplicate handlers.
+ */
+function initFeaturePopup() {
+  map.on('click', (e) => {
+    const layers = [...popupLayers.keys()].filter(id => map.getLayer(id));
+    if (!layers.length) return;
+
+    // Hidden layers (visibility: none) are not rendered, so they are not returned.
+    const features = map.queryRenderedFeatures(e.point, { layers });
+    const entries = _uniquePopupEntries(features);
+    if (!entries.length) return;
+
+    if (featurePopup) featurePopup.remove();
+    featurePopup = new mapboxgl.Popup({ maxWidth: '280px' })  // matches .mapboxgl-popup-content in mainMap.css
+      .setLngLat(e.lngLat)
+      .setHTML(createMultiFeaturePopupContent(entries))
+      .addTo(map);
+  });
+}
+
+/**
+ * [{ name, fields, properties }] for the clicked features, topmost first.
+ * queryRenderedFeatures can return the same feature more than once (a
+ * polygon split across tile boundaries), so drop repeats per layer.
+ */
+function _uniquePopupEntries(features) {
+  const seen = new Set();
+  const entries = [];
+  for (const f of features) {
+    const layer = popupLayers.get(f.layer.id);
+    if (!layer) continue;
+    const id = `${layer.key}|${f.id ?? JSON.stringify(f.properties)}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    entries.push({ name: layer.name, fields: layer.fields, properties: f.properties });
+  }
+  return entries;
+}
+
+/** First "…name" property (cityName, neighborhoodName, name, …) to tell features apart. */
+function _featureTitle(properties) {
+  const key = Object.keys(properties).find(k => /name$/i.test(k) && properties[k]);
+  return key ? String(properties[key]) : '';
+}
+
+/**
+ * Popup HTML for one or more features at the clicked point. A single
+ * feature looks exactly like before; several are stacked in one scrollable
+ * box, one collapsible section each, with the topmost feature expanded.
+ */
+function createMultiFeaturePopupContent(entries) {
+  if (entries.length === 1) {
+    const { properties, name, fields } = entries[0];
+    return createPopupContent(properties, name, fields);
+  }
+
+  const sections = entries.map(({ properties, name, fields }, i) => {
+    const title = _featureTitle(properties);
+    return `<details class="popup-section"${i === 0 ? ' open' : ''}>
+      <summary class="popup-header">${name}${title ? ` <span class="popup-feature-title">· ${title}</span>` : ''}</summary>
+      ${_popupTable(properties, fields)}
+    </details>`;
+  }).join('');
+
+  return `<div class="popup-count">${entries.length} features at this location</div>
+    <div class="popup-multi">${sections}</div>`;
+}
+
+function _popupTable(properties, fields = {}) {
+  let html = '<table class="popup-table">';
 
   for (const [key, value] of Object.entries(properties)) {
     if (value === null || value === undefined || _skipKeys.has(key)) continue;

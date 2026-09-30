@@ -1360,6 +1360,52 @@
     margin-left: 2px;
 }
 
+/* Several features under one click: one scrollable box, one collapsible section each */
+.mapboxgl-popup-content .popup-count {
+    color: var(--text-tertiary);
+    font-size: 10px;
+    margin: 0 18px 6px 0;   /* keep clear of the close button */
+}
+
+.mapboxgl-popup-content .popup-multi {
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+.mapboxgl-popup-content .popup-section + .popup-section {
+    margin-top: 6px;
+}
+
+.mapboxgl-popup-content .popup-section > summary {
+    cursor: pointer;
+    list-style: none;
+}
+
+.mapboxgl-popup-content .popup-section > summary::-webkit-details-marker {
+    display: none;
+}
+
+.mapboxgl-popup-content .popup-section > summary::before {
+    content: '▸';
+    display: inline-block;
+    width: 10px;
+}
+
+.mapboxgl-popup-content .popup-section[open] > summary::before {
+    content: '▾';
+}
+
+.mapboxgl-popup-content .popup-section:not([open]) > summary {
+    margin-bottom: 0;
+}
+
+.mapboxgl-popup-content .popup-feature-title {
+    color: var(--text-main);
+    text-transform: none;
+    letter-spacing: normal;
+    font-weight: 500;
+}
+
 .mapboxgl-popup-close-button {
     color: var(--text-tertiary);
     font-size: 15px;

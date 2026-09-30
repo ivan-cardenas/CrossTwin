@@ -182,6 +182,7 @@ function initializeUrbanTwinMap(config) {
     console.log('Map loaded successfully');
     
     addExternalLayers();
+    initFeaturePopup();
     fetchAvailableLayers();
     add3DBuildings();
     updateCityName();
