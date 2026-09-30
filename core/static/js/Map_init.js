@@ -73,7 +73,7 @@ async function updateAdminUnitAtCenter() {
   const center = map.getCenter();
 
   try {
-    const response = await fetch(`/api/admin-unit/?lng=${center.lng}&lat=${center.lat}`);
+    const response = await fetch(`/api/admin-unit/?lng=${roundCoord(center.lng)}&lat=${roundCoord(center.lat)}`);
     const data = await response.json();
 
     if (!data.level || !data.location) return;
@@ -153,7 +153,12 @@ function initializeUrbanTwinMap(config) {
     center: savedCamera ? savedCamera.center : CONFIG.initialCenter,
     zoom: savedCamera ? savedCamera.zoom : CONFIG.initialZoom,
     pitch: savedCamera ? savedCamera.pitch : CONFIG.initialPitch,
-    bearing: savedCamera ? savedCamera.bearing : CONFIG.initialBearing
+    bearing: savedCamera ? savedCamera.bearing : CONFIG.initialBearing,
+    // WMS tile URLs (KNMI radar, PDOK groundwater, ...) get their bbox from
+    // Mapbox at full float precision; round it before the request goes out.
+    transformRequest: (url, resourceType) => (
+      resourceType === 'Tile' && /[?&]bbox=/i.test(url) ? { url: roundBboxInUrl(url) } : undefined
+    ),
   });
 
   map.addControl(new mapboxgl.NavigationControl(), 'top-right');
@@ -284,10 +289,10 @@ function addExternalLayers() {
         '?service=WMS&request=GetMap&version=1.3.0' +
         '&layers=bro-grondwaterspiegeldieptemetingen-GHG' +
         '&styles=&format=image/png&transparent=true' +
-        '&width=256&height=256&crs=EPSG:3857' +
+        `&width=${WMS_TILE_SIZE}&height=${WMS_TILE_SIZE}&crs=EPSG:3857` +
         '&bbox={bbox-epsg-3857}'
       ],
-      tileSize: 256
+      tileSize: WMS_TILE_SIZE
     });
   }
 

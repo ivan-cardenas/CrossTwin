@@ -2,7 +2,6 @@ import uuid
 from django.conf import settings
 from django.apps import apps
 
-import geopandas as gpd
 import tempfile
 import zipfile
 import os

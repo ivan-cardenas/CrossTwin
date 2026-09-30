@@ -342,7 +342,8 @@ def model_geojson(request, app_label, model_name):
         return JsonResponse({'error': str(exc)}, status=400)
 
     cache = get_cache(GEOJSON_CACHE_ALIAS)
-    bbox_key = ','.join(f'{v:.5f}' for v in bbox) if bbox else 'all'
+    # 4 decimals, as the map sends them (Config.js COORD_DECIMALS)
+    bbox_key = ','.join(f'{v:.4f}' for v in bbox) if bbox else 'all'
     zoom_key = zoom if zoom is not None and zoom < GEOJSON_SIMPLIFY_BELOW_ZOOM else 'full'
     cache_key = f"geojson:{key}:{layer_version(model)}:{bbox_key}:{zoom_key}"
 

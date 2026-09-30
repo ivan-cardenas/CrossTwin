@@ -30,6 +30,35 @@ let CONFIG = {
 const VIEWPORT_LOAD_MIN_FEATURES = 5000;
 const VIEWPORT_RELOAD_DELAY_MS = 350;
 
+// Coordinates sent to the server: 4 decimals of a degree is ~11 m (~7 m of
+// longitude here), finer than any lookup needs. Shorter URLs, and requests
+// for (almost) the same spot become identical, so caches can hit.
+const COORD_DECIMALS = 4;
+
+// WMS tiles are requested at Mapbox GL's native 512 px: a quarter of the
+// requests of 256 px tiles for the same screen, at the same sharpness. Each
+// request to a remote WMS (KNMI's radar through our proxy) costs ~2 s and
+// counts against its rate limit, so the number of requests is what matters.
+const WMS_TILE_SIZE = 512;
+
+function roundCoord(value) {
+  return Number(value.toFixed(COORD_DECIMALS));
+}
+
+/**
+ * Round the numbers of a WMS `bbox=` parameter to COORD_DECIMALS. Mapbox
+ * fills `{bbox-epsg-3857}` with full float precision (metres, e.g.
+ * 764381.9463201226); four decimals is a tenth of a millimetre, and equal
+ * tiles then produce equal URLs, so browser and proxy caches can hit.
+ */
+function roundBboxInUrl(url) {
+  return url.replace(/([?&]bbox=)([^&]*)/i, (_, key, value) =>
+    key + value.split(',').map(part => {
+      const n = Number(part);
+      return part !== '' && Number.isFinite(n) ? String(roundCoord(n)) : part;
+    }).join(','));
+}
+
 // Basemap styles
 const BASEMAPS = {
   light:     'mapbox://styles/mapbox/light-v11',

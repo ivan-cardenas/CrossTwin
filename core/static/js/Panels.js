@@ -88,8 +88,8 @@ function populationRequestParams() {
   }
   if (typeof map !== 'undefined' && map) {
     const center = map.getCenter();
-    params.set('lng', center.lng);
-    params.set('lat', center.lat);
+    params.set('lng', roundCoord(center.lng));
+    params.set('lat', roundCoord(center.lat));
   }
   params.set('pop_scenario', window.POP_SCENARIO || 'prognose');
   params.set('pop_growth', window.POP_GROWTH || 0);

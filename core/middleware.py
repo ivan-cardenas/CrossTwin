@@ -47,9 +47,11 @@ class QueryStatsMiddleware:
         total_ms = (time.perf_counter() - start) * 1000
         db_ms = stats["seconds"] * 1000
 
-        response["Server-Timing"] = (
-            f'db;dur={db_ms:.1f};desc="{stats["count"]} queries", app;dur={total_ms:.1f}'
-        )
+        timing = f'db;dur={db_ms:.1f};desc="{stats["count"]} queries", app;dur={total_ms:.1f}'
+        # Keep entries the view added itself (e.g. the WMS proxy's upstream time)
+        if response.has_header("Server-Timing"):
+            timing = f'{response["Server-Timing"]}, {timing}'
+        response["Server-Timing"] = timing
         response["X-DB-Queries"] = str(stats["count"])
 
         level = logging.WARNING if total_ms > self.slow_ms else logging.INFO

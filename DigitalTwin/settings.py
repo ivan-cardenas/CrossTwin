@@ -212,6 +212,14 @@ CACHES = {
         "LOCATION": "crosstwin-geojson",
         "OPTIONS": {"MAX_ENTRIES": 64},
     },
+    # Proxied WMS tiles (weather/views.py::wms_tile_proxy): small PNGs, many
+    # of them. Kept apart so a screen of radar frames never evicts the
+    # default cache (capabilities documents, layer versions, ...).
+    "wms_tiles": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "crosstwin-wms-tiles",
+        "OPTIONS": {"MAX_ENTRIES": 2000},
+    },
 }
 
 

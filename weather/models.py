@@ -5,7 +5,9 @@ from django.core.exceptions import ValidationError
 from administrative.models import Province, City, Neighborhood
 from django.conf import settings
 
-from core.rasterOperations import interpolate_raster
+# core.rasterOperations (numpy, scipy, rasterio, rio-cogeo) is imported where
+# interpolate_raster is used: models load at the start of every process, and
+# this import alone cost ~1.5 s there.
 
 COORDINATE_SYSTEM = settings.COORDINATE_SYSTEM
 
@@ -364,6 +366,7 @@ class InterpolatedRasterBase(models.Model):
         bounds = self._get_interpolation_bounds(bounds_geom)
         
         # Perform interpolation
+        from core.rasterOperations import interpolate_raster
         raster_path = interpolate_raster(
             input_points=station_data,
             bounds=bounds,

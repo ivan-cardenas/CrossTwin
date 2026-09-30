@@ -48,6 +48,29 @@ response, and logs each request on `crosstwin.querystats` (WARNING above `QUERY_
 lists the top `pg_stat_statements` entries, or explains how to enable the extension. No new dependencies.
 `mainMap/tests.py` pins the GeoJSON endpoint at one query.
 
+When `db` is much smaller than `total`, the time is in Python: profile the request with
+`python tools/profile_requests.py "<url>" --runs 2` (cumulative and own-time tables; run 1 includes one-off
+startup costs, run 2 is the steady state; `--save x.prof` for `snakeviz`). If the tables are full of
+`importlib` rows, find the module with `python -X importtime -c "import django; django.setup(); import DigitalTwin.urls"`.
+Doing this found 2–3 s of first-request time in top-level imports of scipy/rasterio/rio-cogeo (`weather/models.py`,
+`core/signals.py`), pandas/geopandas (`importer/views.py`, `importer/utils.py`) and rio-tiler (`core/rasterStyles.py`),
+plus 25 ms per admin-unit lookup spent rebuilding the WGS84 → RD New transformation. All are now imported or built
+lazily; `/api/admin-unit/` went from 1963 → 761 ms cold and 33 → 8 ms warm.
+
+**KNMI radar tiles** (`weather/views.py::wms_tile_proxy`). Measured through the proxy against the real
+service: each tile costs one KNMI render, ≈0.5–0.6 s at a quiet moment and 2–3.4 s at a busy one, whatever
+the tile size (256 px ≈ 550 ms, 512 px ≈ 600 ms), with the database at ~1 ms. So the number of requests is
+what matters:
+- WMS tiles are requested at 512 px (`WMS_TILE_SIZE` in `Config.js`): a quarter of the requests for the same screen.
+- Tiles are cached in `CACHES["wms_tiles"]` (2 000 entries) instead of the default cache, for 24 h when the
+  request has `TIME=` (a fixed frame never changes) and 5 min without; a cache hit takes ~4 ms.
+- Responses carry `Cache-Control` (`immutable` for fixed frames), so the browser reuses tiles when scrubbing
+  back or reloading.
+- Upstream calls share one keep-alive `requests.Session` (small gain: the handshake is not the bottleneck) and
+  wait for `Retry-After` (≤ 2 s) on a 429 instead of retrying straight into the rate limit.
+- `Server-Timing` on each tile shows `cache;desc="hit|miss"` and `upstream;dur=` (the middleware now appends to
+  a view's own `Server-Timing` instead of replacing it).
+
 ---
 
 ## 1. `model_geojson`: the map's main bottleneck

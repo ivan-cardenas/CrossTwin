@@ -455,7 +455,8 @@ class KNMIWbgtImportTests(TestCase):
         self.addCleanup(overrides.disable)
 
         # COG export is exercised by core.signals; here we only check it is triggered.
-        export = mock.patch("core.signals.export_raster_to_cog")
+        # core.signals imports it when the signal fires, so patch it at its source.
+        export = mock.patch("core.rasterOperations.export_raster_to_cog")
         self.export = export.start()
         self.addCleanup(export.stop)
 

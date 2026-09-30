@@ -36,6 +36,12 @@ python manage.py export_cogs
 
 # Slowest SQL statements from pg_stat_statements (--order mean|calls|rows, --reset)
 python manage.py db_stats
+
+# Profile GET requests (run 1 = cold process, run 2 = warm); --save x.prof for snakeviz
+python tools/profile_requests.py "/api/admin-unit/?lng=6.895&lat=52.219" --runs 2
+
+# Which modules are slow to import
+python -X importtime -c "import django; django.setup(); import DigitalTwin.urls" 2> imports.log
 ```
 
 Measurement flags in `.env` (see `docs/PERFORMANCE.md` §0): `QUERY_STATS=true` (default = `DEBUG`) adds a `Server-Timing` header (DB time + query count, visible in DevTools → Network → Timing) and `X-DB-Queries` to every response and logs each request on `crosstwin.querystats` (WARNING above `QUERY_STATS_SLOW_MS`, default 500). `SQL_LOG=true` prints every SQL statement (only when `DEBUG=true`).
@@ -142,6 +148,7 @@ Two import paths:
 - `layer_bounds` returns WGS84 `[[west, south], [east, north]]`, using `ST_EstimatedExtent` only for tables with ≥ `ESTIMATED_EXTENT_MIN_ROWS` (100 000) rows. The estimate is as old as the last `ANALYZE`, so smaller tables get an exact `ST_Extent`.
 - `Layers.js`: vector layers with ≥ `VIEWPORT_LOAD_MIN_FEATURES` (5 000, in `Config.js`) features load by viewport and reload on `moveend` (debounced, superseded requests aborted); `zoomToLayer` uses `/bounds/` for them. Administrative layers always load whole — their click handlers and the admin-unit panels need every unit.
 - Floating map overlays (toolbar, layers panel, side panel, population dock, legends, WMS scrubber, tour card) share `--overlay-bg`/`--overlay-blur`/`--overlay-shadow` tokens in `mainMap.css` and are draggable by their header via `core/static/js/Draggable.js::makeDraggable(el, handleSelector)` (delegated, so handles added later work; double-click the handle to reset; disabled below 768 px). Wiring is in `Events.js::initializeUI`.
+- WMS tiles (`addWmsLayer`, `wmsTileUrlForTime`, the groundwater source) use `WMS_TILE_SIZE` (512, `Config.js`) for both `tileSize` and the `width`/`height` params — keep the two equal. Remote WMS cost is per request (~0.5–3 s each at KNMI), so bigger tiles = fewer requests. `weather/views.py::wms_tile_proxy` caches tiles in `CACHES["wms_tiles"]` (24 h for `TIME=` frames, 5 min otherwise), sends matching `Cache-Control`, and reports `upstream;dur` / `cache;desc` in `Server-Timing`. Upstream calls go through the module-level `_session` (keep-alive); mock `weather.views._session.get` or `_fetch_with_retry` in tests, and clear `get_cache("wms_tiles")` in `setUp`.
 - All legends live in `#legend-stack`; `Layers.js::repositionDynamicLegends()` moves the stack so it clears the side panel and the population dock (re-run by observers in `Events.js`), unless the user has dragged it. Append new legends to `#legend-stack`, not `.map-wrapper`.
 - Templates live in `Templates/` (capital T, configured in settings)
 - `core/static/js/mainMap.js` holds `mainMap.html`'s page-level wiring (map init, right-panel button handlers, year selector, guided tour, the admin-unit-driven panel registry). It depends on `Config.js`/`map_init.js` and on `window.MAPBOX_ACCESS_TOKEN` being set inline by `mainMap.html` before it loads. As with the indicator dashboards, keep new map-page behavior in this file rather than adding inline `<script>` blocks to `mainMap.html`.
@@ -173,6 +180,7 @@ Tests use `PostGISTestRunner` (`DigitalTwin/test_runner.py`) which creates the t
 - Population cascading uses `update()` not `save()` to prevent signal recursion
 - Raster models need a `cog_path` field to participate in the COG auto-export pipeline
 - The GeoJSON API transforms to EPSG:4326 at query time via `ST_Transform`
+- No top-level imports of heavy libraries (numpy, scipy, pandas, geopandas, rasterio, rio-cogeo, rio-tiler, openeo, ee) in modules loaded at startup or by the URLconf — models, signals, `apps.py`, views, `core/rasterStyles.py`, `importer/utils.py`. Import them inside the function that uses them. At module level they cost 0.4–1.6 s each at every process start and on the first request after each `runserver` reload. When a test mocks such a function, patch it where it's defined (e.g. `core.rasterOperations.export_raster_to_cog`), not where it's used.
 - Performance work is tracked in `docs/PERFORMANCE.md`: §0–§3 are implemented (measurement, GeoJSON endpoint, land-cover signal, importer batching); §4–§12 are still proposals
 - Frontend CSS uses Tailwind with crispy-tailwind for forms
 - Frontend JS lives in `core/static/js/` (page-level files like `mainMap.js`, domain files under `indicators/`), not in inline `<script>` blocks in templates — see [Indicator Pattern](#indicator-pattern-watersupply-housing-urban_heat) and [Map Frontend](#map-frontend-mainmap)

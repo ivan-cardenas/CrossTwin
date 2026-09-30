@@ -11,8 +11,9 @@ from django.utils import timezone
 from django.conf import settings
 from django.apps import apps
 
-import pandas as pd
-import geopandas as gpd
+# pandas/geopandas are imported where the upload flow uses them: at module
+# level they cost ~0.75 s on the first request of every server process,
+# whichever page it was for (the URLconf imports this module).
 
 from .batching import deferred_cascades
 from .forms import GeoUploadForm, MappingForm, get_target_model_choices
@@ -1111,6 +1112,8 @@ def upload_geodata(request):
                 return redirect(reverse('importer:upload_geodata'))
             
             # Rehydrate GeoDataFrame
+            import pandas as pd
+            import geopandas as gpd
             try:
                 if storage_kind == 'parquet':
                     gdf = pd.read_parquet(tmp_path)

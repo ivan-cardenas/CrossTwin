@@ -2,7 +2,9 @@ from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from core.cache import bump_layer_version
 from core.utils import RASTER_REGISTRY, VECTOR_REGISTRY
-from core.rasterOperations import export_raster_to_cog
+# core.rasterOperations (numpy, scipy, rasterio, rio-cogeo) is imported inside
+# auto_export_cog: this module loads at startup of every process (server,
+# tests, every manage.py command), and that import alone took ~1.6 s.
 
 
 def auto_export_cog(sender, instance, created, **kwargs):
@@ -22,6 +24,7 @@ def auto_export_cog(sender, instance, created, **kwargs):
 
     if not getattr(instance, 'cog_path', None):
         try:
+            from core.rasterOperations import export_raster_to_cog
             export_raster_to_cog(instance)
             print(f"[auto_export_cog] COG exported for {instance}")
         except Exception as e:

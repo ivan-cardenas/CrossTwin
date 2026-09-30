@@ -207,10 +207,15 @@ function usesViewportLoading(layerConfig) {
 function viewportQuery() {
   const b = map.getBounds();
   const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+  // Rounded *outward* to COORD_DECIMALS, so the box never shrinks and drops
+  // features at the edge of the screen.
+  const step = 10 ** COORD_DECIMALS;
+  const down = v => (Math.floor(v * step) / step).toFixed(COORD_DECIMALS);
+  const up = v => (Math.ceil(v * step) / step).toFixed(COORD_DECIMALS);
   const bbox = [
-    clamp(b.getWest(), -180, 180), clamp(b.getSouth(), -90, 90),
-    clamp(b.getEast(), -180, 180), clamp(b.getNorth(), -90, 90),
-  ].map(v => v.toFixed(5)).join(',');
+    down(clamp(b.getWest(), -180, 180)), down(clamp(b.getSouth(), -90, 90)),
+    up(clamp(b.getEast(), -180, 180)), up(clamp(b.getNorth(), -90, 90)),
+  ].join(',');
   return `bbox=${bbox}&zoom=${Math.floor(map.getZoom())}`;
 }
 
@@ -258,9 +263,9 @@ function addWmsLayer(layerConfig) {
   const tileUrl = wms_url +
     '?service=WMS&request=GetMap&version=1.3.0' +
     `&layers=${wms_layers}&styles=&format=image/png&transparent=true` +
-    '&width=256&height=256&crs=EPSG:3857&bbox={bbox-epsg-3857}';
+    `&width=${WMS_TILE_SIZE}&height=${WMS_TILE_SIZE}&crs=EPSG:3857&bbox={bbox-epsg-3857}`;
 
-  map.addSource(key, { type: 'raster', tiles: [tileUrl], tileSize: 256 });
+  map.addSource(key, { type: 'raster', tiles: [tileUrl], tileSize: WMS_TILE_SIZE });
   map.addLayer({
     id: key, type: 'raster', source: key,
     layout: { visibility: 'visible' },
@@ -314,7 +319,7 @@ function wmsTileUrlForTime(wms_url, wms_layers, time) {
   return wms_url + separator +
     'service=WMS&request=GetMap&version=1.3.0' +
     `&layers=${wms_layers}&styles=&format=image/png&transparent=true` +
-    `&width=256&height=256&crs=EPSG:3857&bbox={bbox-epsg-3857}&TIME=${time}`;
+    `&width=${WMS_TILE_SIZE}&height=${WMS_TILE_SIZE}&crs=EPSG:3857&bbox={bbox-epsg-3857}&TIME=${time}`;
 }
 
 async function addAnimatedWmsLayer(layerConfig) {
@@ -333,7 +338,7 @@ async function addAnimatedWmsLayer(layerConfig) {
   map.addSource(key, {
     type: 'raster',
     tiles: [wmsTileUrlForTime(wms_url, wms_layers, times[startIndex])],
-    tileSize: 256,
+    tileSize: WMS_TILE_SIZE,
   });
   map.addLayer({
     id: key, type: 'raster', source: key,

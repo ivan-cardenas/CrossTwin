@@ -20,7 +20,8 @@ from urllib.parse import quote
 
 import requests
 from django.conf import settings
-from rio_tiler.colormap import cmap as rio_cmap
+# rio_tiler (which pulls in scipy) is imported inside colormap_legend_stops:
+# at module level it cost ~0.4 s on the first request of every server process.
 
 logger = logging.getLogger(__name__)
 
@@ -166,6 +167,7 @@ def colormap_legend_stops(colormap_name, rescale, steps=6):
     if not colormap_name or not rescale:
         return []
 
+    from rio_tiler.colormap import cmap as rio_cmap
     table = rio_cmap.get(colormap_name)
     vmin, vmax = rescale
     stops = []

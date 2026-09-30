@@ -6,10 +6,23 @@ a `geom` field and sit in a single FK chain
 (Province > City > District > Neighborhood).
 """
 
+import functools
+
 from django.conf import settings
+from django.contrib.gis.gdal import CoordTransform, SpatialReference
 from django.contrib.gis.geos import Point
 
 from .models import Province, City, District, Neighborhood
+
+
+@functools.lru_cache(maxsize=1)
+def _wgs84_to_storage():
+    """
+    Built once per process: creating a GDAL/PROJ transformation is the slow
+    part of Point.transform() (~25 ms, most of an admin-unit request), while
+    applying an existing one takes microseconds.
+    """
+    return CoordTransform(SpatialReference(4326), SpatialReference(settings.COORDINATE_SYSTEM))
 
 ADMIN_LEVELS = {
     'province':     (Province,     'ProvinceName'),
@@ -42,7 +55,7 @@ def resolve_admin_unit_at_point(lng, lat):
     every known unit.
     """
     point = Point(lng, lat, srid=4326)
-    point.transform(settings.COORDINATE_SYSTEM)
+    point.transform(_wgs84_to_storage())
 
     for level, (model, _name_field) in reversed(list(ADMIN_LEVELS.items())):
         unit = model.objects.filter(geom__contains=point).first()

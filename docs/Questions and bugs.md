@@ -1,6 +1,6 @@
 # Questions and bugs
 
-1.I changed common to Administrative boundaries?
+1. I changed common to Administrative boundaries?
 	- Where should I leave landcover classes, DSM, DEM, calculation tables?
 
 
@@ -15,6 +15,7 @@
 4. On Config.js / Tool Categories, should the admin layer be always available? this is for indicators grouping but makes pop up queries hard
 
 5. How to populate LandCover? BRT Landuse is vector. I can process to translate to raster but.... how long would that take?
+ - I need to use raster to make operations of landcover change, infiltratrion, albedo, etc.
 
 6. PDOK doesn't serve EP-Online energy labels anymore. EP-online uses API per building, which would create thousands of api calls. How to incorporate this then? --- I have 2022 data for now from Atlaseefomgeving
 
@@ -56,4 +57,21 @@
 
 14. On which sector should I leave Population Density Raster?
 
-(The former "TODOS" section here has moved to [`TODO.md`](../TODO.md)'s "Product / feature backlog" section, with each item's description clarified.)
+
+14. Explore how to include the DB models to be read with an LLM to be able to reply questions about the data in the database. So check the structure, then search on database, then reply to the user.
+
+14. add CO2 emissions per building and Sentinel 5 
+
+14. Check Voxelmates for scalable voxelization --- This is a company
+    - Optimized octreee data structure  for hierachachy 
+    - they work in sqlite so it runs on the database - can it be moved to postgres and run on the server?
+
+14. Create a script that checks if there is a database existent and if not, it creates one. 
+
+14. Add a browser for projects, so DT of city A, DT of city B, etc. Each city is a DB.
+
+14. It is possible to implement urban heat walkability index  see picture. 
+
+14. There is a library of NBS for urban heat mitigation. Should I add them to the database for LLM possible solutions/interventions and recomendations.
+
+20. LIMITATION --  THE SYSTEM USE RELATIONAL DATABASES AND MULTIPLE TABLES. SO SPEED OF JOINS CAN BE AN ISSUE. MAYBE USING NODE4J OR GRAPHDB IS A BETTER OPTION
