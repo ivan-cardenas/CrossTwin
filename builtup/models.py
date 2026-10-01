@@ -187,6 +187,12 @@ class Building(models.Model):
         if self.geom:
             self.area_sqm = self.geom.area
             self.neighborhood = Neighborhood.objects.filter(geom__contains=self.geom.centroid).first()
+
+        # update_or_create() -- the importer's path for a building that already
+        # exists -- saves with update_fields = the fields it was handed. Without
+        # this, the fields derived above are computed and then never written.
+        if kwargs.get("update_fields"):
+            kwargs["update_fields"] = set(kwargs["update_fields"]) | {"buildingType", "area_sqm", "neighborhood"}
         super().save(*args, **kwargs)
 
     def __str__(self):

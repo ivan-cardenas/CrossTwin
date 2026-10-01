@@ -173,6 +173,7 @@ async function addLayer(layerConfig) {
     map.on('mouseleave', clickLayerId, () => { map.getCanvas().style.cursor = ''; });
 
     console.log(`Layer "${key}" loaded with ${geojson.features.length} features`);
+    sync3DBuildings();
     updateIndicators();
 
   } catch (error) {
@@ -629,6 +630,19 @@ function repositionDynamicLegends() {
 
 // ---- Visibility & zoom ------------------------------------------------
 
+/**
+ * Hide Mapbox's own extruded buildings ('3d-buildings', Map_init.js) while
+ * any builtup layer is shown, so they don't cover the database's buildings,
+ * streets and parks. Only builtup layers do this; every other app's layers
+ * leave the 3D buildings on.
+ */
+function sync3DBuildings() {
+  if (!map || !map.getLayer('3d-buildings')) return;
+  const builtupShown = Object.entries(loadedLayers).some(([key, entry]) =>
+    entry.config.app_label === 'builtup' && layerVisibility[key] !== false);
+  map.setLayoutProperty('3d-buildings', 'visibility', builtupShown ? 'none' : 'visible');
+}
+
 function toggleLayerVisibility(key, visible) {
   layerVisibility[key] = visible;
 
@@ -655,6 +669,7 @@ function toggleLayerVisibility(key, visible) {
     }
   }
 
+  sync3DBuildings();
   updateIndicators();
 }
 

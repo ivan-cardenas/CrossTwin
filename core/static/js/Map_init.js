@@ -276,6 +276,10 @@ function add3DBuildings() {
       }
     }, labelLayerId);
   }
+
+  // Stays hidden while a builtup layer is shown (also after a basemap switch,
+  // which re-creates this layer)
+  if (typeof sync3DBuildings === 'function') sync3DBuildings();
 }
 
 /**

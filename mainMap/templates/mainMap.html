@@ -273,6 +273,13 @@
             <span class="indicator-value" id="population-count">0</span>
           </div>
         </div>
+
+        <button class="mode-btn" id="actions-menu-btn"
+                aria-haspopup="true" aria-expanded="false" aria-controls="actions-menu">
+          <span class="bi bi-sliders"></span> Actions ·
+          <span id="actions-menu-year">2025</span>
+          <span class="actions-menu-caret">▴</span>
+        </button>
       </div>
 
       <div class="city-name">{{ city_name|default:"Enschede" }}</div>
@@ -285,57 +292,40 @@
           <span>🧩</span> Scenarios
         </button>
       </div>
-    </div>  
-  </div>
-
-  <!-- RIGHT ACTIONS PANEL -->
-  <div class="right-actions-panel">
-    <div class="actions-header">
-      <span class="actions-title">ACTIONS</span>
     </div>
-    
-    <button class="action-panel-btn" id="importDataBtn">
-      <span class="bi bi-cloud-upload"></span>
-      <span class="action-btn-text">Upload Data</span>
-    </button>
 
-    <button class="action-panel-btn" id="getDataBtn">
-      <span class="bi bi-cloud-download"></span>
-      <span class="action-btn-text">Retrive Data from APIs</span>
-    </button>
-  <!-- Year selector -->
-  <div class="actions-divider"></div>
-  <div class="actions-header">
-    <span class="actions-title">SELECT YEAR</span>
+    <!-- ACTIONS MENU — drop-up opened from the bottom bar's Actions button.
+         A sibling of .bottom-bar (not a child) so it can stack above the
+         side panel and population dock; mainMap.js anchors it to the button. -->
+    <div class="actions-menu" id="actions-menu">
+      <div class="actions-header">
+        <span class="actions-title">ACTIONS</span>
+      </div>
+      <div class="actions-menu-row">
+        <button class="action-panel-btn" id="importDataBtn">
+          <span class="bi bi-cloud-upload"></span>
+          <span class="action-btn-text">Upload Data</span>
+        </button>
+        <button class="action-panel-btn" id="getDataBtn">
+          <span class="bi bi-cloud-download"></span>
+          <span class="action-btn-text">Retrieve Data from APIs</span>
+        </button>
+      </div>
+
+      <!-- Year selector -->
+      <div class="actions-divider"></div>
+      <div class="actions-header">
+        <span class="actions-title">SELECT YEAR</span>
+      </div>
+      <div class="year-btn-group" id="year-btn-group">
+        <button class="year-btn active" data-year="2025">2025</button>
+        <button class="year-btn" data-year="2026">2026</button>
+        <button class="year-btn" data-year="2027">2027</button>
+        <button class="year-btn" data-year="2030">2030</button>
+        <button class="year-btn" data-year="2050">2050</button>
+      </div>
+    </div>
   </div>
-  <div class="year-btn-group" id="year-btn-group">
-    <button class="year-btn active" data-year="2025">2025</button>
-    <button class="year-btn" data-year="2026">2026</button>
-    <button class="year-btn" data-year="2027">2027</button>
-    <button class="year-btn" data-year="2030">2030</button>
-    <button class="year-btn" data-year="2050">2050</button>
-  </div>
-
-</div>
-    
-    {% comment %} <button class="action-panel-btn" id="scenario1Btn">
-      <span class="bi bi-diagram-3"></span>
-      <span class="action-btn-text">Scenario 1</span>
-    </button>
-    
-    <button class="action-panel-btn" id="calculateBtn">
-      <span class="bi bi-calculator"></span>
-      <span class="action-btn-text">Calculate Results</span>
-    </button>
-
-    <div class="actions-divider"></div>
-
-    <button class="action-panel-btn secondary" id="settingsBtn">
-      <span class="bi bi-gear"></span>
-      <span class="action-btn-text">Settings</span> {% endcomment %}
-    </button>
-  </div>
-
 </div>
 
 <script>

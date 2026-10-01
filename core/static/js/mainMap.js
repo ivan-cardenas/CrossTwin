@@ -1,7 +1,7 @@
 // ============================================================
-// mainMap.js — page-level wiring for mainMap.html: map init, right-panel
-// buttons, year selector, guided tour, and the admin-unit-driven panel
-// registry (ADMIN_PANEL_TOOLS / syncPanelBtns / refreshActivePanel).
+// mainMap.js — page-level wiring for mainMap.html: map init, the bottom
+// Actions menu (import buttons + year selector), guided tour, and the
+// admin-unit-driven panel registry (ADMIN_PANEL_TOOLS / syncPanelBtns / refreshActivePanel).
 // Depends on: config.js, map_init.js (and window.MAPBOX_ACCESS_TOKEN, set
 // inline by mainMap.html before this file loads).
 // ============================================================
@@ -13,7 +13,52 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 
-// Right panel button handlers
+// ── ACTIONS MENU ───────────────────────────────────────────────────────────
+// Drop-up opened from the bottom bar's Actions button; holds the import
+// buttons and the year selector. The menu is a sibling of .bottom-bar (see
+// mainMap.css for why), so it is anchored to its button here.
+const actionsMenuBtn = document.getElementById('actions-menu-btn');
+const actionsMenu = document.getElementById('actions-menu');
+
+function positionActionsMenu() {
+  const wrap = actionsMenu.offsetParent;   // .map-wrapper; null while the menu is hidden
+  if (!wrap) return;
+  const w = wrap.getBoundingClientRect();
+  const b = actionsMenuBtn.getBoundingClientRect();
+  const left = b.left - w.left - wrap.clientLeft;
+  const maxLeft = wrap.clientWidth - actionsMenu.offsetWidth - 8;
+  actionsMenu.style.left = `${Math.max(8, Math.min(left, maxLeft))}px`;
+  actionsMenu.style.bottom = `${wrap.clientHeight - (b.top - w.top - wrap.clientTop) + 8}px`;
+}
+
+function setActionsMenuOpen(open) {
+  actionsMenu.classList.toggle('visible', open);
+  actionsMenuBtn.classList.toggle('active', open);
+  actionsMenuBtn.setAttribute('aria-expanded', open);
+  if (open) positionActionsMenu();
+}
+
+if (actionsMenuBtn && actionsMenu) {
+  actionsMenuBtn.addEventListener('click', () => {
+    setActionsMenuOpen(!actionsMenu.classList.contains('visible'));
+  });
+  // Close on a click anywhere else (the map included) and on Escape.
+  document.addEventListener('click', (evt) => {
+    if (!actionsMenu.contains(evt.target) && !actionsMenuBtn.contains(evt.target)) {
+      setActionsMenuOpen(false);
+    }
+  });
+  document.addEventListener('keydown', (evt) => {
+    if (evt.key === 'Escape') setActionsMenuOpen(false);
+  });
+  window.addEventListener('resize', positionActionsMenu);
+  // The button shifts when the pills beside it change width (e.g. the
+  // population count updating), so re-anchor an open menu then too.
+  if (typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(positionActionsMenu).observe(actionsMenuBtn.parentElement);
+  }
+}
+
 document.getElementById('importDataBtn')?.addEventListener('click', () => {
   console.log('Import Data clicked');
   // Redirect to import page or open modal
@@ -48,6 +93,10 @@ document.querySelectorAll('.year-btn').forEach(btn => {
     btn.classList.add('active');
 
     window.ACTIVE_YEAR = parseInt(btn.dataset.year);
+
+    // The Actions button shows the active year while the menu is collapsed
+    const yearLabel = document.getElementById('actions-menu-year');
+    if (yearLabel) yearLabel.textContent = btn.dataset.year;
 
     // Update panel button URLs with new year
     syncPanelBtns();
@@ -87,8 +136,8 @@ const TOUR_STEPS = [
   {
     num: 5,
     title: "⑤ Import Data",
-    desc: "Upload your own GeoJSON or Shapefile with 'Upload Data', or pull live datasets from PDOK, CBS, Sentinel-2, and Google Earth Engine via 'Retrieve Data from APIs'.",
-    target: ".right-actions-panel",
+    desc: "Open the Actions menu in the bottom bar. Upload your own GeoJSON or Shapefile with 'Upload Data', or pull live datasets from PDOK, CBS, Sentinel-2, and Google Earth Engine via 'Retrieve Data from APIs'.",
+    target: "#actions-menu-btn",
   },
   {
     num: 6,
@@ -99,7 +148,7 @@ const TOUR_STEPS = [
   {
     num: 7,
     title: "⑦ View Results",
-    desc: "Results populate the side panel as charts, KPI cards, and new map layers. Use the year buttons (2023–2030) to compare the current baseline against future scenario projections.",
+    desc: "Results populate the side panel as charts, KPI cards, and new map layers. Use the year selector in the Actions menu to compare the current baseline against future scenario projections.",
     target: "#panel-body",
   },
   {

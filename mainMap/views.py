@@ -230,7 +230,7 @@ def population_panel(request):
 # ── GeoJSON endpoint tuning (docs/PERFORMANCE.md §1) ─────────────────────────
 # 6 decimal places of a degree is ~10 cm, well below one screen pixel at any
 # zoom Mapbox renders; PostGIS's default of 9 only makes the payload bigger.
-GEOJSON_PRECISION = 6
+GEOJSON_PRECISION = 5
 # Below this zoom, lines and polygons are simplified to about one screen pixel.
 GEOJSON_SIMPLIFY_BELOW_ZOOM = 14
 # Metres per pixel at zoom 0 on the equator for Mapbox GL's 512 px tiles.

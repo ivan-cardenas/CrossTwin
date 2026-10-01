@@ -72,21 +72,48 @@
 }
 
 /* ============================================================
-   RIGHT ACTIONS PANEL
+   ACTIONS MENU
+   Drop-up opened from the bottom bar's Actions button (data import +
+   year selector). It is a sibling of .bottom-bar rather than a child: the
+   bar is its own stacking context (z-index 9), below the side panel and
+   the population dock, so a menu nested in it could never rise above
+   them. mainMap.js anchors it to the button; left/bottom here are only
+   the fallback.
    ============================================================ */
 
-.right-actions-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 10px 8px;
-    min-width: 152px;
-    max-width: 168px;
-    background: var(--bg-panel);
+.actions-menu {
+    position: absolute;
+    left: 12px;
+    bottom: 52px;               /* above the bottom bar */
+    width: 260px;
+    max-width: calc(100% - 16px);
+    padding: 10px;
+    background: var(--overlay-bg);
+    backdrop-filter: var(--overlay-blur);
+    -webkit-backdrop-filter: var(--overlay-blur);
+    box-shadow: var(--overlay-shadow);
     border-radius: 10px;
     border: 1px solid var(--border-ui);
-    align-self: flex-start;
+    z-index: 13;
+    display: none;
+    flex-direction: column;
+    gap: 6px;
 }
+
+.actions-menu.visible { display: flex; }
+
+.actions-menu-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
+.actions-menu-caret {
+    display: inline-block;
+    transition: transform 0.12s ease;
+}
+
+#actions-menu-btn[aria-expanded="true"] .actions-menu-caret { transform: rotate(180deg); }
 
 .actions-header {
     display: flex;
@@ -160,50 +187,6 @@
     height: 1px;
     background: var(--border-ui);
     margin: 2px 0;
-}
-
-/* ============================================================
-   RESPONSIVE — RIGHT PANEL
-   ============================================================ */
-
-@media (max-width: 1200px) {
-    .right-actions-panel {
-        min-width: 136px;
-        max-width: 148px;
-        padding: 8px 6px;
-    }
-    .action-panel-btn span.bi { font-size: 16px; }
-    .action-btn-text { font-size: 10px; }
-}
-
-@media (max-width: 768px) {
-    .app-shell { flex-direction: column; }
-
-    .right-actions-panel {
-        flex-direction: row;
-        max-width: none;
-        width: 100%;
-        padding: 6px;
-        gap: 3px;
-        order: -1;
-    }
-
-    .actions-header { display: none; }
-
-    .actions-divider {
-        width: 1px;
-        height: auto;
-        margin: 0 2px;
-    }
-
-    .action-panel-btn {
-        flex: 1;
-        padding: 7px 4px;
-        gap: 3px;
-    }
-
-    .action-panel-btn span.bi { font-size: 15px; }
-    .action-btn-text { font-size: 9px; }
 }
 
 /* ============================================================
@@ -340,14 +323,15 @@
 
 .year-btn-group {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     gap: 4px;
     width: 100%;
 }
 
 .year-btn {
-    width: 100%;
-    padding: 5px 6px;
+    flex: 1;
+    min-width: 0;
+    padding: 5px 4px;
     background: #181818;
     border: 1px solid #252525;
     border-radius: 5px;

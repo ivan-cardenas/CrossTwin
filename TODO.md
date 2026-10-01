@@ -43,6 +43,7 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 - [ ] `Rent/Mortgage/Water_Tariff_Afford -> Income_Expenses -> Affordability_Stress` — `HousingAffordability.save()` computes `affordabilityIndex` only from its own stored fields, never pulls from `Mortgage`, `Rentals`, or watersupply tariffs
 - [ ] `Credit_Supply -> Mortgage` — unimplemented
 - [ ] No `NumberUsers` model — `NumberUsers -> Water_Tariff_Afford` unimplemented (`MeteredResidential.userAffordability_PCT` is a flat input)
+ - [ ] `Buildings` can get height value from DSM. This needs to be incorporated in the model save() function if  the DSM exists.
 
 ## watersupply
 
