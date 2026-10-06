@@ -74,4 +74,6 @@
 
 14. There is a library of NBS for urban heat mitigation. Should I add them to the database for LLM possible solutions/interventions and recomendations.
 
+14. For ammenities I include Schools, hospitals and clinics, fire and police stations, marketplaces and transport stations. Should I add more?
+
 20. LIMITATION --  THE SYSTEM USE RELATIONAL DATABASES AND MULTIPLE TABLES. SO SPEED OF JOINS CAN BE AN ISSUE. MAYBE USING NODE4J OR GRAPHDB IS A BETTER OPTION

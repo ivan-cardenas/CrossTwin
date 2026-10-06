@@ -119,11 +119,13 @@ def _finalize_landcover(rows):
 BULK_IMPORT_MODELS = {
     "physicalEnv.LandCoverVector": _finalize_landcover,   # replays physicalEnv/signals.py
     "builtup.Street": None,
+    "builtup.Facility": None,
     "nature.ProtectedArea": None,
     "nature.WaterWaysLN": None,
     "nature.WaterWaysPG": None,
     "nature.WaterBodies": None,
     "nature.Forests": None,
+    "nature.Tree": None,
 }
 
 

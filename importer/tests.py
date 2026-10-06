@@ -772,3 +772,315 @@ class DeferredCascadeImportTests(TestCase):
         # the row that was written before the failure is reflected upward
         self.district.refresh_from_db()
         self.assertEqual(self.district.currentPopulation, 42)
+
+
+# ---------------------------------------------------------------------------
+# OpenStreetMap (Overpass)
+# ---------------------------------------------------------------------------
+
+def _ll_way(way_id, lonlats, **tags):
+    """An Overpass `out geom` way."""
+    return {"type": "way", "id": way_id, "tags": tags,
+            "geometry": [{"lon": lon, "lat": lat} for lon, lat in lonlats]}
+
+
+AMS_BBOX = [4.85, 52.35, 4.95, 52.40]   # west, south, east, north
+LL_SQUARE = [(4.90, 52.37), (4.91, 52.37), (4.91, 52.38), (4.90, 52.38), (4.90, 52.37)]
+
+
+class OSMConversionTests(SimpleTestCase):
+    def test_query_uses_overpass_bbox_order_and_output_per_geometry(self):
+        from .external_data import OSMImporter
+        dataset = {"osm_query": ['node["natural"="tree"]']}
+
+        points = OSMImporter.build_query(dataset, AMS_BBOX, as_points=True)
+        self.assertIn("[bbox:52.35,4.85,52.4,4.95]", points)   # south, west, north, east
+        self.assertIn('node["natural"="tree"];', points)
+        self.assertTrue(points.endswith("out center tags;"))
+        self.assertTrue(OSMImporter.build_query(dataset, AMS_BBOX, as_points=False).endswith("out geom;"))
+
+    def test_tag_numbers(self):
+        from .external_data import OSMImporter
+        self.assertEqual(OSMImporter.parse_number("12"), 12.0)
+        self.assertEqual(OSMImporter.parse_number("12 m"), 12.0)
+        self.assertEqual(OSMImporter.parse_number("7,5"), 7.5)
+        self.assertAlmostEqual(OSMImporter.parse_number("40 ft"), 12.192)
+        self.assertIsNone(OSMImporter.parse_number("tall"))
+
+    def test_elements_become_features_with_synthesized_properties(self):
+        from .external_data import OSMImporter
+        elements = [
+            {"type": "node", "id": 1, "lat": 52.37, "lon": 4.90, "tags": {"amenity": "clinic", "name": "Kliniek"}},
+            {"type": "way", "id": 2, "center": {"lat": 52.38, "lon": 4.91}, "tags": {"railway": "station"}},
+            {"type": "node", "id": 3, "lat": 52.37, "lon": 4.90, "tags": {"amenity": "bench"}},   # no class
+        ]
+        features = OSMImporter.to_geojson_features(elements, CATALOG_BY_KEY["osm_amenities"])
+
+        self.assertEqual([f["properties"]["osm_id"] for f in features], ["osm:node/1", "osm:way/2"])
+        clinic, station = (f["properties"] for f in features)
+        self.assertEqual((clinic["osm_class"], clinic["osm_subtype"], clinic["osm_name"]),
+                         ("hospital", "clinic", "Kliniek"))
+        self.assertEqual((station["osm_class"], station["osm_name"]), ("transportNode", "Facility osm:way/2"))
+        self.assertEqual(features[1]["geometry"], {"type": "Point", "coordinates": [4.91, 52.38]})
+
+        # polygon targets keep closed ways and drop open ones
+        ways = [_ll_way(10, LL_SQUARE), _ll_way(11, LL_SQUARE[:3])]
+        kept = OSMImporter.to_geojson_features(ways, {}, polygons_only=True)
+        self.assertEqual([f["properties"]["osm_id"] for f in kept], ["osm:way/10"])
+        self.assertEqual(kept[0]["geometry"]["type"], "Polygon")
+
+    def test_multipolygon_relation_rings_are_assembled_from_split_ways(self):
+        from shapely.geometry import shape
+        from .external_data import OSMImporter
+
+        def member(role, coords):
+            return {"type": "way", "role": role, "geometry": [{"lon": x, "lat": y} for x, y in coords]}
+
+        # the outer ring is split over two ways; the inner ring cuts a hole
+        north = [(4.90, 52.37), (4.90, 52.38), (4.92, 52.38), (4.92, 52.37)]
+        south = [(4.92, 52.37), (4.90, 52.37)]
+        hole = [(4.905, 52.372), (4.915, 52.372), (4.915, 52.378), (4.905, 52.378), (4.905, 52.372)]
+        relation = {
+            "type": "relation", "id": 5, "tags": {"type": "multipolygon", "leisure": "park"},
+            "members": [member("outer", north), member("outer", south), member("inner", hole)],
+        }
+        geom = shape(OSMImporter.element_geometry(relation))
+        self.assertEqual(geom.geom_type, "Polygon")
+        self.assertEqual(len(geom.interiors), 1)
+        self.assertAlmostEqual(geom.area, 0.02 * 0.01 - 0.01 * 0.006)
+
+
+class OSMImportTests(TestCase):
+    """End to end through OSMImporter.fetch with Overpass mocked."""
+
+    def setUp(self):
+        from administrative.models import City, District, Neighborhood
+        area = MultiPolygon(to_storage_srid(Polygon(AMS_LONLAT, srid=4326)), srid=RD)
+        province = Province.objects.create(ProvinceName="P", geom=area)
+        city = City.objects.create(cityName="C", province=province, geom=area)
+        district = District.objects.create(id="D1", districtName="D", city=city, geom=area, currentPopulation=0)
+        self.neighborhood = Neighborhood.objects.create(
+            id="N1", neighborhoodName="N", district=district, geom=area, currentPopulation=0)
+
+    def _fetch(self, key, elements, remark=None):
+        from .external_data import OSMImporter
+        body = {"elements": elements}
+        if remark:
+            body["remark"] = remark
+        with mock.patch("importer.external_data.requests.post",
+                        return_value=_FakeResponse(json_data=body)) as post:
+            result = OSMImporter.fetch(CATALOG_BY_KEY[key], AMS_BBOX)
+        return result, post
+
+    def test_trees_are_upserted_with_numeric_tags_and_neighborhood(self):
+        from nature.models import Tree
+        tree = {"type": "node", "id": 42, "lat": 52.37, "lon": 4.90,
+                "tags": {"natural": "tree", "genus": "Tilia", "height": "12 m", "circumference": "n/a"}}
+
+        result, post = self._fetch("osm_trees", [tree])
+        self.assertEqual((result.status, result.records_created), ("success", 1), result.message)
+        self.assertIn("out center tags;", post.call_args.kwargs["data"]["data"])
+
+        row = Tree.objects.get()
+        self.assertEqual((row.sourceID, row.genus, row.height_m), ("osm:node/42", "Tilia", 12.0))
+        self.assertIsNone(row.circumference_m)
+        self.assertEqual(row.neighborhood_id, self.neighborhood.pk)
+        self.assertEqual(row.geom.srid, RD)
+
+        tree["tags"]["height"] = "14"
+        result, _ = self._fetch("osm_trees", [tree])
+        self.assertEqual((result.records_created, result.records_updated), (0, 1))
+        self.assertEqual(Tree.objects.get().height_m, 14.0)
+
+    def test_parks_get_area_from_save_and_feed_the_dashboard_filter(self):
+        from builtup.models import Park
+        result, post = self._fetch("osm_parks", [_ll_way(7, LL_SQUARE, leisure="park", name="Vondelpark")])
+
+        self.assertEqual(result.status, "success", result.message)
+        self.assertIn("out geom;", post.call_args.kwargs["data"]["data"])
+        park = Park.objects.get(neighborhood=self.neighborhood)
+        self.assertEqual((park.name, park.sourceID), ("Vondelpark", "osm:way/7"))
+        self.assertTrue(700_000 < park.area < 800_000, park.area)   # ~680 m x ~1110 m, in m2
+
+    def test_amenities_are_classified_into_facility_types(self):
+        from builtup.models import Facility
+        elements = [
+            {"type": "node", "id": 1, "lat": 52.37, "lon": 4.90, "tags": {"amenity": "kindergarten"}},
+            {"type": "node", "id": 2, "lat": 52.38, "lon": 4.91, "tags": {"amenity": "police", "name": "Bureau"}},
+        ]
+        result, post = self._fetch("osm_amenities", elements)
+        self.assertEqual(result.records_created, 2, result.message)
+        rows = {f.sourceID: f for f in Facility.objects.all()}
+        self.assertEqual((rows["osm:node/1"].type, rows["osm:node/1"].subtype), ("school", "kindergarten"))
+        self.assertEqual((rows["osm:node/2"].type, rows["osm:node/2"].name), ("police_station", "Bureau"))
+
+        # only nodes are asked for: no way/relation (or nwr) statements
+        query = post.call_args.kwargs["data"]["data"]
+        statements = [line.strip() for line in query.splitlines()
+                      if line.strip().endswith("];") and not line.startswith("[")]   # skip the settings line
+        self.assertEqual(len(statements), 2)
+        self.assertTrue(all(s.startswith("node[") for s in statements), statements)
+
+    def test_water_bodies_take_their_type_from_the_water_tag(self):
+        from nature.models import WaterBodies
+        result, _ = self._fetch("osm_water_bodies", [
+            _ll_way(3, LL_SQUARE, natural="water", water="pond"),
+            _ll_way(4, LL_SQUARE[:3], natural="water"),   # open way: not an area
+        ])
+        self.assertEqual(result.records_created, 1, result.message)
+        water = WaterBodies.objects.get()
+        self.assertEqual((water.localId, water.type, water.name), ("osm:way/3", "pond", "Water body osm:way/3"))
+
+    def test_overpass_runtime_error_is_reported(self):
+        result, _ = self._fetch("osm_trees", [], remark="runtime error: Query timed out at line 3")
+        self.assertEqual(result.status, "error")
+        self.assertIn("smaller area", result.message)
+
+    def test_dispatcher_routes_osm_datasets(self):
+        from .external_data import ImportResult, import_dataset
+        with mock.patch("importer.external_data.OSMImporter.fetch",
+                        return_value=ImportResult("success", "ok")) as fetch:
+            import_dataset("osm_parks", AMS_BBOX)
+        fetch.assert_called_once_with(CATALOG_BY_KEY["osm_parks"], AMS_BBOX)
+
+
+# ---------------------------------------------------------------------------
+# HILUCS land use / INSPIRE planned land use (ATOM GML)
+# ---------------------------------------------------------------------------
+
+HILUCS = "http://inspire.ec.europa.eu/codelist/HILUCSValue/"
+
+
+class HILUCSHrefTests(SimpleTestCase):
+    def test_code_and_label_come_from_the_uri(self):
+        from physicalEnv.hilucs import parse_hilucs_href
+        self.assertEqual(parse_hilucs_href(HILUCS + "6_3_2_WaterAreasNotInOtherEconomicUse"),
+                         ("6.3.2", "water areas not in other economic use"))
+        self.assertEqual(parse_hilucs_href(HILUCS + "1_1_Agriculture"), ("1.1", "agriculture"))
+        self.assertIsNone(parse_hilucs_href("http://example.org/no-code-here"))
+        self.assertIsNone(parse_hilucs_href(None))
+
+
+class HILUCSTableTests(TestCase):
+    def test_migration_loads_the_inspire_codelist(self):
+        from physicalEnv.models import HILUCSLandUse
+        self.assertEqual(HILUCSLandUse.objects.count(), 98)
+        water = HILUCSLandUse.objects.get(code="6.3.2")
+        self.assertEqual(water.label, "water areas not in other economic use")
+        self.assertEqual(water.description, "Water areas which are not in any other socio-economic use.")
+
+
+def _pos_list(lonlats):
+    # EPSG:4258 GML axis order is lat lon
+    return " ".join(f"{lat} {lon}" for lon, lat in lonlats)
+
+
+def _plu_gml(members):
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<wfs:FeatureCollection xmlns:wfs="http://www.opengis.net/wfs/2.0" '
+        'xmlns:gml="http://www.opengis.net/gml/3.2" xmlns:xlink="http://www.w3.org/1999/xlink" '
+        'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" '
+        'xmlns:plu="http://inspire.ec.europa.eu/schemas/plu/4.0" '
+        'xmlns:base="http://inspire.ec.europa.eu/schemas/base/3.3">'
+        + "".join(f"<wfs:member>{m}</wfs:member>" for m in members)
+        + "</wfs:FeatureCollection>"
+    ).encode("utf-8")
+
+
+def _surface(tag, lonlats, hole=None):
+    interior = (f"<gml:interior><gml:LinearRing><gml:posList>{_pos_list(hole)}</gml:posList>"
+                f"</gml:LinearRing></gml:interior>") if hole else ""
+    return (f"<plu:{tag}><gml:MultiSurface><gml:surfaceMember><gml:Polygon><gml:exterior><gml:LinearRing>"
+            f"<gml:posList>{_pos_list(lonlats)}</gml:posList></gml:LinearRing></gml:exterior>{interior}"
+            f"</gml:Polygon></gml:surfaceMember></gml:MultiSurface></plu:{tag}>")
+
+
+def _spatial_plan(gml_id, title, lonlats):
+    return (f'<plu:SpatialPlan gml:id="{gml_id}"><plu:inspireId><base:Identifier><base:localId>{gml_id}'
+            f'</base:localId></base:Identifier></plu:inspireId>{_surface("extent", lonlats)}'
+            f'<plu:officialTitle>{title}</plu:officialTitle><plu:validFrom>2024-03-12</plu:validFrom>'
+            f'<plu:planTypeName xlink:href="http://inspireregister.nl/codelijst/PlanTypeNameValue/bestemmingsplan"/>'
+            f'</plu:SpatialPlan>')
+
+
+def _zoning_element(local_id, plan_id, hilucs, lonlats, hole=None):
+    return (f'<plu:ZoningElement><plu:inspireId><base:Identifier><base:localId>{local_id}</base:localId>'
+            f'</base:Identifier></plu:inspireId>{_surface("geometry", lonlats, hole)}'
+            f'<plu:hilucsLandUse xlink:href="{HILUCS}{hilucs}"/>'
+            f'<plu:plan xlink:href="#{plan_id}"/></plu:ZoningElement>')
+
+
+def _ll_box(x0, y0, x1, y1):
+    return [(x0, y0), (x1, y0), (x1, y1), (x0, y1), (x0, y0)]
+
+
+class AtomZoningElementImportTests(TestCase):
+    """_import_atom_gml_features turns plu:ZoningElements into ZoningArea rows with a HILUCS zone_type."""
+
+    def setUp(self):
+        from administrative.models import City, District, Neighborhood
+        area = MultiPolygon(to_storage_srid(Polygon(AMS_LONLAT, srid=4326)), srid=RD)
+        province = Province.objects.create(ProvinceName="P", geom=area)
+        city = City.objects.create(cityName="C", province=province, geom=area)
+        district = District.objects.create(id="D1", districtName="D", city=city, geom=area, currentPopulation=0)
+        self.neighborhood = Neighborhood.objects.create(
+            id="N1", neighborhoodName="N", district=district, geom=area, currentPopulation=0)
+
+    def _import(self, gml_bytes):
+        import io
+        from .external_catalog import FIELD_MAPPINGS
+        from .external_data import _import_atom_gml_features
+        from builtup.models import ZoningArea
+
+        class Raw(io.BytesIO):
+            pass
+
+        response = mock.MagicMock()
+        response.__enter__.return_value = response
+        response.raw = Raw(gml_bytes)
+        with mock.patch("importer.external_data.requests.get", return_value=response):
+            return _import_atom_gml_features("http://example.org/plu.gml", Polygon.from_bbox(AMS_BBOX),
+                                             ZoningArea, FIELD_MAPPINGS["pdok_landcover_kadaster"])
+
+    def test_zoning_elements_get_their_hilucs_class_and_plan(self):
+        from builtup.models import ZoningArea
+        from physicalEnv.models import HILUCSLandUse
+
+        plan_box = _ll_box(4.89, 52.36, 4.93, 52.39)
+        gml = _plu_gml([
+            _spatial_plan("NL.IMRO.plan-in", "Bestemmingsplan Centrum", plan_box),
+            _spatial_plan("NL.IMRO.plan-out", "Elders", _ll_box(6.0, 52.0, 6.1, 52.1)),
+            _zoning_element("NL.IMRO.1", "NL.IMRO.plan-in", "6_3_2_WaterAreasNotInOtherEconomicUse",
+                            _ll_box(4.90, 52.37, 4.91, 52.38), hole=_ll_box(4.903, 52.373, 4.905, 52.375)),
+            # PDOK's misspelt URI still resolves to the registry's 5.2
+            _zoning_element("NL.IMRO.2", "NL.IMRO.plan-in", "5_2_ResidentialUseWithOtherComptibleUses",
+                            _ll_box(4.91, 52.37, 4.92, 52.38)),
+            _zoning_element("NL.IMRO.3", "NL.IMRO.plan-out", "1_1_Agriculture", _ll_box(6.0, 52.0, 6.01, 52.01)),
+            "<plu:SupplementaryRegulation><plu:name>skipped</plu:name></plu:SupplementaryRegulation>",
+        ])
+
+        created, errors = self._import(gml)
+
+        self.assertEqual((created, errors), (2, []))
+        self.assertEqual(HILUCSLandUse.objects.count(), 98)   # no row added for the misspelt URI
+        water, mixed = ZoningArea.objects.order_by("id")
+        self.assertEqual(water.zone_type.code, "6.3.2")
+        self.assertEqual(water.zone_type.label, "water areas not in other economic use")
+        self.assertEqual(mixed.zone_type.code, "5.2")
+        self.assertEqual((water.description, water.plan_type, str(water.valid_from)),
+                         ("Bestemmingsplan Centrum", "bestemmingsplan", "2024-03-12"))
+        self.assertEqual(water.neighborhood_id, self.neighborhood.pk)
+        self.assertEqual(len(water.geom[0]), 2)   # exterior + hole
+        self.assertLess(water.area, mixed.area)
+
+    def test_unknown_code_is_added_with_a_label_from_the_uri(self):
+        from builtup.models import ZoningArea
+        gml = _plu_gml([
+            _spatial_plan("P", "Plan", _ll_box(4.89, 52.36, 4.93, 52.39)),
+            _zoning_element("Z", "P", "9_9_SomeFutureLandUse", _ll_box(4.90, 52.37, 4.91, 52.38)),
+        ])
+        self.assertEqual(self._import(gml), (1, []))
+        zone_type = ZoningArea.objects.get().zone_type
+        self.assertEqual((zone_type.code, zone_type.label, zone_type.description),
+                         ("9.9", "some future land use", ""))

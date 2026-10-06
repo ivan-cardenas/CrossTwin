@@ -120,6 +120,14 @@ Collected from `#TODO` comments across the codebase:
 - [ ] Investigate whether an infiltration-capacity table or map exists for the Netherlands that could back `AvailableFreshWater.infiltrationRate_cm_h` (see inline TODO above) instead of computing it from land cover alone.
 - [ ] Decide how to define "degree of urbanisation" for CrossTwin — CBS defines it via address density per km² (5-band classification: <500 to 2,500+ addresses/km²), but the project's actual interest is urban-sprawl *growth over time*, which needs a different metric/approach.
 - [ ] Decide which domain app should own the Population Density raster layer (e.g. `administrative` vs `physicalEnv`).
+- [ ] From point data like amenities, a interpolated raster should be created using euclidean distance. Each raster should be a separate layer in the map, and the UI should show the map layer as a heat map.
+- [ ]  The zoning plans that carry these land-use codes come as one 28.7 GB national file, so every import reads the whole file, however small the area you pick.
+  >
+  > Every zoning import reads all 28.7 GB
+  > * PDOK publishes the Dutch planned land-use data (where the HILUCS land-use links come from) as a single 28.7 GB GML file (a large XML map file). There are no regional pieces.
+  > * The current importer goes through that file from top to bottom and keeps only the plans inside your chosen area. Picking a small area does not cut the download.
+
+- [ ] Add 3D models for trees and ammenities. threes can get height from DSM. 
 
 **HTMX indicator dashboards**
 Existing three-layer pattern (`calculations.py` + `views.py` + templates, see CLAUDE.md) is built for `watersupply`, `housing`, `urban_heat` and `builtup` so far.

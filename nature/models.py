@@ -98,6 +98,34 @@ class Forests(models.Model):
         verbose_name = "Forest"
         verbose_name_plural = "Forests"
         
+class Tree(models.Model):
+    id = models.AutoField(primary_key=True)
+    sourceID = models.CharField(max_length=100, unique=True, null=True, blank=True, help_text="Identifier in the source dataset, e.g. 'osm:node/123' for OpenStreetMap")
+    species = models.CharField(max_length=200, null=True, blank=True, help_text="Scientific species name (e.g., Tilia x europaea)")
+    genus = models.CharField(max_length=100, null=True, blank=True, help_text="Scientific genus (e.g., Tilia)")
+    leafType = models.CharField(max_length=50, null=True, blank=True, help_text="broadleaved, needleleaved, ...")
+    leafCycle = models.CharField(max_length=50, null=True, blank=True, help_text="deciduous, evergreen, ...")
+    height_m = models.FloatField(null=True, blank=True, help_text="Tree height in meters")
+    circumference_m = models.FloatField(null=True, blank=True, help_text="Trunk circumference at breast height in meters")
+    crownDiameter_m = models.FloatField(null=True, blank=True, help_text="Crown diameter in meters")
+    neighborhood = models.ForeignKey(
+        'administrative.Neighborhood',
+        on_delete=models.DO_NOTHING,
+        null=True,
+        blank=True,
+        help_text="Neighborhood the tree stands in (resolved spatially on import)",
+    )
+    geom = models.PointField(srid=COORDINATE_SYSTEM)
+    last_updated = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return self.species or self.genus or self.sourceID or f"Tree {self.pk}"
+
+    class Meta:
+        verbose_name = "Tree"
+        verbose_name_plural = "Trees"
+
+
 class GreenSpaces(models.Model):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=200)

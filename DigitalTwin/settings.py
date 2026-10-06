@@ -76,6 +76,10 @@ SENTINEL_CLIENT_SECRET = os.environ.get("SENTINEL_CLIENT_SECRET")
 # Authorization header — see weather/views.py::_wms_auth_headers.
 KNMI_API_KEY = os.environ.get("KNMI_API_KEY")
 
+# Overpass API instance for the OpenStreetMap importer (osm_* catalog
+# entries). Unset = the URL in each catalog entry (the public overpass-api.de).
+OVERPASS_URL = os.environ.get("OVERPASS_URL")
+
 # Google Earth Engine project used for `ee.Initialize(project=...)`.
 # Authentication itself is a one-time `ee.Authenticate()` run per machine
 # (opens a browser, caches an OAuth token under the OS user profile) — see

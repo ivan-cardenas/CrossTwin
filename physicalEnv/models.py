@@ -15,6 +15,28 @@ class LandCoverClasses(models.Model):
     def __str__(self):
         return self.class_name
 
+class HILUCSLandUse(models.Model):
+    """
+    INSPIRE HILUCS land-use classification
+    (http://inspire.ec.europa.eu/codelist/HILUCSValue), stored once and
+    referenced by FK so land-use rows carry a smallint instead of the URI.
+    The 98 registry values are loaded by migration 0003; physicalEnv/hilucs.py
+    turns a HILUCS URI into its code.
+    """
+    id = models.SmallAutoField(primary_key=True)
+    code = models.CharField(max_length=10, unique=True, help_text="Hierarchical HILUCS code, e.g. '6.3.2'")
+    label = models.CharField(max_length=200, help_text="Registry label, e.g. 'water areas not in other economic use'")
+    description = models.TextField(blank=True, help_text="Registry definition of the class")
+
+    def __str__(self):
+        return f"{self.code} {self.label}"
+
+    class Meta:
+        ordering = ["code"]
+        verbose_name = "HILUCS Land Use"
+        verbose_name_plural = "HILUCS Land Uses"
+
+
 class SurfaceMaterialProperties(models.Model):
     id = models.AutoField(primary_key=True)
     material_name = models.CharField(max_length=100, help_text="Name of the material (e.g., 'Concrete', 'Asphalt', 'Grass', etc.)")

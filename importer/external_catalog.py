@@ -107,18 +107,26 @@ FIELD_MAPPINGS = {
     "pdok_landcover_kadaster": {
         "__geometry__": "geom",
         "__spatial_fk__": {"field": "neighborhood", "model": "administrative.Neighborhood", "required": True},
-        # Keys here are synthesized properties built in
-        # PDOKImporter._import_atom_gml_features (officialTitle, plan-type
-        # codelist value, validFrom), not raw GML element names.
-        # plu:SpatialPlan (INSPIRE Planned Land Use) is a legal spatial plan,
-        # not a classified zoning function -- there's no source field for
-        # zone_type (that would need the separate plu:ZoningElement feature
-        # type, absent from this feed), so it's deliberately left unmapped
-        # and stays null. plan_type/valid_from carry what the feed actually
-        # has instead of forcing a fake zone_type.
+        # Keys here are properties synthesized by _import_atom_gml_features
+        # for each plu:ZoningElement, not raw GML element names:
+        # hilucslanduseHref is the element's plu:hilucsLandUse xlink:href;
+        # title (officialTitle), plan_type (planTypeName codelist value) and
+        # valid_from come from the plu:SpatialPlan it belongs to.
         "title": "description",
         "plan_type": "plan_type",
         "valid_from": "valid_from",
+        # e.g. .../HILUCSValue/6_3_2_WaterAreasNotInOtherEconomicUse ->
+        # physicalEnv.HILUCSLandUse(code="6.3.2"). The table holds the whole
+        # INSPIRE codelist; a code missing from it is added with the label
+        # spelled out from the URI.
+        "__fk_lookup__": [{
+            "field": "zone_type",
+            "model": "physicalEnv.HILUCSLandUse",
+            "source_property": "hilucslanduseHref",
+            "lookup_field": "code",
+            "parser": "hilucs_href",
+            "required": False,
+        }],
     },
     "pdok_landcover_brt": {
         "__geometry__": "geom",
@@ -208,6 +216,54 @@ FIELD_MAPPINGS = {
         "plus_type": "type",
     },
 
+
+    # -------------------------------- OpenStreetMap (Overpass) -------------------------------
+    # Keys starting with "osm_" are properties synthesized by
+    # OSMImporter.to_geojson_features, not raw OSM tags:
+    #   osm_id      "osm:<node|way|relation>/<id>", stable across re-imports
+    #   osm_name    the name tag, or "<feature_label> <osm_id>" when untagged
+    #   osm_class   category from the catalog entry's "osm_classes"
+    #   osm_subtype first present tag of the catalog entry's "osm_subtype_tags"
+    # Any other key is a raw OSM tag; numeric model fields take the leading
+    # number of the tag ("12 m" -> 12.0).
+
+    "osm_parks": {
+        "__geometry__": "geom",
+        "__unique__": "osm_id",
+        "__unique_field__": "sourceID",
+        "__spatial_fk__": {"field": "neighborhood", "model": "administrative.Neighborhood", "required": False},
+        "osm_name": "name",
+        # area comes from Park.save(); OSM has no vegetation type for a park
+    },
+    "osm_water_bodies": {
+        "__geometry__": "geom",
+        "__unique__": "osm_id",
+        "__unique_field__": "localId",
+        "osm_name": "name",
+        "osm_subtype": "type",
+    },
+    "osm_amenities": {
+        "__geometry__": "geom",
+        "__unique__": "osm_id",
+        "__unique_field__": "sourceID",
+        "__spatial_fk__": {"field": "neighborhood", "model": "administrative.Neighborhood", "required": False},
+        "osm_name": "name",
+        "osm_class": "type",
+        "osm_subtype": "subtype",
+    },
+    "osm_trees": {
+        "__geometry__": "geom",
+        "__unique__": "osm_id",
+        "__unique_field__": "sourceID",
+        "__spatial_fk__": {"field": "neighborhood", "model": "administrative.Neighborhood", "required": False},
+        "species": "species",
+        "genus": "genus",
+        "leaf_type": "leafType",
+        "leaf_cycle": "leafCycle",
+        "height": "height_m",
+        "circumference": "circumference_m",
+        "diameter_crown": "crownDiameter_m",
+    },
 
     "rivm_energy_labels": {
         "__geometry__": "geom",
@@ -595,12 +651,12 @@ EXTERNAL_DATA_CATALOG = [
         "source": "pdok",
         "category": "Built environment",
         "name": "Planned Land Use / Zoning Plans (INSPIRE harmonised) ATOM Feed",
-        # This is an INSPIRE Planned Land Use (plu:SpatialPlan) feed of Dutch
-        # zoning plans (bestemmingsplannen) from Kadaster's ruimtelijkeplannen.nl,
-        # not a classified land-cover raster/vector — it has no land-cover-type
-        # or surface-material attribute, so it targets builtup.ZoningArea rather
-        # than physicalEnv.LandCoverVector.
-        "description": "Dutch zoning plans (bestemmingsplannen) from Kadaster's Ruimtelijkeplannen register.",
+        # This is an INSPIRE Planned Land Use feed of Dutch zoning plans
+        # (bestemmingsplannen) from Kadaster's ruimtelijkeplannen.nl. Its
+        # plu:ZoningElement features (one zoning function each, classified by
+        # HILUCS) become builtup.ZoningArea rows; it has no land-cover or
+        # surface-material attribute, so it isn't physicalEnv.LandCoverVector.
+        "description": "Zoning elements of Dutch zoning plans (bestemmingsplannen) from Kadaster's Ruimtelijkeplannen register, classified by INSPIRE HILUCS land use.",
         "target_model": "builtup.ZoningArea",
         "url": "https://service.pdok.nl/kadaster/ruimtelijke-plannen-gepland-landgebruik/atom/index.xml",
         "format": "atom",
@@ -954,6 +1010,101 @@ EXTERNAL_DATA_CATALOG = [
         # supplies nothing and no bbox is needed: the whole grid is stored.
         "enabled": True,
     },
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # OpenStreetMap - via the Overpass API
+    # ══════════════════════════════════════════════════════════════════════════
+    # "osm_query" holds Overpass QL statements without bbox or output: the
+    # importer adds a global [bbox:...] and picks `out center` for point
+    # models and `out geom` for the rest. "feature_label" names untagged
+    # features. The public Overpass instance is shared and rate limited, so
+    # keep areas city-sized; OVERPASS_URL in .env points at another instance.
+    {
+        "key": "osm_parks",
+        "source": "osm",
+        "category": "Nature & Environment",
+        "name": "Parks (OpenStreetMap)",
+        "description": "Park polygons tagged leisure=park in OpenStreetMap. Feeds the park area per inhabitant of the built-up dashboard; import neighborhoods first so parks are attributed to them.",
+        "target_model": "builtup.Park",
+        "url": "https://overpass-api.de/api/interpreter",
+        "format": "overpass",
+        "osm_query": ['way["leisure"="park"]', 'relation["leisure"="park"]'],
+        "feature_label": "Park",
+        "params": {"srsName": "EPSG:4326"},
+        "requires_bbox": True,
+        "enabled": True,
+    },
+    {
+        "key": "osm_water_bodies",
+        "source": "osm",
+        "category": "Nature & Environment",
+        "name": "Water Bodies (OpenStreetMap)",
+        "description": "Lakes, ponds, canals, reservoirs and basins mapped as water areas (natural=water, landuse=reservoir/basin) in OpenStreetMap.",
+        "target_model": "nature.WaterBodies",
+        "url": "https://overpass-api.de/api/interpreter",
+        "format": "overpass",
+        "osm_query": [
+            'way["natural"="water"]', 'relation["natural"="water"]',
+            'way["landuse"~"^(reservoir|basin)$"]', 'relation["landuse"~"^(reservoir|basin)$"]',
+        ],
+        # water=lake/pond/canal/... is the finer type; fall back to the landuse
+        # or natural value when it is missing
+        "osm_subtype_tags": ["water", "landuse", "natural"],
+        "feature_label": "Water body",
+        "params": {"srsName": "EPSG:4326"},
+        "requires_bbox": True,
+        "enabled": True,
+    },
+    {
+        "key": "osm_amenities",
+        "source": "osm",
+        "category": "Built environment",
+        "name": "Amenities (OpenStreetMap)",
+        "description": "Schools, hospitals and clinics, fire and police stations, marketplaces and transport stations mapped as points (OSM nodes) in OpenStreetMap. Feeds the facilities per inhabitant of the built-up dashboard.",
+        "target_model": "builtup.Facility",
+        "url": "https://overpass-api.de/api/interpreter",
+        "format": "overpass",
+        # Nodes only: an amenity drawn as a way or relation (e.g. a school's
+        # grounds) is not imported, even when the same facility has no node.
+        "osm_query": [
+            'node["amenity"~"^(school|kindergarten|college|university|hospital|clinic|fire_station|police|marketplace|bus_station|ferry_terminal)$"]',
+            'node["railway"="station"]',
+        ],
+        # tag -> {OSM value: Facility.type}; the first matching tag wins
+        "osm_classes": {
+            "amenity": {
+                "school": "school", "kindergarten": "school", "college": "school", "university": "school",
+                "hospital": "hospital", "clinic": "hospital",
+                "fire_station": "fire_station",
+                "police": "police_station",
+                "marketplace": "market",
+                "bus_station": "transportNode", "ferry_terminal": "transportNode",
+            },
+            "railway": {"station": "transportNode"},
+        },
+        "osm_subtype_tags": ["amenity", "railway"],
+        "feature_label": "Facility",
+        "params": {"srsName": "EPSG:4326"},
+        "requires_bbox": True,
+        "enabled": True,
+    },
+    {
+        "key": "osm_trees",
+        "source": "osm",
+        "category": "Nature & Environment",
+        "name": "Trees (OpenStreetMap)",
+        "description": "Individual trees (natural=tree) with species, genus, leaf type, height and crown diameter where mapped. Coverage varies a lot between cities.",
+        "target_model": "nature.Tree",
+        "url": "https://overpass-api.de/api/interpreter",
+        "format": "overpass",
+        "osm_query": ['node["natural"="tree"]'],
+        "feature_label": "Tree",
+        "params": {"srsName": "EPSG:4326"},
+        "requires_bbox": True,
+        "slow": True,
+        "slow_reason": "Well-mapped cities have tens of thousands of trees; a whole city can take a minute or two on the public Overpass server.",
+        "enabled": True,
+    },
 ]
 
 # Build a quick-lookup dict
@@ -1002,6 +1153,15 @@ SOURCE_INFO = {
         "description": "Dutch national weather and climate data. The API key is configured on the server (KNMI_API_KEY), so no credentials are asked for here.",
         "icon": "cloud",
         "color": "sky",
+        "auth_required": False,
+    },
+
+    "osm": {
+        "name": "OpenStreetMap",
+        "full_name": "OpenStreetMap (Overpass API)",
+        "description": "Crowd-sourced open map data, fetched through the Overpass API. No authentication required. Data © OpenStreetMap contributors, ODbL.",
+        "icon": "globe",
+        "color": "emerald",
         "auth_required": False,
     },
 

@@ -183,12 +183,16 @@ class OtherEditableLayersTests(EditingTestCase):
         self.assertAlmostEqual(Street.objects.get(name='Teststraat').geom.length, 100, delta=0.1)
 
     def test_zoning_area_derives_its_area(self):
+        from physicalEnv.models import HILUCSLandUse
+        residential = HILUCSLandUse.objects.get(code='5.1')   # loaded by migration
         response = self.client.post(reverse('map:feature_new', args=['builtup', 'ZoningArea']),
-                                    {'neighborhood': self.neighborhood.pk, 'zone_type': 'residential',
+                                    {'neighborhood': self.neighborhood.pk, 'zone_type': residential.pk,
                                      'geom': _wgs84_geojson(make_polygon(half_size_m=50))})
         self.assertIn('feature-saved', response['HX-Trigger'])
         from builtup.models import ZoningArea
-        self.assertAlmostEqual(ZoningArea.objects.get().area, 10000, delta=5)
+        zone = ZoningArea.objects.get()
+        self.assertAlmostEqual(zone.area, 10000, delta=5)
+        self.assertEqual(zone.zone_type, residential)
 
 
 class BackupRestoreTests(EditingTestCase):

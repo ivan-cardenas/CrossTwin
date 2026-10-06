@@ -1,17 +1,17 @@
 """
 External Data Catalog & Import Logic
 =====================================
-Defines available datasets from PDOK, Sentinel-2, Google Earth Engine and the
-KNMI Data Platform that can be fetched and imported into CrossTwin models.
+Defines available datasets from PDOK, Sentinel-2, Google Earth Engine, the
+KNMI Data Platform and OpenStreetMap (Overpass) that can be fetched and imported into CrossTwin models.
 
 Each catalog entry specifies:
-  - source:       'pdok' | 'sentinel2' | 'gee' | 'knmi'
+  - source:       'pdok' | 'sentinel2' | 'gee' | 'knmi' | 'osm'
   - key:          unique identifier
   - name:         human-readable display name
   - description:  short description for the UI
   - target_model: Django model path (app_label.ModelName)
   - url/endpoint: where to fetch the data
-  - format:       'wfs' | 'wcs' | 'wms' | 'raster' | 'atom'
+  - format:       'wfs' | 'wcs' | 'wms' | 'raster' | 'atom' | 'ogc_api' | 'overpass'
   - field_mapping: dict mapping WFS properties → model fields
   - unique_field:  field to use for update_or_create lookup
 """
@@ -106,22 +106,111 @@ _PLU_NS = {
 }
 
 
+def _hilucs_lookup(value):
+    from physicalEnv.hilucs import hilucs_lookup
+    return hilucs_lookup(value)
+
+
+# __fk_lookup__ "parser" names -> function(source value) returning
+# (lookup value, get_or_create defaults), or None when the value is unusable.
+_FK_LOOKUP_PARSERS = {
+    "hilucs_href": _hilucs_lookup,   # HILUCS URI -> physicalEnv.HILUCSLandUse.code
+}
+
+
+def _resolve_fk_lookups(props: Dict, mapping: Dict, cache: Dict, errors: List[str]) -> Optional[Dict]:
+    """
+    Resolve the mapping's __fk_lookup__ entries for one feature: a plain
+    (non-spatial) FK found by get_or_create-ing a parent row keyed on a
+    source property value -- e.g. a land-cover classification string onto
+    physicalEnv.LandCoverClasses.class_name, creating the category the first
+    time it's seen. Unlike __spatial_fk__, the parent rows don't need to
+    exist already, since the target is a small classification lookup table.
+
+    An entry with "parser" (a key of _FK_LOOKUP_PARSERS) first turns the
+    source value into the lookup value and the defaults for a new row; e.g.
+    "hilucs_href" reads the code '6.3.2' out of a HILUCS URI.
+
+    Returns {model field: parent row}, or None when a required lookup has no
+    usable value and the feature should be skipped. `cache` is shared across
+    the batch: {model field: {source value: parent row}}.
+    """
+    values = {}
+    for fk_conf in mapping.get("__fk_lookup__", []):
+        src_val = props.get(fk_conf["source_property"])
+        parsed = None
+        if src_val is not None:
+            parser = fk_conf.get("parser")
+            parsed = (
+                _FK_LOOKUP_PARSERS[parser](src_val) if parser
+                else (src_val, fk_conf.get("defaults", {}))
+            )
+        if parsed is None:
+            if fk_conf.get("required", True):
+                errors.append(
+                    f"Missing '{fk_conf['source_property']}' for FK lookup "
+                    f"'{fk_conf['field']}' — skipped."
+                )
+                return None
+            continue
+        field_cache = cache.setdefault(fk_conf["field"], {})
+        if src_val not in field_cache:
+            lookup_value, defaults = parsed
+            LookupModel = get_model_class(fk_conf["model"])
+            field_cache[src_val], _ = LookupModel.objects.get_or_create(
+                **{fk_conf["lookup_field"]: lookup_value}, defaults=defaults,
+            )
+        values[fk_conf["field"]] = field_cache[src_val]
+    return values
+
+
+def _gml_multipolygon(elem, gml: str) -> Optional[MultiPolygon]:
+    """
+    WGS84 MultiPolygon of every gml:Polygon below `elem` (None if there are
+    none, or no `elem`), interior rings kept as holes. GML posLists in
+    EPSG:4258 are lat lon pairs, swapped here.
+    """
+    if elem is None:
+        return None
+
+    def ring(pos_list):
+        coords = [float(c) for c in pos_list.text.split()] if pos_list is not None and pos_list.text else []
+        return [(coords[i + 1], coords[i]) for i in range(0, len(coords) - 1, 2)]
+
+    polygons = []
+    for polygon in elem.iter(f"{gml}Polygon"):
+        exterior = ring(polygon.find(f"{gml}exterior//{gml}posList"))
+        if len(exterior) < 4:
+            continue
+        holes = [r for r in (ring(p) for p in polygon.findall(f"{gml}interior//{gml}posList")) if len(r) >= 4]
+        polygons.append(Polygon(exterior, *holes, srid=4326))
+    return MultiPolygon(*polygons, srid=4326) if polygons else None
+
+
 def _import_atom_gml_features(href: str, bbox_polygon: Polygon, Model, mapping: Dict) -> Tuple[int, List[str]]:
     """
-    Stream a plu:SpatialPlan GML file (INSPIRE Planned Land Use) over HTTP and
-    import only the features whose extent intersects bbox_polygon, directly
-    into Model using the same FIELD_MAPPINGS pattern fetch_wfs uses.
+    Stream an INSPIRE Planned Land Use GML file over HTTP and import the
+    plu:ZoningElement features that intersect bbox_polygon into Model, using
+    the FIELD_MAPPINGS pattern fetch_wfs uses.
+
+    Each zoning element becomes one row. Its own properties are its HILUCS
+    land use (hilucslanduseHref, the plu:hilucsLandUse xlink:href) and its
+    localId; the plan it belongs to (plu:plan -> plu:SpatialPlan gml:id)
+    supplies title, plan_type and valid_from. PDOK's file lists every
+    SpatialPlan before the zoning elements, so plans inside the bbox are
+    cached as they stream past.
 
     This dataset ships as a single national file with no per-tile split (tens
     of GB), so there is no cheap way to fetch "just the bbox" -- GML has no
     random access, so any client (ogr2ogr included) has to scan the remote
     file sequentially regardless. iterparse does that same sequential scan
-    but discards each feature immediately after testing it against the bbox,
-    so memory stays bounded to one feature at a time.
+    and drops every wfs:member once read, so memory stays bounded to one
+    feature (plus the cached plans of the bbox).
     """
     from xml.etree import ElementTree as ET
 
     plu, base, gml, xlink, xsi = (_PLU_NS[k] for k in ("plu", "base", "gml", "xlink", "xsi"))
+    wfs_member = "{http://www.opengis.net/wfs/2.0}member"
 
     geom_field = mapping.get("__geometry__", "geom")
     spatial_fk_conf = mapping.get("__spatial_fk__")
@@ -135,54 +224,59 @@ def _import_atom_gml_features(href: str, bbox_polygon: Polygon, Model, mapping: 
                 f"'{spatial_fk_conf['field']}' FK. Import the parent records first."
             ]
 
+    def text_of(el):
+        if el is None or el.get(f"{xsi}nil") == "true" or not el.text:
+            return None
+        return el.text.strip()
+
+    def href_of(el):
+        return el.get(f"{xlink}href") if el is not None else None
+
+    plans = {}             # SpatialPlan gml:id -> {"title", "plan_type", "valid_from"}, bbox only
+    fk_lookup_cache = {}
     created = 0
     errors = []
 
     with requests.get(href, stream=True, timeout=600) as r:
         r.raise_for_status()
         r.raw.decode_content = True
-        for _event, elem in ET.iterparse(r.raw, events=("end",)):
-            if elem.tag != f"{plu}SpatialPlan":
+        root = None
+        for event, elem in ET.iterparse(r.raw, events=("start", "end")):
+            if root is None:
+                root = elem
+            if event != "end":
                 continue
+            if elem.tag == wfs_member:
+                root.clear()   # drop the member just read (and any skipped feature types)
+                continue
+            if elem.tag not in (f"{plu}SpatialPlan", f"{plu}ZoningElement"):
+                continue
+            local_id = text_of(elem.find(f".//{base}localId"))
             try:
-                pos_lists = [p.text for p in elem.findall(f".//{gml}posList") if p.text]
-                polygons = []
-                for text in pos_lists:
-                    coords = [float(c) for c in text.split()]
-                    # GML posList for EPSG:4258 is lat lon pairs -> swap to lon lat
-                    pts = [(coords[i + 1], coords[i]) for i in range(0, len(coords), 2)]
-                    if len(pts) >= 4:
-                        polygons.append(Polygon(pts, srid=4326))
-                if not polygons:
+                if elem.tag == f"{plu}SpatialPlan":
+                    extent = _gml_multipolygon(elem.find(f"{plu}extent"), gml)
+                    if extent is not None and bbox_polygon.intersects(extent):
+                        plan_type = href_of(elem.find(f"{plu}planTypeName"))
+                        plans[elem.get(f"{gml}id")] = {
+                            "title": text_of(elem.find(f"{plu}officialTitle")) or local_id,
+                            "plan_type": plan_type.rsplit("/", 1)[-1] if plan_type else None,
+                            "valid_from": text_of(elem.find(f"{plu}validFrom")),
+                        }
                     continue
 
-                geom = MultiPolygon(*polygons, srid=4326)
-                if not bbox_polygon.intersects(geom):
+                geom = _gml_multipolygon(elem.find(f"{plu}geometry"), gml)
+                if geom is None or not bbox_polygon.intersects(geom):
                     continue
 
-                local_id_el = elem.find(f".//{base}localId")
-                title_el = elem.find(f"{plu}officialTitle")
-                valid_from_el = elem.find(f"{plu}validFrom")
-                plan_type_el = elem.find(f"{plu}planTypeName")
-
-                title = title_el.text.strip() if title_el is not None and title_el.text else None
-                if title is None:
-                    title = local_id_el.text if local_id_el is not None else None
-                valid_from = (
-                    valid_from_el.text
-                    if valid_from_el is not None and valid_from_el.get(f"{xsi}nil") != "true"
-                    else None
-                )
-                plan_type = None
-                if plan_type_el is not None:
-                    href_val = plan_type_el.get(f"{xlink}href")
-                    if href_val:
-                        plan_type = href_val.rsplit("/", 1)[-1]
+                plan_ref = (href_of(elem.find(f"{plu}plan")) or "").lstrip("#")
+                props = {
+                    **plans.get(plan_ref, {}),
+                    "local_id": local_id,
+                    "hilucslanduseHref": href_of(elem.find(f"{plu}hilucsLandUse")),
+                }
 
                 geom.transform(coordinate_system)
-
                 field_values = {geom_field: geom, "area": geom.area}
-                props = {"title": title, "plan_type": plan_type, "valid_from": valid_from}
                 for src_key, model_field in mapping.items():
                     if src_key.startswith("__"):
                         continue
@@ -190,14 +284,18 @@ def _import_atom_gml_features(href: str, bbox_polygon: Polygon, Model, mapping: 
                         field_values[model_field] = props[src_key]
                 field_values.update(mapping.get("__static__", {}))
 
+                fk_values = _resolve_fk_lookups(props, mapping, fk_lookup_cache, errors)
+                if fk_values is None:
+                    continue
+                field_values.update(fk_values)
+
                 if spatial_fk_conf:
                     parent = parent_index.find(geom) if parent_index else None
                     if parent:
                         field_values[spatial_fk_conf["field"]] = parent
                     elif spatial_fk_conf.get("required", True):
                         errors.append(
-                            f"No parent {spatial_fk_conf['model']} found for "
-                            f"'{local_id_el.text if local_id_el is not None else '?'}' — skipped."
+                            f"No parent {spatial_fk_conf['model']} found for '{local_id or '?'}' — skipped."
                         )
                         continue
 
@@ -207,8 +305,6 @@ def _import_atom_gml_features(href: str, bbox_polygon: Polygon, Model, mapping: 
 
             except Exception as e:
                 errors.append(f"Feature import failed: {e}")
-            finally:
-                elem.clear()
 
     return created, errors
 
@@ -710,36 +806,11 @@ def _import_feature_rows(features, dataset, Model, mapping, geom_field, unique_w
                 # they win over anything a source property might otherwise map.
                 field_values.update(mapping.get("__static__", {}))
 
-                # __fk_lookup__: resolve a plain (non-spatial) FK by
-                # get_or_create-ing a parent row keyed on a source property
-                # value -- e.g. mapping a land-cover classification string
-                # straight onto physicalEnv.LandCoverClasses.class_name,
-                # creating the category the first time it's seen. Unlike
-                # __spatial_fk__, the parent rows don't need to already
-                # exist, since the target is a small classification
-                # lookup table rather than an administrative hierarchy.
-                skip_feature = False
-                for fk_conf in mapping.get("__fk_lookup__", []):
-                    src_val = props.get(fk_conf["source_property"])
-                    if src_val is None:
-                        if fk_conf.get("required", True):
-                            errors.append(
-                                f"Missing '{fk_conf['source_property']}' for FK lookup "
-                                f"'{fk_conf['field']}' — skipped."
-                            )
-                            skip_feature = True
-                        break
-                    cache = fk_lookup_cache.setdefault(fk_conf["field"], {})
-                    if src_val not in cache:
-                        LookupModel = get_model_class(fk_conf["model"])
-                        obj, _ = LookupModel.objects.get_or_create(
-                            **{fk_conf["lookup_field"]: src_val},
-                            defaults=fk_conf.get("defaults", {}),
-                        )
-                        cache[src_val] = obj
-                    field_values[fk_conf["field"]] = cache[src_val]
-                if skip_feature:
+                # __fk_lookup__: classification FKs, see _resolve_fk_lookups
+                fk_values = _resolve_fk_lookups(props, mapping, fk_lookup_cache, errors)
+                if fk_values is None:
                     continue
+                field_values.update(fk_values)
 
                 # Resolve spatial FK: the parent whose geometry contains a point of this feature
                 if spatial_fk_conf and parent_index:
@@ -2251,6 +2322,216 @@ class KNMIImporter:
             return ImportResult("error", f"KNMI import failed: {e}")
 
 
+class OSMImporter:
+    """
+    Import handler for OpenStreetMap through the Overpass API.
+
+    The Overpass JSON is converted to GeoJSON features (to_geojson_features)
+    and imported by _import_geojson_features, like WFS and OGC API data.
+    Each catalog entry names its Overpass statements ("osm_query"); the bbox
+    and the output mode are added here, from the target model: point models
+    get `out center` (ways and relations collapsed to a point by Overpass),
+    the others `out geom` (full member geometries, rings assembled below).
+    """
+
+    USER_AGENT = "CrossTwin digital twin importer"
+    TIMEOUT_S = 5000
+
+    _NUMBER = re.compile(r"-?\d+(?:[.,]\d+)?")
+
+    @staticmethod
+    def build_query(dataset: Dict, bbox: list, as_points: bool) -> str:
+        """Overpass QL for `dataset` inside bbox [west, south, east, north] (WGS84)."""
+        west, south, east, north = bbox
+        statements = "\n".join(f"  {s};" for s in dataset["osm_query"])
+        output = "out center tags;" if as_points else "out geom;"
+        return (
+            f"[out:json][timeout:{OSMImporter.TIMEOUT_S}]"
+            f"[bbox:{south},{west},{north},{east}];\n"
+            f"(\n{statements}\n);\n{output}"
+        )
+
+    @staticmethod
+    def parse_number(value) -> Optional[float]:
+        """Leading number of an OSM tag value: '12 m' -> 12.0, '7,5' -> 7.5, '40 ft' -> 12.192."""
+        if value is None:
+            return None
+        text = str(value)
+        match = OSMImporter._NUMBER.search(text)
+        if not match:
+            return None
+        number = float(match.group().replace(",", "."))
+        if "ft" in text or "'" in text:
+            number *= 0.3048
+        return number
+
+    @staticmethod
+    def _ring_or_line(coords: List[list]) -> Optional[Dict]:
+        if len(coords) >= 4 and coords[0] == coords[-1]:
+            return {"type": "Polygon", "coordinates": [coords]}
+        if len(coords) >= 2:
+            return {"type": "LineString", "coordinates": coords}
+        return None
+
+    @staticmethod
+    def _relation_polygon(element: Dict) -> Optional[Dict]:
+        """
+        (Multi)polygon of a multipolygon relation from its member ways.
+        A ring may be split over several ways, so the member lines are noded
+        and polygonized rather than read one way per ring; inner rings are
+        then cut out of the outer area.
+        """
+        from shapely.geometry import LineString, mapping
+        from shapely.ops import polygonize, unary_union
+
+        lines = {"outer": [], "inner": []}
+        for member in element.get("members", []):
+            coords = [(p["lon"], p["lat"]) for p in member.get("geometry") or [] if p]
+            if member.get("type") != "way" or len(coords) < 2:
+                continue
+            lines["inner" if member.get("role") == "inner" else "outer"].append(LineString(coords))
+        if not lines["outer"]:
+            return None
+        outer = unary_union(list(polygonize(unary_union(lines["outer"]))))
+        if lines["inner"]:
+            outer = outer.difference(unary_union(list(polygonize(unary_union(lines["inner"])))))
+        if outer.is_empty or outer.geom_type not in ("Polygon", "MultiPolygon"):
+            return None
+        return mapping(outer)
+
+    @staticmethod
+    def element_geometry(element: Dict) -> Optional[Dict]:
+        """GeoJSON geometry of one Overpass element (out center or out geom)."""
+        if element["type"] == "node":
+            return {"type": "Point", "coordinates": [element["lon"], element["lat"]]}
+        if "center" in element:
+            center = element["center"]
+            return {"type": "Point", "coordinates": [center["lon"], center["lat"]]}
+        if element["type"] == "way":
+            return OSMImporter._ring_or_line([[p["lon"], p["lat"]] for p in element.get("geometry", [])])
+        if element["type"] == "relation" and element.get("tags", {}).get("type") in ("multipolygon", "boundary"):
+            return OSMImporter._relation_polygon(element)
+        return None
+
+    @staticmethod
+    def to_geojson_features(elements: List[Dict], dataset: Dict, polygons_only: bool = False) -> List[Dict]:
+        """
+        Overpass elements -> GeoJSON features whose properties are the OSM
+        tags plus the synthesized osm_id / osm_name / osm_class / osm_subtype
+        (see the OpenStreetMap block of FIELD_MAPPINGS). Elements without a
+        usable geometry, or without a class when the entry defines
+        "osm_classes", are dropped.
+        """
+        classes = dataset.get("osm_classes")
+        subtype_tags = dataset.get("osm_subtype_tags", [])
+        label = dataset.get("feature_label", "Feature")
+        features = []
+        for element in elements:
+            geometry = OSMImporter.element_geometry(element)
+            if geometry is None:
+                continue
+            if polygons_only and geometry["type"] not in ("Polygon", "MultiPolygon"):
+                continue
+            tags = element.get("tags", {})
+            osm_id = f"osm:{element['type']}/{element['id']}"
+            props = dict(tags)
+            props["osm_id"] = osm_id
+            props["osm_name"] = (tags.get("name") or f"{label} {osm_id}")[:100]
+            if classes:
+                props["osm_class"] = next(
+                    (classes[tag][tags[tag]] for tag in classes if tags.get(tag) in classes[tag]), None)
+                if props["osm_class"] is None:
+                    continue
+            props["osm_subtype"] = next((tags[t] for t in subtype_tags if tags.get(t)), None)
+            features.append({"type": "Feature", "properties": props, "geometry": geometry})
+        return features
+
+    @staticmethod
+    def _coerce_numbers(features: List[Dict], Model, mapping: Dict) -> None:
+        """OSM tags are strings ('12 m'); give numeric model fields a number, or drop the tag."""
+        numeric = {
+            prop for prop, field in mapping.items()
+            if not prop.startswith("__")
+            and Model._meta.get_field(field).get_internal_type()
+            in ("FloatField", "IntegerField", "BigIntegerField", "PositiveIntegerField", "DecimalField")
+        }
+        for feat in features:
+            props = feat["properties"]
+            for prop in numeric & props.keys():
+                props[prop] = OSMImporter.parse_number(props[prop])
+
+    @staticmethod
+    def fetch(dataset: Dict, bbox: list) -> ImportResult:
+        """
+        Run the dataset's Overpass query over bbox [west, south, east, north]
+        (WGS84) and import the result into dataset['target_model'].
+        """
+        dataset_key = dataset["key"]
+        try:
+            mapping = FIELD_MAPPINGS.get(dataset_key)
+            if not mapping:
+                return ImportResult("error", f"No field mapping defined for {dataset_key}")
+            try:
+                Model = get_model_class(dataset["target_model"])
+            except ValueError as e:
+                return ImportResult("error", str(e))
+
+            geom_type = Model._meta.get_field(mapping.get("__geometry__", "geom")).geom_type
+            as_points = geom_type in ("POINT", "MULTIPOINT")
+            query = OSMImporter.build_query(dataset, bbox, as_points)
+            url = getattr(settings, "OVERPASS_URL", None) or dataset["url"]
+
+            logger.info(f"Fetching Overpass: {url} dataset={dataset_key}")
+            response = requests.post(
+                url, data={"data": query},
+                headers={"User-Agent": OSMImporter.USER_AGENT},
+                timeout=OSMImporter.TIMEOUT_S + 30,
+            )
+            if response.status_code == 429:
+                return ImportResult("error", "The Overpass server is rate limiting requests. Wait a minute and try again.")
+            if response.status_code == 504:
+                return ImportResult("error", "The Overpass server is busy or the query timed out. Try a smaller area or try again later.")
+            response.raise_for_status()
+            body = response.json()
+
+            # Overpass reports a timeout or memory limit with HTTP 200 and a
+            # "remark", returning whatever it had collected so far.
+            remark = body.get("remark") or ""
+            if "runtime error" in remark:
+                return ImportResult("error", f"Overpass query failed ({remark.strip()}). Try a smaller area.")
+
+            features = OSMImporter.to_geojson_features(
+                body.get("elements", []), dataset,
+                polygons_only=geom_type in ("POLYGON", "MULTIPOLYGON"),
+            )
+            logger.info(f"Fetched {len(features)} feature(s) for {dataset_key}")
+            if not features:
+                return ImportResult("success", "No features found in the specified area.", 0)
+
+            OSMImporter._coerce_numbers(features, Model, mapping)
+            try:
+                created_count, updated_count, errors = _import_geojson_features(features, dataset, Model, mapping)
+            except _ImportBlocked as e:
+                return ImportResult("error", str(e))
+
+            msg_parts = []
+            if created_count:
+                msg_parts.append(f"created {created_count}")
+            if updated_count:
+                msg_parts.append(f"updated {updated_count}")
+            msg = f"Imported {len(features)} OpenStreetMap features: " + ", ".join(msg_parts) + "."
+            if errors:
+                msg += f" ({len(errors)} errors)"
+                logger.warning(f"Import errors for {dataset_key}: {errors[:5]}")
+            return ImportResult("success", msg, created_count, updated_count)
+
+        except requests.RequestException as e:
+            return ImportResult("error", f"Overpass request failed: {e}")
+        except Exception as e:
+            logger.exception(f"Overpass import error for {dataset_key}")
+            return ImportResult("error", f"Import failed: {e}")
+
+
 def import_dataset(
     dataset_key: str,
     bbox: Optional[list] = None,
@@ -2328,5 +2609,8 @@ def import_dataset(
 
     elif source == "knmi":
         return KNMIImporter.fetch_latest(dataset)
+
+    elif source == "osm" and fmt == "overpass":
+        return OSMImporter.fetch(dataset, bbox)
 
     return ImportResult("error on EXTERNAL_DATA", f"No handler for source={source}, format={fmt}")

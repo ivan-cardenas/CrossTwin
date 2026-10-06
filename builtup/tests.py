@@ -86,8 +86,9 @@ class BuiltupDashboardTests(TestCase):
         # 1 km of street, 600 m of it inside the unit (its east edge is at X0 + 500)
         Street.objects.create(name="Hoofdweg", classification="primary", width=8,
                               geom=LineString((X0 - 100, Y0), (X0 + 900, Y0), srid=settings.COORDINATE_SYSTEM))
-        Park.objects.create(name="Park", area=5000, vegetationType="grass",
-                            neighborhood=self.hood, geom=make_polygon(X0, Y0, 35))
+        # Park.save() derives area from geom: a 5 000 m² square
+        Park.objects.create(name="Park", vegetationType="grass",
+                            neighborhood=self.hood, geom=make_polygon(X0, Y0, 5000 ** 0.5 / 2))
         Facility.objects.create(name="School", type="school", neighborhood=self.hood,
                                 geom=Point(X0, Y0, srid=settings.COORDINATE_SYSTEM))
 

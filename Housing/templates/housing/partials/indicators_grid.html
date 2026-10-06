@@ -253,7 +253,7 @@
     <div class="gauge-header">
       <div class="card-icon">🗺️</div>
       <div class="card-label">Zoning & Land Value</div>
-      {% include 'partials/_info_btn.html' with title="Zoning & Land Value" text="Share of total zoned area (m²) that is residential, commercial, industrial or mixed-use, from ZoningArea records. The residential benchmark is the average benchmark price per m² recorded for residential zones." %}
+      {% include 'partials/_info_btn.html' with title="Zoning & Land Value" text="Share of total zoned area (m²) by INSPIRE HILUCS land use: residential (5, except 5.2), commercial (3.1, 3.2), industrial (2) and mixed-use (5.2), from ZoningArea records. The residential benchmark is the average benchmark price per m² recorded for residential zones." %}
     </div>
     <div class="bar-track" style="height:10px; display:flex;">
       <div style="width:{{ indicators.zoning_residential_pct }}%; background:#2E6478;"></div>

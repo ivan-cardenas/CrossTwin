@@ -5,12 +5,18 @@ class LandCoverClassesAdmin(admin.ModelAdmin):
     model = LandCoverClasses
     search_fields = ['class_name', 'description']
 
+class HILUCSLandUseAdmin(admin.ModelAdmin):
+    model = HILUCSLandUse
+    list_display = ['code', 'label']
+    search_fields = ['code', 'label', 'description']
+
 class SurfaceMaterialPropertiesAdmin(admin.ModelAdmin):
     model = SurfaceMaterialProperties
     search_fields = ['material_name', 'description']
 
 # Register your models here.
 admin.site.register(LandCoverClasses, LandCoverClassesAdmin)
+admin.site.register(HILUCSLandUse, HILUCSLandUseAdmin)
 admin.site.register(SurfaceMaterialProperties)
 admin.site.register(WallMaterialProperties)
 admin.site.register(LandCoverVector)

@@ -3,7 +3,7 @@ from django.contrib.gis.db import models
 from django.contrib.postgres.fields import ArrayField
 from django.db.models import Sum
 from administrative.models import City, Neighborhood
-from physicalEnv.models import SurfaceMaterialProperties, WallMaterialProperties
+from physicalEnv.models import HILUCSLandUse, SurfaceMaterialProperties, WallMaterialProperties
 from Energy.models import EnergyEfficiencyLabels
 
 from django.conf import settings
@@ -15,7 +15,7 @@ class ZoningArea(models.Model):
     id = models.AutoField(primary_key=True)
     neighborhood = models.ForeignKey(Neighborhood, verbose_name="Neighborhood", on_delete=models.DO_NOTHING)
 
-    zone_type = models.CharField(max_length=100, null=True, blank=True, choices=[('residential', 'Residential'), ('commercial', 'Commercial'), ('industrial', 'Industrial'), ('mixed', 'Mixed Use')], help_text="Type of zoning area, where known")
+    zone_type = models.ForeignKey(HILUCSLandUse, on_delete=models.DO_NOTHING, null=True, blank=True, related_name="zoning_areas", help_text="HILUCS land use of the zoning area (INSPIRE planned land use hilucsLandUse), where known")
     # Dutch legal plan instrument from INSPIRE Planned Land Use's
     # planTypeName codelist (e.g. 'bestemmingsplan', 'wijzigingsplan',
     # 'omgevingsvergunning') — populated by the pdok_landcover_kadaster
@@ -58,15 +58,21 @@ class Street(models.Model):
         
 class Park(models.Model):
     id = models.AutoField(primary_key=True)
+    sourceID = models.CharField(max_length=100, unique=True, null=True, blank=True, help_text="Identifier in the source dataset, e.g. 'osm:way/123' for OpenStreetMap")
     name = models.CharField(max_length=100, help_text="Name of the park")
     area = models.FloatField(help_text="Area of the park in square meters")
-    vegetationType = models.CharField(max_length=100, help_text="Type of vegetation in the park (e.g., grass, trees, shrubs)")
+    vegetationType = models.CharField(max_length=100, null=True, blank=True, help_text="Type of vegetation in the park (e.g., grass, trees, shrubs), where known")
     neighborhood = models.ForeignKey(Neighborhood, on_delete=models.DO_NOTHING, null=True, blank=True, help_text="City code from administrative.City")
     geom = models.MultiPolygonField(srid=CoordinateSystem)
-    
+
     def __str__(self):
         return self.name
-    
+
+    def save(self, *args, **kwargs):
+        if self.geom:
+            self.area = self.geom.area
+        super().save(*args, **kwargs)
+
     class Meta:
         verbose_name = "Park"
         verbose_name_plural = "Parks"
@@ -77,6 +83,8 @@ class Facility(models.Model):
     type = models.CharField(max_length=100, choices=[('school', 'School'), ('hospital', 'Hospital'), ('fire_station', 'Fire Station'), 
                                                      ('police_station', 'Police Station'), ('market', 'Market'), ('transportNode', 'Transport Node')], 
                             help_text="Type of facility")
+    subtype = models.CharField(max_length=100, null=True, blank=True, help_text="Finer source category within the type, e.g. OSM amenity 'kindergarten' or 'clinic'")
+    sourceID = models.CharField(max_length=100, unique=True, null=True, blank=True, help_text="Identifier in the source dataset, e.g. 'osm:node/123' for OpenStreetMap")
     neighborhood = models.ForeignKey(Neighborhood, on_delete=models.DO_NOTHING, null=True, blank=True, help_text="City code from administrative.City")
     geom = models.PointField(srid=CoordinateSystem)
     

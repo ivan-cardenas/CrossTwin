@@ -7,6 +7,7 @@ from .models import (
 )
 from administrative.admin_units import cities_within, neighborhoods_within, province_of
 from builtup.models import Property, ZoningArea, Building
+from physicalEnv.hilucs import hilucs_q
 
 
 # -- Supply & Demand ---------------------------------------------------------
@@ -282,6 +283,17 @@ def calculate_property_indicators(adminBund):
 
 # -- Zoning -------------------------------------------------------------------
 
+# Dashboard zoning groups -> (HILUCS codes, codes carved out of them); a code
+# includes everything below it in the hierarchy (see hilucs_q). 5.2
+# "residential use with other compatible uses" is the mixed group.
+ZONING_GROUPS = {
+    'residential': (['5'], ['5.2']),
+    'commercial': (['3.1', '3.2'], []),   # commercial; financial, professional and information services
+    'industrial': (['2'], []),            # secondary production
+    'mixed': (['5.2'], []),
+}
+
+
 def calculate_zoning(adminBund):
     """Zoning area breakdown.
 
@@ -295,8 +307,11 @@ def calculate_zoning(adminBund):
     total_area = zones.aggregate(total=Sum('area'))['total'] or 0
 
     by_type = {}
-    for zone_type in ['residential', 'commercial', 'industrial', 'mixed']:
-        type_agg = zones.filter(zone_type=zone_type).aggregate(
+    for zone_type, (codes, carved_out) in ZONING_GROUPS.items():
+        group = zones.filter(hilucs_q('zone_type', codes))
+        if carved_out:
+            group = group.exclude(hilucs_q('zone_type', carved_out))
+        type_agg = group.aggregate(
             area=Sum('area'),
             count=Count('id'),
             avg_benchmark=Avg('benchmarkPrice_per_sqm'),
