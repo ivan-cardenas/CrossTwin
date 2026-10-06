@@ -272,6 +272,9 @@ const ADMIN_PANEL_TOOLS = {
   // (this entry used to omit <level>, so it matched nothing after a selection).
   Housing: (level, location) =>
     `/housing/indicators/${level}/${location}/${window.ACTIVE_YEAR}/${populationQuery()}`,
+  // The building stock has no year; year + population only drive the per-capita cards.
+  builtup: (level, location) =>
+    `/builtup/indicators/${level}/${location}/${window.ACTIVE_YEAR}/${populationQuery()}`,
 };
 
 function syncPanelBtns() {

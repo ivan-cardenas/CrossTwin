@@ -12,7 +12,7 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 
 - [x] `City.popGrowthRate` — now derived in `City.save()` from `population.annual_growth_rate()` (CBS compound annual growth rate over the city's imported projection years)
 - [x] Population curve moves with change, it should be a static curve for bounds and the change can move, the bounds work as comparative 
-- [ ] `urbanizationRate` — still a flat field, never consumed by the population projection in `administrative/population.py`
+- [ ] `urbanizationRate` — still a flat field, never consumed by function. This should be calculated from historical remote sensing imagery. This would be time consuming and memory intensive, so it should be a `calculations.py` function that reads a raster and averages over a time period.
 - [ ] Housing supply/demand does not depend on the projected population — `HousingSupplyDemand` demand still comes from stored rows, not `get_population()`
 - [ ] Urban heat does not depend on the projected population
 - [x] `urban_area` — now cascades Neighborhood → District → City → Province via `administrative/signals.py::_recompute_population()` (generalized to also sum `urban_area`), sourced at the Neighborhood level from `physicalEnv.LandCoverVector` spatial intersection area (`physicalEnv/signals.py`)
@@ -47,7 +47,7 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 
 ## watersupply
 
-- [ ] `Network -> Real_Losses` — `NonRevenueWater` records are entered directly, not linked to `PipeNetwork`
+- [x] `Network -> Real_Losses` — `NonRevenueWater.pipe` FK links each real loss to the `PipeNetwork` where the leakage is presumed (required for real, forbidden for apparent losses in `clean()`); `calculate_nrw()` returns `real_losses_by_pipe` (m³/day and m³/km/day)
 - [ ] `calculate_collection_ratio()` ignores `userAffordability_PCT` and acceptance rate despite its docstring
 - [ ] `calculate_opex_recovery()` computes directly from stored totals rather than calling `calculate_collection_ratio()` or referencing NRW
 - [ ] `Samples_WQ -> User_Acceptance_WS` — `calculate_water_quality()`'s `acceptance_rate` is `Avg('acceptanceRate')`, unrelated to computed compliance
@@ -86,7 +86,6 @@ Collected from `#TODO` comments across the codebase:
 
 ## Product / feature backlog
 
-Moved from `docs/Questions and bugs.md`'s "TODOS" section, with descriptions clarified. Two items marked `[x]` were already struck through there (treat as done, confirm before deleting); a few duplicate gaps already tracked above and are cross-referenced instead of repeated.
 
 **Data sources & indices**
 - [ ] Review current spectral indices (e.g. NDVI, NDWI) against recent remote-sensing research and evaluate whether better-performing alternatives exist for CrossTwin's Dutch/urban context.
@@ -123,8 +122,8 @@ Moved from `docs/Questions and bugs.md`'s "TODOS" section, with descriptions cla
 - [ ] Decide which domain app should own the Population Density raster layer (e.g. `administrative` vs `physicalEnv`).
 
 **HTMX indicator dashboards**
-Existing three-layer pattern (`calculations.py` + `views.py` + templates, see CLAUDE.md) is only built for `watersupply`, `housing`, and `urban_heat` so far.
-- [ ] Build the HTMX indicator dashboard for `builtup`.
+Existing three-layer pattern (`calculations.py` + `views.py` + templates, see CLAUDE.md) is built for `watersupply`, `housing`, `urban_heat` and `builtup` so far.
+- [x] Build the HTMX indicator dashboard for `builtup` (`/builtup/indicators/<level>/<location>/<year>/`; what-if: additional park area).
 - [ ] Build the HTMX indicator dashboard for `Energy`.
 - [ ] Build the HTMX indicator dashboard for `nature`.
 - [x] Housing indicator dashboard 

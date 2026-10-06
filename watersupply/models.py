@@ -415,7 +415,7 @@ class PipeNetwork(models.Model):
     last_updated = models.DateTimeField(default=timezone.now)
     
     def __str__(self):
-        return f"{self.length_km} km"   
+        return f"Pipe {self.id}: {self.length_km or 0:.2f} km"
     
     def save(self, *args, **kwargs):
         self.length_km = self.geom.length / 1000
@@ -545,6 +545,10 @@ class NonRevenueWater(models.Model):
     loss_Quantity_m3 = models.FloatField(help_text="Loss quantity in cubic meters per day")
     WaterCost_EUR_day = models.FloatField(help_text="Water cost in EUR per day")
     UnavoidableLossses_PCT = models.FloatField(help_text="Unavoidable losses in percentage")
+    # DAG edge: Network -> Real_Losses. Nullable only for records created before the link.
+    pipe = models.ForeignKey(PipeNetwork, on_delete=models.DO_NOTHING, null=True, blank=True,
+                             related_name='losses',
+                             help_text="Pipe where the real loss (leakage) is presumed to occur")
     ILI = models.FloatField(null=True, blank=True, help_text="Infrastructure Leakage Index")
     last_updated = models.DateTimeField(default=timezone.now)
 
@@ -584,6 +588,13 @@ class NonRevenueWater(models.Model):
         if self.type in valid_types and self.specificLoss not in valid_types[self.type]:
             raise ValidationError("Invalid loss specification for this loss type.")
 
+        # save() derives type from specificLoss, so judge the pipe by specificLoss too
+        is_real = self.specificLoss in self.REAL_CHOICES
+        if is_real and self.pipe_id is None:
+            raise ValidationError({'pipe': "Real losses must be linked to the pipe where the leakage is presumed."})
+        if not is_real and self.pipe_id is not None:
+            raise ValidationError({'pipe': "Apparent losses are not physical leakage and cannot be linked to a pipe."})
+
     def __str__(self):
         return f"{self.year}: Losses: {self.type} - {self.specificLoss} - {self.loss_Quantity_m3} m3"
 
@@ -596,7 +607,8 @@ class NonRevenueWater(models.Model):
         """
         Create a random NonRevenueWater loss event.
         Picks a random LossesChoices, assigns a plausible quantity
-        and unavoidable percentage, then saves.
+        and unavoidable percentage, then saves. Real losses are placed on a
+        random pipe (none if the network is empty).
         """
         import random
 
@@ -621,6 +633,7 @@ class NonRevenueWater(models.Model):
             loss_Quantity_m3=quantity,
             WaterCost_EUR_day=round(quantity * water_cost_m3, 2),
             UnavoidableLossses_PCT=unavoidable_pct,
+            pipe=PipeNetwork.objects.order_by('?').first() if choice in NonRevenueWater.REAL_CHOICES else None,
         )
         event.save()
         return event

@@ -224,7 +224,10 @@ class BuildingEnergyLabel(Building):
 
 
 class Property(models.Model):
-    id = models.AutoField(primary_key=True)
+    # 64-bit: the PDOK import (pdok_properties) stores the BAG verblijfsobject
+    # identificatie here, a 16-digit number beyond a 32-bit integer. Still
+    # auto-numbered for properties created in the editor or admin.
+    id = models.BigAutoField(primary_key=True)
     name = models.CharField(max_length=100, help_text="Name of the property")
     houseNumber = models.CharField(max_length=5, null=True, blank=True, help_text="House number of the property")
     building = models.ForeignKey(Building, verbose_name="Building", on_delete=models.DO_NOTHING)
@@ -233,7 +236,7 @@ class Property(models.Model):
     greenVisibility = models.FloatField(help_text="Green visibility index of the property", null=True, blank=True)  #TODO: Define green visibility index and calculation method
     bedrooms = models.IntegerField(help_text="Number of bedrooms in the property", null=True, blank=True)
     bathrooms = models.IntegerField(help_text="Number of bathrooms in the property", null=True, blank=True)
-    
+    postalCode = models.CharField(max_length=10, help_text="Postal code of the property", null=True, blank=True) # TODO: This can be a ForeignKey to a PostalCode model of national postal codes, if such a model is created in the future.
     listingPrice_EUR = models.FloatField(help_text="Listing price of the property in EUR", null=True, blank=True)
     salePrice_EUR = models.FloatField(help_text="Sale price of the property in EUR", null=True, blank=True)
     unitaryPrice_EUR_per_sqm = models.FloatField(help_text="Unitary price in EUR per square meter", null=True, blank=True)

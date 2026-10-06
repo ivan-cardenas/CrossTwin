@@ -14,7 +14,10 @@
 <link rel="stylesheet" href="{% static 'css/mainMap.css' %}" />
 <link rel="stylesheet" href="{% static 'css/indicators.css' %}" />
 {% endblock %} {% block extra_js %}
-<script src="https://api.mapbox.com/mapbox-gl-js/v3.18.0/mapbox-gl.js"></script>
+<!-- Includes the Mapbox GL JS CSS stylesheet -->
+{% comment %} <link href="https://api.mapbox.com/mapbox-gl-js/v3.32.0/mapbox-gl.css" rel="stylesheet"> {% endcomment %}
+<!-- Imports the Mapbox GL JS bundle -->
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.32.0/mapbox-gl.js"></script>
 <script src="{% static 'js/Config.js' %}"></script>
 <script src="{% static 'js/CityName.js' %}"></script>
 <script src="{% static 'js/Draggable.js' %}"></script>
@@ -43,7 +46,12 @@
         <div class="tool-tooltip">Administrative Data</div>
       </button>
 
-      <button class="tool-button" data-tool="builtup">
+      <button class="tool-button" data-tool="builtup"
+        data-panel-title="BUILT-UP"
+        hx-get="{% url 'builtup:builtup_indicators' level='province' location='Demo' year=2025 %}"
+        hx-target="#panel-body"
+        hx-indicator="#map-loader"
+        hx-swap="innerHTML">
         <span>🏗️</span>
         <div class="tool-tooltip">Built-up</div>
       </button>

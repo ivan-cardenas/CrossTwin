@@ -72,7 +72,7 @@ def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, po
     opex_total = supply_m3_yr * avg_opex_m3
 
     # NRW breakdown
-    nrw = calculate_nrw(year)
+    nrw = calculate_nrw(year, adminUnit)
 
     # Energy & emissions (DAG: Total_Extraction → Energy_Consumption, CO2_Emission)
     energy_kwh_day = calculate_energy_consumption(adminUnit)

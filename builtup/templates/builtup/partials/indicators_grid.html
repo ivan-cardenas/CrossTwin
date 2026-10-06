@@ -1,0 +1,205 @@
+{% load humanize l10n %}
+<div class="grid">
+
+  <!-- Built-up Coverage -->
+  <div class="card gauge"
+       data-gauge-val="{{ indicators.built_coverage_pct|default:0|unlocalize }}"
+       data-gauge-id="gauge-built-coverage"
+       data-gauge-color="{{ indicators.layer_colors.building }}">
+    <div class="gauge-header">
+      <div class="card-icon">🏙️</div>
+      <div class="card-label">Built-up Coverage</div>
+      {% include 'partials/_info_btn.html' with title="Built-up Coverage" text="Share of the unit's area covered by building footprints: Σ building footprint (m²) ÷ unit area (m²). The figure below is the floor-area ratio (FAR): Σ footprint × storeys ÷ unit area, with storeys = recorded floor count, else height ÷ 3 m." %}
+    </div>
+    <div class="gauge-body bottom">
+      <svg viewBox="0 0 120 70" width="160" height="95" aria-hidden="true">
+        <path d="M 10,65 A 50,50 0 0 1 110,65"
+              fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10"
+              stroke-linecap="round"/>
+        <path id="gauge-built-coverage"
+              d="M 10,65 A 50,50 0 0 1 110,65"
+              fill="none" stroke="{{ indicators.layer_colors.building }}" stroke-width="10"
+              stroke-linecap="round"
+              stroke-dasharray="157.08"
+              stroke-dashoffset="157.08"
+              style="transition: stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)"/>
+        <text x="60" y="55" text-anchor="middle"
+              font-family="var(--font-base)" font-size="15" font-weight="700"
+              fill="#e8f4ff" id="gauge-built-coverage-txt">–</text>
+        <text x="60" y="67" text-anchor="middle"
+              font-family="var(--font-mono)" font-size="7"
+              fill="rgba(232,244,255,0.45)">FAR {{ indicators.floor_area_ratio|default:"–" }}</text>
+      </svg>
+    </div>
+  </div>
+
+  <!-- Green Space per Inhabitant — slider-controlled -->
+  <div class="card gauge"
+       data-gauge-val="{{ indicators.green_per_capita_m2|default:0|unlocalize }}"
+       data-gauge-max="{{ indicators.green_good_m2 }}"
+       data-gauge-id="gauge-green"
+       data-gauge-color="{{ indicators.layer_colors.park }}">
+    <div class="gauge-header">
+      <div class="card-icon">🌳</div>
+      <div class="card-label">Park Area per Inhabitant</div>
+      {% include 'partials/_info_btn.html' with title="Park Area per Inhabitant" text="Park area (m², plus the slider's additional hectares) ÷ projected population for the selected year. WHO Europe recommends at least 9 m² of green space per inhabitant and ideally 50 m²; the tag shows whether the area is below the minimum, between minimum and ideal, or at the ideal." %}
+    </div>
+    <div class="gauge-body" style="flex:1; display:flex; justify-content:center; align-items:center;">
+      <svg viewBox="0 0 100 100" width="110" height="110" aria-hidden="true">
+        <circle cx="50" cy="50" r="38"
+                fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="12"/>
+        <circle id="gauge-green"
+                cx="50" cy="50" r="38"
+                fill="none" stroke="{{ indicators.layer_colors.park }}" stroke-width="12"
+                stroke-linecap="round"
+                stroke-dasharray="238.76"
+                stroke-dashoffset="238.76"
+                transform="rotate(-90 50 50)"
+                style="transition: stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)"/>
+        <text x="50" y="50" text-anchor="middle"
+              font-family="var(--font-base)" font-size="18" font-weight="700"
+              fill="#e8f4ff" id="gauge-green-txt">–</text>
+        <text x="50" y="62" text-anchor="middle"
+              font-family="var(--font-mono)" font-size="8"
+              fill="rgba(232,244,255,0.45)">m² / person</text>
+      </svg>
+    </div>
+    {% if indicators.green_status %}
+    <div>
+      <span class="threshold-tag {{ indicators.green_status }}">
+        {% if indicators.green_status == 'ok' %}Meets WHO ideal{% elif indicators.green_status == 'warn' %}Above WHO minimum{% else %}Below WHO minimum{% endif %}
+      </span>
+    </div>
+    {% endif %}
+    <div style="margin-top:auto; font-size:9px; color:rgba(232,244,255,0.35);">
+      {{ indicators.park_area_ha|intcomma }} ha in {{ indicators.park_count }} parks{% if indicators.green_added_ha %} (incl. +{{ indicators.green_added_ha|floatformat:0 }} ha){% endif %} · {{ indicators.park_share_pct }}% of area
+    </div>
+  </div>
+
+  <!-- Building Stock -->
+  <div class="card wide">
+    <div class="gauge-header">
+      <div class="card-icon">🏢</div>
+      <div class="card-label">Building Stock</div>
+      {% include 'partials/_info_btn.html' with title="Building Stock" text="Buildings (BAG panden) whose neighborhood lies in the selected unit. Units are the recorded housing/commercial units; dwellings per 1 000 is units ÷ projected population × 1 000. Height and floors are averages over buildings that report them; vacancy is the share of buildings flagged vacant." %}
+    </div>
+    <div style="display:flex; gap:16px; flex-wrap:wrap; margin-top:4px;">
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Buildings</div>
+        <div style="font-family:var(--font-base); font-size:1rem; font-weight:700;">{{ indicators.total_buildings|intcomma }}</div>
+      </div>
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Units</div>
+        <div style="font-family:var(--font-base); font-size:1rem; font-weight:700;">{{ indicators.total_units|intcomma }}</div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.35);">{{ indicators.units_per_1000|default:"–" }} per 1 000 inh.</div>
+      </div>
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Floor Area</div>
+        <div style="font-family:var(--font-base); font-size:1rem; font-weight:700;">{{ indicators.total_floor_area_m2|intcomma }} <span style="font-size:0.65rem; color:rgba(232,244,255,0.45);">m²</span></div>
+      </div>
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Avg Height</div>
+        <div style="font-family:var(--font-base); font-size:1rem; font-weight:700;">{{ indicators.avg_height_m|default:"–" }} <span style="font-size:0.65rem; color:rgba(232,244,255,0.45);">m</span></div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.35);">{{ indicators.avg_floors|default:"–" }} floors</div>
+      </div>
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Vacant</div>
+        <div style="font-family:var(--font-base); font-size:1rem; font-weight:700;">{{ indicators.vacant_pct }}%</div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.35);">{{ indicators.vacant_buildings|intcomma }} buildings</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Building Type Mix -->
+  <div class="card wide">
+    <div class="gauge-header">
+      <div class="card-icon">🧩</div>
+      <div class="card-label">Building Type Mix</div>
+      {% include 'partials/_info_btn.html' with title="Building Type Mix" text="Share of buildings per coarse type, derived from each building's BAG usage function(s) (gebruiksdoel). A building with usage functions from more than one type counts as Mixed; buildings with no recorded usage show as Unknown type. Colours match the Buildings layer on the map." %}
+    </div>
+    <div class="bar-track" style="height:10px; display:flex;">
+      {% for seg in indicators.mix_segments %}
+      <div style="width:{{ seg.pct|unlocalize }}%; background:{{ seg.color }};" title="{{ seg.label }} {{ seg.pct }}%"></div>
+      {% endfor %}
+    </div>
+    <div style="display:flex; gap:14px; margin-top:10px; flex-wrap:wrap;">
+      {% for seg in indicators.mix_segments %}
+      <div>
+        <div style="font-size:9px; color:{{ seg.color }}; text-transform:uppercase; letter-spacing:0.1em;">{{ seg.label }}</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ seg.pct }}%</div>
+      </div>
+      {% endfor %}
+    </div>
+    <div style="margin-top:6px; font-size:9px; color:rgba(232,244,255,0.35);">
+      {{ indicators.mix_total|intcomma }} buildings · {{ indicators.mix_unclassified|intcomma }} without usage data
+    </div>
+  </div>
+
+  <!-- Construction Period -->
+  <div class="card wide">
+    <div class="gauge-header">
+      <div class="card-icon">🕰️</div>
+      <div class="card-label">Construction Period</div>
+      {% include 'partials/_info_btn.html' with title="Construction Period" text="Buildings with a recorded construction year, grouped into the construction periods of the Dutch housing-stock typology (RVO reference dwellings). Each period shares building regulations, so it is a rough proxy for insulation level and renovation need." %}
+    </div>
+    {% for period in indicators.age_periods %}
+    <div style="display:flex; align-items:center; gap:8px; margin-top:6px;">
+      <div style="width:72px; font-size:9px; color:rgba(232,244,255,0.55); font-family:var(--font-mono);">{{ period.label }}</div>
+      <div class="bar-track" style="flex:1; height:8px;">
+        <div class="bar-fill" style="width:{{ period.pct|unlocalize }}%; background:{{ indicators.layer_colors.building }};"></div>
+      </div>
+      <div style="width:44px; text-align:right; font-size:0.8rem; font-weight:600;">{{ period.pct }}%</div>
+    </div>
+    {% endfor %}
+    <div style="margin-top:8px; font-size:9px; color:rgba(232,244,255,0.35);">
+      {{ indicators.dated_buildings|intcomma }} dated buildings · average year {{ indicators.avg_construction_year|default:"–"|unlocalize }}
+    </div>
+  </div>
+
+  <!-- Street Network -->
+  <div class="card c2">
+    <div class="gauge-header">
+      <div class="card-icon">🛣️</div>
+      <div class="card-label">Street Network</div>
+      {% include 'partials/_info_btn.html' with title="Street Network" text="Total street length clipped to the unit's boundary (a street crossing it counts only with its inside part) and street density = length (km) ÷ unit area (km²). The split shows primary / secondary / residential streets by length." %}
+    </div>
+    <div>
+      <div class="card-value" style="color:{{ indicators.layer_colors.street }};">{{ indicators.street_density|default:"–" }}</div>
+      <div class="card-unit">km / km²</div>
+    </div>
+    <div class="bar-track" style="height:8px; display:flex; margin-top:8px;">
+      <div style="width:{{ indicators.street_primary_pct|unlocalize }}%; background:{{ indicators.layer_colors.street }};"></div>
+      <div style="width:{{ indicators.street_secondary_pct|unlocalize }}%; background:{{ indicators.layer_colors.street }}; opacity:0.65;"></div>
+      <div style="width:{{ indicators.street_residential_pct|unlocalize }}%; background:{{ indicators.layer_colors.street }}; opacity:0.35;"></div>
+    </div>
+    <div style="margin-top:auto; font-size:9px; color:rgba(232,244,255,0.35);">
+      {{ indicators.street_length_km|intcomma }} km ·
+      <span style="color:{{ indicators.layer_colors.street }};">primary {{ indicators.street_primary_pct }}%</span> ·
+      <span style="color:{{ indicators.layer_colors.street }}; opacity:0.75;">secondary {{ indicators.street_secondary_pct }}%</span> ·
+      <span style="color:{{ indicators.layer_colors.street }}; opacity:0.5;">residential {{ indicators.street_residential_pct }}%</span>
+    </div>
+  </div>
+
+  <!-- Urban Facilities -->
+  <div class="card c2">
+    <div class="gauge-header">
+      <div class="card-icon">🏫</div>
+      <div class="card-label">Urban Facilities</div>
+      {% include 'partials/_info_btn.html' with title="Urban Facilities" text="Facilities (schools, hospitals, fire and police stations, markets, transport nodes) in the unit's neighborhoods, and their number per 10 000 projected inhabitants for the selected year." %}
+    </div>
+    <div>
+      <div class="card-value" style="color:{{ indicators.layer_colors.facility }};">{{ indicators.facilities_per_10k|default:"–" }}</div>
+      <div class="card-unit">per 10 000 inhabitants</div>
+    </div>
+    <div style="margin-top:auto; font-size:9px; color:rgba(232,244,255,0.35); line-height:1.6;">
+      {{ indicators.total_facilities }} total ·
+      🏫 {{ indicators.facility_counts.school }} ·
+      🏥 {{ indicators.facility_counts.hospital }} ·
+      🚒 {{ indicators.facility_counts.fire_station }} ·
+      🚓 {{ indicators.facility_counts.police_station }} ·
+      🛒 {{ indicators.facility_counts.market }} ·
+      🚉 {{ indicators.facility_counts.transportNode }}
+    </div>
+  </div>
+
+</div>

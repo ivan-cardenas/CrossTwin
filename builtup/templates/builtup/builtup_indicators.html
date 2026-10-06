@@ -1,0 +1,11 @@
+{% extends 'indicators_base.html' %}
+
+{% block title %}Built-up Fabric Dashboard{% endblock %}
+{% block label_tag %}CrossTwin · Built Environment{% endblock %}
+{% block year_badge %}<div class="year-badge">{{ year }}</div>{% endblock %}
+
+{# builtup/partials/indicators_panel.html already contains its own slider
+   and #indicators-grid div, so it replaces both the base's slider and
+   grid_wrapper blocks rather than nesting inside them. #}
+{% block slider %}{% endblock %}
+{% block grid_wrapper %}{% include 'builtup/partials/indicators_panel.html' %}{% endblock %}

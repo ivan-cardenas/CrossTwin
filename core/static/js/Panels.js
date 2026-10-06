@@ -66,7 +66,7 @@ function showDashboardSummary() {
       </div>
 
       <p class="dashboard-note">
-        Pick a thematic tool (Water Supply, Heat, Housing) on the left toolbar to see its indicators.
+        Pick a thematic tool (Water Supply, Heat, Housing, Built-up) on the left toolbar to see its indicators.
       </p>
     `;
   }
