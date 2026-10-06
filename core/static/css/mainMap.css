@@ -1923,3 +1923,83 @@
     cursor: pointer;
 }
 .pop-reset:hover { color: var(--text-main); border-color: var(--border-ui-strong); }
+
+/* ── Map editing (Editing.js, mainMap/editing.py) ───────────────────────── */
+.mapboxgl-popup-content .popup-edit-btn {
+    margin-top: 4px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border-ui-strong);
+    color: var(--text-main);
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.mapboxgl-popup-content .popup-edit-btn:hover { background: var(--bg-active); }
+
+.edit-backup-bar:empty { display: none; }
+.edit-backup {
+    margin: 0 0 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--border-ui);
+    border-radius: 6px;
+    background: var(--surface-strong);
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+.edit-backup-status { display: flex; align-items: center; gap: 6px; }
+.edit-backup-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--text-dim);
+    flex: none;
+}
+.edit-backup-dot.active { background: var(--success); }
+.edit-backup-actions,
+.edit-backup-confirm,
+.feature-editor-actions,
+.feature-editor-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.edit-backup-confirm[hidden],
+.feature-editor-confirm[hidden] { display: none; }
+.edit-backup-msg { margin-top: 6px; color: var(--text-tertiary); }
+
+.fe-btn {
+    background: var(--bg-raised);
+    border: 1px solid var(--border-ui-strong);
+    color: var(--text-main);
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.fe-btn:hover { background: var(--bg-active); }
+.fe-btn-primary { background: var(--accent); border-color: var(--accent); }
+.fe-btn-danger { border-color: rgba(var(--error-rgb), 0.6); color: var(--error-text); }
+
+.feature-editor-head { margin-bottom: 10px; }
+.feature-editor-title { font-family: var(--font-base); font-weight: 600; font-size: 15px; color: var(--text-main); }
+.feature-editor-hint { font-size: 12px; color: var(--text-tertiary); }
+.feature-editor-msg {
+    font-size: 12px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    margin-bottom: 8px;
+    background: var(--surface-strong);
+    color: var(--text-secondary);
+}
+.feature-editor-msg.ok { background: rgba(var(--success-rgb), 0.15); color: var(--text-main); }
+.feature-editor-msg.warn { background: rgba(var(--warning-rgb), 0.15); color: var(--text-main); }
+.feature-editor-msg.error { background: rgba(var(--error-rgb), 0.15); color: var(--error-text); }
+/* crispy-tailwind renders light-theme inputs; match the dark panel */
+.feature-editor-form label { color: var(--text-tertiary); font-size: 12px; }
+.feature-editor-form input:not([type="checkbox"]),
+.feature-editor-form select,
+.feature-editor-form textarea {
+    width: 100%;
+    background: var(--bg-raised);
+    border: 1px solid var(--border-ui-strong);
+    color: var(--text-main);
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-size: 12px;
+}
+.feature-editor-form small { color: var(--text-dim); font-size: 11px; }

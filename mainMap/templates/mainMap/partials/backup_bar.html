@@ -1,0 +1,35 @@
+{% comment %}
+  Backup bar at the top of the Layers panel (staff only, mainMap/editing.py).
+  The container in MapUI.js::renderLayerList loads it, and reloads it on the
+  feature-saved event; Create/Restore/Discard re-render it with their response. The form carries the CSRF token
+  for the hx-post buttons.
+{% endcomment %}
+<form class="edit-backup" hx-target="#edit-backup-bar" hx-swap="innerHTML">
+  {% csrf_token %}
+  {% if backup %}
+    <div class="edit-backup-status">
+      <span class="edit-backup-dot active"></span>
+      Backup since {{ backup.created_at|time:"H:i" }} · {{ changed }} object{{ changed|pluralize }} changed
+    </div>
+    <div class="edit-backup-actions">
+      <button type="button" class="fe-btn fe-btn-primary" data-editor-action="ask-restore">Restore</button>
+      <button type="button" class="fe-btn" hx-post="{% url 'map:edit_backup_discard' %}"
+              title="Keep the current data and drop the restore point">Discard</button>
+    </div>
+    <div class="edit-backup-confirm" hidden>
+      <span>Undo all {{ changed }} change{{ changed|pluralize }}?</span>
+      <button type="button" class="fe-btn fe-btn-danger" hx-post="{% url 'map:edit_backup_restore' %}">Yes, restore</button>
+      <button type="button" class="fe-btn" data-editor-action="keep">No</button>
+    </div>
+  {% else %}
+    <div class="edit-backup-status">
+      <span class="edit-backup-dot"></span>
+      No backup: edits are permanent
+    </div>
+    <div class="edit-backup-actions">
+      <button type="button" class="fe-btn fe-btn-primary" hx-post="{% url 'map:edit_backup' %}"
+              title="Set a restore point before testing what-ifs">Create backup</button>
+    </div>
+  {% endif %}
+  {% if message %}<div class="edit-backup-msg">{{ message }}</div>{% endif %}
+</form>

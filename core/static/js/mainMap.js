@@ -300,6 +300,8 @@ function findActiveAdminTool() {
 // fallbackTool to open one when none is open yet (e.g. first map click);
 // omit it to no-op when the open panel isn't admin-unit-driven.
 function refreshActivePanel(fallbackTool = null) {
+  // Panning or a click on a neighbourhood must not replace the edit form
+  if (typeof isEditing === 'function' && isEditing()) return;
   const tool = findActiveAdminTool() || fallbackTool;
   const btn = tool && document.querySelector(`[data-tool="${tool}"]`);
   if (!btn) return;

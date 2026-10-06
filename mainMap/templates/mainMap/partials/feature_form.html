@@ -1,0 +1,56 @@
+{% load crispy_forms_tags %}
+{% comment %}
+  Side-panel editor for one layer object (mainMap/editing.py). Editing.js
+  watches #panel-body for #feature-editor: it adds the drawing tools for the
+  geometry in #feature-editor-geojson and writes the edited shape into the
+  hidden geometry input. No inline scripts (project convention).
+{% endcomment %}
+{% if deleted %}
+<div class="feature-editor-done" data-layer-key="{{ layer_key }}">
+  <div class="feature-editor-msg ok">{{ deleted|capfirst }} deleted.</div>
+</div>
+{% else %}
+<div class="feature-editor" id="feature-editor"
+     data-layer-key="{{ layer_key }}"
+     data-pk="{{ obj.pk|default_if_none:'' }}"
+     data-geom-field="{{ geom_field }}"
+     data-geom-type="{{ geom_type }}">
+  {{ geojson|json_script:"feature-editor-geojson" }}
+
+  <div class="feature-editor-head">
+    <div class="feature-editor-title">
+      {% if obj.pk is not None %}{{ verbose_name|capfirst }} {{ obj.pk }}{% else %}New {{ verbose_name }}{% endif %}
+    </div>
+    <div class="feature-editor-hint">
+      {% if obj.pk is not None %}Drag the vertices on the map to reshape it.{% else %}Draw the shape on the map, then fill in the form.{% endif %}
+    </div>
+  </div>
+
+  {% if not backup %}
+  <div class="feature-editor-msg warn">No backup: changes are permanent. Create one in the Layers panel to test what-ifs.</div>
+  {% endif %}
+  {% if saved %}<div class="feature-editor-msg ok">Saved.</div>{% endif %}
+  {% if message %}<div class="feature-editor-msg error">{{ message }}</div>{% endif %}
+  {% for error in geom_errors %}<div class="feature-editor-msg error">Shape: {{ error }}</div>{% endfor %}
+
+  <form class="feature-editor-form" hx-post="{{ post_url }}" hx-target="#panel-body" hx-swap="innerHTML">
+    {% csrf_token %}
+    {{ form|crispy }}
+    <div class="feature-editor-actions">
+      <button type="submit" class="fe-btn fe-btn-primary">Save</button>
+      <button type="button" class="fe-btn" data-editor-action="cancel">Cancel</button>
+      {% if delete_url %}
+      <button type="button" class="fe-btn fe-btn-danger" data-editor-action="ask-delete">Delete</button>
+      {% endif %}
+    </div>
+    {% if delete_url %}
+    <div class="feature-editor-confirm" hidden>
+      <span>Are you sure?</span>
+      <button type="button" class="fe-btn fe-btn-danger"
+              hx-post="{{ delete_url }}" hx-target="#panel-body" hx-swap="innerHTML">Yes, delete</button>
+      <button type="button" class="fe-btn" data-editor-action="keep">No</button>
+    </div>
+    {% endif %}
+  </form>
+</div>
+{% endif %}

@@ -1,4 +1,14 @@
 # .graphifyignore
-/migrations/
+**/migrations/
+**/tests/
+**/__pycache__/
 
-docs/
+/docs/
+test_*.py
+__init__.py
+
+/.claude/
+/.venv/
+
+__pycache__/
+graphify-out/

@@ -14,6 +14,7 @@ from django.urls import reverse
 from core.utils import VECTOR_REGISTRY, WMS_REGISTRY, RASTER_REGISTRY, MODEL_REGISTRY
 from core.rasterStyles import raster_display_name
 from core.landCoverStyles import build_landcover_style_and_legend
+from .editing import is_editable
 
 
 # Ordered from most specific to least — first match wins
@@ -384,6 +385,30 @@ def model_geojson(request, app_label, model_name):
     return response
 
 
+# Building colour by Building.buildingType (derived from the BAG usage function
+# in Building.save()). Listed in legend order; 'unknown' is the match fallback
+# for buildings without a type and must stay last.
+BUILDING_TYPE_COLORS = {
+    'residential':   '#43a047',   # green
+    'commercial':    '#1e88e5',   # blue
+    'industrial':    '#b8860b',   # dark yellow
+    'mixed':         '#00897b',   # blue-green
+    'institutional': '#8e6cc0',   # purple
+    'unknown':       '#9e9e9e',   # grey
+}
+BUILDING_TYPE_LABELS = [
+    ('residential', 'Residential'),
+    ('commercial', 'Commercial'),
+    ('industrial', 'Industrial'),
+    ('mixed', 'Mixed use'),
+    ('institutional', 'Institutional'),
+    ('unknown', 'Unknown type'),
+]
+# Extrusion height when Building.height_m is missing: floors x this, else the default.
+BUILDING_FLOOR_HEIGHT_M = 3
+BUILDING_DEFAULT_HEIGHT_M = 10
+
+
 LAYER_STYLES = {
     # ── administrative hierarchy ────────────────────────────────────────────
     'administrative.Province': {
@@ -481,13 +506,26 @@ LAYER_STYLES = {
         ],
     },
     'builtup.Building': {
-        'color': '#ffa726',
+        'color': BUILDING_TYPE_COLORS['residential'],
+        'legend': [{'label': label, 'color': BUILDING_TYPE_COLORS[key]} for key, label in BUILDING_TYPE_LABELS],
         'layers': [
             {'type': 'fill-extrusion', 'paint': {
-                'fill-extrusion-color': '#ffa726',
-                'fill-extrusion-height': ['coalesce', ['get', 'height'], 10],
+                'fill-extrusion-color': [
+                    'match', ['get', 'buildingType'],
+                    *[v for key, _ in BUILDING_TYPE_LABELS[:-1] for v in (key, BUILDING_TYPE_COLORS[key])],
+                    BUILDING_TYPE_COLORS['unknown'],
+                ],
+                # Stored height (height_m) when known, else floors x BUILDING_FLOOR_HEIGHT_M,
+                # else BUILDING_DEFAULT_HEIGHT_M. The property is 'height_m', the model field name.
+                'fill-extrusion-height': [
+                    'case',
+                    ['!=', ['get', 'height_m'], None], ['to-number', ['get', 'height_m']],
+                    ['!=', ['get', 'numberFloors'], None],
+                    ['*', ['to-number', ['get', 'numberFloors']], BUILDING_FLOOR_HEIGHT_M],
+                    BUILDING_DEFAULT_HEIGHT_M,
+                ],
                 'fill-extrusion-base': 0,
-                'fill-extrusion-opacity': 0.75,
+                'fill-extrusion-opacity': 0.8,
             }},
         ],
     },
@@ -646,7 +684,7 @@ def available_layers(request):
                 count = 0
 
             style_layers = LAYER_STYLES.get(key, {}).get('layers')
-            legend = None
+            legend = LAYER_STYLES.get(key, {}).get('legend')
 
             if key == 'physicalEnv.LandCoverVector':
                 # Categorical color-per-class_name — computed per-request
@@ -672,6 +710,11 @@ def available_layers(request):
             }
             if legend:
                 layer_entry['legend'] = legend
+            if is_editable(key, request.user):
+                # Makes the popup's Edit button and the Layers panel's ＋ appear;
+                # edit_geom_type tells the editor whether to wrap drawn shapes in Multi*.
+                layer_entry['editable'] = True
+                layer_entry['edit_geom_type'] = field.geom_type
             layers.append(layer_entry)
 
             color_index += 1

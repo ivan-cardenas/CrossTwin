@@ -26,7 +26,7 @@
 \maketitle
 
 \begin{abstract}
-This document catalogs every quantitative computation currently implemented in the CrossTwin platform's domain apps (\code{administrative}, \code{watersupply}, \code{housing}, \code{urban\_heat}), records the exact equation each function evaluates, the variables and their units, the source data model(s), and the corresponding edge(s) in the project's Driver--Pressure--State--Impact--Response (DPSIR) causal graph (\code{core/DAG.dot}). It is intended as a working reference while preparing a manuscript describing CrossTwin's indicator methodology, and as a running record of which causal relationships are backed by executable derivation logic versus flat, manually entered fields. Status tags (\statusdone{} / \statuspartial{} / \statusgap{}) follow the coverage audit in \code{TODO.md}.
+This document catalogs every quantitative computation currently implemented in the CrossTwin platform's domain apps (\code{administrative}, \code{watersupply}, \code{housing}, \code{urban\_heat}), plus the map-editing and what-if backup functions of \code{mainMap}, records the exact equation each function evaluates, the variables and their units, the source data model(s), and the corresponding edge(s) in the project's Driver--Pressure--State--Impact--Response (DPSIR) causal graph (\code{core/DAG.dot}). It is intended as a working reference while preparing a manuscript describing CrossTwin's indicator methodology, and as a running record of which causal relationships are backed by executable derivation logic versus flat, manually entered fields. Status tags (\statusdone{} / \statuspartial{} / \statusgap{}) follow the coverage audit in \code{TODO.md}.
 \end{abstract}
 
 \tableofcontents
@@ -438,6 +438,83 @@ WBGT bands (\si{\celsius}: 25/28/30/33 thresholds) are marked \textbf{provisiona
 \end{equation}
 \textbf{DAG edges:} \dagedge{UTCI $\rightarrow$ NBS}, \dagedge{PET $\rightarrow$ NBS} --- \statusgap{} (counts NBS geometries only; never reads PET or UTCI values to relate NBS placement to thermal stress)
 
+\section{Map editing and what-if backup (mainMap app)}
+\label{sec:mapediting}
+
+Source: \code{mainMap/editing.py}, \code{mainMap/models.py}, \code{core/static/js/Editing.js}; design in \code{docs/MAP\_EDITING.md}. Staff users edit built-up objects (\code{Building}, \code{Street}, \code{Park}, \code{Facility}, \code{ZoningArea}) directly on the map, and can set one restore point so what-if edits can be undone. These functions implement no DPSIR edge themselves; they are \emph{Response}-side tooling that changes the State variables (buildings, streets, zoning) from which the indicator functions above are computed. Every write goes through the model's \code{save()}, so the derivations documented elsewhere in this registry (e.g.\ \code{Building.save()}, the cache invalidation in \code{core/signals.py}) apply unchanged.
+
+\subsection{Editable-layer allowlist --- \code{EDITABLE\_LAYERS}, \code{is\_editable()}}
+\textbf{Location:} \code{mainMap/editing.py:36}, \code{:55}
+
+For a layer $\ell$ and user $u$,
+\begin{equation}
+  \mathrm{editable}(\ell, u) = [\,\ell \in \mathcal{E}\,] \wedge [\,u.\texttt{is\_staff}\,],
+\end{equation}
+where $\mathcal{E}$ is the allowlist. Each entry lists the fields the model derives itself (\code{exclude}, kept out of the form) and the fields the form must not require (\code{optional}). For \code{Building}: $\texttt{exclude} = \{\texttt{area\_sqm}, \texttt{neighborhood}, \texttt{last\_updated}, \texttt{connectivity}\}$, $\texttt{optional} = \{\texttt{buildingType}\}$; for \code{ZoningArea}: $\texttt{exclude} = \{\texttt{area}\}$. The layer catalog (\code{available\_layers}) adds \code{editable} and \code{edit\_geom\_type} to an entry only when $\mathrm{editable}(\ell, u)$ holds.
+
+\subsection{Attribute and geometry form --- \code{\_build\_form()}, \code{feature\_form()}}
+\textbf{Location:} \code{mainMap/editing.py:71}, \code{:134}
+
+The browser sends the edited shape as WGS84 GeoJSON in a hidden form field. Django's GIS form field parses it, rejects a geometry whose type differs from the model field's (e.g.\ a \code{Polygon} for a \code{MultiPolygonField}), and reprojects it to the storage CRS:
+\begin{equation}
+  g_{\text{stored}} = T_{4326 \rightarrow 28992}\!\left(g_{\text{GeoJSON}}\right)
+\end{equation}
+The editor (\code{Editing.js::\_writeGeometry()}) wraps single geometries before sending them when the field is a Multi* type: $\texttt{Polygon}(c) \mapsto \texttt{MultiPolygon}([c])$. A form posted without a new shape sends back the stored EWKT, which already carries $\mathrm{SRID}=28992$, so no transformation (and no coordinate drift) occurs. For display, the stored geometry is sent at full resolution as $T_{28992 \rightarrow 4326}(g_{\text{stored}})$, not the map's copy, which is simplified below zoom 14 (\code{\_geojson\_sql()}).
+
+Saving calls \code{obj.save()}, so for a \code{Building} the existing derivations run: $\texttt{area\_sqm} = \operatorname{area}(g_{\text{stored}})$ in \si{m^2}, \code{neighborhood} by point-in-polygon of the centroid, and \code{buildingType} from \code{usageFunction} (\code{builtup/models.py}).
+
+\subsection{Identifiers for new objects --- \code{\_next\_negative\_pk()}}
+\textbf{Location:} \code{mainMap/editing.py:84}
+
+\code{Building.id} is the BAG identifier, not generated by the database. A user-created building gets
+\begin{equation}
+  \mathrm{id}_{\text{new}} = \min\!\left(0,\ \min_{b \in \texttt{Building}} \mathrm{id}_b\right) - 1,
+\end{equation}
+so new objects count down from $-1$, never collide with (positive) BAG ids, and are recognisable as user-made. Models with a database-generated key (\code{AutoField}) keep it.
+
+\subsection{Deferred-constraint check --- \code{\_check\_constraints()}}
+\textbf{Location:} \code{mainMap/editing.py:94}
+
+Django creates foreign keys as \code{DEFERRABLE INITIALLY DEFERRED}, and the project's spatial FKs use \code{on\_delete=DO\_NOTHING}, so a deletion that leaves a dangling reference (a \code{Property} pointing at a deleted \code{Building}) would only fail at \code{COMMIT}. \code{SET CONSTRAINTS ALL IMMEDIATE} checks all pending references inside the atomic block; a violation raises \code{IntegrityError}, rolls back just that operation and is reported as a message. Used by \code{feature\_delete()} (\code{:176}) and \code{restore\_backup()}.
+
+\subsection{Change journal --- \code{journal()}}
+\textbf{Location:} \code{mainMap/editing.py:216}; models \code{EditBackup}, \code{EditBackupRow} (\code{mainMap/models.py})
+
+A backup $B$ is created empty at time $t_0$; nothing is copied. Let $s_t(o)$ be the stored row of object $o$ at time $t$, with $s_t(o) = \varnothing$ if $o$ does not exist. Before the first editor change to $o$ after $t_0$, the journal records
+\begin{equation}
+  J_B(o) = \begin{cases}
+    s_{t_0}(o) & \text{if $o$ is edited or deleted} \\
+    \varnothing & \text{if $o$ is created}
+  \end{cases}
+  \qquad \text{only if } o \notin \operatorname{dom}(J_B),
+\end{equation}
+i.e.\ the first pre-image wins: an object edited $n$ times is still restored to its state at $t_0$. Rows are serialized with Django's serializer, which keeps the geometry in its stored CRS. The bar in the Layers panel reports $|\operatorname{dom}(J_B)|$ as ``objects changed''. Without an active backup, $J$ is not written and edits are permanent. At most one backup exists at a time.
+
+\subsection{Restore --- \code{restore\_backup()}}
+\textbf{Location:} \code{mainMap/editing.py:269}
+
+In one transaction (wrapped in \code{importer/batching.py::deferred\_cascades()}), for every $o \in \operatorname{dom}(J_B)$:
+\begin{equation}
+  s_{\text{after}}(o) = J_B(o) =
+  \begin{cases}
+    s_{t_0}(o) & \text{(raw save: update, or re-insert with the original id)} \\
+    \varnothing & \text{(delete the object created after $t_0$)}
+  \end{cases}
+\end{equation}
+Re-insertions and updates run before deletions so that reference targets exist again first. The raw save writes the stored values back exactly, derived fields included, without re-running \code{save()}, and still fires \code{post\_save}, which bumps the layer's GeoJSON cache version. If \code{\_check\_constraints()} fails, the whole restore is rolled back (never partial); otherwise $B$ and $J_B$ are deleted and the affected layer keys are returned for the map to reload. Objects changed only outside the editor (importer, admin, QGIS, psql) are not in $\operatorname{dom}(J_B)$ and are left as they are.
+
+\textbf{Caveat:} receivers that skip raw saves (\code{watersupply/signals.py}: \code{if raw: return}) would not fire on restore. Built-up models have none; adding such a layer to $\mathcal{E}$ requires triggering its cascades explicitly.
+
+\subsection{Map-side editor --- \code{Editing.js}}
+\textbf{Location:} \code{core/static/js/Editing.js}; hooks in \code{Layers.js} (\code{reloadLayer()}, \code{\_popupEditButton()}), \code{MapUI.js::renderLayerList()}, \code{mainMap.js::refreshActivePanel()}, \code{Map\_init.js}
+
+No equations; behaviour relevant to reproducing results:
+\begin{itemize}[nosep]
+  \item \code{startEdit()} / \code{startCreate()} load the form into the side panel; a \code{MutationObserver} on \code{\#panel-body} attaches Mapbox GL Draw when the form appears and detaches it when the panel content is replaced.
+  \item While editing, the original object is hidden with the filter $\texttt{id} \neq \mathrm{pk}$, feature popups, admin-unit clicks and panel refreshes are suspended, and the camera pitch is set to $0$.
+  \item The \code{feature-saved} and \code{backup-restored} HTMX events reload the affected layers (\code{reloadLayer()}), so the map always shows the stored state.
+\end{itemize}
+
 \section{Summary table}
 
 \begin{longtable}{p{3.2cm} p{4.6cm} p{3.5cm} c}
@@ -475,6 +552,8 @@ urban\_heat & \code{calculate\_green\_area()} / \code{calculate\_vegetation\_cov
 urban\_heat & \code{calculate\_urban\_morphology()} & Buildings/Streets$\to$Canyon\_Aspect & \statuspartial{} \\
 urban\_heat & \code{get\_thermal\_indices()} & DSM$\to$SVF$\to$Tmrt/PET$\to$UTCI & \statusgap{} \\
 urban\_heat & \code{calculate\_nbs\_coverage()} & UTCI/PET$\to$NBS & \statusgap{} \\
+mainMap & \code{feature\_form()} / \code{feature\_delete()} & (tooling: edits State objects via \code{save()}) & \statusdone{} \\
+mainMap & \code{journal()} / \code{restore\_backup()} & (tooling: what-if restore point) & \statusdone{} \\
 \bottomrule
 \end{longtable}
 

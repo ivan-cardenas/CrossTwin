@@ -34,6 +34,8 @@ function onAdminLayerLoaded(key, layerIds) {
   if (!cfg) return;
 
   map.on('click', layerIds[0], (e) => {
+    // While editing, clicks are for the drawing tools, not for selecting a unit
+    if (typeof isEditing === 'function' && isEditing()) return;
     const props = e.features[0].properties;
     window.ACTIVE_LEVEL = cfg.level;
     window.ACTIVE_LOCATION = props[cfg.nameField];
@@ -320,6 +322,9 @@ function changeBasemap(basemapKey) {
 
   activeBasemap = basemapKey;
   const currentVisibility = { ...layerVisibility };
+
+  // setStyle() removes Draw's layers along with everything else
+  if (typeof stopEdit === 'function') stopEdit();
 
   map.setStyle(BASEMAPS[basemapKey]);
 

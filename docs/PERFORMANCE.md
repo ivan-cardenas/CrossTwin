@@ -227,9 +227,9 @@ attribute columns (names, populations, FKs) are ignored by the file-upload impor
 
 `watersupply/views.py:263-272`. `Housing/views.py` and `urban_heat/views.py` follow the same pattern.
 
-`recalculate_indicators` is called on **every slider input** and calls `_get_province_data()`, which runs about 25 queries, including several `geom__intersects` scans and an `Intersection`/`Length` over `PipeNetwork`. Only `consumption_override` changed. The three-layer design already separates this cleanly: `_build_indicators()` is pure.
+`recalculate_indicators` is called on **every slider input** and calls `_get_adminUnit_data()`, which runs about 25 queries, including several `geom__intersects` scans and an `Intersection`/`Length` over `PipeNetwork`. Only `consumption_override` changed. The three-layer design already separates this cleanly: `_build_indicators()` is pure.
 
-Fix: cache the output of `_get_province_data` keyed by its arguments.
+Fix: cache the output of `_get_adminUnit_data` keyed by its arguments.
 
 ```python
 from django.core.cache import cache
@@ -238,7 +238,7 @@ def _cached_province_data(level, location, year, pop_scenario, pop_growth):
     key = f"ws:data:{level}:{location}:{year}:{pop_scenario}:{pop_growth}"
     data = cache.get(key)
     if data is None:
-        data = _get_province_data(level, location, year, pop_scenario, pop_growth)
+        data = _get_adminUnit_data(level, location, year, pop_scenario, pop_growth)
         cache.set(key, data, 600)
     return data
 ```
@@ -254,7 +254,7 @@ def _cached_province_data(level, location, year, pop_scenario, pop_growth):
 
 Examples: `watersupply/calculations.py:45,109,136,316,331`, `watersupply/views.py:58-59`, `urban_heat/calculations.py:26,41,81,82,156,290,293,318`.
 
-`adminUnit.geom` is a MultiPolygon with thousands of vertices. Each `filter(geom__intersects=adminUnit.geom)` serialises it to EWKB in Python, sends it over the wire and parses it again in PostGIS. `_get_province_data` does this about 8 times per request, and `get_thermal_indices` sends it as **WKT** text (the slowest format) about 10 times.
+`adminUnit.geom` is a MultiPolygon with thousands of vertices. Each `filter(geom__intersects=adminUnit.geom)` serialises it to EWKB in Python, sends it over the wire and parses it again in PostGIS. `_get_adminUnit_data` does this about 8 times per request, and `get_thermal_indices` sends it as **WKT** text (the slowest format) about 10 times.
 
 Fix: have PostGIS read the geometry directly from the admin table:
 
@@ -273,7 +273,7 @@ For the raw raster SQL, pass `(table, pk)` and join:
 Also:
 - Several water functions scan `ExtractionWater` with the same `is_active=True, geom__intersects=…` filter (`calculate_total_extraction` is called **twice**, once directly and once via `calculate_supply_security`; `calculate_energy_consumption` and `calculate_co2_emission` repeat the scan). Merge them into **one** `.aggregate(extraction=Sum(...), energy=Sum(...), co2=Sum(...))`.
 - `calculate_nrw` runs three queries on the same rows. Use a single aggregate with `filter=Q(type='A')` / `Q(type='R')`.
-- `ImportedWater` is aggregated in both `_get_province_data` and `calculate_total_production_day`.
+- `ImportedWater` is aggregated in both `_get_adminUnit_data` and `calculate_total_production_day`.
 - `if not qs.exists(): …; qs.aggregate(...)` (e.g. `calculate_water_quality`, `calculate_coverage`, `calculate_drought_area`) makes two round trips. A single `aggregate` returns `None`s on empty input anyway.
 - For point-in-polygon lookups on very large boundaries (provinces, municipalities), a pre-subdivided helper table (`ST_Subdivide(geom, 256)`) with its own GiST index makes `ST_Intersects`/`ST_Contains` much cheaper. This is the standard PostGIS trick for this case.
 
@@ -532,7 +532,7 @@ Time each kernel with `cupyx.profiler.benchmark` or with `cuda.synchronize()` ar
 - [ ] §8 Add B-tree indexes (one migration per app)
 - [ ] §6 Add `.only()`/`.defer()` on the listed queries
 - [ ] §5 Use `Subquery` for admin geometries; merge duplicate aggregates
-- [ ] §4 Cache `_get_province_data` in water, housing and heat; debounce the sliders
+- [ ] §4 Cache `_get_adminUnit_data` in water, housing and heat; debounce the sliders
 - [ ] §7 Use `reltuples` counts, `.only()` for rasters, and a cached catalog
 - [x] §1 Add bbox, precision, JOINs and caching to GeoJSON; viewport loading in the map
 - [ ] §1 MVT tiles for large layers

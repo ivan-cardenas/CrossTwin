@@ -101,7 +101,7 @@ Each domain app contains spatial models related to a topic:
 
 Domain dashboards follow a three-layer pattern:
 1. **`calculations.py`** — Pure query functions that aggregate DB data. Each function documents its DAG edges.
-2. **`views.py`** — `_get_province_data()` assembles all calculations into a dict; `_build_indicators()` is a pure function that derives display-ready metrics (supports what-if overrides like `consumption_override` or `interest_rate_override`); view functions render templates or return JSON.
+2. **`views.py`** — `_get_adminUnit_data()` assembles all calculations into a dict; `_build_indicators()` is a pure function that derives display-ready metrics (supports what-if overrides like `consumption_override` or `interest_rate_override`); view functions render templates or return JSON.
 3. **Templates** — HTMX-driven: a main page includes a partial grid that gets swapped on slider/input changes via `hx-get` to a `recalculate_indicators` endpoint.
 
 `MOCK_DATA` dicts provide fallback values when the province doesn't exist in DB, allowing frontend development without a populated database.
@@ -155,6 +155,15 @@ Two import paths:
 - Templates live in `Templates/` (capital T, configured in settings)
 - `core/static/js/mainMap.js` holds `mainMap.html`'s page-level wiring (map init, the Actions menu, guided tour, the admin-unit-driven panel registry). It depends on `Config.js`/`map_init.js` and on `window.MAPBOX_ACCESS_TOKEN` being set inline by `mainMap.html` before it loads. As with the indicator dashboards, keep new map-page behavior in this file rather than adding inline `<script>` blocks to `mainMap.html`.
 
+### Map Editing (`mainMap/editing.py`, `core/static/js/Editing.js`)
+
+Staff users (`is_staff`; log in at `/admin/`) can create, reshape, edit and delete objects of the layers in `EDITABLE_LAYERS` (currently the built-up layers) on the map. Design and decisions: `docs/MAP_EDITING.md`; equations: `docs/functions_and_equations.tex`.
+- The form is a `modelform_factory` ModelForm swapped into `#panel-body`; the geometry travels as WGS84 GeoJSON in a hidden field and the GIS form field checks its type and reprojects it. Saving goes through `obj.save()`, so derived fields, signals and cache invalidation apply. User-created objects of a model with a non-auto pk (`Building`, BAG ids) get negative ids (`_next_negative_pk`).
+- **To make a layer editable:** add its registry key to `EDITABLE_LAYERS` with `exclude` (fields its `save()` derives) and `optional` (fields `save()` fills in). If its app has receivers that skip `raw=True` saves (e.g. `watersupply/signals.py`), backup restore must trigger those cascades itself.
+- **Backup / restore:** one restore point at a time (`EditBackup`). After it is created, `journal()` stores each object's original row (first pre-image wins) before the editor changes it. `restore_backup()` reverts only those rows in one transaction (raw saves, then deletes of objects created since), rolling everything back if a reference blocks it. Changes made outside the editor (importer, admin, psql) are not journalled.
+- FK constraints are `DEFERRABLE INITIALLY DEFERRED`; `_check_constraints()` forces the check inside the atomic block so delete/restore conflicts surface as messages instead of failing at commit.
+- While editing (`isEditing()`), feature popups, admin-unit clicks and `refreshActivePanel()` are suspended; a `MutationObserver` on `#panel-body` attaches/detaches Mapbox GL Draw. The `feature-saved` / `backup-restored` HTMX events reload layers via `Layers.js::reloadLayer()`.
+
 ### API Routes
 
 | Path | Purpose |
@@ -163,6 +172,8 @@ Two import paths:
 | `/api/layers/` | Layer catalog JSON |
 | `/api/layers/<app>/<model>/geojson/` | GeoJSON for vector model (`?bbox=` WGS84, `?zoom=`; cached) |
 | `/api/layers/<app>/<model>/bounds/` | Bounding box extent in WGS84 |
+| `/api/layers/<app>/<model>/features/new/`, `.../features/<pk>/`, `.../features/<pk>/delete/` | Map editing form / delete (staff, `EDITABLE_LAYERS` only) |
+| `/api/editing/backup/` (+ `restore/`, `discard/`) | What-if backup bar: status, create, restore, discard (staff) |
 | `/api/raster/<app>/<model>/tiles/` | TiTiler tile URL for raster |
 | `/api/raster/<app>/<model>/info/` | Raster metadata |
 | `/importer/` | File upload import |

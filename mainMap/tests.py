@@ -289,3 +289,39 @@ class QueryStatsMiddlewareTests(TestCase):
             response = self.client.get(_geojson_url('administrative', 'City'))
         self.assertEqual(response['X-DB-Queries'], '1')
         self.assertRegex(response['Server-Timing'], r'^db;dur=[\d.]+;desc="1 queries", app;dur=[\d.]+$')
+
+
+class LayerStyleTests(SimpleTestCase):
+    """Style expressions read GeoJSON properties, which are model field names (_geojson_sql)."""
+
+    @staticmethod
+    def _gets(expr):
+        if isinstance(expr, list):
+            if len(expr) == 2 and expr[0] == 'get' and isinstance(expr[1], str):
+                yield expr[1]
+            for item in expr:
+                yield from LayerStyleTests._gets(item)
+
+    def test_every_style_property_is_a_field_of_its_model(self):
+        from core.utils import VECTOR_REGISTRY
+        from .views import LAYER_STYLES
+        for key, style in LAYER_STYLES.items():
+            model = VECTOR_REGISTRY.get(key)
+            if model is None:
+                continue
+            fields = {f.name for f in model._meta.get_fields()}
+            for layer in style.get('layers', []):
+                for name in self._gets(list(layer.get('paint', {}).values()) + list(layer.get('layout', {}).values())):
+                    with self.subTest(layer=key, property=name):
+                        self.assertIn(name, fields)
+
+    def test_building_colour_and_height_follow_type_and_stored_height(self):
+        from .views import BUILDING_TYPE_COLORS, LAYER_STYLES
+        paint = LAYER_STYLES['builtup.Building']['layers'][0]['paint']
+        color = paint['fill-extrusion-color']
+        self.assertEqual(color[:2], ['match', ['get', 'buildingType']])
+        pairs = dict(zip(color[2:-1:2], color[3:-1:2]))
+        self.assertEqual(pairs['residential'], BUILDING_TYPE_COLORS['residential'])
+        self.assertEqual(pairs['mixed'], BUILDING_TYPE_COLORS['mixed'])
+        self.assertEqual(color[-1], BUILDING_TYPE_COLORS['unknown'])
+        self.assertIn('height_m', list(self._gets(paint['fill-extrusion-height'])))

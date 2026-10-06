@@ -250,6 +250,29 @@ async function reloadViewportLayer(key) {
   }
 }
 
+/**
+ * Re-fetch a loaded vector layer after its rows changed (map editing,
+ * backup restore). Viewport layers re-fetch the current viewport; the rest
+ * load whole again. The server's cached GeoJSON was already invalidated by
+ * the write (core/signals.py).
+ */
+async function reloadLayer(key) {
+  const entry = loadedLayers[key];
+  if (!entry) return;
+  if (entry.viewport) return reloadViewportLayer(key);
+  try {
+    const response = await fetch(entry.config.url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const geojson = await response.json();
+    if (loadedLayers[key] !== entry) return;   // removed meanwhile (basemap switch)
+    map.getSource(key)?.setData(geojson);
+    entry.geojson = geojson;
+    updateIndicators();
+  } catch (error) {
+    console.error(`Error reloading layer "${key}":`, error);
+  }
+}
+
 // ---- WMS layers -------------------------------------------------------
 
 function addWmsLayer(layerConfig) {
@@ -834,10 +857,10 @@ function _formatValue(value, fieldMeta, key = '') {
   return String(value);
 }
 
-function createPopupContent(properties, layerName, fields = {}, color = null) {
+function createPopupContent(properties, layerName, fields = {}, color = null, layerKey = null) {
   const titleKey = _featureTitleKey(properties);
   return `<div class="popup-feature" style="--layer-color:${color || 'var(--text-dim)'}">
-    ${_popupHead(properties, layerName, titleKey)}
+    ${_popupHead(properties, layerName, titleKey, layerKey)}
     ${_popupTable(properties, fields, titleKey)}
   </div>`;
 }
@@ -859,6 +882,8 @@ let featurePopup = null;
  */
 function initFeaturePopup() {
   map.on('click', (e) => {
+    // Clicks belong to the drawing tools while an object is being edited
+    if (typeof isEditing === 'function' && isEditing()) return;
     const layers = [...popupLayers.keys()].filter(id => map.getLayer(id));
     if (!layers.length) return;
 
@@ -889,7 +914,7 @@ function _uniquePopupEntries(features) {
     const id = `${layer.key}|${f.id ?? JSON.stringify(f.properties)}`;
     if (seen.has(id)) continue;
     seen.add(id);
-    entries.push({ name: layer.name, fields: layer.fields, color: layer.color, properties: f.properties });
+    entries.push({ key: layer.key, name: layer.name, fields: layer.fields, color: layer.color, properties: f.properties });
   }
   return entries;
 }
@@ -904,12 +929,23 @@ function _featureTitleKey(properties) {
 }
 
 /** Feature name as the title, its layer underneath; just the layer when the feature has no name. */
-function _popupHead(properties, layerName, titleKey) {
-  if (!titleKey) return `<div class="popup-head"><div class="popup-title">${layerName}</div></div>`;
+function _popupHead(properties, layerName, titleKey, layerKey = null) {
+  const edit = _popupEditButton(properties, layerKey);
+  if (!titleKey) return `<div class="popup-head"><div class="popup-title">${layerName}</div>${edit}</div>`;
   return `<div class="popup-head">
     <div class="popup-title">${properties[titleKey]}</div>
     <div class="popup-layer">${layerName}</div>
+    ${edit}
   </div>`;
+}
+
+/** "Edit" button for staff on editable layers (the catalog marks them, see mainMap/editing.py). */
+function _popupEditButton(properties, layerKey) {
+  if (!layerKey || properties.id === null || properties.id === undefined) return '';
+  if (typeof startEdit !== 'function' || !availableLayers.find(l => l.key === layerKey)?.editable) return '';
+  // preventDefault: inside a multi-feature popup the head sits in a <summary>
+  return `<button class="popup-edit-btn" type="button"
+    onclick="event.preventDefault(); startEdit('${layerKey}', ${Number(properties.id)})">✎ Edit</button>`;
 }
 
 /**
@@ -919,14 +955,14 @@ function _popupHead(properties, layerName, titleKey) {
  */
 function createMultiFeaturePopupContent(entries) {
   if (entries.length === 1) {
-    const { properties, name, fields, color } = entries[0];
-    return createPopupContent(properties, name, fields, color);
+    const { key, properties, name, fields, color } = entries[0];
+    return createPopupContent(properties, name, fields, color, key);
   }
 
-  const sections = entries.map(({ properties, name, fields, color }, i) => {
+  const sections = entries.map(({ key, properties, name, fields, color }, i) => {
     const titleKey = _featureTitleKey(properties);
     return `<details class="popup-feature popup-section" style="--layer-color:${color || 'var(--text-dim)'}"${i === 0 ? ' open' : ''}>
-      <summary>${_popupHead(properties, name, titleKey)}</summary>
+      <summary>${_popupHead(properties, name, titleKey, key)}</summary>
       ${_popupTable(properties, fields, titleKey)}
     </details>`;
   }).join('');
@@ -971,3 +1007,4 @@ function _popupTable(properties, fields = {}, skipKey = null) {
 // Expose to global scope
 window.toggleLayerVisibility = toggleLayerVisibility;
 window.zoomToLayer = zoomToLayer;
+window.reloadLayer = reloadLayer;

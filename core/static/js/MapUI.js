@@ -22,7 +22,13 @@ function renderLayerList() {
     groups[layer.app_label].push(layer);
   });
 
-  let html = '';
+  // Backup / restore point for what-if edits (staff only: only then does the
+  // catalog mark layers editable). Rendered by mainMap/editing.py::backup;
+  // its own Create/Restore/Discard responses re-render it in place.
+  let html = availableLayers.some(l => l.editable)
+    ? `<div id="edit-backup-bar" class="edit-backup-bar" hx-get="/api/editing/backup/"
+         hx-trigger="load, feature-saved from:body" hx-swap="innerHTML"></div>`
+    : '';
 
   for (const [appLabel, layers] of Object.entries(groups)) {
     html += `<div class="app-group">
@@ -44,6 +50,7 @@ function renderLayerList() {
             <span class="layer-count">${layer.count}</span>
           </div>
           <div class="layer-actions">
+            ${layer.editable ? `<button onclick="startCreate('${layer.key}')" title="Draw a new object">＋</button>` : ''}
             <button onclick="zoomToLayer('${layer.key}')" title="Zoom to layer">🔍</button>
           </div>
         </div>`;
@@ -53,6 +60,7 @@ function renderLayerList() {
   }
 
   container.innerHTML = html;
+  if (typeof htmx !== 'undefined') htmx.process(container);   // wire up the backup bar
 }
 
 /**
@@ -99,4 +107,4 @@ function updateIndicators() {
     }
     visibleEl.textContent = count;
   }
-}
+}

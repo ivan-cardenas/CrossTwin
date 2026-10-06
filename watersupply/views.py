@@ -33,7 +33,7 @@ MAX_OPEX_EUR      = 10_000_000
 MAX_CONSUMPTION   = 300
 
 # ── shared helper ─────────────────────────────────────────────────────
-def _get_province_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, pop_growth=0.0):
+def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, pop_growth=0.0):
     """
     Fetch all fixed DB values for an administrative unit/year. Returns a dict.
 
@@ -242,7 +242,7 @@ def _population_context(pop_scenario, pop_growth):
 
 def water_indicators(request, level, location, year):
     pop_scenario, pop_growth = population_params(request.GET)
-    data = _get_province_data(level, location, year, pop_scenario, pop_growth)
+    data = _get_adminUnit_data(level, location, year, pop_scenario, pop_growth)
     if data is None:
         data = MOCK_DATA
 
@@ -263,7 +263,7 @@ def water_indicators(request, level, location, year):
 def recalculate_indicators(request, level, location, year):
     consumption = float(request.GET.get('consumption', 120))
     pop_scenario, pop_growth = population_params(request.GET)
-    data = _get_province_data(level, location, year, pop_scenario, pop_growth)
+    data = _get_adminUnit_data(level, location, year, pop_scenario, pop_growth)
     if data is None:
         data = MOCK_DATA
 

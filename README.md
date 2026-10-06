@@ -154,7 +154,7 @@ These drive the generic layer API, the map's layer catalog, and the importer's f
 Each follows the same three-layer pattern:
 
 1. **`calculations.py`** — pure query functions, each documenting the DPSIR/DAG edges it implements.
-2. **`views.py`** — `_get_province_data()` assembles calculations into a dict; `_build_indicators()` derives display-ready metrics with what-if overrides (`consumption_override`, `interest_rate_override`, …).
+2. **`views.py`** — `_get_adminUnit_data()` assembles calculations into a dict; `_build_indicators()` derives display-ready metrics with what-if overrides (`consumption_override`, `interest_rate_override`, …).
 3. **Templates** — the standalone dashboard and the map's HTMX side-panel partial render the **same** slider/gauge markup and share the **same** JS file in `core/static/js/indicators/<domain>.js` (wrapped in an IIFE, re-runs safely after every `htmx:afterSwap`).
 
 `MOCK_DATA` dicts provide fallback values when a province has no DB data, so frontend work isn't blocked on a populated database.

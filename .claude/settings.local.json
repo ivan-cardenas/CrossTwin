@@ -13,5 +13,10 @@
       "Bash(Sort-Object)"
     ]
   },
+  "skillOverrides": {
+    "anthropic-skills:clear-science-storyteller-style": "off",
+    "anthropic-skills:docs": "off",
+    "graphify": "user-invocable-only"
+  },
   "outputStyle": "Explanatory"
 }
