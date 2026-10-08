@@ -123,6 +123,13 @@ uvicorn tiler:app --port 8001 --reload
 
 Or run `start.bat` on Windows, which starts both. Visit `http://localhost:8000`.
 
+`start.bat` first runs `python tools/check_postgres.py` (you can run it on any OS). It connects with the `DATABASE_*` settings of `.env` and checks for the `postgis` and `postgis_raster` extensions. If something is missing it says what and how to fix it, and `start.bat` stops:
+
+- **PostgreSQL not installed**: `winget install --id PostgreSQL.PostgreSQL.17 -e` on Windows (Homebrew / apt on macOS / Linux).
+- **PostgreSQL installed but not running**: the `net start postgresql-x64-<version>` command for the service it finds.
+- **PostGIS not installed**: PostGIS is not on winget; install the PostGIS bundle with Stack Builder (included with the PostgreSQL installer) or the [OSGeo installer](https://download.osgeo.org/postgis/windows/).
+- **Extensions not created, wrong credentials, missing database**: the SQL or `.env` setting to fix.
+
 ## 🏗️ Architecture
 
 ### Model registry (`core/utils.py`)

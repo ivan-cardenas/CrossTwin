@@ -141,3 +141,7 @@ Existing three-layer pattern (`calculations.py` + `views.py` + templates, see CL
 
 **urban_heat (duplicate of gaps already tracked above)**
 - The "create LST/PET/SVF/SUHII calculation functions, see SOLWEIG" item is the same gap as the `## urban_heat` section above (`DSM -> SVF -> Tmrt/PET`, `LST -> PET`, `Tmrt -> UTCI` chain) — not repeated here, see that section instead.
+
+## OTHERS
+
+- [ ] Add "Various Forest Assets Pack" (https://skfb.ly/pCEzX) by Dari is licensed under Creative Commons Attribution (http://creativecommons.org/licenses/by/4.0/). to reference in the map for 3D model

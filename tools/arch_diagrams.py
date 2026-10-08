@@ -11,20 +11,24 @@ from html import escape
 
 OUT = Path(__file__).resolve().parent.parent / "docs" / "architecture" / "latest"
 
-# name: (stroke, fill, text)
+# name: (stroke, fill, text) -- saturated editorial hues kept dark enough that white
+# text on the stroke colour (tags, box headers) stays legible.
 PALETTE = {
-    "client":   ("#2563eb", "#eff6ff", "#1e3a8a"),
-    "django":   ("#095331", "#f5f3ff", "#010e01"),
-    "data":     ("#51CEA6", "#ecfdf5", "#064e3b"),
-    "external": ("#ea580c", "#fff7ed", "#7c2d12"),
-    "raster":   ("#0891b2", "#ecfeff", "#164e63"),
-    "cache":    ("#d97706", "#fffbeb", "#78350f"),
-    "signal":   ("#e11d48", "#fff1f2", "#881337"),
-    "neutral":  ("#475569", "#f8fafc", "#0f172a"),
+    "client":   ("#3b76c4", "#eeeefb", "#1e2070"),  # ultramarine
+    "django":   ("#115f46", "#e8f5ef", "#07402e"),  # pine
+    "data":     ("#07ece1", "#e6f6f5", "#08494a"),  # jade
+    "external": ("#d15198", "#fbecf4", "#5c1840"),  # plum magenta
+    "raster":   ("#946adf", "#f2edfb", "#3c2370"),  # orchid
+    "cache":    ("#f19f0f", "#fdf4e3", "#5e3d05"),  # ochre
+    "signal":   ("#e9722d", "#fdeceb", "#6b1f18"),  # coral
+    "neutral":  ("#3f4756", "#f4f5f7", "#1b2029"),  # ink slate
 }
 
-FONT = "'Inter','Segoe UI',system-ui,-apple-system,sans-serif"
-MONO = "'IBM Plex Mono','Cascadia Code',Consolas,monospace"
+# Neutral inks (slightly cool, to sit with the jewel tones)
+INK, INK_2, INK_3, INK_4, INK_5 = "#1b2029", "#2f3542", "#454d5c", "#626b7a", "#9aa1ad"
+
+FONT = "'Roboto','Helvetica Neue','Arial',sans-serif"
+MONO = "'JetBrains Mono','Consolas','Courier New',monospace"
 
 STYLE = f"""
   .t {{ font-family:{FONT}; }}
@@ -58,7 +62,7 @@ class Diagram:
 
     def box(self, x, y, w, h, title, lines=(), kind="neutral", tag=None, mono_lines=False):
         s, f, t = PALETTE[kind]
-        out = [f'<rect x="{x+2}" y="{y+4}" width="{w}" height="{h}" rx="12" fill="#0f172a" fill-opacity="0.06"/>',
+        out = [f'<rect x="{x+2}" y="{y+4}" width="{w}" height="{h}" rx="12" fill="{INK}" fill-opacity="0.06"/>',
                f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="12" fill="#fff" stroke="{s}" stroke-width="1.8"/>',
                f'<path d="M{x+12},{y} h{w-24} a12,12 0 0 1 12,12 v6 h-{w} v-6 a12,12 0 0 1 12,-12 z" fill="{s}"/>']
         ty = y + 42
@@ -70,7 +74,7 @@ class Diagram:
         cls = "m" if mono_lines else "t"
         fs = 12 if mono_lines else 13
         for i, ln in enumerate(lines):
-            out.append(f'<text class="{cls}" x="{x+16}" y="{ty+22+i*18}" font-size="{fs}" fill="#475569">{escape(ln)}</text>')
+            out.append(f'<text class="{cls}" x="{x+16}" y="{ty+22+i*18}" font-size="{fs}" fill="{INK_3}">{escape(ln)}</text>')
         self.mid.append("".join(out))
         return (x, y, w, h)
 
@@ -81,7 +85,7 @@ class Diagram:
                         f'<text class="m" x="{x+w/2}" y="{y+16}" font-size="11.5" fill="{t}" text-anchor="middle">{escape(text)}</text>')
         return w
 
-    def note(self, x, y, lines, color="#64748b", size=12.5, italic=True):
+    def note(self, x, y, lines, color=INK_4, size=12.5, italic=True):
         st = ' font-style="italic"' if italic else ""
         for i, ln in enumerate(lines):
             self.front.append(f'<text class="t" x="{x}" y="{y+i*17}" font-size="{size}" fill="{color}"{st}>{escape(ln)}</text>')
@@ -103,7 +107,7 @@ class Diagram:
                 off = 14 if step else 0
                 self.front.append(
                     f'<rect x="{mx-w/2+off}" y="{my-11}" width="{w}" height="22" rx="11" fill="#fff" stroke="{s}" stroke-width="1"/>'
-                    f'<text class="t" x="{mx+off}" y="{my+4.5}" font-size="12" fill="#334155" text-anchor="middle">{escape(label)}</text>')
+                    f'<text class="t" x="{mx+off}" y="{my+4.5}" font-size="12" fill="{INK_2}" text-anchor="middle">{escape(label)}</text>')
                 if step:
                     mx = mx - w / 2 + off - 13
             if step:
@@ -117,7 +121,7 @@ class Diagram:
         for kind, label in items:
             s, f, _ = PALETTE[kind]
             self.front.append(f'<rect x="{x}" y="{y-12}" width="16" height="16" rx="4" fill="{f}" stroke="{s}" stroke-width="1.8"/>'
-                              f'<text class="t" x="{x+24}" y="{y+1}" font-size="12.5" fill="#475569">{escape(label)}</text>')
+                              f'<text class="t" x="{x+24}" y="{y+1}" font-size="12.5" fill="{INK_3}">{escape(label)}</text>')
             x += 40 + 7.2 * len(label)
 
     # -- output -------------------------------------------------------------
@@ -129,10 +133,11 @@ class Diagram:
             f'<path d="M0,0 L10,5 L0,10 z" fill="{s}"/></marker>'
             for k, (s, _, _) in PALETTE.items())
         head = (f'<rect width="{self.w}" height="{self.h}" fill="#ffffff"/>'
-                f'<rect width="{self.w}" height="6" fill="#7c3aed"/>'
-                f'<text class="t" x="40" y="58" font-size="30" font-weight="800" fill="#0f172a">{escape(self.title)}</text>'
-                f'<text class="t" x="40" y="86" font-size="15" fill="#64748b">{escape(self.subtitle)}</text>'
-                f'<text class="m" x="{self.w-40}" y="58" font-size="12" fill="#94a3b8" text-anchor="end">CrossTwin · architecture</text>')
+                + "".join(f'<rect x="{i * self.w / 7:.1f}" width="{self.w / 7 + 1:.1f}" height="5" fill="{s}"/>'
+                          for i, (s, _, _) in enumerate(v for k, v in PALETTE.items() if k != "neutral")) +
+                f'<text class="t" x="40" y="58" font-size="30" font-weight="600" fill="{INK}">{escape(self.title)}</text>'
+                f'<text class="t" x="40" y="86" font-size="15" fill="{INK_4}">{escape(self.subtitle)}</text>'
+                f'<text class="m" x="{self.w-40}" y="58" font-size="12" fill="{INK_5}" text-anchor="end">CrossTwin · architecture</text>')
         return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {self.w} {self.h}" width="{self.w}" height="{self.h}" '
                 f'role="img" aria-label="{escape(self.title)}">'
                 f'<title>{escape(self.title)}</title><style>{STYLE}</style><defs>{markers}</defs>'
@@ -410,7 +415,7 @@ def signals():
                      "Inside the block, receivers only record the affected parent; on exit each cascade runs once per parent",
                      "(errors during that flush are logged, never raised over the original exception).",
                      "Always call schedule_urban_area_recompute() rather than the recompute itself, so an enclosing deferral is respected."],
-           color="#334155", italic=False, size=13.5)
+           color=INK_2, italic=False, size=13.5)
     return d
 
 

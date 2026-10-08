@@ -76,4 +76,6 @@
 
 14. For ammenities I include Schools, hospitals and clinics, fire and police stations, marketplaces and transport stations. Should I add more?
 
+14. Green Spaces is loading parks, but there is a model that is Parks in builtup. Should I merge them? or how to differentiate them?
+
 20. LIMITATION --  THE SYSTEM USE RELATIONAL DATABASES AND MULTIPLE TABLES. SO SPEED OF JOINS CAN BE AN ISSUE. MAYBE USING NODE4J OR GRAPHDB IS A BETTER OPTION

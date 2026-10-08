@@ -133,7 +133,6 @@ class SupplySecurity(models.Model):
         verbose_name = "Supply Security"
         verbose_name_plural = "Supply Security Records"
     
-
 class UsersLocation(models.Model):
     id = models.AutoField(primary_key=True)
     neighborhood = models.ForeignKey(Neighborhood, on_delete=models.DO_NOTHING, help_text="Neighborhood code from administrative.Neighborhood") #TODO: Change to City or make per point?

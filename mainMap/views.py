@@ -17,6 +17,7 @@ from .styles.landCoverStyles import build_landcover_style_and_legend
 from .editing import is_editable
 from .styles.layerStyles import FALLBACK_COLORS, LAYER_STYLES
 from .styles.soilStyles import build_soil_style_and_legend
+from .styles.treeStyles import build_tree_style
 
 
 # Ordered from most specific to least — first match wins
@@ -494,6 +495,9 @@ def available_layers(request):
                 # Same idea: colours of the BRO soil map legend, for the
                 # soil units actually imported.
                 style_layers, legend = build_soil_style_and_legend()
+            elif key == 'nature.Tree':
+                # 3D tree model, whose URL static() resolves per request.
+                style_layers = build_tree_style()
 
             layer_entry = {
                 'key': key,

@@ -368,3 +368,23 @@ class LayerStyleTests(SimpleTestCase):
         self.assertEqual(pairs['mixed'], BUILDING_TYPE_COLORS['mixed'])
         self.assertEqual(color[-1], BUILDING_TYPE_COLORS['unknown'])
         self.assertIn('height_m', list(self._gets(paint['fill-extrusion-height'])))
+
+    def test_trees_render_as_3d_models_scaled_by_height(self):
+        from django.contrib.staticfiles import finders
+        from nature.models import Tree
+        from .styles.treeStyles import TREE_MODEL_MIN_ZOOM, TREE_MODEL_PATH, build_tree_style
+        circle, model = build_tree_style()
+        self.assertEqual(circle['type'], 'circle')  # first layer = popup click target
+        self.assertEqual(model['type'], 'model')
+        self.assertEqual(model['minzoom'], TREE_MODEL_MIN_ZOOM)
+        self.assertTrue(model['layout']['model-id'].endswith(TREE_MODEL_PATH))
+        self.assertIsNotNone(finders.find(TREE_MODEL_PATH))
+        fields = {f.name for f in Tree._meta.get_fields()}
+        for layer in (circle, model):
+            for name in self._gets(list(layer['paint'].values())):
+                self.assertIn(name, fields)
+        self.assertIn('height_m', list(self._gets(model['paint']['model-scale'])))
+        # The default height must replace a null before to-number, which maps null to 0.
+        height = model['paint']['model-scale'][2]  # ['interpolate', ['linear'], input, ...]
+        self.assertEqual(height[0], 'to-number')
+        self.assertEqual(height[1][0], 'coalesce')

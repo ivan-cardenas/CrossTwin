@@ -15,6 +15,9 @@ The project focuses on **Dutch geospatial data** — the default CRS is EPSG:289
 # Activate virtual environment (Windows)
 .venv\Scripts\Activate
 
+# Check PostgreSQL + PostGIS (start.bat runs this first and stops on failure)
+python tools/check_postgres.py
+
 # Start both Django and TiTiler (or use start.bat)
 python manage.py runserver 8000
 uvicorn tiler:app --port 8001 --reload

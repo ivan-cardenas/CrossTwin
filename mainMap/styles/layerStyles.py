@@ -5,6 +5,7 @@ the catalog colour per registry key ('<app_label>.<Model>'). available_layers
 get a FALLBACK_COLORS colour and the default style in Layers.js. Land-cover
 styles are built from the database instead (mainMap/styles/landCoverStyles.py).
 """
+from .treeStyles import TREE_COLOR
 
 # Building colour by Building.buildingType (derived from the BAG usage function
 # in Building.save()). Listed in legend order; 'unknown' is the match fallback
@@ -220,6 +221,10 @@ LAYER_STYLES = {
             {'type': 'fill', 'paint': {'fill-color': '#388e3c', 'fill-opacity': 0.35}},
             {'type': 'line', 'paint': {'line-color': '#1b5e20', 'line-width': 1}},
         ],
+    },
+    # 3D tree models, layers built per request (mainMap/styles/treeStyles.py)
+    'nature.Tree': {
+        'color': TREE_COLOR,
     },
     'nature.GreenSpaces': {
         'color': '#81c784',

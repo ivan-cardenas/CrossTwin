@@ -116,12 +116,22 @@ async function addLayer(layerConfig) {
       // Use explicit Mapbox layer definitions from the API
       style_layers.forEach((def, i) => {
         const layerId = `${key}-custom-${i}`;
+        // A model layer only renders a model registered with addModel(); a
+        // URL in model-id is never fetched for a layer added at runtime. The
+        // URL doubles as the model id, so one model is loaded once.
+        const modelUrl = def.type === 'model' && def.layout && def.layout['model-id'];
+        if (modelUrl && !map.hasModel(modelUrl)) {
+          map.addModel(modelUrl, new URL(modelUrl, window.location.href).href);
+        }
         map.addLayer({
           id: layerId,
           type: def.type,
           source: key,
           paint: def.paint || {},
           layout: def.layout || {},
+          // e.g. the 3D tree models (mainMap/styles/treeStyles.py) only from zoom 15
+          ...(def.minzoom != null && { minzoom: def.minzoom }),
+          ...(def.maxzoom != null && { maxzoom: def.maxzoom }),
         });
         layerIds.push(layerId);
       });
