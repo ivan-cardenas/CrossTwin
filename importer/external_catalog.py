@@ -156,8 +156,22 @@ FIELD_MAPPINGS = {
         # is nullable for exactly this reason.
     },
 
+    "bodemdata_soil_map": {
+        "__geometry__": "geom",
+        "__unique__": "maparea_id",
+        "__unique_field__": "mapAreaID",
+        # Each polygon points to a SoilType keyed on code + name (soilcode
+        # zVp has two names in the 2025 map); SoilType.save() derives the
+        # hydrologic soil group and infiltration rate from the name.
+        "__fk_lookup__": [{
+            "field": "soil_type",
+            "model": "physicalEnv.SoilType",
+            "lookup": {"code": "soilcode", "name": "normal_soilprofile_name"},
+        }],
+    },
+
     # -------------------------------- Nature & Environment -------------------------------
-    
+
     "pdok_natura2000": {
         "__geometry__": "geom",
         "__unique__": "gmlID",
@@ -638,6 +652,59 @@ EXTERNAL_DATA_CATALOG = [
         "format": "wfs",
         "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "requires_bbox": True,
+        "enabled": True,
+    },
+
+    # ── Soil (WFS - vector) ──────────────────────────────────────────────────
+    {
+        "key": "bodemdata_soil_map",
+        "source": "bodemdata",
+        "category": "Elevation & Terrain",
+        "name": "Soil Map 1:50 000 (Bodemkaart, BIS Nederland)",
+        "description": "Soil polygons of the Dutch soil map (2025 edition) with soil code and name; each soil type gets an SCS hydrologic soil group (A-D) and infiltration rate. Feeds the infiltration indicator of the water dashboard together with land cover.",
+        "target_model": "physicalEnv.SoilArea",
+        "url": "https://maps.bodemdata.nl/geoserver/bodem/ows",
+        "layer": "bodem:Bodemkaart50000_v2025",
+        "format": "wfs",
+        "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
+        "requires_bbox": True,
+        "enabled": True,
+    },
+    # Groundwater depth maps of the same GeoServer (WCS only; its WFS has
+    # just the point observations behind them). 50 m, EPSG:28992, uint8 in
+    # cm below ground level, capped at 254 (= 254 cm or deeper), 255 nodata.
+    {
+        "key": "bodemdata_ghg",
+        "source": "bodemdata",
+        "category": "Elevation & Terrain",
+        "name": "Groundwater Depth, wet season (GHG, BIS Nederland)",
+        "description": "Mean highest groundwater level (GHG) in cm below ground, 50 m grid. Where it is under 60 cm the infiltration indicator treats the soil as SCS group D.",
+        "target_model": "physicalEnv.GroundwaterDepth",
+        "url": "https://maps.bodemdata.nl/geoserver/ows",
+        "layer": "bodem__ghg-mediaan",
+        "format": "wcs",
+        "statistic": "GHG",
+        "wcs_axis_labels": ["X", "Y"],
+        "params": {"srsName": "EPSG:28992"},
+        "requires_bbox": True,
+        "resolution_m": 50.0,
+        "enabled": True,
+    },
+    {
+        "key": "bodemdata_glg",
+        "source": "bodemdata",
+        "category": "Elevation & Terrain",
+        "name": "Groundwater Depth, dry season (GLG, BIS Nederland)",
+        "description": "Mean lowest groundwater level (GLG) in cm below ground, 50 m grid.",
+        "target_model": "physicalEnv.GroundwaterDepth",
+        "url": "https://maps.bodemdata.nl/geoserver/ows",
+        "layer": "bodem__glg-mediaan",
+        "format": "wcs",
+        "statistic": "GLG",
+        "wcs_axis_labels": ["X", "Y"],
+        "params": {"srsName": "EPSG:28992"},
+        "requires_bbox": True,
+        "resolution_m": 50.0,
         "enabled": True,
     },
 
@@ -1153,6 +1220,15 @@ SOURCE_INFO = {
         "description": "Dutch national weather and climate data. The API key is configured on the server (KNMI_API_KEY), so no credentials are asked for here.",
         "icon": "cloud",
         "color": "sky",
+        "auth_required": False,
+    },
+
+    "bodemdata": {
+        "name": "BIS Nederland",
+        "full_name": "Bodemkundig Informatiesysteem (WUR, bodemdata.nl)",
+        "description": "Dutch soil data maintained by Wageningen Environmental Research. Open WFS data, no authentication required.",
+        "icon": "globe",
+        "color": "amber",
         "auth_required": False,
     },
 

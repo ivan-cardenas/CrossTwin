@@ -152,7 +152,7 @@ def overview():
     # Browser
     d.group(40, 120, 300, 700, "Browser", "client")
     d.box(60, 170, 260, 120, "Map UI", ["Mapbox GL JS", "Layers.js · Map_init.js", "mainMap.js · Events.js"], "client")
-    d.box(60, 310, 260, 120, "Indicator panels", ["HTMX swaps (hx-get)", "indicators/water.js,", "heat.js, housing_panel.js"], "client")
+    d.box(60, 310, 260, 120, "Indicator panels", ["HTMX swaps (hx-get)", "water · heat · housing · builtup", "what-if sliders + switches"], "client")
     d.box(60, 450, 260, 120, "Map editing", ["Editing.js +", "Mapbox GL Draw", "(staff only)"], "client")
     d.box(60, 590, 260, 100, "Population dock", ["forecast curve +", "what-if controls"], "client")
     d.box(60, 710, 260, 90, "Django admin", ["/admin/ (staff login)"], "client")
@@ -163,7 +163,7 @@ def overview():
     d.box(420, 266, 290, 150, "mainMap", ["layer catalog  /api/layers/", "GeoJSON + bounds endpoints", "admin-unit & population panels", "editing.py (forms, backup)"], "django")
     d.box(730, 266, 290, 150, "Domain apps", ["watersupply · housing · urban_heat", "administrative · physicalEnv", "builtup · nature · weather · Energy", "models + calculations.py + views"], "django")
     d.box(420, 436, 290, 150, "core", ["MODEL / VECTOR / RASTER /", "WMS registries (utils.py)", "rasterOperations → COG", "signals · cache versioning"], "django")
-    d.box(730, 436, 290, 150, "importer", ["file upload (GeoJSON/SHP)", "external catalog (41 sets)", "SpatialParentIndex", "BulkWriter · deferred_cascades"], "django")
+    d.box(730, 436, 290, 150, "importer", ["file upload (GeoJSON/SHP)", "external catalog (48 sets)", "SpatialParentIndex", "BulkWriter · deferred_cascades"], "django")
     d.box(420, 606, 290, 120, "weather WMS proxy", ["/weather/wms/<name>/tile/", "keep-alive session", "24 h cache for TIME= frames"], "django")
     d.box(730, 606, 290, 120, "Caches (LocMem)", ["geojson  — 2 min, ≤ 8 MB", "wms_tiles — 24 h / 5 min", "default"], "cache")
     d.note(420, 775, ["Signals keep derived data consistent: population & urban-area cascade,",
@@ -175,13 +175,13 @@ def overview():
 
     # External
     d.group(1390, 120, 170, 700, "External", "external")
-    ext = [("PDOK", "BGT · BAG · wijken"), ("CBS", "OData statistics"), ("Sentinel-2", "openEO composites"),
-           ("Earth Engine", "GEE rasters"), ("KNMI", "Data Platform API"), ("RIVM", "energy labels"), ("WMS servers", "KNMI, groundwater")]
-    for i, (n, sub) in enumerate(ext):
-        d.box(1402, 165 + i * 92, 146, 78, n, [sub], "external")
+    # title-only boxes: nine sources fill the column (subtitles are in 05-import-pipeline)
+    ext = ["PDOK", "CBS", "BIS Nederland", "OpenStreetMap", "Sentinel-2", "Earth Engine", "KNMI", "RIVM", "WMS servers"]
+    for i, n in enumerate(ext):
+        d.box(1402, 165 + i * 72, 146, 58, n, [], "external")
 
     # DB
-    d.box(400, 865, 940, 90, "PostgreSQL 16 + PostGIS", ["~70 spatial models · GeometryField & RasterField (srid 28992) · GiST indexes · pg_stat_statements"], "data")
+    d.box(400, 865, 940, 90, "PostgreSQL 16 + PostGIS", ["80 models · GeometryField & RasterField (srid 28992) · GiST indexes · pg_stat_statements"], "data")
 
     # Edges
     d.edge([(320, 230), (420, 230)], "client", "JSON / HTML")
@@ -196,8 +196,8 @@ def overview():
     d.edge([(690, 586), (690, 596), (1070, 596), (1070, 520), (1100, 520)], "raster")
     d.edge([(1020, 230), (1100, 230)], "raster", "/cog/info")
     d.edge([(1220, 436), (1220, 300)], "raster", "read COG")
-    d.edge([(1402, 600), (1060, 600), (1060, 540), (1020, 540)], "external", "fetch datasets", label_at=0)
-    d.edge([(1402, 715), (1370, 715), (1370, 743), (565, 743), (565, 726)], "external", "WMS GetMap", label_at=2)
+    d.edge([(1402, 626), (1060, 626), (1060, 540), (1020, 540)], "external", "fetch datasets", label_at=0)
+    d.edge([(1402, 770), (1370, 770), (1370, 743), (565, 743), (565, 726)], "external", "WMS GetMap", label_at=2)
     d.edge([(720, 820), (720, 865)], "data", "ORM + raw SQL", both=True, flow=False)
     d.legend([("client", "Browser"), ("django", "Django app"), ("raster", "Raster / tiles"),
               ("cache", "Cache"), ("data", "Storage"), ("external", "External source")])
@@ -214,21 +214,21 @@ def apps():
     d.group(40, 120, 1520, 330, "Domain apps (allowed_apps)  —  models · calculations.py · views", "django")
     apps_ = [
         ("administrative", 5, ["Province › City ›", "District › Neighborhood", "PopulationProjection"]),
-        ("physicalEnv", 12, ["LandCover vec + raster", "DEM · DSM · imagery", "materials, env. costs"]),
+        ("physicalEnv", 16, ["LandCover · DEM · DSM", "soil map · groundwater", "HILUCS · soil.py (SCS)"]),
         ("watersupply", 17, ["extraction · treatment", "pipes · NRW · OPEX", "SupplySecurity"]),
         ("housing", 8, ["supply/demand · HPI", "mortgage · rentals", "affordability"]),
         ("urban_heat", 11, ["UTCI · PET · Tmrt", "LST · SVF · SUHII", "NBS · WBGT"]),
-        ("builtup", 6, ["ZoningArea · Street", "Park · Facility", "Building · Property"]),
-        ("nature", 6, ["green / blue", "layers"]),
-        ("weather", 4, ["WMS layers", "time steps"]),
-        ("Energy", 2, ["energy labels"]),
+        ("builtup", 6, ["ZoningArea (HILUCS)", "Street · Park · Facility", "Building · Property"]),
+        ("nature", 7, ["green / blue", "layers · trees"]),
+        ("weather", 7, ["WMS layers", "time steps"]),
+        ("Energy", 3, ["energy labels"]),
     ]
     x = 60
     for i, (n, c, lines) in enumerate(apps_):
         w = 165 if i < 6 else 128
         d.box(x, 170, w, 140 if i < 6 else 110, n, lines, "django", tag=str(c))
         x += w + 12
-    d.note(60, 345, ["Number tags = model classes per app. Indicator dashboards (watersupply, housing, urban_heat) follow",
+    d.note(60, 345, ["Number tags = model classes per app. Indicator dashboards (watersupply, housing, urban_heat, builtup) follow",
                      "calculations.py → views._build_indicators() → HTMX partial; MOCK_DATA fills in when a province is missing."])
     d.pill(60, 395, "DAG edges documented in calculations.py docstrings → core/DAG.dot (DPSIR)", "neutral")
 
@@ -316,16 +316,18 @@ def raster():
 # =========================================================================
 def importer():
     d = Diagram("05-import-pipeline", "Data Import Pipeline",
-                "Two entry points — file upload and the catalog-driven external importers — share batching and deferred cascades", h=980)
-    d.group(40, 120, 330, 640, "Sources", "external")
-    srcs = [("PDOK", "18 datasets · WFS/OGC API"), ("CBS", "4 · OData (85173NED…)"), ("Sentinel-2", "5 · openEO composites"),
-            ("Google Earth Engine", "12 · GEEAuthManager"), ("KNMI Data Platform", "1 · fetch_latest (WBGT)"), ("RIVM", "1 · energy labels"),
+                "Two entry points — file upload and the catalog-driven external importers — share batching and deferred cascades", h=1080)
+    d.group(40, 120, 330, 760, "Sources", "external")
+    srcs = [("PDOK", "18 · WFS/OGC API/ATOM/WCS"), ("CBS", "4 · OData (85173NED…)"),
+            ("BIS Nederland", "3 · soil WFS, GHG/GLG WCS"), ("OpenStreetMap", "4 · Overpass API"),
+            ("Sentinel-2", "5 · openEO composites"), ("Google Earth Engine", "12 · GEEAuthManager"),
+            ("KNMI Data Platform", "1 · fetch_latest (WBGT)"), ("RIVM", "1 · energy labels"),
             ("File upload", "GeoJSON / Shapefile")]
     for i, (n, s) in enumerate(srcs):
-        d.box(60, 170 + i * 82, 290, 70, n, [s], "client" if n == "File upload" else "external")
+        d.box(60, 170 + i * 78, 290, 70, n, [s], "client" if n == "File upload" else "external")
 
-    d.box(470, 170, 320, 150, "external_catalog.py", ["41 dataset definitions", "target model + field map", "bbox_from (city → district", " → neighborhood AOI)"], "django")
-    d.box(470, 360, 320, 150, "*Importer classes", ["PDOKImporter · CBSImporter", "Sentinel2Importer", "GEEImporter · KNMIImporter", "→ ImportResult"], "django")
+    d.box(470, 170, 320, 150, "external_catalog.py", ["48 dataset definitions", "target model + field map", "__fk_lookup__ (HILUCS, soil)", "bbox_from (parent AOI)"], "django")
+    d.box(470, 360, 320, 150, "*Importer classes", ["PDOK (+ BIS) · CBSImporter", "OSMImporter (Overpass)", "Sentinel2 · GEE · KNMI", "→ ImportResult"], "django")
     d.box(470, 580, 320, 150, "importer/views.py", ["upload · map fields", "preview · import", "MODEL_OVERRIDES upsert keys", "savepoints per row"], "django")
 
     d.group(880, 120, 360, 640, "importer/batching.py", "django")
@@ -336,11 +338,11 @@ def importer():
     d.box(1330, 360, 230, 150, "PostGIS", ["vector rows", "raster rows", "(srid 28992)"], "data")
     d.box(1330, 580, 230, 150, "Finalizers", ["replay receivers", "skipped by", "bulk_create", "+ bump_layer_version"], "signal")
 
-    for i in range(6):
-        y = 205 + i * 82
+    for i in range(8):
+        y = 205 + i * 78
         d.edge([(350, y), (410, y), (410, 435), (470, 435)], "external", flow=False)
     d.edge([(630, 320), (630, 360)], "django", "configure")
-    d.edge([(350, 697), (410, 697), (410, 655), (470, 655)], "client")
+    d.edge([(350, 829), (440, 829), (440, 655), (470, 655)], "client")
     d.edge([(790, 435), (840, 435), (840, 245), (900, 245)], "django", "features", label_at=1)
     d.edge([(1060, 320), (1060, 360)], "django", "parent FK")
     d.edge([(790, 655), (840, 655), (840, 470), (900, 470)], "django", label_at=1)
@@ -348,8 +350,8 @@ def importer():
     d.edge([(1220, 655), (1330, 655)], "signal")
     d.edge([(1445, 580), (1445, 510)], "signal", "update()")
     d.edge([(1060, 510), (1060, 580)], "signal", "inside", flow=False, dashed=True)
-    d.note(40, 810, ["A model may be in BULK_IMPORT_MODELS only if it has no save() override (BulkImportRegistryTests);",
-                     "adding a post_save receiver to one means adding it to its finalizer too.",
+    d.note(40, 925, ["A model may be in BULK_IMPORT_MODELS only if it has no save() override (BulkImportRegistryTests) —",
+                     "e.g. LandCoverVector, Street, Facility, SoilArea, the nature layers, Tree; a new post_save receiver on one needs its finalizer too.",
                      "Known gap: _generic_import (file upload) maps geometry/raster fields only — attribute columns are not imported."])
     d.legend([("external", "External source"), ("client", "User upload"), ("django", "Importer code"), ("signal", "Cascades"), ("data", "Storage")])
     return d
@@ -443,7 +445,63 @@ def editing():
     return d
 
 
-DIAGRAMS = [overview, apps, vector, raster, importer, signals, editing]
+# =========================================================================
+# 8. Soil hydrology & infiltration (SCS Curve Number)
+# =========================================================================
+def infiltration():
+    d = Diagram("08-infiltration", "Soil Hydrology & Infiltration — SCS Curve Number",
+                "physicalEnv/soil.py: soil map × land cover × groundwater → hydrologic soil group → curve number → infiltrated share of a rain event",
+                h=900)
+    # sources
+    d.group(40, 120, 320, 580, "Sources", "external")
+    d.box(60, 170, 280, 240, "BIS · soil map (WFS)", ["bodem:Bodemkaart50000_v2025", "soilcode · soil name (Dutch)", "1:50 000 · 48 025 polygons", "", "bodemdata_soil_map"], "external")
+    d.box(60, 430, 280, 110, "BIS · groundwater (WCS)", ["bodem__ghg / glg-mediaan", "50 m · cm below ground", "254 = deeper · 255 = nodata"], "external")
+    d.box(60, 560, 280, 110, "PDOK · BRT land cover", ["lc:landcoverunit (WFS)", "CORINE class names"], "external")
+    # models
+    d.group(400, 120, 370, 580, "physicalEnv models", "data")
+    d.box(420, 170, 330, 110, "SoilType", ["code + name (unique)", "save(): classify_soil_group()", "→ soilGroup A–D, f min/max"], "data")
+    d.box(420, 300, 330, 110, "SoilArea", ["mapAreaID · MultiPolygon", "FK soil_type (smallint)", "bulk-written"], "data")
+    d.box(420, 430, 330, 110, "GroundwaterDepth", ["RasterField kept in PostGIS", "statistic GHG | GLG", "row per city · year · statistic"], "raster")
+    d.box(420, 560, 330, 110, "LandCoverVector", ["+ LandCoverClasses (CORINE)", "latest year in the unit"], "data")
+    # computation
+    d.group(800, 120, 400, 580, "physicalEnv/soil.py", "django")
+    d.box(820, 170, 360, 250, "soil_landcover_composition()", ["(geom, statistic) — one SQL statement:",
+          "· pieces = soil ∩ land cover ∩ unit", "· ST_Reclass(GHG|GLG < 60 cm)", "  → ST_DumpAsPolygons → ST_Union",
+          "· shallow ∧ undrained → group D", "· drained land keeps its texture group",
+          "→ [(group, class, m²)], shallow, drained"], "data")
+    d.box(820, 470, 360, 210, "summarize_infiltration(P)", ["pure Python, no query:", "curve_number(): TR-55 × CORINE",
+          "S = 25400/CN − 254 · Ia = 0.2 S", "Q = (P − Ia)² / (P − Ia + S)", "runoff per piece, area-weighted",
+          "→ C_inf · mean CN · V_inf · V_run"], "django")
+    # dashboard
+    d.group(1230, 120, 330, 580, "Water dashboard", "client")
+    d.box(1250, 170, 290, 90, "Rain Event slider", ["rain_mm 1–100 mm (default 25)"], "client")
+    d.box(1250, 290, 290, 90, "Groundwater switch", ["wet → GHG · dry → GLG"], "client")
+    d.box(1250, 410, 290, 110, "watersupply/views.py", ["_get_adminUnit_data(season)", "_build_indicators(rain_mm)", "_infiltration_indicators()"], "django")
+    d.box(1250, 550, 290, 130, "Infiltration card", ["C_inf % · mean CN", "infiltrated / runoff m³", "shallow GW → D · drained %", "soil groups + f range"], "client")
+    # edges
+    d.edge([(340, 225), (420, 225)], "external", "import")
+    d.edge([(340, 355), (420, 355)], "external")
+    d.edge([(340, 485), (420, 485)], "external", "WCS")
+    d.edge([(340, 615), (420, 615)], "external", "WFS")
+    d.edge([(750, 225), (820, 225)], "data", flow=False)
+    d.edge([(750, 355), (820, 355)], "data", flow=False)
+    d.edge([(750, 485), (795, 485), (795, 395), (820, 395)], "raster", flow=False)
+    d.edge([(750, 615), (805, 615), (805, 410), (820, 410)], "data", flow=False)
+    d.edge([(1000, 420), (1000, 470)], "django", "pieces")
+    d.edge([(1395, 380), (1395, 410)], "client", flow=False)
+    d.edge([(1540, 215), (1552, 215), (1552, 465), (1540, 465)], "client", flow=False)
+    d.edge([(1250, 440), (1215, 440), (1215, 300), (1180, 300)], "django", "season", label_at=1)
+    d.edge([(1250, 500), (1180, 500)], "django", "rain_mm")
+    d.edge([(1180, 615), (1250, 615)], "client", "indicators")
+    d.note(40, 755, ["Soil group from the Dutch texture words in the soil name (zand A · zavel/leem B · lichte klei C · klei/veen D); the most restrictive layer wins.",
+                     "NEH 630: a water table within 60 cm makes a soil group D; drained land covers (urban fabric, industrial, roads, ports, airports) keep their texture letter.",
+                     "BIS has no GHG/GLG under most built-up land (85 % of urban-fabric cells in Enschede) or water: nodata counts as not shallow; water/wetland CN = 100/98.",
+                     "Only the season re-runs the spatial query; moving the rain slider re-evaluates the pure SCS functions."])
+    d.legend([("external", "External source"), ("data", "Vector model / SQL"), ("raster", "Raster"), ("django", "Python"), ("client", "Dashboard")])
+    return d
+
+
+DIAGRAMS = [overview, apps, vector, raster, importer, signals, editing, infiltration]
 
 
 def main():

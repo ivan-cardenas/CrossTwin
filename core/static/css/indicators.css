@@ -251,6 +251,33 @@ input[type="range"].zone-slider::-moz-range-thumb {
 .threshold-tag.warn { color: #f59e0b; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2); }
 .threshold-tag.bad  { color: #ef4444; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); }
 
+/* ── Two-way switch (water dashboard: groundwater season) ── */
+.season-switch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.season-switch {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.season-switch label { cursor: pointer; }
+.season-switch input { position: absolute; opacity: 0; pointer-events: none; }
+.season-switch span {
+  display: block;
+  padding: 4px 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.season-switch label + label span { border-left: 1px solid var(--border); }
+.season-switch input:checked + span { color: var(--text); background: rgba(56,189,248,0.15); }
+.season-switch input:focus-visible + span { outline: 1px solid var(--border-hi); outline-offset: -2px; }
+
 /* ── Info helper ("?") — a survey-benchmark mark, not a tooltip pill ── */
 .info-btn {
   margin-left: auto;

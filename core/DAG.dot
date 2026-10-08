@@ -101,6 +101,7 @@ digraph CrossTwin {
     Available_FW        [label="Available Fresh Water"];
     
     Infiltration        [label="Infiltration"];
+    Soil_Type           [label="Soil Type"];
     
     
     OPEX                [label="Water supply OPEX"];
@@ -172,6 +173,7 @@ digraph CrossTwin {
 
     LandCover           -> Green_Area;
     LandCover           -> Infiltration;
+    Soil_Type           -> Infiltration;
     LandCover           -> LST;
 
     Buildings           -> DSM;

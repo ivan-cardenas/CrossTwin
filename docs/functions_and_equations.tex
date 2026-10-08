@@ -26,7 +26,7 @@
 \maketitle
 
 \begin{abstract}
-This document catalogs every quantitative computation currently implemented in the CrossTwin platform's domain apps (\code{administrative}, \code{watersupply}, \code{housing}, \code{urban\_heat}), plus the map-editing and what-if backup functions of \code{mainMap}, records the exact equation each function evaluates, the variables and their units, the source data model(s), and the corresponding edge(s) in the project's Driver--Pressure--State--Impact--Response (DPSIR) causal graph (\code{core/DAG.dot}). It is intended as a working reference while preparing a manuscript describing CrossTwin's indicator methodology, and as a running record of which causal relationships are backed by executable derivation logic versus flat, manually entered fields. Status tags (\statusdone{} / \statuspartial{} / \statusgap{}) follow the coverage audit in \code{TODO.md}.
+This document catalogs every quantitative computation currently implemented in the CrossTwin platform's domain apps (\code{administrative}, \code{physicalEnv}, \code{watersupply}, \code{housing}, \code{urban\_heat}), plus the map-editing and what-if backup functions of \code{mainMap}, records the exact equation each function evaluates, the variables and their units, the source data model(s), and the corresponding edge(s) in the project's Driver--Pressure--State--Impact--Response (DPSIR) causal graph (\code{core/DAG.dot}). It is intended as a working reference while preparing a manuscript describing CrossTwin's indicator methodology, and as a running record of which causal relationships are backed by executable derivation logic versus flat, manually entered fields. Status tags (\statusdone{} / \statuspartial{} / \statusgap{}) follow the coverage audit in \code{TODO.md}.
 \end{abstract}
 
 \tableofcontents
@@ -149,6 +149,127 @@ Density $\rho$ in people$/\mathrm{km^2}$. The Neighbourhood $\rightarrow$ Distri
 A \code{physicalEnv.LandCoverVector} polygon qualifies if its \code{land\_cover\_type.class\_name} case-insensitively contains any of \emph{urban fabric}, \emph{road}, \emph{rail}, \emph{transport}, restricted to the most recent \code{year} present for that city (older survey years are not summed, to avoid double-counting repeat surveys). The intersection area is computed in PostGIS via \code{ST\_Intersection} (Django's \code{Intersection}/\code{Area} functions). Neighbourhood $\rightarrow$ District $\rightarrow$ City $\rightarrow$ Province propagation reuses the same \code{\_recompute\_population()} helper as the population cascade above, generalised to sum \code{urban\_area} alongside \code{currentPopulation} in one aggregate; both use \code{QuerySet.update()}, not \code{.save()}. Unlike population, an aggregate with no children reporting a value is left \code{None} (unknown) rather than coerced to \num{0}. Because a \code{LandCoverVector} write only fires \code{post\_save} on itself (not on \code{Neighborhood}), the \code{physicalEnv} signal re-enters the \code{administrative} cascade manually after writing each affected Neighbourhood's \code{urban\_area}.
 
 \textbf{DAG edge:} \code{LandCover -> Urbanization} is the closest existing edge in \code{core/DAG.dot}, but it runs in the opposite direction of what this computes (LandCover only feeds a not-yet-modelled \code{Urbanization} node, per \code{TODO.md}), and no Neighbourhood/District/City/Province/LandCoverVector nodes exist in the DAG at all --- \statuspartial{} (cascade and source computation fully implemented; no \code{Urbanization} model backs a DAG edge for it)
+
+\section{Physical environment app --- soil hydrology and infiltration}
+\label{sec:physicalenv}
+
+Source: \code{physicalEnv/soil.py}, \code{physicalEnv/hilucs.py}, \code{physicalEnv/models.py}. Soil polygons come from the Dutch soil map 1:50\,000 (\textit{Bodemkaart}, 2025 edition) and groundwater depths from the groundwater-level grids of BIS Nederland \cite{BISNederland}; land cover is the CORINE-classified BRT \textit{Bodemgebruik} layer \cite{CORINE}. Together they implement the \texttt{LandCover}$\to$\texttt{Infiltration} and \texttt{Soil\_Type}$\to$\texttt{Infiltration} edges with the SCS Curve Number method \cite{TR55,NEH630ch7,NEH630ch10}. Everything except the spatial composition query (\S\ref{sec:soil-composition}) is pure Python, so the dashboard re-evaluates the equations for any rain depth without querying the database.
+
+\subsection{Hydrologic soil group --- \code{classify\_soil\_group()}, \code{SoilType.save()}}
+\textbf{Location:} \code{physicalEnv/soil.py:82}, \code{physicalEnv/models.py:61}
+
+The soil map names each unit in Dutch with the texture of its layers (e.g.\ \textit{Koopveengronden op zand}: peat on sand). Each texture word $w$ found in the name $n$ maps to a hydrologic soil group $g(w)$, and the most restrictive layer sets the group, since the least transmissive layer limits infiltration \cite{NEH630ch7}:
+\begin{equation}
+  G(n) = \max_{\prec} \{\, g(w) : w \in \operatorname{words}(n) \,\}, \qquad \mathrm{A} \prec \mathrm{B} \prec \mathrm{C} \prec \mathrm{D}
+\end{equation}
+with $G(n)$ undefined when the name contains no texture word. The phrase \textit{geen zand} (``no sand'') is removed before matching.
+
+\begin{center}
+\begin{tabular}{l p{6.2cm} p{4.4cm}}
+\toprule
+Group & Dutch texture words (soil map) & Texture \\
+\midrule
+A & \textit{zand}, \textit{grind} (incl.\ loamy and clayey sand) & sand, gravel \\
+B & \textit{zavel} (8--25\,\% lutum), \textit{leem} (not \textit{leemarm}, \textit{lemig}, \textit{keileem}) & loam, silt loam \\
+C & \textit{lichte klei}; \textit{knip} (dense knip-clay horizon) & clay loam \\
+D & \textit{klei}, \textit{zware klei}, \textit{veen}, \textit{moerig}, \textit{slik}, \textit{drecht}/\textit{lied} (clay on peat), \textit{keileem}, \textit{potklei}, \textit{kleefaarde} & clay, peat \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+All 171 distinct soil names of the 2025 map receive a group (A: 46 names, B: 33, C: 16, D: 76). \code{SoilType.save()} stores $G(n)$ and the final infiltration rate range $[f_{\min}, f_{\max}]$ of the group \cite{NEH630ch7}:
+
+\begin{center}
+\begin{tabular}{l c l}
+\toprule
+Group & Final infiltration rate $f$ (\si{mm/h}) & Runoff potential \\
+\midrule
+A & $> 7.6$ & low \\
+B & $3.8$--$7.6$ & moderate \\
+C & $1.3$--$3.8$ & moderately high \\
+D & $0$--$1.3$ & high \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{DAG edge:} \dagedge{Soil\_Type $\rightarrow$ Infiltration} --- \statusdone{} (together with \S\ref{sec:soil-composition}--\ref{sec:scs-summary})
+
+\subsection{Curve number --- \code{curve\_number()}}
+\textbf{Location:} \code{physicalEnv/soil.py:138}
+
+The curve number $\mathrm{CN}(c, G)$ of a land-cover class $c$ on soil group $G$ is read from the TR-55 tables for antecedent moisture condition II \cite{TR55}. CORINE class names are matched by keyword at a word start (so \textit{road} does not match \textit{broad-leaved forest}); the first matching cover type wins:
+
+\begin{center}
+\begin{tabular}{p{5.0cm} p{5.6cm} cccc}
+\toprule
+CORINE class (keyword) & TR-55 cover type & A & B & C & D \\
+\midrule
+water courses/bodies, sea, lagoons, estuaries & open water & 100 & 100 & 100 & 100 \\
+marshes, peat bogs, salines, intertidal flats & saturated wetland (impervious) & 98 & 98 & 98 & 98 \\
+green urban areas, sport and leisure & open space, good condition & 39 & 61 & 74 & 80 \\
+discontinuous urban fabric; urban fabric & residential, $\le$ 1/8 acre (65\,\% imperv.) & 77 & 85 & 90 & 92 \\
+continuous urban fabric & commercial and business (85\,\% imperv.) & 89 & 92 & 94 & 95 \\
+industrial/commercial units, ports, airports & industrial (72\,\% imperv.) & 81 & 88 & 91 & 93 \\
+road and rail networks & paved roads, open ditches, incl.\ right-of-way & 83 & 89 & 92 & 93 \\
+mineral extraction, dumps, construction & newly graded areas & 77 & 86 & 91 & 94 \\
+arable land, irrigated land, rice & row crops, straight row, good & 67 & 78 & 85 & 89 \\
+vineyards, fruit trees, olive groves & woods--grass combination (orchard), good & 32 & 58 & 72 & 79 \\
+natural grasslands & meadow & 30 & 58 & 71 & 78 \\
+pastures & pasture, good & 39 & 61 & 74 & 80 \\
+complex cultivation, agro-forestry & small grain, straight row, good & 63 & 75 & 83 & 87 \\
+forests (broad-leaved, coniferous, mixed) & woods, good & 30 & 55 & 70 & 77 \\
+moors and heathland & brush, good & 30 & 48 & 65 & 73 \\
+sclerophyllous vegetation, transitional woodland & brush, fair & 35 & 56 & 70 & 77 \\
+beaches, dunes, bare rock, sparse vegetation, burnt & fallow, bare soil & 77 & 86 & 91 & 94 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Imperviousness of built-up land enters through these curve numbers; a class without a match (e.g.\ glaciers) or a piece without a soil group is left out and reported as unclassified.
+
+\subsection{Shallow groundwater and drained land --- \code{soil\_landcover\_composition()}}
+\label{sec:soil-composition}
+\textbf{Location:} \code{physicalEnv/soil.py:206}; constants \code{SHALLOW\_GROUNDWATER\_CM} (\code{:30}), \code{SEASONS} (\code{:34}), \code{DRAINED\_LAND\_COVER} (\code{:48})
+
+A soil whose water table lies within $h^\ast = \SI{60}{cm}$ of the surface belongs to group D whatever its texture; NEH~630 gives such soils a dual group (A/D, B/D, C/D), the texture letter applying where the land is drained \cite{NEH630ch7}. The query intersects the unit $u$ with the soil map and the most recent land-cover year, and splits every piece $p$ by the area where the season's groundwater depth $h_s$ is shallower than $h^\ast$:
+\begin{align}
+  S_s &= \bigcup \{\, \text{cells } x \subset u : h_s(x) < h^\ast \,\} \\
+  G'(p) &= \begin{cases}
+      \mathrm{D} & \text{on } p \cap S_s \text{ if } c(p) \notin \mathcal{D} \\
+      G(p) & \text{otherwise}
+  \end{cases}
+\end{align}
+where $s \in \{\text{wet}, \text{dry}\}$ selects $h_\text{wet} = \text{GHG}$ (mean highest groundwater level) or $h_\text{dry} = \text{GLG}$ (mean lowest), and $\mathcal{D}$ is the set of drained land covers (urban fabric, industrial/commercial units, road and rail networks, port areas, airports). GHG and GLG are 50\,m grids in \si{cm} below ground level, capped at 254 (``254\,cm or deeper''); cells without a value (255) are not shallow. BIS Nederland leaves most built-up cells (85\,\% in Enschede) and water bodies without a value, consistent with drained, impervious land; water and wetlands need no rule since their curve number is independent of the soil group. The cells are reclassified to shallow/deep and dissolved into polygons (\code{ST\_Reclass}, \code{ST\_DumpAsPolygons}, \code{ST\_Union}) before the intersection, so each piece is split once rather than per cell. The function returns the area of every $(G', c)$ combination, the texture-only group areas, $|S_s \cap \bigcup_{c \notin \mathcal{D}} p|$ (moved to D) and $|S_s \cap \bigcup_{c \in \mathcal{D}} p|$ (kept as drained).
+
+\subsection{SCS runoff and infiltration coefficient --- \code{scs\_runoff\_mm()}, \code{infiltration\_coefficient()}}
+\textbf{Location:} \code{physicalEnv/soil.py:149, 165}
+\begin{align}
+  S &= \frac{25400}{\mathrm{CN}} - 254, \qquad I_a = 0.2\,S \\
+  Q &= \begin{cases} \dfrac{(P - I_a)^2}{P - I_a + S} & P > I_a \\[4pt] 0 & P \le I_a \end{cases} \\
+  C_{\text{inf}} &= \frac{P - Q}{P}
+\end{align}
+where $P$ is the rain depth of one event (\si{mm}), $S$ the potential maximum retention (\si{mm}), $I_a$ the initial abstraction (\si{mm}), $Q$ the direct runoff (\si{mm}) and $C_{\text{inf}}$ the infiltration coefficient, the share of the rain that does not run off \cite{NEH630ch10}. $\mathrm{CN} = 100$ gives $Q = P$.
+
+\subsection{Area-weighted unit summary --- \code{summarize\_infiltration()}}
+\label{sec:scs-summary}
+\textbf{Location:} \code{physicalEnv/soil.py:172}
+
+For the pieces $i$ of a unit, with area $A_i$ and curve number $\mathrm{CN}_i = \mathrm{CN}(c_i, G'_i)$:
+\begin{align}
+  V_{\text{inf}} &= \sum_i A_i \,\frac{P - Q(P, \mathrm{CN}_i)}{1000}, \qquad
+  V_{\text{run}} = \sum_i A_i \,\frac{Q(P, \mathrm{CN}_i)}{1000} \quad [\si{m^3}] \\
+  C_{\text{inf},u} &= \frac{V_{\text{inf}}}{V_{\text{inf}} + V_{\text{run}}}, \qquad
+  \overline{\mathrm{CN}} = \frac{\sum_i A_i\, \mathrm{CN}_i}{\sum_i A_i}
+\end{align}
+Runoff is computed per piece before weighting: since $Q$ is convex in CN, evaluating $Q(P, \overline{\mathrm{CN}})$ would overstate infiltration. $\overline{\mathrm{CN}}$ is reported for reference only.
+
+\subsection{HILUCS land-use codes --- \code{parse\_hilucs\_href()}, \code{hilucs\_q()}}
+\textbf{Location:} \code{physicalEnv/hilucs.py:18, 48}
+
+Zoning elements of the INSPIRE Planned Land Use feed reference their land use as a URI of the HILUCS codelist \cite{HILUCS}, e.g.\ \texttt{.../HILUCSValue/6\_3\_2\_WaterAreasNotInOtherEconomicUse}. The code is read from the URI's leading digits ($\texttt{6\_3\_2} \mapsto 6.3.2$) and matched against \code{HILUCSLandUse.code} (98 registry values, loaded by migration); the full URI is never used, since the PDOK file misspells some (\texttt{5\_2\_\ldots Comptible\ldots}). A code $k$ selects itself and every code below it in the hierarchy:
+\begin{equation}
+  \operatorname{sel}(k) = \{\, k' : k' = k \ \lor\ k' \text{ starts with } k. \,\}
+\end{equation}
 
 \section{Water supply app}
 \label{sec:watersupply}
@@ -304,7 +425,15 @@ The Infrastructure Leakage Index formulation follows the IWA Water Loss Task For
   \text{AFW} &= \sum_{\,\text{intersecting } u} \texttt{totalQuantity\_Mm3} \\
   A_{\text{drought}} &= \sum_{\,\text{intersecting } u,\ \text{year}} \texttt{areaAffected\_km2}
 \end{align}
-\textbf{DAG edges:} \dagedge{Infiltration $\rightarrow$ Available\_FW}, \dagedge{Meteorology $\rightarrow$ Available\_FW}, \dagedge{Total\_Extraction $\rightarrow$ Area\_Drought} --- \statusgap{} for the Infiltration side (\code{AvailableFreshWater.infiltrationRate\_cm\_h} is a flat, manually entered field --- see \code{TODO.md})
+\textbf{DAG edges:} \dagedge{Infiltration $\rightarrow$ Available\_FW}, \dagedge{Meteorology $\rightarrow$ Available\_FW}, \dagedge{Total\_Extraction $\rightarrow$ Area\_Drought} --- \statusgap{} for the Infiltration side: infiltration is now computed per event (\S\ref{sec:infiltration-indicator}), but \code{AvailableFreshWater.infiltrationRate\_cm\_h} is still a flat, manually entered field --- turning the event coefficient into a recharge volume is open
+
+\subsection{Infiltration indicator (dashboard) --- \code{calculate\_infiltration()}, \code{\_infiltration\_indicators()}}
+\label{sec:infiltration-indicator}
+\textbf{Location:} \code{watersupply/calculations.py:383}, \code{watersupply/views.py:177}
+
+The water dashboard's Infiltration card evaluates \S\ref{sec:physicalenv} for the administrative unit $u$ with two what-if controls: the \textit{Rain Event} slider sets $P \in [1, 100]$\,\si{mm} (default 25; KNMI's daily classes mark \emph{heavy} from 25\,mm and \emph{extreme} from 50\,mm), and the \textit{Groundwater} switch sets the season $s$ (wet = GHG, default; dry = GLG). Only the season triggers the spatial query; $P$ enters through the pure functions. Displayed: $C_{\text{inf},u}$ (\%), $\overline{\mathrm{CN}}$, $V_{\text{inf}}$ and $V_{\text{run}}$ (\si{m^3}), the classified and unclassified areas, the share of the classified area moved to D by shallow groundwater and the share kept as drained, and the texture-only soil-group shares with their rate ranges $[f_{\min}, f_{\max}]$.
+
+\textbf{DAG edges:} \dagedge{LandCover $\rightarrow$ Infiltration}, \dagedge{Soil\_Type $\rightarrow$ Infiltration} --- \statusdone{}
 
 \subsection{Pipe geometry --- \code{PipeNetwork.save()}}
 \textbf{Location:} \code{watersupply/models.py:420}
@@ -358,10 +487,11 @@ plus province-level policy fields (\code{interest\_rate}, \code{LTV\_limit}, \co
 The house-price-to-income ratio formulation is the standard affordability metric used in comparative housing-affordability studies (e.g.\ Demographia's Median Multiple) \cite{Demographia}. \textbf{DAG edges:} \dagedge{Property $\rightarrow$ Affordability\_Stress}, \dagedge{Income\_Expenses $\rightarrow$ Affordability\_Stress}, \dagedge{Mortgage $\rightarrow$ Affordability\_Stress}, \dagedge{Water\_Tariff\_Afford $\rightarrow$ Income\_Expenses}, \dagedge{Rent $\rightarrow$ Income\_Expenses}, \dagedge{Mortgage $\rightarrow$ Income\_Expenses} --- \statusgap{} (computed only from this model's own stored fields; never reads \code{Mortgage}, \code{Rentals}, or watersupply tariff data --- an open TODO in \code{housing/models.py} also questions whether disposable income should replace median income in the numerator's denominator)
 
 \subsection{Zoning composition --- \code{calculate\_zoning()}}
-\textbf{Location:} \code{housing/calculations.py:285}
+\textbf{Location:} \code{housing/calculations.py:297}; groups \code{ZONING\_GROUPS} (\code{:289})
 \begin{equation}
-  \text{Area\%}_{\text{type}} = \frac{\sum_{\,\text{zone\_type}} \texttt{area}}{\sum_{\text{all zones}} \texttt{area}} \times 100
+  \text{Area\%}_{t} = \frac{\sum_{\,z \,:\, \texttt{zone\_type}(z) \in K_t} \texttt{area}(z)}{\sum_{\text{all zones}} \texttt{area}(z)} \times 100
 \end{equation}
+\code{ZoningArea.zone\_type} is a foreign key to the HILUCS codelist (\S\ref{sec:physicalenv}), filled from each INSPIRE zoning element's \texttt{hilucsLandUse} reference. The four dashboard groups are code sets with all their sub-codes (\code{hilucs\_q()}): $K_{\text{residential}} = \operatorname{sel}(5) \setminus \operatorname{sel}(5.2)$, $K_{\text{commercial}} = \operatorname{sel}(3.1) \cup \operatorname{sel}(3.2)$, $K_{\text{industrial}} = \operatorname{sel}(2)$, $K_{\text{mixed}} = \operatorname{sel}(5.2)$. Other land uses (e.g.\ water, agriculture) count in the denominator only.
 \textbf{DAG edges:} \dagedge{Housing\_Demand $\rightarrow$ Zoning\_Status}, \dagedge{Zoning\_Status $\rightarrow$ Property}, \dagedge{Zoning\_Status $\rightarrow$ New\_Units} --- \statusgap{} (descriptive aggregation only; no model consumes \code{Zoning\_Status} as an input)
 
 \subsection{Property market and vacancy --- \code{calculate\_property\_indicators()}}
@@ -541,6 +671,10 @@ watersupply & \code{calculate\_coverage()} / \code{CoverageWaterSupply.save()} &
 watersupply & \code{calculate\_nrw()} / \code{NonRevenueWater.save()} & Real/Apparent\_Losses$\to$NRW, ILI & \statuspartial{} \\
 watersupply & \code{calculate\_water\_quality()} & Samples\_WQ$\to$User\_Acceptance\_WS & \statusgap{} \\
 watersupply & \code{calculate\_available\_freshwater()} & Infiltration/Meteorology$\to$Available\_FW & \statusgap{} \\
+physicalEnv & \code{classify\_soil\_group()} / \code{SoilType.save()} & Soil\_Type$\to$Infiltration & \statusdone{} \\
+physicalEnv & \code{soil\_landcover\_composition()} & LandCover/Soil\_Type (+ groundwater)$\to$Infiltration & \statusdone{} \\
+physicalEnv & \code{scs\_runoff\_mm()} / \code{summarize\_infiltration()} & LandCover/Soil\_Type$\to$Infiltration & \statusdone{} \\
+watersupply & \code{calculate\_infiltration()} (dashboard) & LandCover/Soil\_Type$\to$Infiltration & \statusdone{} \\
 housing & \code{calculate\_supply\_demand()} & Urbanization$\to$Housing\_Demand & \statusgap{} \\
 housing & \code{calculate\_new\_units()} & New\_Units$\to$Housing\_Supply/LandCover & \statuspartial{} \\
 housing & \code{calculate\_mortgage\_indicators()} & Central\_Bank/Credit\_Supply$\to$Mortgage & \statuspartial{} \\
@@ -559,11 +693,11 @@ mainMap & \code{journal()} / \code{restore\_backup()} & (tooling: what-if restor
 
 \section*{Notes on use}
 
-This document is generated from a manual audit of the codebase at the commit referenced in the accompanying \code{TODO.md}. Line numbers will drift as the code evolves; re-verify against \code{grep -n "def save"} in the relevant module before citing a location in a manuscript. The status tags mirror the coverage figures reported in the project's DPSIR gap analysis: of 102 edges in \code{core/DAG.dot}, 28 are backed by real derivation logic as of this audit.
+This document is generated from a manual audit of the codebase at the commit referenced in the accompanying \code{TODO.md}. Line numbers will drift as the code evolves; re-verify against \code{grep -n "def save"} in the relevant module before citing a location in a manuscript. The status tags mirror the coverage figures reported in the project's DPSIR gap analysis: of 103 edges in \code{core/DAG.dot} (one, \texttt{Total\_Water\_Prod}$\to$\texttt{OPEX}, is listed twice), 30 are backed by real derivation logic as of this audit; the two added since the original audit are \texttt{LandCover}$\to$\texttt{Infiltration} and the new \texttt{Soil\_Type}$\to$\texttt{Infiltration}.
 
 Beyond the CBS 85173NED forecasts used for the \texttt{Population\_Growth}$\to$\texttt{Total\_Population} projection, the external data catalog also offers a finer-grained, Google Earth Engine-hosted population source, the High Resolution Settlement Layer (HRSL) \cite{HRSL2016}, for direct raster ingestion where a sub-neighbourhood estimate is preferable to the CBS city-level forecast.
 
-\begin{thebibliography}{9}
+\begin{thebibliography}{99}
 
 \bibitem{CBS85173NED} Centraal Bureau voor de Statistiek (CBS). \textit{Regionale prognose 2023--2050} (Table 85173NED). \url{https://opendata.cbs.nl/}.
 
@@ -580,6 +714,18 @@ Beyond the CBS 85173NED forecasts used for the \texttt{Population\_Growth}$\to$\
 \bibitem{Matzarakis1996} Matzarakis, A., \& Mayer, H. (1996). Another kind of environmental stress: thermal stress. \textit{WHO Newsletter}, 18, 7--10. (Physiological Equivalent Temperature classification.)
 
 \bibitem{Blazejczyk2013UTCI} Bröde, P., Fiala, D., Błażejczyk, K., et al. (2012). Deriving the operational procedure for the Universal Thermal Climate Index (UTCI). \textit{International Journal of Biometeorology}, 56(3), 481--494.
+
+\bibitem{TR55} USDA Natural Resources Conservation Service (1986). \textit{Urban Hydrology for Small Watersheds}. Technical Release 55 (TR-55), 2nd ed. (Curve number tables for antecedent moisture condition II.)
+
+\bibitem{NEH630ch7} USDA Natural Resources Conservation Service (2009). \textit{National Engineering Handbook, Part 630 Hydrology, Chapter 7: Hydrologic Soil Groups}. (Group definitions, final infiltration rates, dual groups for a water table within 60\,cm.)
+
+\bibitem{NEH630ch10} USDA Natural Resources Conservation Service (2004). \textit{National Engineering Handbook, Part 630 Hydrology, Chapter 10: Estimation of Direct Runoff from Storm Rainfall}. (Runoff equation, $I_a = 0.2S$.)
+
+\bibitem{BISNederland} Wageningen Environmental Research. \textit{Bodemkundig Informatie Systeem (BIS Nederland)}: Bodemkaart 1:50\,000 (2025) and groundwater-level grids (GHG, GLG, GVG). \url{https://bodemdata.nl/}.
+
+\bibitem{CORINE} European Environment Agency. \textit{CORINE Land Cover nomenclature}. \url{https://land.copernicus.eu/}.
+
+\bibitem{HILUCS} European Commission. \textit{INSPIRE Data Specification on Land Use (D2.8.III.4)}, Hierarchical INSPIRE Land Use Classification System (HILUCS). \url{http://inspire.ec.europa.eu/codelist/HILUCSValue}.
 
 \end{thebibliography}
 

@@ -378,6 +378,34 @@ def calculate_available_freshwater(adminBund):
     )
 
 
+# ── Infiltration (SCS Curve Number) ──────────────────────────────────
+
+def calculate_infiltration(adminBund, season='wet'):
+    """Soil group x land cover composition of the adminBund, for the SCS method.
+
+    The rain depth is a dashboard what-if, so this returns only the areas;
+    physicalEnv.soil.summarize_infiltration turns them into curve number,
+    infiltration coefficient and volumes for a given rain depth.
+
+    `season` ('wet' or 'dry') picks the groundwater level (GHG or GLG):
+    where it is under 60 cm on undrained land the soil counts as group D;
+    drained (built-up, paved) land keeps its texture group.
+
+    DAG edges:  LandCover  → Infiltration
+                Soil_Type  → Infiltration
+    """
+    from physicalEnv.soil import SEASONS, soil_landcover_composition
+
+    composition, by_group, shallow_m2, drained_m2 = soil_landcover_composition(
+        adminBund.geom, SEASONS[season]['statistic'])
+    return {
+        'composition': composition,
+        'soil_groups_m2': by_group,
+        'shallow_groundwater_m2': shallow_m2,
+        'drained_shallow_m2': drained_m2,
+    }
+
+
 # ── Drought ──────────────────────────────────────────────────────────
 
 def calculate_drought_area(adminBund, year):

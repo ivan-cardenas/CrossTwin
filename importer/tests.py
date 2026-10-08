@@ -1084,3 +1084,117 @@ class AtomZoningElementImportTests(TestCase):
         zone_type = ZoningArea.objects.get().zone_type
         self.assertEqual((zone_type.code, zone_type.label, zone_type.description),
                          ("9.9", "some future land use", ""))
+
+
+# ---------------------------------------------------------------------------
+# Soil map (BIS Nederland WFS)
+# ---------------------------------------------------------------------------
+
+class SoilMapImportTests(TestCase):
+    """bodemdata_soil_map: polygons upsert on maparea_id and share one SoilType per code + name."""
+
+    def _import(self, features):
+        from physicalEnv.models import SoilArea
+        from .external_catalog import FIELD_MAPPINGS
+        return _import_geojson_features(features, RD_DATASET, SoilArea, FIELD_MAPPINGS["bodemdata_soil_map"])
+
+    @staticmethod
+    def _soil(x0, maparea_id, code, name):
+        return _rd_feature(x0, 0, x0 + 10, 10, maparea_id=maparea_id, soilcode=code,
+                           normal_soilprofile_name=name, first_soilcode=code)
+
+    def test_soil_types_are_shared_and_classified(self):
+        from physicalEnv.models import SoilArea, SoilType
+        sand = "Veldpodzolgronden; leemarm en zwak lemig fijn zand"
+        created, updated, errors = self._import([
+            self._soil(0, "m1", "Hn21", sand),
+            self._soil(20, "m2", "Hn21", sand),
+            # one code, two names in the 2025 map: two soil types
+            self._soil(40, "m3", "zVp", "Meerveengronden op zand met humuspodzol, beginnend ondieper dan 1.2 m"),
+            self._soil(60, "m4", "zVp", "Veenafbraakgebied"),
+        ])
+        self.assertEqual((created, updated, errors), (4, 0, []))
+        self.assertEqual(SoilType.objects.count(), 3)
+        self.assertEqual(SoilType.objects.get(code="Hn21").areas.count(), 2)
+        self.assertEqual(set(SoilType.objects.values_list("soilGroup", flat=True)), {"A", "D"})
+
+        # re-import updates on maparea_id
+        created, updated, errors = self._import([self._soil(0, "m1", "Hn21", sand)])
+        self.assertEqual((created, updated), (0, 1))
+        self.assertEqual(SoilArea.objects.count(), 4)
+
+    def test_polygon_without_soil_code_is_skipped(self):
+        from physicalEnv.models import SoilArea
+        feature = _rd_feature(0, 0, 10, 10, maparea_id="m1", normal_soilprofile_name="x")
+        created, _updated, errors = self._import([feature])
+        self.assertEqual(created, 0)
+        self.assertEqual(len(errors), 1)
+        self.assertFalse(SoilArea.objects.exists())
+
+    def test_catalog_entry_targets_the_soil_layer(self):
+        dataset = CATALOG_BY_KEY["bodemdata_soil_map"]
+        self.assertEqual((dataset["source"], dataset["format"], dataset["layer"]),
+                         ("bodemdata", "wfs", "bodem:Bodemkaart50000_v2025"))
+        with mock.patch("importer.external_data.PDOKImporter.fetch_wfs") as fetch:
+            from .external_data import import_dataset
+            import_dataset("bodemdata_soil_map", AMS_BBOX)
+        fetch.assert_called_once_with(dataset, AMS_BBOX)
+
+
+# ---------------------------------------------------------------------------
+# Groundwater depth (BIS Nederland WCS)
+# ---------------------------------------------------------------------------
+
+def _ghg_tiff_bytes(value=40):
+    """A small uint8 GeoTIFF in RD New, as BIS Nederland's WCS returns it."""
+    import numpy as np
+    from rasterio.io import MemoryFile
+    from rasterio.transform import from_origin
+    with MemoryFile() as mem:
+        with mem.open(driver="GTiff", width=4, height=4, count=1, dtype="uint8", crs="EPSG:28992",
+                      transform=from_origin(256000, 471000, 50, 50), nodata=255) as dst:
+            dst.write(np.full((1, 4, 4), value, dtype="uint8"))
+        return mem.read()
+
+
+class GroundwaterDepthImportTests(TestCase):
+    def setUp(self):
+        # fetch_wcs writes its downloads under MEDIA_ROOT; keep them out of the real imports/
+        import tempfile
+        from django.test import override_settings
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        media = override_settings(MEDIA_ROOT=tmp.name)
+        media.enable()
+        self.addCleanup(media.disable)
+
+    def _fetch(self, key, value=40):
+        from .external_data import PDOKImporter
+        response = _FakeResponse(content=_ghg_tiff_bytes(value))
+        response.content = response._content
+        with mock.patch("importer.external_data.requests.get", return_value=response) as get, \
+                mock.patch("core.rasterOperations.export_raster_to_cog"):
+            result = PDOKImporter.fetch_wcs(CATALOG_BY_KEY[key], [6.89, 52.21, 6.90, 52.22])
+        return result, get
+
+    def test_subset_uses_the_coverage_axis_labels(self):
+        result, get = self._fetch("bodemdata_ghg")
+        self.assertEqual(result.status, "success", result.message)
+        subset = get.call_args.kwargs["params"]["subset"]
+        self.assertTrue(subset[0].startswith("X(") and subset[1].startswith("Y("), subset)
+        self.assertEqual(get.call_args.kwargs["params"]["CoverageId"], "bodem__ghg-mediaan")
+
+    def test_each_statistic_keeps_its_own_row(self):
+        from physicalEnv.models import GroundwaterDepth
+        self._fetch("bodemdata_ghg", value=40)
+        self._fetch("bodemdata_glg", value=120)
+        self._fetch("bodemdata_ghg", value=45)   # re-import updates the GHG row
+
+        rows = {g.statistic: g for g in GroundwaterDepth.objects.all()}
+        self.assertEqual(sorted(rows), ["GHG", "GLG"])
+        self.assertEqual(rows["GHG"].depth_raster.bands[0].data()[0][0], 45)
+        self.assertEqual(rows["GLG"].depth_raster.bands[0].data()[0][0], 120)
+        self.assertEqual(rows["GHG"].source, "BIS Nederland (WUR)")
+
+    def test_pdok_wcs_keeps_lowercase_axes(self):
+        self.assertNotIn("wcs_axis_labels", CATALOG_BY_KEY["pdok_dem_ahn_raster"])

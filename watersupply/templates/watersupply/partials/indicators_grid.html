@@ -198,6 +198,53 @@
     </div>
   </div>
 
+  <!-- Infiltration (SCS Curve Number) -->
+  <div class="card c3 wide">
+    <div class="gauge-header">
+      <div class="card-icon">🌱</div>
+      <div class="card-label">Infiltration</div>
+      {% include 'partials/_info_btn.html' with title="Infiltration (SCS Curve Number)" text="Share of a rain event that infiltrates instead of running off, by the SCS Curve Number method (USDA TR-55). Each piece of soil map x land cover gets a curve number from its hydrologic soil group (A sand ... D clay/peat; D also on undrained land where the season's groundwater level, GHG wet or GLG dry, is under 60 cm) and land-cover class; runoff Q = (P − 0.2S)² / (P + 0.8S) with S = 25400/CN − 254 mm, computed per piece and weighted by area. Set the rain depth P with the Rain Event slider." %}
+    </div>
+    {% if indicators.infiltration_pct != None %}
+    <div style="display:flex; align-items:baseline; gap:8px;">
+      <div class="card-value">{{ indicators.infiltration_pct }}%</div>
+      <div class="card-unit">of {{ indicators.rain_mm|floatformat:0 }} mm infiltrates · CN {{ indicators.curve_number }}</div>
+    </div>
+    <div class="bar-track" style="height:8px;">
+      <div class="bar-fill" style="width:{{ indicators.infiltration_pct }}%; background:#38bdf8;"></div>
+    </div>
+    <div style="display:flex; gap:16px; margin-top:10px;">
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Infiltrated</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.infiltrated_m3|floatformat:"0g" }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">m³</span></div>
+      </div>
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Runoff</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.runoff_m3|floatformat:"0g" }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">m³</span></div>
+      </div>
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Area</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.infiltration_classified_km2 }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">km²{% if indicators.infiltration_unclassified_km2 %} (+{{ indicators.infiltration_unclassified_km2 }} unclassified){% endif %}</span></div>
+      </div>
+      {% if indicators.shallow_groundwater_pct or indicators.drained_shallow_pct %}
+      <div title="Groundwater ({{ indicators.groundwater_statistic }}) within 60 cm of the surface: undrained land counts as soil group D (NEH 630); drained built-up and paved land keeps its texture group">
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Shallow GW · {{ indicators.groundwater_statistic }}</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.shallow_groundwater_pct }}% <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">→ D{% if indicators.drained_shallow_pct %} · {{ indicators.drained_shallow_pct }}% drained{% endif %}</span></div>
+      </div>
+      {% endif %}
+    </div>
+    {% else %}
+    <div class="card-unit" style="margin-top:6px;">No soil map x land cover here yet — import the Soil Map (BIS Nederland) and Land Cover (BRT Bodemgebruik).</div>
+    {% endif %}
+    {% if indicators.soil_groups %}
+    <div style="display:flex; flex-wrap:wrap; gap:6px 14px; margin-top:10px; font-size:0.72rem; color:rgba(232,244,255,0.6);">
+      {% for sg in indicators.soil_groups %}
+      <span title="{{ sg.texture }}"><b style="color:rgba(232,244,255,0.9);">{{ sg.group }}</b> {{ sg.pct }}% · {% if sg.max_mm_h != None %}{{ sg.min_mm_h }}–{{ sg.max_mm_h }}{% else %}&gt; {{ sg.min_mm_h }}{% endif %} mm/h</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
 </div>
 
 <script>if (typeof initGauges === 'function') initGauges();</script>

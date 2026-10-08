@@ -49,7 +49,7 @@
                hx-vals='{"pop_scenario": "{{ pop_scenario|default:"prognose" }}", "pop_growth": "{{ pop_growth|default:0|unlocalize }}"}'
                hx-trigger="input changed delay:200ms"
                hx-target="#indicators-grid"
-               hx-include="this"/>
+               hx-include="#consumption-slider, #rain-slider, input[name=season]:checked"/>
       </div>
       <div class="slider-threshold-labels">
         <span>50</span><span>150</span><span>250</span><span>300</span>
@@ -57,6 +57,8 @@
     </div>
     <div><span id="zone-tag" class="threshold-tag ok">Optimal</span></div>
   </div>
+
+  {% include 'watersupply/partials/rain_slider.html' %}
 
   <!-- Cards — swap target for recalculate -->
   <div id="indicators-grid">

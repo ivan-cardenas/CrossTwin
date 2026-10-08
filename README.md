@@ -17,14 +17,15 @@ The project follows the **DPSIR framework** (Driver → Pressure → State → I
 | `DigitalTwin/` | `settings.py`, `urls.py`, `test_runner.py` | Django project config, env loading, caches, custom PostGIS test runner |
 | `core/` | `utils.py`, `signals.py`, `cache.py`, `middleware.py`, `rasterOperations.py`, `DAG.dot`, `static/js/` | Model registry, layer-cache versions, query-stats middleware, raster→COG export pipeline, DPSIR causal graph, shared frontend JS |
 | `mainMap/` | `views.py`, `urls.py`, `charts.py` | Interactive map view, layer catalog + GeoJSON API, population dock charts |
-| `importer/` | `views.py`, `views_external.py`, `external_catalog.py`, `external_data.py`, `batching.py` | File-upload import + external catalog import (PDOK, CBS, Sentinel-2, GEE, KNMI); bulk writes and deferred cascades |
+| `importer/` | `views.py`, `views_external.py`, `external_catalog.py`, `external_data.py`, `batching.py` | File-upload import + external catalog import (PDOK, CBS, BIS Nederland, OpenStreetMap, Sentinel-2, GEE, KNMI, RIVM); bulk writes and deferred cascades |
 | `docs/` | `PERFORMANCE.md`, … | Performance review and implementation status |
 | `administrative/` | `models.py`, `population.py`, `signals.py` | Province > City > District > Neighborhood hierarchy, population projection |
-| `watersupply/` | `models.py`, `calculations.py`, `views.py`, `signals.py` | Water infrastructure, indicator dashboard |
+| `watersupply/` | `models.py`, `calculations.py`, `views.py`, `signals.py` | Water infrastructure, indicator dashboard (incl. SCS infiltration with rain-event and groundwater-season what-ifs) |
 | `urban_heat/` | `models.py`, `calculations.py`, `views.py` | Thermal comfort rasters (UTCI, PET, MRT, LST, SVF), NBS |
 | `housing/` | `models.py`, `calculations.py`, `views.py` | Supply/demand, mortgages, rentals, affordability |
-| `builtup/` | `models.py` | Streets, parks, facilities, buildings, properties |
-| `physicalEnv/`, `nature/`, `weather/`, `Energy/` | `models.py` | Land cover, DEM/DSM, weather, energy domain data |
+| `builtup/` | `models.py`, `calculations.py`, `views.py` | Streets, parks, facilities, buildings, properties, zoning (HILUCS land use), indicator dashboard |
+| `physicalEnv/` | `models.py`, `soil.py`, `hilucs.py`, `signals.py` | Land cover, DEM/DSM, soil map + hydrologic soil groups, groundwater depth (GHG/GLG), SCS Curve Number method, HILUCS land-use codelist |
+| `nature/`, `weather/`, `Energy/` | `models.py` | Water bodies, forests, green space, trees; weather; energy domain data |
 | `Templates/` | `mainMap.html`, `indicators_base.html`, `<app>/partials/` | Shared HTML shells + HTMX partials |
 | `tiler.py` | — | Standalone FastAPI app serving COG tiles (run as its own process) |
 
@@ -39,6 +40,7 @@ The project follows the **DPSIR framework** (Driver → Pressure → State → I
 Optional, only needed for specific External Data Import sources:
 - `SENTINEL_CLIENT_ID` / `SENTINEL_CLIENT_SECRET` — Copernicus Data Space (openEO), for Sentinel-2 imports
 - `KNMI_API_KEY` — KNMI Data Platform, for weather/WBGT imports
+- `OVERPASS_URL` — another Overpass API instance for OpenStreetMap imports (default: the public overpass-api.de)
 - A Google Earth Engine service-account JSON (pasted into the UI per import, not stored in `.env`)
 
 ## 📦 Installation
@@ -94,6 +96,7 @@ COORDINATE_SYSTEM=28992  # EPSG code for Dutch RD New
 SENTINEL_CLIENT_ID=your-cdse-client-id
 SENTINEL_CLIENT_SECRET=your-cdse-client-secret
 KNMI_API_KEY=your-knmi-api-key
+OVERPASS_URL=https://overpass-api.de/api/interpreter  # OpenStreetMap imports
 
 # Optional — performance measurement (see docs/PERFORMANCE.md §0)
 QUERY_STATS=True          # per-request query count + DB time (default: same as DEBUG)
@@ -182,7 +185,7 @@ The full causal graph lives in [`core/DAG.dot`](core/DAG.dot) (Graphviz). Each d
 # DAG edges: Central_Bank -> Mortgage
 ```
 
-**Of the 102 edges in the graph, only 28 are backed by real derivation logic** (a `save()` or `calculations.py` function that reads the source field — not just a docstring claiming the edge). See [`TODO.md`](TODO.md) for the full per-app gap analysis and checklist before extending any dashboard's calculations.
+**Of the 103 edges in the graph, only 30 are backed by real derivation logic** (a `save()` or `calculations.py` function that reads the source field — not just a docstring claiming the edge). See [`TODO.md`](TODO.md) for the full per-app gap analysis and checklist before extending any dashboard's calculations.
 
 ## 📥 Importer System
 
@@ -193,16 +196,18 @@ Two paths, both under `/importer/`:
 
 | Source | Provides | Auth |
 |---|---|---|
-| PDOK | Admin boundaries, BAG buildings, roads, water, elevation | None |
+| PDOK | Admin boundaries, BAG buildings, roads, water, elevation, land cover, zoning plans (each zoning element with its HILUCS land use) | None |
 | RIVM | Per-building energy labels → `builtup.Building` (import BAG buildings first) | None |
 | CBS | National statistics via OData, incl. population forecasts | None |
+| BIS Nederland (bodemdata.nl) | Soil map 1:50 000 (WFS) → `SoilType`/`SoilArea` with SCS soil group; groundwater depth GHG/GLG (WCS, 50 m) → `GroundwaterDepth` | None |
+| OpenStreetMap (Overpass API) | Parks → `builtup.Park`, water bodies → `nature.WaterBodies`, amenities (nodes only) → `builtup.Facility`, trees → `nature.Tree` | None (`OVERPASS_URL` optional) |
 | Sentinel-2 | Land cover + NDVI/NDWI/moisture/true-color via openEO | `SENTINEL_CLIENT_ID`/`SECRET`, else UI prompt |
 | KNMI Data Platform | Weather observations (e.g. WBGT) | Server-side `KNMI_API_KEY` |
 | Google Earth Engine | Arbitrary GEE assets, exported as GeoTIFF | Service-account JSON pasted per import |
 
 For districts/neighborhoods, the import map picks the area of interest from the parent city/district (`bbox_from` in the catalog).
 
-Large imports are batched (`importer/batching.py`): spatial parents (the city a polygon lies in, …) are found with prepared geometries, and models without their own `save()` logic — land cover, streets, the nature layers — are written 500 rows at a time with `bulk_create` / `INSERT … ON CONFLICT`. Models with `save()` logic (buildings, the administrative hierarchy) are still saved row by row.
+Large imports are batched (`importer/batching.py`): spatial parents (the city a polygon lies in, …) are found with prepared geometries, and models without their own `save()` logic — land cover, streets, facilities, soil polygons, the nature layers and trees — are written 500 rows at a time with `bulk_create` / `INSERT … ON CONFLICT`. Models with `save()` logic (buildings, the administrative hierarchy) are still saved row by row.
 
 ## 🛰️ Raster Pipeline
 

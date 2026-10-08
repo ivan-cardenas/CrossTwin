@@ -38,7 +38,7 @@
           hx-get="{% url 'watersupply:recalculate_indicators' level location year %}"
           hx-trigger="input changed delay:200ms"
           hx-target="#indicators-grid"
-          hx-include="this"
+          hx-include="#consumption-slider, #rain-slider, input[name=season]:checked"
         />
       </div>
       <!-- threshold labels -->
@@ -55,6 +55,8 @@
       <span id="zone-tag" class="threshold-tag ok">Optimal</span>
     </div>
   </div>
+
+  {% include 'watersupply/partials/rain_slider.html' %}
 {% endblock %}
 
 {% block grid %}{% include 'watersupply/partials/indicators_grid.html' %}{% endblock %}

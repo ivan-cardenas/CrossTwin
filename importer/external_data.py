@@ -131,35 +131,45 @@ def _resolve_fk_lookups(props: Dict, mapping: Dict, cache: Dict, errors: List[st
     source value into the lookup value and the defaults for a new row; e.g.
     "hilucs_href" reads the code '6.3.2' out of a HILUCS URI.
 
+    An entry with "lookup" ({model field: source property}) instead of
+    source_property/lookup_field keys the parent on several properties, e.g.
+    a soil type on its code and name.
+
     Returns {model field: parent row}, or None when a required lookup has no
     usable value and the feature should be skipped. `cache` is shared across
-    the batch: {model field: {source value: parent row}}.
+    the batch: {model field: {source value(s): parent row}}.
     """
     values = {}
     for fk_conf in mapping.get("__fk_lookup__", []):
-        src_val = props.get(fk_conf["source_property"])
-        parsed = None
-        if src_val is not None:
-            parser = fk_conf.get("parser")
+        if "lookup" in fk_conf:
+            src_val = tuple(props.get(src) for src in fk_conf["lookup"].values())
             parsed = (
-                _FK_LOOKUP_PARSERS[parser](src_val) if parser
-                else (src_val, fk_conf.get("defaults", {}))
+                (dict(zip(fk_conf["lookup"], src_val)), fk_conf.get("defaults", {}))
+                if None not in src_val else None
             )
+            source = "', '".join(fk_conf["lookup"].values())
+        else:
+            src_val = props.get(fk_conf["source_property"])
+            parsed = None
+            if src_val is not None:
+                parser = fk_conf.get("parser")
+                parsed = (
+                    _FK_LOOKUP_PARSERS[parser](src_val) if parser
+                    else (src_val, fk_conf.get("defaults", {}))
+                )
+                if parsed is not None:
+                    parsed = ({fk_conf["lookup_field"]: parsed[0]}, parsed[1])
+            source = fk_conf["source_property"]
         if parsed is None:
             if fk_conf.get("required", True):
-                errors.append(
-                    f"Missing '{fk_conf['source_property']}' for FK lookup "
-                    f"'{fk_conf['field']}' — skipped."
-                )
+                errors.append(f"Missing '{source}' for FK lookup '{fk_conf['field']}' — skipped.")
                 return None
             continue
         field_cache = cache.setdefault(fk_conf["field"], {})
         if src_val not in field_cache:
-            lookup_value, defaults = parsed
+            lookup, defaults = parsed
             LookupModel = get_model_class(fk_conf["model"])
-            field_cache[src_val], _ = LookupModel.objects.get_or_create(
-                **{fk_conf["lookup_field"]: lookup_value}, defaults=defaults,
-            )
+            field_cache[src_val], _ = LookupModel.objects.get_or_create(**lookup, defaults=defaults)
         values[fk_conf["field"]] = field_cache[src_val]
     return values
 
@@ -509,7 +519,7 @@ def load_raster_into_target_model(
             # rather than stamping it with an invented one.
             field_values[date_field] = acquisition_date
         if "source" in model_field_names:
-            source_labels = {"pdok": "PDOK", "sentinel2": "Sentinel-2 / Copernicus", "gee": "Google Earth Engine", "knmi": "KNMI Data Platform"}
+            source_labels = {"pdok": "PDOK", "sentinel2": "Sentinel-2 / Copernicus", "gee": "Google Earth Engine", "knmi": "KNMI Data Platform", "bodemdata": "BIS Nederland (WUR)"}
             field_values["source"] = source_labels.get(dataset.get("source"), dataset.get("source"))
         if "measurement_method" in model_field_names and dataset.get("measurement_method"):
             field_values["measurement_method"] = dataset["measurement_method"]
@@ -531,6 +541,12 @@ def load_raster_into_target_model(
                 field_values["index"] = index_value
         if "resolution" in model_field_names and dataset.get("resolution_m") is not None:
             field_values["resolution"] = dataset["resolution_m"]
+        # Models holding several statistics of one source (physicalEnv.
+        # GroundwaterDepth: GHG, GLG, GVG) keep one row per statistic, not
+        # one per city and year that the next statistic would overwrite.
+        if "statistic" in model_field_names and dataset.get("statistic"):
+            field_values["statistic"] = dataset["statistic"]
+            lookup_keys.append("statistic")
 
         if lookup_keys:
             lookup = {k: field_values[k] for k in lookup_keys}
@@ -1193,6 +1209,9 @@ class PDOKImporter:
             temp_dir = Path(settings.MEDIA_ROOT) / "imports" / "pdok" / "rasters"
             temp_dir.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            # Subset axis names are the coverage's own axisLabels: PDOK's AHN
+            # takes "x"/"y", BIS Nederland's GeoServer only "X"/"Y" (404 otherwise).
+            x_axis, y_axis = dataset.get("wcs_axis_labels", ("x", "y"))
 
             tile_paths = []
             total_bytes = 0
@@ -1206,8 +1225,8 @@ class PDOKImporter:
                         "CoverageId": layer,
                         "format": "image/tiff",
                         "subset": [
-                            f"x({tile_bbox[0]},{tile_bbox[2]})",
-                            f"y({tile_bbox[1]},{tile_bbox[3]})",
+                            f"{x_axis}({tile_bbox[0]},{tile_bbox[2]})",
+                            f"{y_axis}({tile_bbox[1]},{tile_bbox[3]})",
                         ],
                     }
                     logger.info(f"Fetching WCS tile ({i},{j}) of {len(x_edges)-1}x{len(y_edges)-1}: {url} coverage={layer}")
@@ -1222,7 +1241,7 @@ class PDOKImporter:
 
             filepath = temp_dir / f"{dataset['key']}_{timestamp}.tif"
             if len(tile_paths) == 1:
-                tile_paths[0].rename(filepath)
+                tile_paths[0].replace(filepath)   # replace, not rename: rename fails on Windows if the file exists
             else:
                 import rasterio
                 from rasterio.merge import merge as rio_merge
@@ -2578,7 +2597,7 @@ def import_dataset(
     fmt = dataset.get("format", "wfs")
     
     print(f"[DISPATCH] import_dataset: dataset_key={dataset_key} bbox={bbox} date_from={date_from} date_to={date_to}")
-    if source in ("pdok", "rivm") or (source == "CBS" and fmt == "wfs"):
+    if source in ("pdok", "rivm", "bodemdata") or (source == "CBS" and fmt == "wfs"):
 
         if fmt == "wfs":
             return PDOKImporter.fetch_wfs(dataset, bbox)
