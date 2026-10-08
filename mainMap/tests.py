@@ -261,6 +261,49 @@ class ModelGeoJsonTests(TestCase):
         self.assertEqual(response['X-Cache'], 'MISS')
         self.assertEqual(response.json()['features'][0]['properties']['currentPopulation'], 1500)
 
+    def test_soil_area_popup_carries_its_soil_type(self):
+        """POPUP_RELATED_FIELDS: name, group and rates ride on the soil_type JOIN."""
+        from physicalEnv.models import SoilArea, SoilType
+        from .views import _field_metadata
+        soil = SoilType.objects.create(code="Hn21", name="Veldpodzolgronden; leemarm en zwak lemig fijn zand")
+        SoilArea.objects.create(mapAreaID="soilarea.1", soil_type=soil, geom=make_polygon(257000.0, 470000.0))
+
+        with self.assertNumQueries(1):
+            props = self.get('physicalEnv', 'SoilArea').json()['features'][0]['properties']
+        self.assertEqual(props['soil_type'], "Hn21")
+        self.assertEqual(props['soil_type__name'], soil.name)
+        self.assertEqual(props['soil_type__soilGroup'], soil.soilGroup)
+        self.assertEqual(props['soil_type__infiltrationMin_mm_h'], soil.infiltrationMin_mm_h)
+        self.assertEqual(props['soil_type__infiltrationMax_mm_h'], soil.infiltrationMax_mm_h)
+
+        meta = _field_metadata(SoilArea)
+        self.assertEqual(meta['soil_type__infiltrationMin_mm_h']['label'], 'Infiltration rate min')
+        self.assertEqual(meta['soil_type__infiltrationMin_mm_h']['unit'], 'mm/h')
+
+    def test_soil_map_is_coloured_by_legend_unit(self):
+        """Fill colour = BRO legend colour of SoilType.unitCode, legend = units present."""
+        from physicalEnv.models import SoilArea, SoilType
+        from .styles.soilStyles import SOIL_UNIT_COLORS, SOIL_UNKNOWN_COLOR, build_soil_style_and_legend
+        peat = SoilType.objects.create(code="zVp", unitCode="zVp", unitName="Meerveengronden",
+                                       name="Meerveengronden op zand met humuspodzol, beginnend ondieper dan 1.2 m")
+        sand = SoilType.objects.create(code="kHn21", unitCode="Hn21", unitName="Veldpodzolgronden",
+                                       name="Veldpodzolgronden; leemarm en zwak lemig fijn zand")
+        SoilType.objects.create(code="Xx1", unitCode="Xx1", unitName="Not on the map", name="Unused")
+        SoilArea.objects.create(mapAreaID="a", soil_type=peat, geom=make_polygon(257000.0, 470000.0))
+        SoilArea.objects.create(mapAreaID="b", soil_type=sand, geom=make_polygon(258000.0, 470000.0))
+
+        layers, legend = build_soil_style_and_legend()
+        fill = layers[0]['paint']['fill-color']
+        self.assertEqual(fill[:2], ['match', ['get', 'soil_type__unitCode']])
+        pairs = dict(zip(fill[2:-1:2], fill[3:-1:2]))
+        self.assertEqual(pairs, {'Hn21': SOIL_UNIT_COLORS['Hn21'], 'zVp': SOIL_UNIT_COLORS['zVp']})
+        self.assertEqual(fill[-1], SOIL_UNKNOWN_COLOR)
+        # legend order = BRO legend order (peat before podzol); unused types left out
+        self.assertEqual([e['label'] for e in legend], ['zVp Meerveengronden', 'Hn21 Veldpodzolgronden'])
+
+        props = self.get('physicalEnv', 'SoilArea').json()['features'][0]['properties']
+        self.assertIn(props['soil_type__unitCode'], pairs)
+
     def test_unknown_layer_is_404(self):
         self.assertEqual(self.get('administrative', 'Nope').status_code, 404)
 
@@ -304,7 +347,7 @@ class LayerStyleTests(SimpleTestCase):
 
     def test_every_style_property_is_a_field_of_its_model(self):
         from core.utils import VECTOR_REGISTRY
-        from .views import LAYER_STYLES
+        from .styles.layerStyles import LAYER_STYLES
         for key, style in LAYER_STYLES.items():
             model = VECTOR_REGISTRY.get(key)
             if model is None:
@@ -316,7 +359,7 @@ class LayerStyleTests(SimpleTestCase):
                         self.assertIn(name, fields)
 
     def test_building_colour_and_height_follow_type_and_stored_height(self):
-        from .views import BUILDING_TYPE_COLORS, LAYER_STYLES
+        from .styles.layerStyles import BUILDING_TYPE_COLORS, LAYER_STYLES
         paint = LAYER_STYLES['builtup.Building']['layers'][0]['paint']
         color = paint['fill-extrusion-color']
         self.assertEqual(color[:2], ['match', ['get', 'buildingType']])

@@ -1099,9 +1099,26 @@ class SoilMapImportTests(TestCase):
         return _import_geojson_features(features, RD_DATASET, SoilArea, FIELD_MAPPINGS["bodemdata_soil_map"])
 
     @staticmethod
-    def _soil(x0, maparea_id, code, name):
+    def _soil(x0, maparea_id, code, name, unit=None, unit_name="Veldpodzolgronden"):
         return _rd_feature(x0, 0, x0 + 10, 10, maparea_id=maparea_id, soilcode=code,
-                           normal_soilprofile_name=name, first_soilcode=code)
+                           normal_soilprofile_name=name, first_soilcode=unit or code,
+                           first_soilname=unit_name)
+
+    def test_soil_type_stores_its_legend_unit(self):
+        """first_soilcode/name fill SoilType.unitCode/unitName, also on a soil
+        type imported before the fields existed."""
+        from physicalEnv.models import SoilType
+        sand = "Veldpodzolgronden; leemarm en zwak lemig fijn zand"
+        SoilType.objects.create(code="kHn21", name=sand)   # unitCode empty
+        _created, _updated, errors = self._import([
+            self._soil(0, "m1", "kHn21", sand, unit="Hn21"),
+            self._soil(20, "m2", "Hn21/Hd21", sand, unit="Hn21"),
+        ])
+        self.assertEqual(errors, [])
+        self.assertEqual(
+            set(SoilType.objects.values_list("code", "unitCode", "unitName")),
+            {("kHn21", "Hn21", "Veldpodzolgronden"), ("Hn21/Hd21", "Hn21", "Veldpodzolgronden")},
+        )
 
     def test_soil_types_are_shared_and_classified(self):
         from physicalEnv.models import SoilArea, SoilType

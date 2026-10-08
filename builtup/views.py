@@ -3,7 +3,7 @@ from django.http import JsonResponse
 
 from administrative.admin_units import resolve_admin_unit, ADMIN_LEVELS
 from administrative.population import DEFAULT_SCENARIO, get_population, population_params
-from mainMap.views import BUILDING_TYPE_COLORS, BUILDING_TYPE_LABELS, LAYER_STYLES
+from mainMap.styles.layerStyles import BUILDING_TYPE_COLORS, BUILDING_TYPE_LABELS, LAYER_STYLES
 from .calculations import (
     calculate_building_stock,
     calculate_building_mix,
@@ -20,7 +20,7 @@ GREEN_PER_CAPITA_MIN_M2 = 9
 GREEN_PER_CAPITA_GOOD_M2 = 50
 
 
-# Card colours = the matching map layer's colour (mainMap/views.py LAYER_STYLES),
+# Card colours = the matching map layer's colour (mainMap/styles/layerStyles.py LAYER_STYLES),
 # so a card and the layer it summarises read as the same thing.
 LAYER_COLORS = {
     name: LAYER_STYLES[f'builtup.{model}']['color']

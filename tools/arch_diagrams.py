@@ -14,8 +14,8 @@ OUT = Path(__file__).resolve().parent.parent / "docs" / "architecture" / "latest
 # name: (stroke, fill, text)
 PALETTE = {
     "client":   ("#2563eb", "#eff6ff", "#1e3a8a"),
-    "django":   ("#7c3aed", "#f5f3ff", "#4c1d95"),
-    "data":     ("#059669", "#ecfdf5", "#064e3b"),
+    "django":   ("#095331", "#f5f3ff", "#010e01"),
+    "data":     ("#51CEA6", "#ecfdf5", "#064e3b"),
     "external": ("#ea580c", "#fff7ed", "#7c2d12"),
     "raster":   ("#0891b2", "#ecfeff", "#164e63"),
     "cache":    ("#d97706", "#fffbeb", "#78350f"),
@@ -299,7 +299,7 @@ def raster():
     d.group(40, 380, 1520, 340, "Serving", "raster")
     d.box(80, 440, 300, 150, "Map UI", ["requests tile URL for a", "raster layer, then adds a", "Mapbox raster source"], "client")
     d.box(600, 440, 330, 150, "core.views.get_raster_tiles", ["builds TiTiler URL template:", "/cog/tiles/WebMercatorQuad/", "  {z}/{x}/{y}.png?url=…", "+ rescale · colormap · resampling"], "django")
-    d.box(1000, 440, 230, 150, "rasterStyles", ["per-layer colormap", "and value range", "core/rasterStyles.py"], "neutral")
+    d.box(1000, 440, 230, 150, "rasterStyles", ["per-layer colormap", "and value range", "mainMap/styles/rasterStyles.py"], "neutral")
     d.box(1290, 440, 240, 150, "TiTiler :8001", ["FastAPI + rio-tiler", "reads COG byte ranges", "renders PNG tiles"], "raster")
     d.edge([(380, 480), (600, 480)], "client", "GET /api/raster/…/tiles/", step=1)
     d.edge([(600, 550), (380, 550)], "django", "tile_url template", step=2)
@@ -496,7 +496,7 @@ def infiltration():
     d.note(40, 755, ["Soil group from the Dutch texture words in the soil name (zand A · zavel/leem B · lichte klei C · klei/veen D); the most restrictive layer wins.",
                      "NEH 630: a water table within 60 cm makes a soil group D; drained land covers (urban fabric, industrial, roads, ports, airports) keep their texture letter.",
                      "BIS has no GHG/GLG under most built-up land (85 % of urban-fabric cells in Enschede) or water: nodata counts as not shallow; water/wetland CN = 100/98.",
-                     "Only the season re-runs the spatial query; moving the rain slider re-evaluates the pure SCS functions."])
+                     "The rain depth enters only the pure SCS functions; the spatial query depends on the season alone (cacheable, currently re-run per request)."])
     d.legend([("external", "External source"), ("data", "Vector model / SQL"), ("raster", "Raster"), ("django", "Python"), ("client", "Dashboard")])
     return d
 

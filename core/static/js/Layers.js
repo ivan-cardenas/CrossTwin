@@ -548,7 +548,7 @@ async function addRasterLayer(map, appLabel, modelName, rasterID, opacity = 0.7)
 /**
  * Render a color-range legend for an active raster layer: a gradient bar
  * sampled server-side from the exact colormap TiTiler used to paint the
- * tiles (core/rasterStyles.py::colormap_legend_stops), plus min/max labels.
+ * tiles (mainMap/styles/rasterStyles.py::colormap_legend_stops), plus min/max labels.
  * Categorical products (land cover classes) still get a gradient over their
  * value range rather than a per-class key, which is a reasonable stand-in
  * given there's no class-label metadata to draw from yet.
@@ -583,7 +583,7 @@ function addRasterLegend(key, title, legend) {
 /**
  * Render a swatch-per-category legend for a vector layer colored by a
  * `match` expression on some property (e.g. LandCoverVector.land_cover_type
- * — see core/landCoverStyles.py::build_landcover_style_and_legend), as
+ * — see mainMap/styles/landCoverStyles.py::build_landcover_style_and_legend), as
  * opposed to addRasterLegend's continuous gradient bar.
  * @param {string} key - layer key, used to id/find/remove the legend element.
  * @param {string} title - legend heading.

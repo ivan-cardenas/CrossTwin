@@ -30,7 +30,7 @@ def _urban_area_filter():
     populated at import time (see importer/external_catalog.py's
     pdok_landcover_brt entry), not a fixed enum, so substring matching is
     used rather than exact equality -- matching the same convention as
-    core/landCoverStyles.py's KEYWORD_COLORS. The set-based SQL in
+    mainMap/styles/landCoverStyles.py's KEYWORD_COLORS. The set-based SQL in
     _recompute_neighborhood_urban_area applies the same rule as
     `class_name ILIKE ANY(...)`."""
     q = Q()

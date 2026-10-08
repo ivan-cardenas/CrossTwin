@@ -133,7 +133,10 @@ def _resolve_fk_lookups(props: Dict, mapping: Dict, cache: Dict, errors: List[st
 
     An entry with "lookup" ({model field: source property}) instead of
     source_property/lookup_field keys the parent on several properties, e.g.
-    a soil type on its code and name.
+    a soil type on its code and name. Its "defaults_from" ({model field:
+    source property}) fills further fields from the feature, also on a row
+    that already exists but lacks or differs in them (soil types imported
+    before the field was added).
 
     Returns {model field: parent row}, or None when a required lookup has no
     usable value and the feature should be skipped. `cache` is shared across
@@ -143,10 +146,11 @@ def _resolve_fk_lookups(props: Dict, mapping: Dict, cache: Dict, errors: List[st
     for fk_conf in mapping.get("__fk_lookup__", []):
         if "lookup" in fk_conf:
             src_val = tuple(props.get(src) for src in fk_conf["lookup"].values())
-            parsed = (
-                (dict(zip(fk_conf["lookup"], src_val)), fk_conf.get("defaults", {}))
-                if None not in src_val else None
-            )
+            defaults = {
+                **fk_conf.get("defaults", {}),
+                **{f: props.get(src) for f, src in fk_conf.get("defaults_from", {}).items()},
+            }
+            parsed = (dict(zip(fk_conf["lookup"], src_val)), defaults) if None not in src_val else None
             source = "', '".join(fk_conf["lookup"].values())
         else:
             src_val = props.get(fk_conf["source_property"])
@@ -169,7 +173,14 @@ def _resolve_fk_lookups(props: Dict, mapping: Dict, cache: Dict, errors: List[st
         if src_val not in field_cache:
             lookup, defaults = parsed
             LookupModel = get_model_class(fk_conf["model"])
-            field_cache[src_val], _ = LookupModel.objects.get_or_create(**lookup, defaults=defaults)
+            row, created = LookupModel.objects.get_or_create(**lookup, defaults=defaults)
+            stale = {f: v for f, v in defaults.items()
+                     if f in fk_conf.get("defaults_from", {}) and getattr(row, f) != v}
+            if stale and not created:
+                for f, v in stale.items():
+                    setattr(row, f, v)
+                row.save()
+            field_cache[src_val] = row
         values[fk_conf["field"]] = field_cache[src_val]
     return values
 
@@ -527,7 +538,7 @@ def load_raster_into_target_model(
             field_values["satellite_type"] = dataset["satellite_type"]
         if "index" in model_field_names:
             # index_override lets a catalog entry point at a specific
-            # core/rasterStyles.py INDEX_STYLES key when its GEE band name
+            # mainMap/styles/rasterStyles.py INDEX_STYLES key when its GEE band name
             # (e.g. HRSL's "b1") is too generic/meaningless to match one on
             # its own -- see gee_population_density.
             index_value = (

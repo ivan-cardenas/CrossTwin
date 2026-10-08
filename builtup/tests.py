@@ -66,7 +66,7 @@ from django.urls import reverse
 
 from builtup.models import Facility, Park, Property, Street
 from builtup.views import MOCK_DATA, _build_indicators
-from mainMap.views import BUILDING_TYPE_COLORS, LAYER_STYLES
+from mainMap.styles.layerStyles import BUILDING_TYPE_COLORS, LAYER_STYLES
 from watersupply.tests.factories import make_neighborhood, make_polygon
 
 HX = {'HTTP_HX_REQUEST': 'true'}

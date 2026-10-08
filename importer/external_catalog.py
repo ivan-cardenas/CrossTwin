@@ -162,11 +162,13 @@ FIELD_MAPPINGS = {
         "__unique_field__": "mapAreaID",
         # Each polygon points to a SoilType keyed on code + name (soilcode
         # zVp has two names in the 2025 map); SoilType.save() derives the
-        # hydrologic soil group and infiltration rate from the name.
+        # hydrologic soil group and infiltration rate from the name. The main
+        # legend unit (first_soilcode/name) colours the map.
         "__fk_lookup__": [{
             "field": "soil_type",
             "model": "physicalEnv.SoilType",
             "lookup": {"code": "soilcode", "name": "normal_soilprofile_name"},
+            "defaults_from": {"unitCode": "first_soilcode", "unitName": "first_soilname"},
         }],
     },
 

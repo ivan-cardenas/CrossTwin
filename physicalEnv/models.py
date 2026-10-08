@@ -54,6 +54,8 @@ class SoilType(models.Model):
     id = models.SmallAutoField(primary_key=True)
     code = models.CharField(max_length=20, help_text="Soil code of the soil map, e.g. 'Hn21'")
     name = models.CharField(max_length=200, help_text="Soil name of the soil map, e.g. 'Veldpodzolgronden; leemarm en zwak lemig fijn zand'")
+    unitCode = models.CharField(max_length=20, null=True, blank=True, help_text="Main soil unit of the map legend (first_soilcode), e.g. 'Hn21' for 'Hn21/Hd21'; colours the soil map (mainMap/styles/soilStyles.py)")
+    unitName = models.CharField(max_length=200, null=True, blank=True, help_text="Legend name of the main soil unit (first_soilname)")
     soilGroup = models.CharField(max_length=1, choices=SOIL_GROUP_CHOICES, null=True, blank=True, help_text="Hydrologic soil group (SCS), derived from the soil name's texture")
     infiltrationMin_mm_h = models.FloatField(null=True, blank=True, help_text="Lower bound of the final infiltration rate of the soil group, mm/h")
     infiltrationMax_mm_h = models.FloatField(null=True, blank=True, help_text="Upper bound of the final infiltration rate of the soil group, mm/h (empty for group A: no upper bound)")

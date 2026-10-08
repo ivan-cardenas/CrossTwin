@@ -1,6 +1,6 @@
 from django.http import JsonResponse
 from .utils import RASTER_REGISTRY
-from .rasterStyles import resolve_raster_style, colormap_legend_stops
+from mainMap.styles.rasterStyles import resolve_raster_style, colormap_legend_stops
 from django.conf import settings
 from urllib.parse import quote
 import requests
@@ -81,7 +81,7 @@ def get_raster_tiles(request, app_label, layer_name):
     )
 
     # TiTiler defaults to nearest-neighbour resampling (blocky at high zoom);
-    # only override it where core/rasterStyles.py's RESAMPLING_OVERRIDES asks
+    # only override it where mainMap/styles/rasterStyles.py's RESAMPLING_OVERRIDES asks
     # for smoother interpolation, e.g. HRSL's 30m population pixels. The
     # query param is `resampling` on the wire (RIOResampling's FastAPI
     # alias), not the Python field name `resampling_method`.

@@ -190,4 +190,5 @@ graphify-out/cache/
 *.tex
 *.fls
 *.aux
-docs/crossTwin-paper/
+docs/paper/
+paper/

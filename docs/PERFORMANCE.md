@@ -53,7 +53,7 @@ When `db` is much smaller than `total`, the time is in Python: profile the reque
 startup costs, run 2 is the steady state; `--save x.prof` for `snakeviz`). If the tables are full of
 `importlib` rows, find the module with `python -X importtime -c "import django; django.setup(); import DigitalTwin.urls"`.
 Doing this found 2–3 s of first-request time in top-level imports of scipy/rasterio/rio-cogeo (`weather/models.py`,
-`core/signals.py`), pandas/geopandas (`importer/views.py`, `importer/utils.py`) and rio-tiler (`core/rasterStyles.py`),
+`core/signals.py`), pandas/geopandas (`importer/views.py`, `importer/utils.py`) and rio-tiler (`mainMap/styles/rasterStyles.py`),
 plus 25 ms per admin-unit lookup spent rebuilding the WGS84 → RD New transformation. All are now imported or built
 lazily; `/api/admin-unit/` went from 1963 → 761 ms cold and 33 → 8 ms warm.
 

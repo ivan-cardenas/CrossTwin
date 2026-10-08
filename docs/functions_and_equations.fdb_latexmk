@@ -1,5 +1,5 @@
 # Fdb version 4
-["pdflatex"] 1791454057.24743 "functions_and_equations.tex" "functions_and_equations.pdf" "functions_and_equations" 1791454064.96084 0
+["pdflatex"] 1791457615.3562 "functions_and_equations.tex" "functions_and_equations.pdf" "functions_and_equations" 1791457623.10542 0
   "C:/Program Files/MiKTeX/fonts/enc/dvips/cm-super/cm-super-ts1.enc" 1001775420 2900 1537cc8184ad1792082cd229ecc269f4 ""
   "C:/Program Files/MiKTeX/fonts/tfm/jknappen/ec/tcrm1095.tfm" 993062508 1460 8005ce585ff351dff78998923504da5e ""
   "C:/Program Files/MiKTeX/fonts/tfm/public/amsfonts/cmextra/cmex7.tfm" 1233951848 1004 54797486969f23fa377b128694d548df ""
@@ -106,10 +106,10 @@
   "C:/Users/icard/AppData/Roaming/MiKTeX/tex/latex/siunitx/siunitx.sty" 1788882353 357508 eec8eed32705c5775f89eef0f703f4ab ""
   "C:/Users/icard/AppData/Roaming/MiKTeX/tex/latex/translations/dicts/translations-basic-dictionary-english.trsl" 1644048522 5588 0c1628daf15f4411ff1f463114c634a3 ""
   "C:/Users/icard/AppData/Roaming/MiKTeX/tex/latex/translations/translations.sty" 1644048522 44247 2188b95d0ee74e31eca4d316263c58a7 ""
-  "functions_and_equations.aux" 1791454062.1298 12009 19cea5afb31387553b6e87146dadcf8d "pdflatex"
-  "functions_and_equations.out" 1791454062.14371 18489 1122c06d363060d014812355a7b9422f "pdflatex"
-  "functions_and_equations.tex" 1791454015.21871 60373 16945e7a9c051d527040366cc9418884 ""
-  "functions_and_equations.toc" 1791454062.15804 7413 14e8fa0d8cf8c6708dd433cdfde60a0c "pdflatex"
+  "functions_and_equations.aux" 1791457620.70678 12009 9ecca032a56a8c642701c02a39b52ad7 "pdflatex"
+  "functions_and_equations.out" 1791457620.71209 18489 1122c06d363060d014812355a7b9422f "pdflatex"
+  "functions_and_equations.tex" 1791457466.19971 60540 33fa8b924586b9126a88fcf85ea10c80 ""
+  "functions_and_equations.toc" 1791457620.71732 7413 76f6f9742516a55b12d1fe5f41014530 "pdflatex"
   (generated)
   "functions_and_equations.aux"
   "functions_and_equations.log"

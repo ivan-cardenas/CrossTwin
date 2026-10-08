@@ -16,7 +16,7 @@ The project follows the **DPSIR framework** (Driver → Pressure → State → I
 |---|---|---|
 | `DigitalTwin/` | `settings.py`, `urls.py`, `test_runner.py` | Django project config, env loading, caches, custom PostGIS test runner |
 | `core/` | `utils.py`, `signals.py`, `cache.py`, `middleware.py`, `rasterOperations.py`, `DAG.dot`, `static/js/` | Model registry, layer-cache versions, query-stats middleware, raster→COG export pipeline, DPSIR causal graph, shared frontend JS |
-| `mainMap/` | `views.py`, `urls.py`, `charts.py` | Interactive map view, layer catalog + GeoJSON API, population dock charts |
+| `mainMap/` | `views.py`, `urls.py`, `charts.py`, `editing.py`, `styles/` | Interactive map view, layer catalog + GeoJSON API, map editing, population dock charts; `styles/` holds every map style: vector layer styles (`layerStyles.py`), soil map colours (`soilStyles.py`), land-cover legend (`landCoverStyles.py`), raster colormaps (`rasterStyles.py`) |
 | `importer/` | `views.py`, `views_external.py`, `external_catalog.py`, `external_data.py`, `batching.py` | File-upload import + external catalog import (PDOK, CBS, BIS Nederland, OpenStreetMap, Sentinel-2, GEE, KNMI, RIVM); bulk writes and deferred cascades |
 | `docs/` | `PERFORMANCE.md`, … | Performance review and implementation status |
 | `administrative/` | `models.py`, `population.py`, `signals.py` | Province > City > District > Neighborhood hierarchy, population projection |
@@ -149,6 +149,8 @@ These drive the generic layer API, the map's layer catalog, and the importer's f
 - `map_view` renders `Templates/mainMap.html` with the Mapbox token; `available_layers` returns the full layer catalog as JSON.
 - `model_geojson` serves any registered vector model in one SQL statement: coordinates at 6 decimals (~10 cm), FK names via joins, optional viewport filter (`?bbox=`) and zoom-based simplification (`?zoom=`, below zoom 14). Responses are cached per layer and invalidated when its rows change.
 - Large layers (≥ 5 000 features, except administrative boundaries) load **only the current viewport** and reload after each pan/zoom.
+- **Styles** live in `mainMap/styles/`. `layerStyles.py::LAYER_STYLES` maps a registry key (`app_label.Model`) to its catalog colour, Mapbox style layers and an optional legend; layers without an entry get a fallback colour. Land cover and the soil map build their style and legend per request from the classes actually imported (`landCoverStyles.py`, `soilStyles.py`); raster colormaps and value ranges are in `rasterStyles.py`.
+- **Popups** show every property with the label, unit and help text of its model field. Columns of a linked table can be added through `POPUP_RELATED_FIELDS` in `mainMap/views.py`; they arrive as `<fk>__<field>` on the same SQL join (e.g. a soil polygon's soil name, hydrologic group and infiltration rates), and styles can match on them too.
 - Floating panels, legends and the toolbar are translucent and **draggable by their header** (double-click the header to reset). Legends are stacked in one container that moves out of the way of the side panel and population dock.
 - `core/static/js/mainMap.js` holds page-level wiring (map init, right panel, year selector, guided tour); `Draggable.js`, `Layers.js`, `Events.js` hold dragging, layer loading and UI events. New map-page behavior belongs in these files, not in inline `<script>` blocks.
 
@@ -199,7 +201,7 @@ Two paths, both under `/importer/`:
 | PDOK | Admin boundaries, BAG buildings, roads, water, elevation, land cover, zoning plans (each zoning element with its HILUCS land use) | None |
 | RIVM | Per-building energy labels → `builtup.Building` (import BAG buildings first) | None |
 | CBS | National statistics via OData, incl. population forecasts | None |
-| BIS Nederland (bodemdata.nl) | Soil map 1:50 000 (WFS) → `SoilType`/`SoilArea` with SCS soil group; groundwater depth GHG/GLG (WCS, 50 m) → `GroundwaterDepth` | None |
+| BIS Nederland (bodemdata.nl) | Soil map 1:50 000 (WFS) → `SoilType`/`SoilArea` with SCS soil group, drawn in the colours of the BRO Bodemkaart legend; groundwater depth GHG/GLG (WCS, 50 m) → `GroundwaterDepth` | None |
 | OpenStreetMap (Overpass API) | Parks → `builtup.Park`, water bodies → `nature.WaterBodies`, amenities (nodes only) → `builtup.Facility`, trees → `nature.Tree` | None (`OVERPASS_URL` optional) |
 | Sentinel-2 | Land cover + NDVI/NDWI/moisture/true-color via openEO | `SENTINEL_CLIENT_ID`/`SECRET`, else UI prompt |
 | KNMI Data Platform | Weather observations (e.g. WBGT) | Server-side `KNMI_API_KEY` |

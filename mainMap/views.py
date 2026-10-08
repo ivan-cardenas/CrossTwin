@@ -12,9 +12,11 @@ from django.conf import settings
 from django.urls import reverse
 
 from core.utils import VECTOR_REGISTRY, WMS_REGISTRY, RASTER_REGISTRY, MODEL_REGISTRY
-from core.rasterStyles import raster_display_name
-from core.landCoverStyles import build_landcover_style_and_legend
+from .styles.rasterStyles import raster_display_name
+from .styles.landCoverStyles import build_landcover_style_and_legend
 from .editing import is_editable
+from .styles.layerStyles import FALLBACK_COLORS, LAYER_STYLES
+from .styles.soilStyles import build_soil_style_and_legend
 
 
 # Ordered from most specific to least — first match wins
@@ -27,6 +29,7 @@ _UNIT_PATTERNS = [
     (r'\bL/person/day\b|liters? per person per day',            'L/person/day'),
     (r'\bEUR/m[³3]\b|EUR per cubic met',             '€/m³'),
     (r'\bcm/h\b|centimeters? per hour',              'cm/h'),
+    (r'\bmm/h\b|millimet(?:er|re)s? per hour',       'mm/h'),
     (r'\bkg[_ ]CO2/h\b|kg CO2 per hour',             'kg CO₂/h'),
     (r'\bkm[²2]\b|square kilo',                      'km²'),
     (r'\bm[²2]\b|square met',                        'm²'),
@@ -67,8 +70,57 @@ def _field_label(field) -> str:
     return _humanize_field_name(field.name)
 
 
+# Columns of an FK's target shown in a layer's popup besides the FK's display
+# field: {model label: {fk name: [(related field, popup label or None)]}}.
+# They reach the GeoJSON as "<fk>__<field>" (one more column on the existing
+# JOIN), and _field_metadata labels them. A "…__name" property becomes the
+# popup title (Layers.js::_featureTitleKey). Styles can match on them too
+# (soil_type__unitCode, mainMap/styles/soilStyles.py).
+POPUP_RELATED_FIELDS = {
+    'physicalEnv.SoilArea': {
+        'soil_type': [
+            ('name', None),
+            ('unitCode', 'Soil unit'),
+            ('unitName', 'Soil unit name'),
+            ('soilGroup', None),
+            ('infiltrationMin_mm_h', 'Infiltration rate min'),
+            ('infiltrationMax_mm_h', 'Infiltration rate max'),
+        ],
+    },
+}
+
+
+def _popup_related_fields(model):
+    """[(fk field, related field, property key, label)] configured for `model`."""
+    out = []
+    for fk_name, extras in POPUP_RELATED_FIELDS.get(model._meta.label, {}).items():
+        fk = model._meta.get_field(fk_name)
+        for field_name, label in extras:
+            rel = fk.related_model._meta.get_field(field_name)
+            out.append((fk, rel, f'{fk_name}__{field_name}', label))
+    return out
+
+
+def _field_meta_entry(field, label=None) -> dict:
+    help_text = str(getattr(field, 'help_text', '') or '')
+    field_class = type(field).__name__
+    if 'DateTime' in field_class:
+        field_type = 'datetime'
+    elif 'Date' in field_class:
+        field_type = 'date'
+    else:
+        field_type = 'other'
+    return {
+        'label': label or _field_label(field),
+        'help_text': help_text,
+        'unit': _extract_unit(help_text),
+        'type': field_type,
+    }
+
+
 def _field_metadata(model) -> dict:
-    """Return {field_name: {label, help_text, unit}} for simple (non-geometry) fields."""
+    """Return {field_name: {label, help_text, unit}} for simple (non-geometry)
+    fields, plus the related columns of POPUP_RELATED_FIELDS."""
     meta = {}
     for f in model._meta.get_fields():
         if f.many_to_many or f.one_to_many:
@@ -77,20 +129,9 @@ def _field_metadata(model) -> dict:
             continue
         if not hasattr(f, 'column'):
             continue
-        help_text = getattr(f, 'help_text', '') or ''
-        field_class = type(f).__name__
-        if 'DateTime' in field_class:
-            field_type = 'datetime'
-        elif 'Date' in field_class:
-            field_type = 'date'
-        else:
-            field_type = 'other'
-        meta[f.name] = {
-            'label': _field_label(f),
-            'help_text': str(help_text),
-            'unit': _extract_unit(str(help_text)),
-            'type': field_type,
-        }
+        meta[f.name] = _field_meta_entry(f)
+    for _fk, rel, key, label in _popup_related_fields(model):
+        meta[key] = _field_meta_entry(rel, label)
     return meta
 
 
@@ -277,6 +318,9 @@ def _geojson_sql(model, geom_field, bbox=None, zoom=None):
     table = model._meta.db_table
     joins = []
     parts = []
+    related_extras = {}
+    for fk, rel, key, _label in _popup_related_fields(model):
+        related_extras.setdefault(fk.name, []).append((rel, key))
     for f in model._meta.get_fields():
         if isinstance(f, gis_models.GeometryField):
             continue
@@ -291,6 +335,8 @@ def _geojson_sql(model, geom_field, bbox=None, zoom=None):
                 f'ON {alias}."{related_model._meta.pk.column}" = t."{f.column}"'
             )
             parts.append(f"'{f.name}', {alias}.\"{_display_field(related_model).column}\"")
+            for rel, key in related_extras.get(f.name, []):
+                parts.append(f"'{key}', {alias}.\"{rel.column}\"")
         else:
             parts.append(f"'{f.name}', t.\"{f.column}\"")
     props_expr = f"json_build_object({', '.join(parts)})" if parts else "'{}'::json"
@@ -385,256 +431,6 @@ def model_geojson(request, app_label, model_name):
     return response
 
 
-# Building colour by Building.buildingType (derived from the BAG usage function
-# in Building.save()). Listed in legend order; 'unknown' is the match fallback
-# for buildings without a type and must stay last.
-BUILDING_TYPE_COLORS = {
-    'residential':   '#43a047',   # green
-    'commercial':    '#1e88e5',   # blue
-    'industrial':    '#b8860b',   # dark yellow
-    'mixed':         '#00897b',   # blue-green
-    'institutional': '#8e6cc0',   # purple
-    'unknown':       '#9e9e9e',   # grey
-}
-BUILDING_TYPE_LABELS = [
-    ('residential', 'Residential'),
-    ('commercial', 'Commercial'),
-    ('industrial', 'Industrial'),
-    ('mixed', 'Mixed use'),
-    ('institutional', 'Institutional'),
-    ('unknown', 'Unknown type'),
-]
-# Extrusion height when Building.height_m is missing: floors x this, else the default.
-BUILDING_FLOOR_HEIGHT_M = 3
-BUILDING_DEFAULT_HEIGHT_M = 10
-
-
-LAYER_STYLES = {
-    # ── administrative hierarchy ────────────────────────────────────────────
-    'administrative.Province': {
-        'color': '#37474f',
-        'layers': [
-            {'type': 'fill',   'paint': {'fill-color': '#37474f', 'fill-opacity': 0.08}},
-            {'type': 'line',   'paint': {'line-color': '#37474f', 'line-width': 2.5}},
-        ],
-    },
-    'administrative.City': {
-        'color': '#1565c0',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#1565c0', 'fill-opacity': 0.1}},
-            {'type': 'line', 'paint': {'line-color': '#1565c0', 'line-width': 2}},
-        ],
-    },
-    'administrative.District': {
-        'color': '#1976d2',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#1976d2', 'fill-opacity': 0.12}},
-            {'type': 'line', 'paint': {'line-color': '#1976d2', 'line-width': 1.5, 'line-dasharray': [4, 2]}},
-        ],
-    },
-    'administrative.Neighborhood': {
-        'color': '#42a5f5',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#42a5f5', 'fill-opacity': 0.15}},
-            {'type': 'line', 'paint': {'line-color': '#42a5f5', 'line-width': 1, 'line-dasharray': [3, 2]}},
-        ],
-    },
-    'physicalEnv.LandCoverVector': {
-        'color': '#558b2f',
-    },
-
-    # ── watersupply ────────────────────────────────────────────────────────
-    'watersupply.UsersLocation': {
-        'color': '#0277bd',
-        'layers': [
-            {'type': 'circle', 'paint': {'circle-radius': 5, 'circle-color': '#0277bd', 'circle-stroke-width': 1, 'circle-stroke-color': '#ffffff'}},
-        ],
-    },
-    'watersupply.Watershed': {
-        'color': '#0097a7',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#0097a7', 'fill-opacity': 0.15}},
-            {'type': 'line', 'paint': {'line-color': '#0097a7', 'line-width': 1.5}},
-        ],
-    },
-    'watersupply.PipeNetwork': {
-        'color': '#00acc1',
-        'layers': [
-            {'type': 'line', 'paint': {'line-color': '#00acc1', 'line-width': 2.5, 'line-dasharray': [4, 1]}},
-        ],
-    },
-    'watersupply.CoverageWaterSupply': {
-        'color': '#26c6da',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#26c6da', 'fill-opacity': 0.2}},
-            {'type': 'line', 'paint': {'line-color': '#26c6da', 'line-width': 1}},
-        ],
-    },
-    'watersupply.AreaAffectedDrought': {
-        'color': '#f57f17',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#f57f17', 'fill-opacity': 0.3}},
-            {'type': 'line', 'paint': {'line-color': '#e65100', 'line-width': 1.5}},
-        ],
-    },
-
-    # ── builtup ────────────────────────────────────────────────────────────
-    'builtup.ZoningArea': {
-        'color': '#f57c00',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#f57c00', 'fill-opacity': 0.2}},
-            {'type': 'line', 'paint': {'line-color': '#f57c00', 'line-width': 1}},
-        ],
-    },
-    'builtup.Street': {
-        'color': '#8d6e63',
-        'layers': [
-            {'type': 'line', 'paint': {'line-color': '#8d6e63', 'line-width': 2}},
-        ],
-    },
-    'builtup.Park': {
-        'color': '#66bb6a',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#66bb6a', 'fill-opacity': 0.4}},
-            {'type': 'line', 'paint': {'line-color': '#388e3c', 'line-width': 1}},
-        ],
-    },
-    'builtup.Facility': {
-        'color': '#ab47bc',
-        'layers': [
-            {'type': 'circle', 'paint': {'circle-radius': 7, 'circle-color': '#ab47bc', 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff'}},
-        ],
-    },
-    'builtup.Building': {
-        'color': BUILDING_TYPE_COLORS['residential'],
-        'legend': [{'label': label, 'color': BUILDING_TYPE_COLORS[key]} for key, label in BUILDING_TYPE_LABELS],
-        'layers': [
-            {'type': 'fill-extrusion', 'paint': {
-                'fill-extrusion-color': [
-                    'match', ['get', 'buildingType'],
-                    *[v for key, _ in BUILDING_TYPE_LABELS[:-1] for v in (key, BUILDING_TYPE_COLORS[key])],
-                    BUILDING_TYPE_COLORS['unknown'],
-                ],
-                # Stored height (height_m) when known, else floors x BUILDING_FLOOR_HEIGHT_M,
-                # else BUILDING_DEFAULT_HEIGHT_M. The property is 'height_m', the model field name.
-                'fill-extrusion-height': [
-                    'case',
-                    ['!=', ['get', 'height_m'], None], ['to-number', ['get', 'height_m']],
-                    ['!=', ['get', 'numberFloors'], None],
-                    ['*', ['to-number', ['get', 'numberFloors']], BUILDING_FLOOR_HEIGHT_M],
-                    BUILDING_DEFAULT_HEIGHT_M,
-                ],
-                'fill-extrusion-base': 0,
-                'fill-extrusion-opacity': 0.8,
-            }},
-        ],
-    },
-    'builtup.Property': {
-        'color': '#ef5350',
-        'layers': [
-            {'type': 'circle', 'paint': {'circle-radius': 5, 'circle-color': '#ef5350', 'circle-stroke-width': 1, 'circle-stroke-color': '#ffffff'}},
-        ],
-    },
-
-    # ── Energy ─────────────────────────────────────────────────────────────
-    'Energy.BuildingEnergyLabel': {
-        'color': '#66bb6a',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': [
-                'match', ['get', 'energyLabel'],
-                'A+++', '#00441b', 'A++', '#00622a', 'A+', '#037f39',
-                'A', '#1a9850', 'B', '#66bd63', 'C', '#a6d96a',
-                'D', '#fee08b', 'E', '#fdae61', 'F', '#f46d43', 'G', '#d73027',
-                '#9e9e9e',
-            ], 'fill-opacity': 0.65}},
-            {'type': 'line', 'paint': {'line-color': '#37474f', 'line-width': 0.5}},
-        ],
-    },
-
-    # ── housing ────────────────────────────────────────────────────────────
-    'housing.HousingProject': {
-        'color': '#ec407a',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#ec407a', 'fill-opacity': 0.25}},
-            {'type': 'line', 'paint': {'line-color': '#ec407a', 'line-width': 1.5, 'line-dasharray': [3, 2]}},
-        ],
-    },
-
-    # ── nature ─────────────────────────────────────────────────────────────
-    'nature.ProtectedArea': {
-        'color': '#2e7d32',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#2e7d32', 'fill-opacity': 0.2}},
-            {'type': 'line', 'paint': {'line-color': '#1b5e20', 'line-width': 1.5}},
-        ],
-    },
-    'nature.WaterWaysLN': {
-        'color': '#1e88e5',
-        'layers': [
-            {'type': 'line', 'paint': {'line-color': '#1e88e5', 'line-width': 2}},
-        ],
-    },
-    'nature.WaterWaysPG': {
-        'color': '#039be5',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#039be5', 'fill-opacity': 0.35}},
-            {'type': 'line', 'paint': {'line-color': '#0277bd', 'line-width': 1}},
-        ],
-    },
-    
-    'nature.WaterBodies': {
-        'color': '#039be5',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#039be5', 'fill-opacity': 0.35}},
-            {'type': 'line', 'paint': {'line-color': '#0277bd', 'line-width': 1}},
-        ],
-    },
-    'nature.Forests': {
-        'color': '#388e3c',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#388e3c', 'fill-opacity': 0.35}},
-            {'type': 'line', 'paint': {'line-color': '#1b5e20', 'line-width': 1}},
-        ],
-    },
-    'nature.GreenSpaces': {
-        'color': '#81c784',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#81c784', 'fill-opacity': 0.4}},
-            {'type': 'line', 'paint': {'line-color': '#388e3c', 'line-width': 1}},
-        ],
-    },
-
-    # ── urban_heat ─────────────────────────────────────────────────────────
-    'urban_heat.NatureBasedSolutionPolygon': {
-        'color': '#43a047',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#43a047', 'fill-opacity': 0.4}},
-            {'type': 'line', 'paint': {'line-color': '#2e7d32', 'line-width': 1.5}},
-        ],
-    },
-    'urban_heat.NatureBasedSolutionPoint': {
-        'color': '#66bb6a',
-        'layers': [
-            {'type': 'circle', 'paint': {'circle-radius': 6, 'circle-color': '#66bb6a', 'circle-stroke-width': 2, 'circle-stroke-color': '#2e7d32'}},
-        ],
-    },
-
-    # ── weather ────────────────────────────────────────────────────────────
-    'weather.WeatherStation': {
-        'color': '#7e57c2',
-        'layers': [
-            {'type': 'circle', 'paint': {'circle-radius': 7, 'circle-color': '#7e57c2', 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff'}},
-        ],
-    },
-}
-
-_FALLBACK_COLORS = [
-    '#3388ff', '#e74c3c', '#2ecc71', '#9b59b6', '#f39c12',
-    '#1abc9c', '#e91e63', '#00bcd4', '#ff5722', '#607d8b',
-    '#8bc34a', '#673ab7', '#ffeb3b', '#795548', '#009688',
-]
-
-
 def available_layers(request):
     """
     Returns a list of all available layers (models with geometry fields).
@@ -694,6 +490,10 @@ def available_layers(request):
                     style_layers, legend = build_landcover_style_and_legend()
                 except Exception:
                     legend = None
+            elif key == 'physicalEnv.SoilArea':
+                # Same idea: colours of the BRO soil map legend, for the
+                # soil units actually imported.
+                style_layers, legend = build_soil_style_and_legend()
 
             layer_entry = {
                 'key': key,
@@ -703,7 +503,7 @@ def available_layers(request):
                 'url': f'/api/layers/{app_label}/{model_name}/geojson/',
                 'geometry_type': geom_type,
                 'geometry_field': geom_field,
-                'color': LAYER_STYLES.get(key, {}).get('color', _FALLBACK_COLORS[color_index % len(_FALLBACK_COLORS)]),
+                'color': LAYER_STYLES.get(key, {}).get('color', FALLBACK_COLORS[color_index % len(FALLBACK_COLORS)]),
                 'style_layers': style_layers,
                 'fields': _field_metadata(model),
                 'count': count,

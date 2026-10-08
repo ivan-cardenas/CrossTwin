@@ -1,7 +1,7 @@
 """
 Color scheme for LandCoverVector.land_cover_type (physicalEnv.LandCoverClasses).
 
-Unlike the raster colormaps in core/rasterStyles.py, LandCoverClasses rows
+Unlike the raster colormaps in mainMap/styles/rasterStyles.py, LandCoverClasses rows
 aren't a fixed enum — pdok_landcover_brt get_or_creates one per distinct
 INSPIRE landCoverObservationClass value the first time it's seen (see
 importer/external_catalog.py's __fk_lookup__ on that dataset), and other
