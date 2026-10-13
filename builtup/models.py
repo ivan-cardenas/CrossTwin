@@ -159,6 +159,14 @@ class Building(models.Model):
     numberFloors = models.IntegerField(null=True, blank=True, help_text="Number of floors in the building")
     vacant= models.BooleanField(default=False, help_text="Is the building vacant?")
     vacancyRate = models.FloatField(null=True, blank=True, help_text="Vacancy rate in percentage (%)")
+    # Climate-effect attributes from the Klimaateffectatlas WFS (importer
+    # catalog kea_*, docs/KEA_WFS_MAPPING.md). Written by enrichment imports
+    # onto existing BAG buildings; no save() derivation reads them.
+    canopyCover_pct = models.FloatField(null=True, blank=True, help_text="Tree canopy cover around the building, % (KEA RMK_30percBKB_AHN4.perc_bkb); informs the Vegetation_Coverage DAG node")
+    meetsCanopy30Rule = models.BooleanField(null=True, blank=True, help_text="Whether the 3-30-300 rule's 30% canopy cover is met around the building (KEA RMK_30percBKB_AHN4.bkb_30perc_gehaald)")
+    facadeShadeScore = models.FloatField(null=True, blank=True, help_text="Shade on the facades of the building's block, 0-1 (KEA 'Schaduw op gebouwen'.SOG.Score)")
+    floodDepth_p99_m = models.FloatField(null=True, blank=True, help_text="99th percentile water depth around the building in a 70 mm/h cloudburst, m (KEA nl_fcab_omgevingsscore_wateroverlast.waterdiepte_p99)")
+    floodDepthClass = models.CharField(max_length=50, null=True, blank=True, help_text="Water depth class around the building, e.g. '10 tot 15 cm' (KEA nl_fcab_omgevingsscore_wateroverlast.waterdiepte_klasse)")
     connectivity = models.ManyToManyField(Facility, verbose_name="Connections to Facilities", blank=True, help_text="Facilities the property is connected to")  #TODO: Define connectivity index and calculation method
     last_updated = models.DateTimeField(default=timezone.now)
     geom = models.MultiPolygonField(srid=CoordinateSystem)
@@ -266,3 +274,30 @@ class Property(models.Model):
         verbose_name = "Property"
         verbose_name_plural = "Properties"
     
+
+
+class NeighborhoodClimateRisk(models.Model):
+    """
+    Climate risks to the building stock of a neighborhood, from the
+    Klimaateffectatlas WFS (importer catalog kea_*, docs/KEA_WFS_MAPPING.md).
+    One row per neighborhood; each KEA layer fills its own columns. Stored
+    inputs only (no save() derivation, no DAG edge implemented).
+    """
+    id = models.AutoField(primary_key=True)
+    neighborhood = models.OneToOneField(Neighborhood, verbose_name="Neighborhood", on_delete=models.DO_NOTHING, related_name="climate_risk")
+    pileRotRisk_current_pct = models.FloatField(null=True, blank=True, help_text="Buildings at risk of wooden pile rot, current climate, % (KEA risicopaalrot_huidig)")
+    pileRotRisk_2050low_pct = models.FloatField(null=True, blank=True, help_text="Buildings at risk of wooden pile rot, 2050 low scenario, % (KEA risicopaalrot_2050laag)")
+    pileRotRisk_2050high_pct = models.FloatField(null=True, blank=True, help_text="Buildings at risk of wooden pile rot, 2050 high scenario, % (KEA risicopaalrot_2050hoog)")
+    settlementRisk_2050low_pct = models.FloatField(null=True, blank=True, help_text="Buildings at risk of differential settlement, 2050 low scenario, % (KEA risicoverschilzetting_2050laag)")
+    settlementRisk_2050high_pct = models.FloatField(null=True, blank=True, help_text="Buildings at risk of differential settlement, 2050 high scenario, % (KEA risicoverschilzetting_2050hoog)")
+    dryFloors_pct = models.FloatField(null=True, blank=True, help_text="Share of floors that stay dry in an extremely unlikely flood, % (KEA droge_verdiepingen_extreem_kleine_kans)")
+    source = models.CharField(max_length=100, default="Klimaateffectatlas", help_text="Data provider")
+    geom = models.MultiPolygonField(srid=CoordinateSystem)
+    last_updated = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return f"Climate risk {self.neighborhood_id}"
+
+    class Meta:
+        verbose_name = "Neighborhood Climate Risk"
+        verbose_name_plural = "Neighborhood Climate Risks"

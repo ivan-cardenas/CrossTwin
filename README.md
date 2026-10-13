@@ -17,7 +17,7 @@ The project follows the **DPSIR framework** (Driver → Pressure → State → I
 | `DigitalTwin/` | `settings.py`, `urls.py`, `test_runner.py` | Django project config, env loading, caches, custom PostGIS test runner |
 | `core/` | `utils.py`, `signals.py`, `cache.py`, `middleware.py`, `rasterOperations.py`, `DAG.dot`, `static/js/` | Model registry, layer-cache versions, query-stats middleware, raster→COG export pipeline, DPSIR causal graph, shared frontend JS |
 | `mainMap/` | `views.py`, `urls.py`, `charts.py`, `editing.py`, `styles/` | Interactive map view, layer catalog + GeoJSON API, map editing, population dock charts; `styles/` holds every map style: vector layer styles (`layerStyles.py`), soil map colours (`soilStyles.py`), land-cover legend (`landCoverStyles.py`), raster colormaps (`rasterStyles.py`) |
-| `importer/` | `views.py`, `views_external.py`, `external_catalog.py`, `external_data.py`, `batching.py` | File-upload import + external catalog import (PDOK, CBS, BIS Nederland, OpenStreetMap, Sentinel-2, GEE, KNMI, RIVM); bulk writes and deferred cascades |
+| `importer/` | `views.py`, `views_external.py`, `external_catalog.py`, `external_data.py`, `batching.py` | File-upload import + external catalog import (PDOK, CBS, BIS Nederland, OpenStreetMap, Sentinel-2, GEE, KNMI, RIVM, Klimaateffectatlas); bulk writes and deferred cascades |
 | `docs/` | `PERFORMANCE.md`, … | Performance review and implementation status |
 | `administrative/` | `models.py`, `population.py`, `signals.py` | Province > City > District > Neighborhood hierarchy, population projection |
 | `watersupply/` | `models.py`, `calculations.py`, `views.py`, `signals.py` | Water infrastructure, indicator dashboard (incl. SCS infiltration with rain-event and groundwater-season what-ifs) |
@@ -146,7 +146,7 @@ These drive the generic layer API, the map's layer catalog, and the importer's f
 ### Signal-driven computation
 
 - `administrative/signals.py` — cascades population/density Neighborhood → District → City → Province via `_recompute_population()`, using `update()` (not `save()`) to avoid signal recursion.
-- `physicalEnv/signals.py` — when land cover changes, recomputes every neighborhood's `urban_area` in the city with one set-based SQL `UPDATE`, then cascades each parent once.
+- `physicalEnv/signals.py` — when land cover changes, recomputes every neighborhood's `urban_area` in the city with one set-based SQL `UPDATE`, then cascades each parent once. A building drawn in the map editor (negative id) turns a 10 m buffer around it into urban fabric (`physicalEnv/landcover.py::urbanize_around`, DAG edge `New_Units -> LandCover`): the buffer is cut out of the overlapping land-cover polygons and inserted as one new polygon, and the editor's backup journals those rows so Restore brings the original land cover back.
 - `core/signals.py` — `post_save` on every `RASTER_REGISTRY` model auto-exports it to a COG (see [Raster pipeline](#🛰️-raster-pipeline)); `post_save`/`post_delete` on every vector model invalidates that layer's cached GeoJSON.
 - Bulk imports wrap their writes in `importer/batching.py::deferred_cascades()`, so the cascades run **once per affected parent** at the end instead of once per imported row.
 - `watersupply/signals.py` — cascades population → `ConsumptionCapita` → `TotalWaterDemand` → `SupplySecurity`, and re-derives `OPEX`/`CoverageWaterSupply`/NRW indicators from their upstream inputs.
@@ -178,9 +178,9 @@ Each follows the same three-layer pattern:
 | `administrative` | Province > City > District > Neighborhood; population projection |
 | `physicalEnv` | Land cover (vector + raster), DEM, DSM, satellite imagery, surface materials |
 | `watersupply` | Extraction, treatment, pipe networks, coverage, NRW, OPEX |
-| `urban_heat` | UTCI, PET, MRT, LST, SVF, SUHII rasters; Nature-Based Solutions |
-| `housing` | Supply/demand, mortgages, rentals, HPI, affordability stress |
-| `builtup` | Zoning, streets, parks, facilities, buildings, properties |
+| `urban_heat` | UTCI, PET, MRT, LST, SVF, SUHII rasters; Nature-Based Solutions; per-neighborhood heat and shade (`NeighborhoodHeat`, Klimaateffectatlas) |
+| `housing` | Supply/demand, mortgages, rentals, HPI, affordability stress; per-neighborhood social profile (`NeighborhoodSocialProfile`, Klimaateffectatlas) |
+| `builtup` | Zoning, streets, parks, facilities, buildings (incl. canopy, facade shade and cloudburst depth from the Klimaateffectatlas), properties; per-neighborhood foundation and flood risk (`NeighborhoodClimateRisk`) |
 | `nature`, `weather`, `Energy` | Additional domain data |
 | `importer` | File-upload and external-catalog import pipelines |
 | `mainMap` | Interactive map view and layer catalog API |
@@ -194,7 +194,7 @@ The full causal graph lives in [`core/DAG.dot`](core/DAG.dot) (Graphviz). Each d
 # DAG edges: Central_Bank -> Mortgage
 ```
 
-**Of the 103 edges in the graph, only 30 are backed by real derivation logic** (a `save()` or `calculations.py` function that reads the source field — not just a docstring claiming the edge). See [`TODO.md`](TODO.md) for the full per-app gap analysis and checklist before extending any dashboard's calculations.
+**Of the 103 edges in the graph, only 31 are backed by real derivation logic** (a `save()` or `calculations.py` function that reads the source field — not just a docstring claiming the edge). See [`TODO.md`](TODO.md) for the full per-app gap analysis and checklist before extending any dashboard's calculations.
 
 ## 📥 Importer System
 
@@ -207,11 +207,12 @@ Two paths, both under `/importer/`:
 |---|---|---|
 | PDOK | Admin boundaries, BAG buildings, roads, water, elevation, land cover, zoning plans (each zoning element with its HILUCS land use) | None |
 | RIVM | Per-building energy labels → `builtup.Building` (import BAG buildings first) | None |
+| Klimaateffectatlas (WFS) | 21 of its 68 climate-effect layers: foundation and flood risk, heat and shade, social vulnerability per neighborhood; canopy, facade shade and cloudburst depth onto existing BAG buildings; water boards, drought-sensitive nature, climate buffers. Mapping, graph and the 47 layers not imported: [`docs/KEA_WFS_MAPPING.md`](docs/KEA_WFS_MAPPING.md) | None |
 | CBS | National statistics via OData, incl. population forecasts | None |
 | BIS Nederland (bodemdata.nl) | Soil map 1:50 000 (WFS) → `SoilType`/`SoilArea` with SCS soil group, drawn in the colours of the BRO Bodemkaart legend; groundwater depth GHG/GLG (WCS, 50 m) → `GroundwaterDepth` | None |
 | OpenStreetMap (Overpass API) | Parks → `builtup.Park`, water bodies → `nature.WaterBodies`, amenities (nodes only) → `builtup.Facility`, trees → `nature.Tree` | None (`OVERPASS_URL` optional) |
 | Sentinel-2 | Land cover + NDVI/NDWI/moisture/true-color via openEO | `SENTINEL_CLIENT_ID`/`SECRET`, else UI prompt |
-| KNMI Data Platform | Weather observations (e.g. WBGT) | Server-side `KNMI_API_KEY` |
+| KNMI Data Platform | Weather observations (e.g. WBGT), precipitation radar forecast (WMS) | Server-side `KNMI_API_KEY` |
 | Google Earth Engine | Arbitrary GEE assets, exported as GeoTIFF | Service-account JSON pasted per import |
 
 For districts/neighborhoods, the import map picks the area of interest from the parent city/district (`bbox_from` in the catalog).

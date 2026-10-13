@@ -157,3 +157,29 @@ class HousingAffordability(models.Model):
         verbose_name_plural = "Housing Affordability Records"
         
     
+
+class NeighborhoodSocialProfile(models.Model):
+    """
+    Social vulnerability context per neighborhood, from the
+    Klimaateffectatlas WFS (RIVM/CBS indicators; importer catalog kea_*,
+    docs/KEA_WFS_MAPPING.md). One row per neighborhood; each KEA layer fills
+    its own columns. Context for the Income_Expenses / Affordability_Stress
+    nodes of core/DAG.dot; stored inputs only, no DAG edge implemented.
+    """
+    id = models.AutoField(primary_key=True)
+    neighborhood = models.OneToOneField("administrative.Neighborhood", verbose_name="Neighborhood", on_delete=models.DO_NOTHING, related_name="social_profile")
+    rentalHousing_pct = models.FloatField(null=True, blank=True, help_text="Rental dwellings, % (KEA nl_percentage_huurwoningen_buurt)")
+    socioEconomicStatus = models.FloatField(null=True, blank=True, help_text="CBS socio-economic status score (welvaart, opleiding, arbeid), standardised (KEA nl_sociaal_economische_status_buurt.ses_woa)")
+    frailHealth_pct = models.FloatField(null=True, blank=True, help_text="Adults with frail health, % (RIVM, KEA nl_broze_gezondheid_buurt)")
+    severeLoneliness_pct = models.FloatField(null=True, blank=True, help_text="Adults who are severely lonely, % (RIVM, KEA nl_sterk_eenzaam_buurt)")
+    neighborhoodType = models.CharField(max_length=100, null=True, blank=True, help_text="Neighborhood type, e.g. 'Bloemkoolwijk' (KEA wijktypen_buurten.Wijktype1)")
+    source = models.CharField(max_length=100, default="Klimaateffectatlas", help_text="Data provider")
+    geom = models.MultiPolygonField(srid=COORDINATE_SYSTEM)
+    last_updated = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return f"Social profile {self.neighborhood_id}"
+
+    class Meta:
+        verbose_name = "Neighborhood Social Profile"
+        verbose_name_plural = "Neighborhood Social Profiles"

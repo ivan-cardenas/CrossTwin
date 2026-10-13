@@ -1,6 +1,41 @@
+from datetime import date
+
 from django.conf import settings
 
 coordinate_system = settings.COORDINATE_SYSTEM
+
+
+# Klimaateffectatlas (KEA) helpers, see the kea_* entries below and
+# docs/KEA_WFS_MAPPING.md.
+KEA_WFS_URL = "https://cas.cloud.sogelink.com/public/data/org/gws/YWFMLMWERURF/kea_public/wfs"
+KEA_NODATA = [-99995, -99996, -99997, -99998, -99999]   # RIVM health monitor "no value" codes
+
+
+def _kea_neighborhood(code_prop, fields, **directives):
+    """Mapping for a per-buurt KEA layer: one row per stored neighborhood, keyed on its CBS code."""
+    return {
+        "__geometry__": "geom",
+        "__unique__": code_prop,
+        "__unique_field__": "neighborhood_id",
+        "__require_existing__": {"property": code_prop, "model": "administrative.Neighborhood"},
+        code_prop: "neighborhood_id",
+        **fields,
+        **directives,
+    }
+
+
+def _kea_building(id_prop, fields, **directives):
+    """Mapping for a per-pand KEA layer: attributes written onto existing BAG buildings only."""
+    return {
+        "__geometry__": "geom",
+        "__unique__": id_prop,
+        "__unique_field__": "id",
+        "__enrich__": True,
+        "__require_existing__": {"property": id_prop, "model": "builtup.Building"},
+        **fields,
+        **directives,
+    }
+
 
 
 # ---------------------------------------------------------------------------
@@ -289,6 +324,87 @@ FIELD_MAPPINGS = {
         "hoogste_label": "energyLabelHighest",
         "laagste_label": "energyLabelLowest",
         "aant_labels": "energyLabelCount",
+    },
+
+    # -------------------------------- Klimaateffectatlas (KEA) WFS -------------------------------
+    # docs/KEA_WFS_MAPPING.md. Neighborhood layers write one row per buurt
+    # (keyed on neighborhood_id, unknown buurtcodes skipped); building layers
+    # are __enrich__ imports onto existing BAG buildings (no new rows, the
+    # stored geometry is kept).
+    "kea_risicopaalrot_huidig": _kea_neighborhood(
+        "buurtcode", {"no_cc_risi": "pileRotRisk_current_pct"},
+        __value_scales__={"no_cc_risi": 100}),            # fraction -> %
+    "kea_risicopaalrot_2050laag": _kea_neighborhood(
+        "buurtcode", {"mild_cc__1": "pileRotRisk_2050low_pct"},
+        __value_scales__={"mild_cc__1": 100}),
+    "kea_risicopaalrot_2050hoog": _kea_neighborhood(
+        "buurtcode", {"sterke_c_2": "pileRotRisk_2050high_pct"},
+        __value_scales__={"sterke_c_2": 100}),
+    "kea_risicoverschilzetting_2050laag": _kea_neighborhood(
+        "buurtcode", {"mild_cc_ri": "settlementRisk_2050low_pct"}),   # already %
+    "kea_risicoverschilzetting_2050hoog": _kea_neighborhood(
+        "buurtcode", {"sterke_c_1": "settlementRisk_2050high_pct"}),
+    "kea_droge_verdiepingen": _kea_neighborhood(
+        "BU_CODE", {"VALUE": "dryFloors_pct"}),
+    "kea_gevoelstemperatuur_buurt_2012": _kea_neighborhood(
+        "bu_code", {"_mean": "petMean_2012_C"}),
+    "kea_gevoelstemperatuur_buurt_2022": _kea_neighborhood(
+        "buurtcode", {"_mean": "petMean_2022_C", "RIVMClass": "heatClass_2022"}),
+    "kea_verkoeling": _kea_neighborhood(
+        "bu_code", {"KanGoedVerkoelingVindenBinnen_59": "coolingIndoor_pct",
+                    "KanGoedVerkoelingVindenBuiten_60": "coolingOutdoor_pct"}),
+    "kea_boomkroon_buurt": _kea_neighborhood(
+        "Buurtcode", {"BKBgraad_Tot_percLand_AHN4": "canopyCover_pct",
+                      "SHDTot_percLand_AHN4": "shadeTotal_pct",
+                      "SHDGroen_percLand_AHN4": "shadeGreen_pct",
+                      "SHDGrijs_percLand_AHN4": "shadeGrey_pct"}),
+    "kea_huurwoningen": _kea_neighborhood(
+        "buurtcode", {"percentage_huurwoningen": "rentalHousing_pct"}, __nodata__=KEA_NODATA),
+    "kea_sociaal_economische_status": _kea_neighborhood(
+        "buurtcode", {"ses_woa": "socioEconomicStatus"}, __nodata__=KEA_NODATA),
+    "kea_broze_gezondheid": _kea_neighborhood(
+        "buurtcode", {"broze_gezondheid": "frailHealth_pct"}, __nodata__=KEA_NODATA),
+    "kea_sterk_eenzaam": _kea_neighborhood(
+        "buurtcode", {"sterk_eenzaam": "severeLoneliness_pct"}, __nodata__=KEA_NODATA),
+    "kea_wijktypen": _kea_neighborhood(
+        "BU_CODE", {"Wijktype1": "neighborhoodType"}),
+
+    "kea_boomkroon_panden": _kea_building(
+        "identificatie", {"perc_bkb": "canopyCover_pct", "bkb_30perc_gehaald": "meetsCanopy30Rule"}),
+    # One feature per building block; BAG.Id lists its panden without the
+    # leading zero of the 16-digit BAG id.
+    "kea_schaduw_op_gebouwen": _kea_building(
+        "BAG.Id", {"SOG.Score": "facadeShadeScore"},
+        __split__={"property": "BAG.Id", "sep": ",", "zfill": 16}),
+    "kea_wateroverlast_panden": _kea_building(
+        "identificatie_bag", {"waterdiepte_p99": "floodDepth_p99_m", "waterdiepte_klasse": "floodDepthClass"}),
+
+    "kea_waterschappen": {
+        "__geometry__": "geom",
+        "__unique__": "WATERSCHAP",
+        "__unique_field__": "name",
+        "WATERSCHAP": "name",
+    },
+    "kea_droogtegevoelige_natuur": {
+        "__geometry__": "geom",
+        "__unique__": "@id",
+        "__unique_field__": "sourceID",
+        "@id": "sourceID",
+        "blad1__naa": "areaName",
+        "blad1__gev": "SensibilityLevel",
+        # Legend: W = weinig gevoelig, G = gevoelig, Z = zeer gevoelig; no
+        # value = not groundwater-dependent (the model default, NotAffected).
+        "__value_maps__": {"blad1__gev": {"W": 2, "G": 3, "Z": 4}},   # Low / Medium / High
+        # The layer carries no reference year: store the year it was imported.
+        "__static__": {"year": date.today().year},
+    },
+    "kea_klimaatbuffers": {
+        "__geometry__": "geom",
+        "__unique__": "@id",
+        "__unique_field__": "inspireID",
+        "@id": "inspireID",
+        "Type": "name",
+        "__static__": {"protection_type": "OTH"},
     },
 }
 
@@ -1200,6 +1316,105 @@ EXTERNAL_DATA_CATALOG = [
     },
 ]
 
+# ══════════════════════════════════════════════════════════════════════════
+# Klimaateffectatlas (KEA) - public WFS of the climate-effect atlas
+# ══════════════════════════════════════════════════════════════════════════
+# docs/KEA_WFS_MAPPING.md lists every KEA WFS layer, what is imported and
+# why the rest is not. Layer names with a date stamp (_v20260722,
+# _20251120) are the publisher's versions: update them when KEA republishes.
+_NEIGHBORHOODS_FIRST = "Import neighborhoods first; buurten that are not stored are skipped."
+_BUILDINGS_FIRST = "Writes onto existing BAG buildings only (import Buildings (BAG Panden) first); no buildings are created and their geometry is kept."
+
+
+def _kea_entry(key, layer, name, description, category, target_model, requires_model):
+    return {
+        "key": key,
+        "source": "kea",
+        "category": category,
+        "name": name,
+        "description": description,
+        "target_model": target_model,
+        "url": KEA_WFS_URL,
+        "layer": f"kea_public:{layer}",
+        "format": "wfs",
+        "params": {"srsName": f"EPSG:{coordinate_system}"},
+        "requires_bbox": True,
+        "requires_model": requires_model,
+        "enabled": True,
+    }
+
+
+_N, _B = "administrative.Neighborhood", "builtup.Building"
+EXTERNAL_DATA_CATALOG += [
+    # ── Built environment: foundations and flooding ──────────────────────────
+    _kea_entry("kea_risicopaalrot_huidig", "risicopaalrot_huidig", "Pile Rot Risk, current (KEA)",
+               f"Share of buildings per neighborhood at risk of wooden pile rot in the current climate. {_NEIGHBORHOODS_FIRST}",
+               "Built environment", "builtup.NeighborhoodClimateRisk", _N),
+    _kea_entry("kea_risicopaalrot_2050laag", "risicopaalrot_2050laag", "Pile Rot Risk, 2050 low (KEA)",
+               f"Share of buildings at risk of pile rot in 2050, low climate scenario. {_NEIGHBORHOODS_FIRST}",
+               "Built environment", "builtup.NeighborhoodClimateRisk", _N),
+    _kea_entry("kea_risicopaalrot_2050hoog", "risicopaalrot_2050hoog", "Pile Rot Risk, 2050 high (KEA)",
+               f"Share of buildings at risk of pile rot in 2050, high climate scenario. {_NEIGHBORHOODS_FIRST}",
+               "Built environment", "builtup.NeighborhoodClimateRisk", _N),
+    _kea_entry("kea_risicoverschilzetting_2050laag", "risicoverschilzetting_2050laag", "Differential Settlement Risk, 2050 low (KEA)",
+               f"Share of buildings at risk of differential settlement in 2050, low scenario. {_NEIGHBORHOODS_FIRST}",
+               "Built environment", "builtup.NeighborhoodClimateRisk", _N),
+    _kea_entry("kea_risicoverschilzetting_2050hoog", "risicoverschilzetting_2050hoog", "Differential Settlement Risk, 2050 high (KEA)",
+               f"Share of buildings at risk of differential settlement in 2050, high scenario. {_NEIGHBORHOODS_FIRST}",
+               "Built environment", "builtup.NeighborhoodClimateRisk", _N),
+    _kea_entry("kea_droge_verdiepingen", "droge_verdiepingen_extreem_kleine_kans_20251120", "Dry Floors in an Extreme Flood (KEA)",
+               f"Share of floors per neighborhood that stay dry in an extremely unlikely flood. {_NEIGHBORHOODS_FIRST}",
+               "Built environment", "builtup.NeighborhoodClimateRisk", _N),
+    _kea_entry("kea_wateroverlast_panden", "nl_fcab_omgevingsscore_wateroverlast_v20260806", "Cloudburst Water Depth per Building (KEA)",
+               f"99th percentile water depth around each building in a 70 mm/h cloudburst, with its depth class. {_BUILDINGS_FIRST}",
+               "Built environment", _B, _B),
+    _kea_entry("kea_boomkroon_panden", "RMK_30percBKB_AHN4", "Tree Canopy around Buildings, 3-30-300 (KEA)",
+               f"Canopy cover around each building (AHN4) and whether the 30% canopy rule is met. {_BUILDINGS_FIRST}",
+               "Built environment", _B, _B),
+    _kea_entry("kea_schaduw_op_gebouwen", "Schaduw op gebouwen", "Facade Shade Score (KEA)",
+               f"Shade on the facades per building block, copied to every building of the block. {_BUILDINGS_FIRST}",
+               "Built environment", _B, _B),
+    # ── Climate: heat and shade ──────────────────────────────────────────────
+    _kea_entry("kea_gevoelstemperatuur_buurt_2012", "GevoelstemperatuurBuurt_2012", "Perceived Temperature per Neighborhood, 2012 (KEA)",
+               f"Mean PET on a hot summer day per neighborhood, 2012 surface model. Buurt codes of 2012 that no longer exist are skipped. {_NEIGHBORHOODS_FIRST}",
+               "Climate", "urban_heat.NeighborhoodHeat", _N),
+    _kea_entry("kea_gevoelstemperatuur_buurt_2022", "GevoelstemperatuurBuurt_2022", "Perceived Temperature per Neighborhood, 2022 (KEA)",
+               f"Mean PET on a hot summer day per neighborhood and its RIVM class, 2022 surface model. {_NEIGHBORHOODS_FIRST}",
+               "Climate", "urban_heat.NeighborhoodHeat", _N),
+    _kea_entry("kea_verkoeling", "SchaduwOpGebouwen_VerkoelingBinnen", "Cooling Indoors and Outdoors (KEA)",
+               f"Share of residents who can find cooling indoors and outdoors on hot days, per neighborhood. {_NEIGHBORHOODS_FIRST}",
+               "Climate", "urban_heat.NeighborhoodHeat", _N),
+    _kea_entry("kea_boomkroon_buurt", "RMK_BuurtAggregaties", "Canopy Cover and Shade per Neighborhood (KEA)",
+               f"Tree canopy cover and shade (total, from trees, from buildings) as % of the land area, AHN4. {_NEIGHBORHOODS_FIRST}",
+               "Climate", "urban_heat.NeighborhoodHeat", _N),
+    # ── Housing / demographics: social vulnerability ─────────────────────────
+    _kea_entry("kea_huurwoningen", "nl_percentage_huurwoningen_buurt_v20260722", "Rental Dwellings per Neighborhood (KEA)",
+               f"Percentage of rental dwellings per neighborhood. {_NEIGHBORHOODS_FIRST}",
+               "Housing", "housing.NeighborhoodSocialProfile", _N),
+    _kea_entry("kea_sociaal_economische_status", "nl_sociaal_economische_status_buurt_v20260722", "Socio-economic Status per Neighborhood (KEA)",
+               f"CBS socio-economic status score (prosperity, education, labour) per neighborhood. {_NEIGHBORHOODS_FIRST}",
+               "Demographics", "housing.NeighborhoodSocialProfile", _N),
+    _kea_entry("kea_broze_gezondheid", "nl_broze_gezondheid_buurt_v20260722", "Frail Health per Neighborhood (KEA)",
+               f"Share of adults with frail health (RIVM health monitor). {_NEIGHBORHOODS_FIRST}",
+               "Demographics", "housing.NeighborhoodSocialProfile", _N),
+    _kea_entry("kea_sterk_eenzaam", "nl_sterk_eenzaam_buurt_v20260722", "Severe Loneliness per Neighborhood (KEA)",
+               f"Share of adults who are severely lonely (RIVM health monitor). {_NEIGHBORHOODS_FIRST}",
+               "Demographics", "housing.NeighborhoodSocialProfile", _N),
+    _kea_entry("kea_wijktypen", "wijktypen_buurten", "Neighborhood Types (KEA)",
+               f"Neighborhood type (e.g. pre-war, post-war, cauliflower, VINEX) per buurt, 2023. {_NEIGHBORHOODS_FIRST}",
+               "Demographics", "housing.NeighborhoodSocialProfile", _N),
+    # ── Water and nature ─────────────────────────────────────────────────────
+    _kea_entry("kea_waterschappen", "Waterschapsgrenzen", "Water Board Boundaries (KEA)",
+               "Boundaries of the Dutch water boards (waterschappen), stored as watersheds.",
+               "Nature & Environment", "watersupply.Watershed", None),
+    _kea_entry("kea_droogtegevoelige_natuur", "droogtegevoeligheidgrondwaterafhankelijkenatuur", "Drought-sensitive Groundwater-dependent Nature (KEA)",
+               "Groundwater-dependent nature areas with their drought sensitivity (slightly / sensitive / very sensitive).",
+               "Nature & Environment", "watersupply.AreaAffectedDrought", "administrative.Province"),
+    _kea_entry("kea_klimaatbuffers", "totaalkaartklimaatbuffers", "Climate Buffers (KEA)",
+               "Areas of the national climate-buffer map, stored as protected areas of type Other.",
+               "Nature & Environment", "nature.ProtectedArea", None),
+]
+
 # Build a quick-lookup dict
 CATALOG_BY_KEY = {d["key"]: d for d in EXTERNAL_DATA_CATALOG}
 
@@ -1267,6 +1482,14 @@ SOURCE_INFO = {
         "auth_required": False,
     },
 
+    "kea": {
+        "name": "Klimaateffectatlas",
+        "full_name": "Klimaateffectatlas (climate-effect atlas, Climate Adaptation Services)",
+        "description": "Climate-effect maps of the Netherlands (heat, flooding, drought, foundations, social vulnerability) served as an open WFS. No authentication required.",
+        "icon": "globe",
+        "color": "emerald",
+        "auth_required": False,
+    },
     "rivm": {
         "name": "RIVM",
         "full_name": "Rijksinstituut voor Volksgezondheid en Milieu",

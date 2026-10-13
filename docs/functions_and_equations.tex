@@ -151,6 +151,7 @@ A \code{physicalEnv.LandCoverVector} polygon qualifies if its \code{land\_cover\
 \textbf{DAG edge:} \code{LandCover -> Urbanization} is the closest existing edge in \code{core/DAG.dot}, but it runs in the opposite direction of what this computes (LandCover only feeds a not-yet-modelled \code{Urbanization} node, per \code{TODO.md}), and no Neighbourhood/District/City/Province/LandCoverVector nodes exist in the DAG at all --- \statuspartial{} (cascade and source computation fully implemented; no \code{Urbanization} model backs a DAG edge for it)
 
 \subsection{Urban-fabric buffer around new buildings --- \code{urbanize\_around()}, \code{building\_created}}
+\label{sec:urban-fabric-buffer}
 Source: \code{physicalEnv/landcover.py}, receiver in \code{physicalEnv/signals.py}. When a building is drawn in the map editor (negative id), the land cover of its city's latest year is rewritten around it:
 \begin{align}
   B &= \mathrm{buffer}(\mathrm{geom}_{\text{building}},\ 10\ \si{m}) \cap \mathrm{geom}_{\text{city}} \\
@@ -646,6 +647,8 @@ Re-insertions and updates run before deletions so that reference targets exist a
 
 \textbf{Caveat:} receivers that skip raw saves (\code{watersupply/signals.py}: \code{if raw: return}) would not fire on restore. Built-up models have none; adding such a layer to $\mathcal{E}$ requires triggering its cascades explicitly.
 
+\textbf{Side effects of an edit.} Rows that another app changes because of an edit are journalled too, through custom signals that \code{mainMap/signals.py} subscribes to. Creating a building runs \code{urbanize\_around()} (\S\ref{sec:urban-fabric-buffer}), which sends \code{landcover\_rewriting} with the land-cover rows $\mathcal{A}$ it is about to clip or delete and \code{landcover\_created} with the new urban-fabric row $u$; the receivers add $J_B(p) = s_{t_0}(p)$ for $p \in \mathcal{A}$ and $J_B(u) = \varnothing$ under the layer key \code{physicalEnv.LandCoverVector}. Restore therefore re-inserts the clipped and deleted polygons with their original geometry and deletes $u$, and the land-cover receiver recomputes the neighbourhoods' urban area inside the same deferred block.
+
 \subsection{Map-side editor --- \code{Editing.js}}
 \textbf{Location:} \code{core/static/js/Editing.js}; hooks in \code{Layers.js} (\code{reloadLayer()}, \code{\_popupEditButton()}), \code{MapUI.js::renderLayerList()}, \code{mainMap.js::refreshActivePanel()}, \code{Map\_init.js}
 
@@ -655,6 +658,23 @@ No equations; behaviour relevant to reproducing results:
   \item While editing, the original object is hidden with the filter $\texttt{id} \neq \mathrm{pk}$, feature popups, admin-unit clicks and panel refreshes are suspended, and the camera pitch is set to $0$.
   \item The \code{feature-saved} and \code{backup-restored} HTMX events reload the affected layers (\code{reloadLayer()}), so the map always shows the stored state.
 \end{itemize}
+
+\section{Imported climate-effect indicators (importer app, Klimaateffectatlas)}
+\label{sec:kea}
+
+Source: \code{importer/external\_catalog.py} (\code{kea\_*} entries, \code{\_kea\_neighborhood()}, \code{\_kea\_building()}), \code{importer/external\_data.py} (\code{\_prepare\_features()}, \code{\_keep\_existing()}, \code{\_enrich\_rows()}); target models \code{builtup.NeighborhoodClimateRisk}, \code{urban\_heat.NeighborhoodHeat}, \code{housing.NeighborhoodSocialProfile} and new \code{builtup.Building} fields. The layer-by-layer mapping, and the 47 of 68 WFS layers that are not imported, are listed in \code{docs/KEA\_WFS\_MAPPING.md}. No equation of CrossTwin produces these values: they are stored inputs, transformed only on import.
+
+\subsection{Value transforms --- \code{\_prepare\_features()}}
+For a source attribute $x$ of feature $f$:
+\begin{align}
+  x' &= \begin{cases} \varnothing & x \in \mathcal{N} \\ m(x) & x \in \operatorname{dom}(m) \\ k\,x & \text{for a scaled attribute} \\ x & \text{otherwise} \end{cases}
+\end{align}
+with $\mathcal{N} = \{-99995, \dots, -99999\}$, the RIVM health monitor's no-value codes (frail health, loneliness, rental share, socio-economic status); $k = 100$ for the pile-rot risks, which KEA delivers as fractions (0--0.054 in Enschede), while settlement risk is already a percentage (0.9--17.7) and is stored as delivered; and $m$ the drought-sensitivity legend, $m(\mathrm{W}) = 2$ (weinig gevoelig, Low), $m(\mathrm{G}) = 3$ (gevoelig, Medium), $m(\mathrm{Z}) = 4$ (zeer gevoelig, High), with a missing value left to the model default $0$ (not groundwater-dependent). A building-block feature whose \code{BAG.Id} lists $n$ panden is split into $n$ features, each id left-padded to the 16 digits of a BAG identifier, so that every pand of the block receives the block's facade-shade score.
+
+\subsection{Join and write rules --- \code{\_keep\_existing()}, \code{\_enrich\_rows()}}
+Let $K$ be the set of stored keys of the join model (\code{Neighborhood.id} or \code{Building.id}) and $k(f)$ the feature's key (\code{buurtcode}, \code{identificatie}, \ldots). Only features with $k(f) \in K$ are written; the others are counted in the import message. Neighbourhood layers upsert one row per neighbourhood on \code{neighborhood\_id}, each layer writing only its own columns. Building layers update the existing row only, $s'(b) = s(b) \oplus \{\text{mapped attributes of } f\}$, never insert and never write the geometry; they use \code{update()} and bump the map cache of every registry model on the building table (including the \code{Energy.BuildingEnergyLabel} proxy).
+
+\textbf{DAG edges:} none computed. The values inform \texttt{PET}, \texttt{Vegetation\_Coverage} (heat and canopy), and the context of \texttt{Income\_Expenses}/\texttt{Affordability\_Stress} (social profile) --- stored inputs.
 
 \section{Summary table}
 
@@ -667,6 +687,7 @@ administrative & \code{extrapolate()} & Population\_Growth$\to$Total\_Pop & \sta
 administrative & \code{\_city\_growth\_factor()} & Population\_Growth$\to$Total\_Pop & \statusdone{} \\
 administrative & \code{annual\_growth\_rate()} & Population\_Growth$\to$Total\_Pop & \statusdone{} \\
 administrative & \code{City.save()} / \code{Province.save()} & (population cascade) & \statusdone{} \\
+physicalEnv & \code{urbanize\_around()} / \code{building\_created} & New\_Units$\to$LandCover (editor buildings) & \statuspartial{} \\
 watersupply & \code{calculate\_total\_demand()} / \code{TotalWaterDemand.save()} & Total\_Pop$\to$Total\_Water\_Demand & \statusdone{} \\
 watersupply & \code{ConsumptionCapita.save()} & Total\_Pop$\to$Total\_Consumption & \statusdone{} \\
 watersupply & \code{calculate\_total\_extraction()} & Available\_FW$\to$Total\_Extraction & \statusdone{} \\
@@ -699,12 +720,13 @@ urban\_heat & \code{get\_thermal\_indices()} & DSM$\to$SVF$\to$Tmrt/PET$\to$UTCI
 urban\_heat & \code{calculate\_nbs\_coverage()} & UTCI/PET$\to$NBS & \statusgap{} \\
 mainMap & \code{feature\_form()} / \code{feature\_delete()} & (tooling: edits State objects via \code{save()}) & \statusdone{} \\
 mainMap & \code{journal()} / \code{restore\_backup()} & (tooling: what-if restore point) & \statusdone{} \\
+importer & \code{\_prepare\_features()} / \code{\_enrich\_rows()} (KEA) & (stored inputs; no edge) & \statusdone{} \\
 \bottomrule
 \end{longtable}
 
 \section*{Notes on use}
 
-This document is generated from a manual audit of the codebase at the commit referenced in the accompanying \code{TODO.md}. Line numbers will drift as the code evolves; re-verify against \code{grep -n "def save"} in the relevant module before citing a location in a manuscript. The status tags mirror the coverage figures reported in the project's DPSIR gap analysis: of 103 edges in \code{core/DAG.dot} (one, \texttt{Total\_Water\_Prod}$\to$\texttt{OPEX}, is listed twice), 30 are backed by real derivation logic as of this audit; the two added since the original audit are \texttt{LandCover}$\to$\texttt{Infiltration} and the new \texttt{Soil\_Type}$\to$\texttt{Infiltration}.
+This document is generated from a manual audit of the codebase at the commit referenced in the accompanying \code{TODO.md}. Line numbers will drift as the code evolves; re-verify against \code{grep -n "def save"} in the relevant module before citing a location in a manuscript. The status tags mirror the coverage figures reported in the project's DPSIR gap analysis: of 103 edges in \code{core/DAG.dot} (one, \texttt{Total\_Water\_Prod}$\to$\texttt{OPEX}, is listed twice), 31 are backed by real derivation logic as of this audit; the three added since the original audit are \texttt{LandCover}$\to$\texttt{Infiltration}, the new \texttt{Soil\_Type}$\to$\texttt{Infiltration}, and \texttt{New\_Units}$\to$\texttt{LandCover} for buildings drawn in the map editor.
 
 Beyond the CBS 85173NED forecasts used for the \texttt{Population\_Growth}$\to$\texttt{Total\_Population} projection, the external data catalog also offers a finer-grained, Google Earth Engine-hosted population source, the High Resolution Settlement Layer (HRSL) \cite{HRSL2016}, for direct raster ingestion where a sub-neighbourhood estimate is preferable to the CBS city-level forecast.
 

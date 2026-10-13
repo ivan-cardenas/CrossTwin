@@ -60,13 +60,13 @@ class Diagram:
                 f'<text class="m" x="{x+w-tw/2-16}" y="{y+30}" font-size="12" fill="#fff" '
                 f'text-anchor="middle" font-weight="600">{escape(tag)}</text>')
 
-    def box(self, x, y, w, h, title, lines=(), kind="neutral", tag=None, mono_lines=False):
+    def box(self, x, y, w, h, title, lines=(), kind="neutral", tag=None, mono_lines=False, title_size=16):
         s, f, t = PALETTE[kind]
         out = [f'<rect x="{x+2}" y="{y+4}" width="{w}" height="{h}" rx="12" fill="{INK}" fill-opacity="0.06"/>',
                f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="12" fill="#fff" stroke="{s}" stroke-width="1.8"/>',
                f'<path d="M{x+12},{y} h{w-24} a12,12 0 0 1 12,12 v6 h-{w} v-6 a12,12 0 0 1 12,-12 z" fill="{s}"/>']
         ty = y + 42
-        out.append(f'<text class="t" x="{x+16}" y="{ty}" font-size="16" font-weight="700" fill="{t}">{escape(title)}</text>')
+        out.append(f'<text class="t" x="{x+16}" y="{ty}" font-size="{title_size}" font-weight="700" fill="{t}">{escape(title)}</text>')
         if tag:
             tw = 8 + 7 * len(tag)
             out.append(f'<rect x="{x+w-tw-12}" y="{y+26}" width="{tw}" height="22" rx="11" fill="{f}" stroke="{s}" stroke-width="1"/>'
@@ -168,7 +168,7 @@ def overview():
     d.box(420, 266, 290, 150, "mainMap", ["layer catalog  /api/layers/", "GeoJSON + bounds endpoints", "admin-unit & population panels", "editing.py (forms, backup)"], "django")
     d.box(730, 266, 290, 150, "Domain apps", ["watersupply · housing · urban_heat", "administrative · physicalEnv", "builtup · nature · weather · Energy", "models + calculations.py + views"], "django")
     d.box(420, 436, 290, 150, "core", ["MODEL / VECTOR / RASTER /", "WMS registries (utils.py)", "rasterOperations → COG", "signals · cache versioning"], "django")
-    d.box(730, 436, 290, 150, "importer", ["file upload (GeoJSON/SHP)", "external catalog (48 sets)", "SpatialParentIndex", "BulkWriter · deferred_cascades"], "django")
+    d.box(730, 436, 290, 150, "importer", ["file upload (GeoJSON/SHP)", "external catalog (70 sets)", "SpatialParentIndex", "BulkWriter · deferred_cascades"], "django")
     d.box(420, 606, 290, 120, "weather WMS proxy", ["/weather/wms/<name>/tile/", "keep-alive session", "24 h cache for TIME= frames"], "django")
     d.box(730, 606, 290, 120, "Caches (LocMem)", ["geojson  — 2 min, ≤ 8 MB", "wms_tiles — 24 h / 5 min", "default"], "cache")
     d.note(420, 775, ["Signals keep derived data consistent: population & urban-area cascade,",
@@ -180,13 +180,14 @@ def overview():
 
     # External
     d.group(1390, 120, 170, 700, "External", "external")
-    # title-only boxes: nine sources fill the column (subtitles are in 05-import-pipeline)
-    ext = ["PDOK", "CBS", "BIS Nederland", "OpenStreetMap", "Sentinel-2", "Earth Engine", "KNMI", "RIVM", "WMS servers"]
+    # title-only boxes: ten sources fill the column (subtitles are in 05-import-pipeline)
+    ext = ["PDOK", "CBS", "BIS Nederland", "OpenStreetMap", "Sentinel-2", "Earth Engine", "KNMI", "RIVM",
+           "Klimaateffectatlas", "WMS servers"]
     for i, n in enumerate(ext):
-        d.box(1402, 165 + i * 72, 146, 58, n, [], "external")
+        d.box(1402, 160 + i * 65, 146, 52, n, [], "external", title_size=14 if len(n) > 13 else 16)
 
     # DB
-    d.box(400, 865, 940, 90, "PostgreSQL 16 + PostGIS", ["80 models · GeometryField & RasterField (srid 28992) · GiST indexes · pg_stat_statements"], "data")
+    d.box(400, 865, 940, 90, "PostgreSQL 16 + PostGIS", ["83 models · GeometryField & RasterField (srid 28992) · GiST indexes · pg_stat_statements"], "data")
 
     # Edges
     d.edge([(320, 230), (420, 230)], "client", "JSON / HTML")
@@ -201,7 +202,7 @@ def overview():
     d.edge([(690, 586), (690, 596), (1070, 596), (1070, 520), (1100, 520)], "raster")
     d.edge([(1020, 230), (1100, 230)], "raster", "/cog/info")
     d.edge([(1220, 436), (1220, 300)], "raster", "read COG")
-    d.edge([(1402, 626), (1060, 626), (1060, 540), (1020, 540)], "external", "fetch datasets", label_at=0)
+    d.edge([(1402, 576), (1060, 576), (1060, 540), (1020, 540)], "external", "fetch datasets", label_at=0)
     d.edge([(1402, 770), (1370, 770), (1370, 743), (565, 743), (565, 726)], "external", "WMS GetMap", label_at=2)
     d.edge([(720, 820), (720, 865)], "data", "ORM + raw SQL", both=True, flow=False)
     d.legend([("client", "Browser"), ("django", "Django app"), ("raster", "Raster / tiles"),
@@ -221,9 +222,9 @@ def apps():
         ("administrative", 5, ["Province › City ›", "District › Neighborhood", "PopulationProjection"]),
         ("physicalEnv", 16, ["LandCover · DEM · DSM", "soil map · groundwater", "HILUCS · soil.py (SCS)"]),
         ("watersupply", 17, ["extraction · treatment", "pipes · NRW · OPEX", "SupplySecurity"]),
-        ("housing", 8, ["supply/demand · HPI", "mortgage · rentals", "affordability"]),
-        ("urban_heat", 11, ["UTCI · PET · Tmrt", "LST · SVF · SUHII", "NBS · WBGT"]),
-        ("builtup", 6, ["ZoningArea (HILUCS)", "Street · Park · Facility", "Building · Property"]),
+        ("housing", 9, ["supply/demand · HPI", "mortgage · rentals", "affordability", "social profile (KEA)"]),
+        ("urban_heat", 12, ["UTCI · PET · Tmrt", "LST · SVF · SUHII", "NBS · WBGT", "heat per buurt (KEA)"]),
+        ("builtup", 7, ["ZoningArea (HILUCS)", "Street · Park · Facility", "Building · Property", "climate risk (KEA)"]),
         ("nature", 7, ["green / blue", "layers · trees"]),
         ("weather", 7, ["WMS layers", "time steps"]),
         ("Energy", 3, ["energy labels"]),
@@ -321,19 +322,23 @@ def raster():
 # =========================================================================
 def importer():
     d = Diagram("05-import-pipeline", "Data Import Pipeline",
-                "Two entry points — file upload and the catalog-driven external importers — share batching and deferred cascades", h=1080)
-    d.group(40, 120, 330, 760, "Sources", "external")
+                "Two entry points — file upload and the catalog-driven external importers — share batching and deferred cascades", h=1160)
+    d.group(40, 120, 330, 840, "Sources", "external")
     srcs = [("PDOK", "18 · WFS/OGC API/ATOM/WCS"), ("CBS", "4 · OData (85173NED…)"),
             ("BIS Nederland", "3 · soil WFS, GHG/GLG WCS"), ("OpenStreetMap", "4 · Overpass API"),
             ("Sentinel-2", "5 · openEO composites"), ("Google Earth Engine", "12 · GEEAuthManager"),
-            ("KNMI Data Platform", "1 · fetch_latest (WBGT)"), ("RIVM", "1 · energy labels"),
+            ("KNMI Data Platform", "2 · WBGT API · radar WMS"), ("RIVM", "1 · energy labels"),
+            ("Klimaateffectatlas", "21 · WFS · 21 of 68 layers"),
             ("File upload", "GeoJSON / Shapefile")]
     for i, (n, s) in enumerate(srcs):
         d.box(60, 170 + i * 78, 290, 70, n, [s], "client" if n == "File upload" else "external")
 
-    d.box(470, 170, 320, 150, "external_catalog.py", ["48 dataset definitions", "target model + field map", "__fk_lookup__ (HILUCS, soil)", "bbox_from (parent AOI)"], "django")
-    d.box(470, 360, 320, 150, "*Importer classes", ["PDOK (+ BIS) · CBSImporter", "OSMImporter (Overpass)", "Sentinel2 · GEE · KNMI", "→ ImportResult"], "django")
+    d.box(470, 170, 320, 150, "external_catalog.py", ["70 dataset definitions (9 sources)", "target model + field map", "__fk_lookup__ (HILUCS, soil)", "bbox_from (parent AOI)"], "django")
+    d.box(470, 360, 320, 150, "*Importer classes", ["PDOK (+ BIS, RIVM, KEA) · CBS", "OSMImporter (Overpass)", "Sentinel2 · GEE · KNMI", "→ ImportResult"], "django")
     d.box(470, 580, 320, 150, "importer/views.py", ["upload · map fields", "preview · import", "MODEL_OVERRIDES upsert keys", "savepoints per row"], "django")
+    d.box(470, 770, 320, 170, "_import_geojson_features()", ["@id · __nodata__ · __value_maps__ / _scales__",
+          "__split__ (BAG.Id lists, zfill 16)", "__require_existing__: skip unknown keys",
+          "__enrich__: update existing rows only", "(skipped counts → import message)"], "django")
 
     d.group(880, 120, 360, 640, "importer/batching.py", "django")
     d.box(900, 170, 320, 150, "SpatialParentIndex", ["prepared geometries", "+ bbox pre-check", "probe point_on_surface", "→ __spatial_fk__ parent"], "django")
@@ -343,11 +348,13 @@ def importer():
     d.box(1330, 360, 230, 150, "PostGIS", ["vector rows", "raster rows", "(srid 28992)"], "data")
     d.box(1330, 580, 230, 150, "Finalizers", ["replay receivers", "skipped by", "bulk_create", "+ bump_layer_version"], "signal")
 
-    for i in range(8):
+    for i in range(9):
         y = 205 + i * 78
         d.edge([(350, y), (410, y), (410, 435), (470, 435)], "external", flow=False)
     d.edge([(630, 320), (630, 360)], "django", "configure")
-    d.edge([(350, 829), (440, 829), (440, 655), (470, 655)], "client")
+    d.edge([(350, 907), (440, 907), (440, 655), (470, 655)], "client")
+    d.edge([(790, 490), (820, 490), (820, 800), (792, 800)], "django")
+    d.edge([(790, 900), (1290, 900), (1290, 480), (1330, 480)], "data", "__enrich__: update(), geometry kept", label_at=0)
     d.edge([(790, 435), (840, 435), (840, 245), (900, 245)], "django", "features", label_at=1)
     d.edge([(1060, 320), (1060, 360)], "django", "parent FK")
     d.edge([(790, 655), (840, 655), (840, 470), (900, 470)], "django", label_at=1)
@@ -355,9 +362,10 @@ def importer():
     d.edge([(1220, 655), (1330, 655)], "signal")
     d.edge([(1445, 580), (1445, 510)], "signal", "update()")
     d.edge([(1060, 510), (1060, 580)], "signal", "inside", flow=False, dashed=True)
-    d.note(40, 925, ["A model may be in BULK_IMPORT_MODELS only if it has no save() override (BulkImportRegistryTests) —",
-                     "e.g. LandCoverVector, Street, Facility, SoilArea, the nature layers, Tree; a new post_save receiver on one needs its finalizer too.",
-                     "Known gap: _generic_import (file upload) maps geometry/raster fields only — attribute columns are not imported."])
+    d.note(40, 1005, ["A model may be in BULK_IMPORT_MODELS only if it has no save() override (BulkImportRegistryTests) —",
+                      "e.g. LandCoverVector, Street, Facility, SoilArea, the nature layers, Tree; a new post_save receiver on one needs its finalizer too.",
+                      "Known gap: _generic_import (file upload) maps geometry/raster fields only — attribute columns are not imported.",
+                      "__enrich__ layers (KEA per building) write attributes onto existing rows with update(), never the geometry, and bump the cache of every registry model on that table."])
     d.legend([("external", "External source"), ("client", "User upload"), ("django", "Importer code"), ("signal", "Cascades"), ("data", "Storage")])
     return d
 
@@ -367,7 +375,7 @@ def importer():
 # =========================================================================
 def signals():
     d = Diagram("06-signal-cascades", "Signal-Driven Derived Data",
-                "post_save / post_delete receivers keep aggregates and indicator chains consistent; update() avoids recursion", h=1000)
+                "post_save / post_delete receivers keep aggregates and indicator chains consistent; update() avoids recursion", h=1100)
     # administrative
     d.group(40, 120, 470, 560, "administrative/signals.py", "signal")
     lv = ["Neighborhood", "District", "City", "Province"]
@@ -378,16 +386,23 @@ def signals():
     d.note(60, 660, ["Sums both population and urban_area per level."])
 
     # physicalEnv
-    d.group(560, 120, 470, 330, "physicalEnv/signals.py", "signal")
-    d.box(600, 170, 390, 80, "LandCoverVector saved", ["schedule_urban_area_recompute(city_id)"], "neutral")
-    d.box(600, 300, 390, 120, "One set-based UPDATE … RETURNING", ["ST_Intersection with urban-fabric polygons", "(latest year), skipped when fully inside;", "ST_Area in storage-CRS metres"], "data")
-    d.edge([(795, 250), (795, 300)], "signal")
-    d.edge([(600, 360), (540, 360), (540, 210), (425, 210)], "signal", "re-enter cascade", label_at=1)
+    d.group(560, 120, 470, 550, "physicalEnv/signals.py", "signal")
+    d.box(600, 170, 390, 70, "Building created (map editor, id < 0)", ["building_created · DAG New_Units → LandCover"], "neutral")
+    d.box(600, 265, 390, 110, "urbanize_around(): 10 m buffer → urban fabric",
+          ["cut out of the city's latest-year land cover (ST_Difference),",
+           "inserted as one polygon · landcover_rewriting / _created",
+           "→ mainMap journal, undone by Restore"], "data")
+    d.box(600, 400, 390, 80, "LandCoverVector saved", ["schedule_urban_area_recompute(city_id)"], "neutral")
+    d.box(600, 530, 390, 120, "One set-based UPDATE … RETURNING", ["ST_Intersection with urban-fabric polygons", "(latest year), skipped when fully inside;", "ST_Area in storage-CRS metres"], "data")
+    d.edge([(795, 240), (795, 265)], "signal")
+    d.edge([(795, 375), (795, 400)], "signal")
+    d.edge([(795, 480), (795, 530)], "signal")
+    d.edge([(600, 590), (540, 590), (540, 210), (425, 210)], "signal", "re-enter cascade", label_at=1)
 
     # core
-    d.group(560, 490, 470, 190, "core/signals.py", "signal")
-    d.box(590, 540, 200, 110, "RASTER post_save", ["export_raster_to_cog()"], "raster")
-    d.box(810, 540, 200, 110, "VECTOR save/delete", ["bump_layer_version()", "→ GeoJSON cache"], "cache")
+    d.group(560, 690, 470, 190, "core/signals.py", "signal")
+    d.box(590, 740, 200, 110, "RASTER post_save", ["export_raster_to_cog()"], "raster")
+    d.box(810, 740, 200, 110, "VECTOR save/delete", ["bump_layer_version()", "→ GeoJSON cache"], "cache")
 
     # watersupply
     d.group(1080, 120, 480, 840, "watersupply/signals.py + save()", "signal")
@@ -409,9 +424,9 @@ def signals():
     d.edge([(1540, 205), (1555, 205), (1555, 710), (1540, 710)], "signal", flow=False, dashed=True)
     d.note(1110, 795, ["WaterTreatment · MeteredResidential · PipeNetwork → OPEX"], size=11.5)
 
-    d.group(40, 720, 990, 240, "Bulk writes  ·  importer/batching.py::deferred_cascades()", "neutral", dashed=True)
-    d.note(70, 785, ["= administrative.deferred_population_cascade()  +  physicalEnv.deferred_urban_area()",
-                     "",
+    d.group(40, 910, 990, 160, "Bulk writes  ·  importer/batching.py::deferred_cascades()", "neutral", dashed=True)
+    d.note(70, 975, ["= administrative.deferred_population_cascade()  +  physicalEnv.deferred_urban_area()",
+                     "   +  watersupply.deferred_water_refresh()",
                      "Inside the block, receivers only record the affected parent; on exit each cascade runs once per parent",
                      "(errors during that flush are logged, never raised over the original exception).",
                      "Always call schedule_urban_area_recompute() rather than the recompute itself, so an enclosing deferral is respected."],
@@ -428,10 +443,12 @@ def editing():
                 h=860)
     d.box(40, 170, 300, 170, "Editing.js", ["MutationObserver on #panel-body", "attaches Mapbox GL Draw", "popups & panel refresh", "suspended while editing"], "client")
     d.box(450, 170, 330, 170, "editing.feature_form", ["modelform_factory ModelForm", "geometry: WGS84 GeoJSON in", "hidden field → reprojected", "exclude / optional per layer"], "django")
-    d.box(890, 170, 300, 170, "obj.save()", ["derived fields", "signals & cascades", "cache bump", "negative pk for BAG ids"], "django")
+    d.box(890, 170, 300, 170, "obj.save()", ["derived fields", "signals & cascades", "cache bump", "negative pk for BAG ids",
+                                             "new building → urbanize_around()", "(10 m buffer → urban fabric)"], "django")
     d.box(1300, 170, 260, 170, "PostGIS", ["FKs DEFERRABLE", "INITIALLY DEFERRED", "_check_constraints()", "inside atomic block"], "data")
 
-    d.box(450, 440, 330, 150, "journal()", ["store original row of each", "object before first change", "(first pre-image wins)"], "signal")
+    d.box(450, 440, 330, 150, "journal()", ["store original row of each", "object before first change", "(first pre-image wins)",
+                                            "+ land-cover rows a new building reshapes", "(via signals → mainMap/signals.py)"], "signal")
     d.box(890, 440, 300, 150, "EditBackup", ["one restore point at a time", "create · restore · discard", "/api/editing/backup/…"], "cache")
     d.box(890, 650, 300, 150, "restore_backup()", ["one transaction:", "raw saves of pre-images,", "delete objects created since,", "roll back on FK conflict"], "signal")
     d.box(40, 440, 300, 150, "HTMX events", ["feature-saved", "backup-restored", "→ Layers.reloadLayer()"], "client")
@@ -442,6 +459,7 @@ def editing():
     d.edge([(1190, 230), (1300, 230)], "data", "write", step=4)
     d.edge([(450, 300), (400, 300), (400, 515), (340, 515)], "client", "HX-Trigger", step=5, label_at=1)
     d.edge([(780, 515), (890, 515)], "signal", "rows")
+    d.edge([(890, 320), (835, 320), (835, 470), (782, 470)], "signal", "signals", label_at=1)
     d.edge([(1040, 590), (1040, 650)], "cache", "restore")
     d.edge([(1190, 725), (1430, 725), (1430, 340)], "signal", "revert", label_at=1)
     d.note(40, 680, ["Only edits made through the editor are journalled —", "importer, admin and psql changes are not.",

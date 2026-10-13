@@ -701,7 +701,130 @@ class _ImportBlocked(Exception):
     pass
 
 
-def _import_geojson_features(features: List[Dict], dataset: Dict, Model, mapping: Dict) -> Tuple[int, int, List[str]]:
+def _scalar(value):
+    """True for values that can be compared against __nodata__ / looked up in __value_maps__."""
+    return isinstance(value, (int, float, str)) and not isinstance(value, bool)
+
+
+def _prepare_features(features: List[Dict], mapping: Dict) -> List[Dict]:
+    """
+    Normalise raw feature properties before mapping (each step only when the
+    mapping asks for it):
+      @id               synthesized property = the GeoJSON feature id (a stable
+                        upsert key for layers without an id attribute)
+      __nodata__        values that mean "no data" (RIVM's -99997) become None
+      __value_maps__    {prop: {source value: stored value}}
+      __value_scales__  {prop: factor}, e.g. a fraction stored as a percent
+      __split__         {"property", "sep", "zfill"}: one feature per listed
+                        value, e.g. a building block's comma-separated BAG ids
+    """
+    nodata = set(mapping.get("__nodata__", []))
+    value_maps = mapping.get("__value_maps__", {})
+    scales = mapping.get("__value_scales__", {})
+    split = mapping.get("__split__")
+
+    prepared = []
+    for feat in features:
+        props = dict(feat.get("properties") or {})
+        if feat.get("id") is not None:
+            props.setdefault("@id", feat["id"])
+        if nodata:
+            for key, value in props.items():
+                if _scalar(value) and value in nodata:
+                    props[key] = None
+        for key, table in value_maps.items():
+            if _scalar(props.get(key)) and props[key] in table:
+                props[key] = table[props[key]]
+        for key, factor in scales.items():
+            if isinstance(props.get(key), (int, float)) and not isinstance(props[key], bool):
+                props[key] = props[key] * factor
+
+        if split and props.get(split["property"]) is not None:
+            values = [v.strip() for v in str(props[split["property"]]).split(split.get("sep", ",")) if v.strip()]
+            for value in values:
+                if split.get("zfill"):
+                    value = value.zfill(split["zfill"])
+                prepared.append({**feat, "properties": {**props, split["property"]: value}})
+        else:
+            prepared.append({**feat, "properties": props})
+    return prepared
+
+
+def _keep_existing(features: List[Dict], mapping: Dict, notes: List[str]) -> List[Dict]:
+    """
+    __require_existing__ {"property", "model", "field" (default pk)}: drop the
+    features whose key is not stored in `model`. Keeps FK targets valid
+    (constraints are deferred, so a dangling FK would only fail at COMMIT)
+    and makes __enrich__ imports update-only. One query per 10 000 keys.
+    """
+    conf = mapping.get("__require_existing__")
+    if not conf:
+        return features
+    Target = get_model_class(conf["model"])
+    field = Target._meta.get_field(conf["field"]) if conf.get("field") else Target._meta.pk
+    prop = conf["property"]
+
+    def normalise(value):
+        try:
+            return field.to_python(value)
+        except Exception:
+            return None
+
+    wanted = {normalise(f["properties"].get(prop)) for f in features} - {None}
+    wanted = list(wanted)
+    known = set()
+    for start in range(0, len(wanted), 10_000):
+        chunk = wanted[start:start + 10_000]
+        known.update(Target.objects.filter(**{f"{field.name}__in": chunk}).values_list(field.name, flat=True))
+
+    kept = [f for f in features if normalise(f["properties"].get(prop)) in known]
+    skipped = len(features) - len(kept)
+    if skipped:
+        notes.append(f"skipped {skipped} feature(s) whose {prop} is not in {conf['model']}")
+    return kept
+
+
+def _enrich_rows(features: List[Dict], Model, mapping: Dict, unique_prop: str, unique_field: str,
+                 errors: List[str]) -> int:
+    """
+    __enrich__: write the mapped attributes onto existing rows of Model,
+    matched by __unique__ -> __unique_field__. Never creates a row and never
+    writes the geometry: the source polygon (e.g. a KEA building block) must
+    not replace the stored one. Rows are written with update(), which fires
+    no signals, so the map cache of every registry model on this table (the
+    Energy proxy of Building too) is bumped here. Returns the update count.
+    """
+    from core.cache import bump_layer_version
+    from core.utils import VECTOR_REGISTRY
+
+    has_last_updated = any(f.name == "last_updated" for f in Model._meta.concrete_fields)
+    updated = 0
+    with transaction.atomic():
+        for feat in features:
+            props = feat["properties"]
+            values = {model_field: props[prop] for prop, model_field in mapping.items()
+                      if not prop.startswith("__") and model_field != unique_field
+                      and props.get(prop) is not None}
+            values.update(mapping.get("__static__", {}))
+            if not values:
+                continue
+            if has_last_updated:
+                values["last_updated"] = timezone.now()
+            try:
+                with transaction.atomic():
+                    updated += Model.objects.filter(**{unique_field: props[unique_prop]}).update(**values)
+            except Exception as e:
+                errors.append(f"{props.get(unique_prop)}: {e}")
+                if len(errors) > 10:
+                    break
+    if updated:
+        table = Model._meta.db_table
+        bump_layer_version(*[m for m in VECTOR_REGISTRY.values() if m._meta.db_table == table] or [Model])
+    return updated
+
+
+def _import_geojson_features(features: List[Dict], dataset: Dict, Model, mapping: Dict,
+                             notes: Optional[List[str]] = None) -> Tuple[int, int, List[str]]:
     """
     Shared per-feature import engine for any source that hands back GeoJSON
     Feature dicts (WFS's outputFormat=application/json and OGC API Features'
@@ -711,11 +834,18 @@ def _import_geojson_features(features: List[Dict], dataset: Dict, Model, mapping
     __percentage_of_parent__, __year_from_date__, __name_template__) only
     has one implementation to keep in sync across protocols.
 
+    Also: @id, __nodata__, __value_maps__, __value_scales__, __split__
+    (_prepare_features), __require_existing__ (_keep_existing) and
+    __enrich__ (_enrich_rows). Lines for the result message (e.g. skipped
+    features) are appended to `notes` when given.
+
     Returns (created_count, updated_count, errors).
     """
+    notes = notes if notes is not None else []
     geom_field = mapping.get("__geometry__", "geom")
     unique_wfs_prop = mapping.get("__unique__")
     unique_model_field = mapping.get("__unique_field__")
+    features = _prepare_features(features, mapping)
 
     # PDOK/GeoServer WFS layers (bag:pand in particular) can return the same
     # feature — same identificatie — more than once in a single GetFeature
@@ -745,6 +875,12 @@ def _import_geojson_features(features: List[Dict], dataset: Dict, Model, mapping
         features = deduped
 
     errors = []
+    features = _keep_existing(features, mapping, notes)
+    if mapping.get("__enrich__"):
+        if not (unique_wfs_prop and unique_model_field):
+            raise _ImportBlocked(f"[{dataset['key']}] __enrich__ needs __unique__ and __unique_field__")
+        return 0, _enrich_rows(features, Model, mapping, unique_wfs_prop, unique_model_field, errors), errors
+
     fk_lookup_cache = {}  # {model_field: {source_value: model_instance}}, shared across all features in this batch
 
     # Pre-load parent geometries for spatial FK resolution (once per batch),
@@ -1047,8 +1183,9 @@ class PDOKImporter:
             if not features:
                 return ImportResult("success", "No features found in the specified area.", 0)
 
+            notes = []
             try:
-                created_count, updated_count, errors = _import_geojson_features(features, dataset, Model, mapping)
+                created_count, updated_count, errors = _import_geojson_features(features, dataset, Model, mapping, notes)
             except _ImportBlocked as e:
                 return ImportResult("error", str(e))
 
@@ -1058,6 +1195,7 @@ class PDOKImporter:
                 msg_parts.append(f"created {created_count}")
             if updated_count:
                 msg_parts.append(f"updated {updated_count}")
+            msg_parts.extend(notes)
 
             msg = f"Imported {len(features)} features from {layer}: " + ", ".join(msg_parts) + "."
 
@@ -2609,7 +2747,7 @@ def import_dataset(
     fmt = dataset.get("format", "wfs")
     
     print(f"[DISPATCH] import_dataset: dataset_key={dataset_key} bbox={bbox} date_from={date_from} date_to={date_to}")
-    if source in ("pdok", "rivm", "bodemdata") or (source == "CBS" and fmt == "wfs"):
+    if source in ("pdok", "rivm", "bodemdata", "kea") or (source == "CBS" and fmt == "wfs"):
 
         if fmt == "wfs":
             return PDOKImporter.fetch_wfs(dataset, bbox)

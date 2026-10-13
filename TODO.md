@@ -1,6 +1,6 @@
 # TODO — Unimplemented DAG Edges
 
-The DPSIR causal graph in [`core/DAG.dot`](core/DAG.dot) defines 102 edges. **Only 28 are backed by real derivation logic** — a `save()` method or a `calculations.py` function that actually reads the source field, not just a docstring claiming the edge. The rest are either flat stored fields with no computation, or `calculations.py` functions whose docstring claims an edge the code doesn't implement.
+The DPSIR causal graph in [`core/DAG.dot`](core/DAG.dot) defines 103 edges (one, `Total_Water_Prod -> OPEX`, is listed twice). **Only 31 are backed by real derivation logic** — a `save()` method or a `calculations.py` function that actually reads the source field, not just a docstring claiming the edge. The rest are either flat stored fields with no computation, or `calculations.py` functions whose docstring claims an edge the code doesn't implement.
 
 This file tracks the gaps, grouped by app. When one is closed, move it to the "Done" note at the bottom (or delete the line) and add the `# DAG edges:` comment to the implementing function per the convention in `CLAUDE.md`.
 
@@ -24,7 +24,7 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 
 - [ ] `RS_Imagery -> LandCover/LST` — raster models are plain imports, no ingestion/derivation code
 - [ ] `LandCover -> Infiltration` — `AvailableFreshWater.infiltrationRate_cm_h` is a flat field (see existing inline TODO)
-- [ ] `New_Units -> LandCover` — `calculate_new_units()` never touches `LandCover`
+- [ ] `New_Units -> LandCover` — partly done: a building drawn in the map editor turns a 10 m buffer into urban fabric (`physicalEnv/landcover.py::urbanize_around`). Still open: moved/demolished buildings, and `calculate_new_units()` completions/pipeline never touch `LandCover`
 
 ## urban_heat
 

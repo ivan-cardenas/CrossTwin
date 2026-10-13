@@ -721,6 +721,7 @@ class AreaAffectedDrought(models.Model):
     geom = models.MultiPolygonField(srid=COORDINATE_SYSTEM)
     Province = models.ForeignKey(Province, on_delete=models.DO_NOTHING)
     areaName = models.CharField(max_length=100)
+    sourceID = models.CharField(max_length=100, unique=True, null=True, blank=True, help_text="Feature id in the source dataset (e.g. the Klimaateffectatlas WFS), the upsert key of re-imports")
     SensibilityLevel = models.IntegerField(
         choices=SensibilityChoices.choices,
         default=SensibilityChoices.NotAffected,

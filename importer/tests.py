@@ -1253,3 +1253,160 @@ class GroundwaterDepthImportTests(TestCase):
 
     def test_pdok_wcs_keeps_lowercase_axes(self):
         self.assertNotIn("wcs_axis_labels", CATALOG_BY_KEY["pdok_dem_ahn_raster"])
+
+
+# ── Klimaateffectatlas (KEA) WFS: docs/KEA_WFS_MAPPING.md ─────────────────────
+
+def _kea_import(key, features, notes=None):
+    from .external_catalog import FIELD_MAPPINGS
+    from .external_data import get_model_class
+    Model = get_model_class(CATALOG_BY_KEY[key]["target_model"])
+    return _import_geojson_features(features, RD_DATASET, Model, FIELD_MAPPINGS[key], notes)
+
+
+def _buurt_feature(**props):
+    """A KEA neighborhood feature over watersupply.tests.factories.make_neighborhood()'s square."""
+    return _rd_feature(256600, 469600, 257400, 470400, **props)
+
+
+class KeaCatalogTests(SimpleTestCase):
+    def test_every_kea_entry_maps_onto_real_model_fields(self):
+        from .external_catalog import FIELD_MAPPINGS
+        from .external_data import get_model_class
+        keys = [k for k in CATALOG_BY_KEY if k.startswith("kea_")]
+        self.assertEqual(len(keys), 21)
+        self.assertEqual(sorted(keys), sorted(k for k in FIELD_MAPPINGS if k.startswith("kea_")))
+        for key in keys:
+            entry = CATALOG_BY_KEY[key]
+            self.assertEqual(entry["source"], "kea")
+            self.assertTrue(entry["layer"].startswith("kea_public:"), key)
+            Model = get_model_class(entry["target_model"])
+            for prop, field in FIELD_MAPPINGS[key].items():
+                if not prop.startswith("__"):
+                    name = field[:-3] if field.endswith("_id") else field
+                    Model._meta.get_field(name)   # raises FieldDoesNotExist on a typo
+
+    def test_kea_datasets_go_through_the_wfs_importer(self):
+        from .external_data import ImportResult, PDOKImporter, import_dataset
+        with mock.patch.object(PDOKImporter, "fetch_wfs", return_value=ImportResult("success", "ok")) as fetch:
+            import_dataset("kea_waterschappen", [6.8, 52.2, 6.9, 52.3])
+        self.assertEqual(fetch.call_args.args[0]["key"], "kea_waterschappen")
+
+
+class KeaNeighborhoodImportTests(TestCase):
+    def setUp(self):
+        from watersupply.tests.factories import make_neighborhood
+        self.neighborhood = make_neighborhood(id="BU01530000")
+
+    def test_known_buurt_gets_a_row_and_unknown_buurten_are_skipped(self):
+        from builtup.models import NeighborhoodClimateRisk
+        notes = []
+        created, updated, errors = _kea_import("kea_risicopaalrot_huidig", [
+            _buurt_feature(buurtcode="BU01530000", no_cc_risi=0.025),
+            _buurt_feature(buurtcode="BU99999999", no_cc_risi=0.5),
+        ], notes)
+
+        self.assertEqual((created, errors), (1, []))
+        risk = NeighborhoodClimateRisk.objects.get()
+        self.assertEqual(risk.neighborhood_id, "BU01530000")
+        self.assertAlmostEqual(risk.pileRotRisk_current_pct, 2.5)   # fraction scaled to %
+        self.assertIn("skipped 1 feature(s)", notes[0])
+
+    def test_each_layer_fills_its_own_columns_of_the_same_row(self):
+        from builtup.models import NeighborhoodClimateRisk
+        _kea_import("kea_risicopaalrot_2050hoog", [_buurt_feature(buurtcode="BU01530000", sterke_c_2=0.05)])
+        created, updated, _ = _kea_import("kea_risicoverschilzetting_2050hoog",
+                                          [_buurt_feature(buurtcode="BU01530000", sterke_c_1=12.5)])
+        _kea_import("kea_droge_verdiepingen", [_buurt_feature(BU_CODE="BU01530000", VALUE=83)])
+
+        self.assertEqual((created, updated), (0, 1))
+        risk = NeighborhoodClimateRisk.objects.get()
+        self.assertAlmostEqual(risk.pileRotRisk_2050high_pct, 5.0)
+        self.assertAlmostEqual(risk.settlementRisk_2050high_pct, 12.5)   # already a %
+        self.assertEqual(risk.dryFloors_pct, 83)
+
+    def test_rivm_nodata_codes_are_stored_as_null(self):
+        from housing.models import NeighborhoodSocialProfile
+        _kea_import("kea_broze_gezondheid", [_buurt_feature(buurtcode="BU01530000", broze_gezondheid=-99997)])
+        _kea_import("kea_huurwoningen", [_buurt_feature(buurtcode="BU01530000", percentage_huurwoningen=41)])
+        profile = NeighborhoodSocialProfile.objects.get()
+        self.assertIsNone(profile.frailHealth_pct)
+        self.assertEqual(profile.rentalHousing_pct, 41)
+
+    def test_heat_layers_use_their_own_code_properties(self):
+        from urban_heat.models import NeighborhoodHeat
+        _kea_import("kea_gevoelstemperatuur_buurt_2022",
+                    [_buurt_feature(buurtcode="BU01530000", _mean=46.2, RIVMClass=7)])
+        _kea_import("kea_verkoeling", [_buurt_feature(bu_code="BU01530000", KanGoedVerkoelingVindenBinnen_59=34.8,
+                                                      KanGoedVerkoelingVindenBuiten_60=27.6)])
+        heat = NeighborhoodHeat.objects.get()
+        self.assertAlmostEqual(heat.petMean_2022_C, 46.2)
+        self.assertEqual(heat.heatClass_2022, 7)
+        self.assertAlmostEqual(heat.coolingOutdoor_pct, 27.6)
+
+
+class KeaBuildingEnrichmentTests(TestCase):
+    def setUp(self):
+        from builtup.models import Building
+        self.a = Building.objects.create(id=153100000201990, usageFunction="woonfunctie",
+                                         geom=_rd_square(257000, 470000, 257020, 470020))
+        self.b = Building.objects.create(id=153100000202207, usageFunction="woonfunctie",
+                                         geom=_rd_square(257100, 470000, 257120, 470020))
+
+    def test_enrichment_updates_existing_buildings_only_and_keeps_their_geometry(self):
+        from builtup.models import Building
+        from core.cache import layer_version
+        before = (layer_version("builtup.Building"), layer_version("Energy.BuildingEnergyLabel"))
+        notes = []
+        created, updated, errors = _kea_import("kea_boomkroon_panden", [
+            _rd_feature(256900, 469900, 257100, 470100, identificatie="0153100000201990",
+                        perc_bkb=31.5, bkb_30perc_gehaald=True),
+            _rd_feature(256900, 469900, 257100, 470100, identificatie="0153100000999999",
+                        perc_bkb=10.0, bkb_30perc_gehaald=False),
+        ], notes)
+
+        self.assertEqual((created, updated, errors), (0, 1, []))
+        self.assertIn("skipped 1", notes[0])
+        self.assertFalse(Building.objects.filter(pk=153100000999999).exists())
+        a = Building.objects.get(pk=self.a.pk)
+        self.assertAlmostEqual(a.canopyCover_pct, 31.5)
+        self.assertTrue(a.meetsCanopy30Rule)
+        self.assertTrue(a.geom.equals_exact(self.a.geom, tolerance=1e-6))   # the KEA polygon is not stored
+        after = (layer_version("builtup.Building"), layer_version("Energy.BuildingEnergyLabel"))
+        self.assertNotEqual(before[0], after[0])
+        self.assertNotEqual(before[1], after[1])   # the Energy proxy shares the table
+
+    def test_a_block_feature_updates_every_listed_building(self):
+        from builtup.models import Building
+        created, updated, errors = _kea_import("kea_schaduw_op_gebouwen", [
+            _rd_feature(256900, 469900, 257200, 470100,
+                        **{"BAG.Id": "153100000201990,153100000202207", "SOG.Score": 0.38}),
+        ])
+        self.assertEqual((created, updated, errors), (0, 2, []))
+        self.assertEqual(set(Building.objects.values_list("facadeShadeScore", flat=True)), {0.38})
+
+
+class KeaAreaImportTests(TestCase):
+    def test_climate_buffers_upsert_on_the_feature_id(self):
+        from nature.models import ProtectedArea
+        feature = _rd_feature(0, 0, 1000, 1000, Type="Hoog Nederland", Legenda="")
+        feature["id"] = "totaalkaartklimaatbuffers.5110"
+        _kea_import("kea_klimaatbuffers", [feature])
+        _kea_import("kea_klimaatbuffers", [feature])
+        area = ProtectedArea.objects.get()
+        self.assertEqual((area.inspireID, area.name, area.protection_type),
+                         ("totaalkaartklimaatbuffers.5110", "Hoog Nederland", "OTH"))
+
+    def test_drought_sensitivity_letters_map_onto_levels(self):
+        from watersupply.models import AreaAffectedDrought
+        from watersupply.tests.factories import make_province
+        make_province(geom=_rd_square(0, 0, 10_000, 10_000))
+        features = []
+        for i, letter in enumerate(["W", "G", "Z", None]):
+            f = _rd_feature(i * 1000, 0, i * 1000 + 500, 500, blad1__naa="Haagbeuken- en essenbos", blad1__gev=letter)
+            f["id"] = f"droogte.{i}"
+            features.append(f)
+        created, _, errors = _kea_import("kea_droogtegevoelige_natuur", features)
+        self.assertEqual((created, errors), (4, []))
+        levels = dict(AreaAffectedDrought.objects.values_list("sourceID", "SensibilityLevel"))
+        self.assertEqual(levels, {"droogte.0": 2, "droogte.1": 3, "droogte.2": 4, "droogte.3": 0})
