@@ -7,6 +7,7 @@ from django.db.models import Sum, Avg
 from django.apps import apps
 
 from .models import *
+from . import chain
 from administrative.admin_units import resolve_admin_unit
 from administrative.population import DEFAULT_SCENARIO, get_population, population_params
 from .calculations import (
@@ -30,7 +31,6 @@ from django.contrib.gis.db.models.functions import Intersection, Length
 from django.contrib.gis.measure import D
 
 # ── constants ─────────────────────────────────────────────────────────
-SERVICE_HOURS_MAX = 24
 MAX_OPEX_EUR      = 10_000_000
 MAX_CONSUMPTION   = 300
 RAIN_MM_DEFAULT   = 25     # design rain event of the infiltration what-if, mm
@@ -215,7 +215,9 @@ def _infiltration_indicators(infiltration, rain_mm):
 def _build_indicators(data, consumption_override=None, rain_mm=RAIN_MM_DEFAULT):
     """Pure function: takes DB data dict, returns indicators dict."""
     consumption  = (consumption_override or data['consumption_capita'])
-    demand_m3_d  = consumption / 1000 * data['population']
+    # Same chain as the stored records (watersupply/chain.py), fed with the
+    # request's population what-if instead of the baseline projection.
+    demand_m3_d  = chain.demand_m3_d(consumption, data['population'])
     supply_m3_d  = data['supply_m3_d']
     available    = data['available_water_Mm3']
     opex_total   = data['opex_total']
@@ -223,10 +225,7 @@ def _build_indicators(data, consumption_override=None, rain_mm=RAIN_MM_DEFAULT):
     demand_Mm3_yr  = demand_m3_d  * 365 / 1_000_000
     supply_Mm3_yr  = supply_m3_d  * 365 / 1_000_000
 
-    service_time = (
-        SERVICE_HOURS_MAX if supply_m3_d > demand_m3_d
-        else round(SERVICE_HOURS_MAX * supply_m3_d / demand_m3_d, 1) if demand_m3_d else 0
-    )
+    service_time = chain.service_time_hours(supply_m3_d, demand_m3_d)
 
     # NRW as percentage of supply
     nrw_m3_d = data.get('nrw_m3_d', 0)
@@ -250,9 +249,9 @@ def _build_indicators(data, consumption_override=None, rain_mm=RAIN_MM_DEFAULT):
         'total_demand_Mm3':      round(demand_Mm3_yr, 2),
         'total_supply_percent':  round(min(supply_Mm3_yr / available * 100, 100), 1) if available else 0,
         'total_demand_percent':  round(min(demand_Mm3_yr / available * 100, 100), 1) if available else 0,
-        'supply_security':       supply_Mm3_yr / demand_Mm3_yr * 100 if demand_Mm3_yr else 0,
+        'supply_security':       chain.supply_security_pct(supply_m3_d, demand_m3_d),
         'service_time':          service_time,
-        'service_time_percent':  round(service_time / SERVICE_HOURS_MAX * 100, 1),
+        'service_time_percent':  round(service_time / chain.SERVICE_HOURS_MAX * 100, 1),
         'network_length':        data['network_length'],
         'opex':                  f"{opex_total:,.0f}",
         'opex_percent':          min(opex_total / MAX_OPEX_EUR * 100, 100),

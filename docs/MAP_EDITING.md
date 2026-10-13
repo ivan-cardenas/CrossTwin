@@ -69,6 +69,7 @@ A **change journal**, not a table copy: "Create backup" only sets a restore poin
 
 **Limits to keep in mind**
 - Changes made through the importer, the admin, QGIS or psql are not journalled. An object changed *only* that way is left alone by Restore. An object changed through **both** the editor and another route after the backup is set back to its pre-backup state, which also undoes the other change for that object.
+- Side effect on the land cover: a **new** building (negative id) makes a 10 m buffer around it urban fabric in its city's latest land-cover year (`physicalEnv/landcover.py::urbanize_around`, receiver `physicalEnv.signals.building_created`; DAG edge `New_Units -> LandCover`). The buffer is cut out of the polygons it touches and inserted as one new polygon. The rewritten rows are journalled under `physicalEnv.LandCoverVector` through the `landcover_rewriting` / `landcover_created` signals (`mainMap/signals.py`), so Restore puts the original land cover back and reloads that layer. Moving or deleting the building leaves the land cover as it is.
 - Raw saves: built-up models have no signal receivers that skip `raw=True`, but `watersupply/signals.py` does (`if raw: return`). When layers from such apps are added to `EDITABLE_LAYERS`, Restore must trigger their cascades itself (e.g. `physicalEnv.signals.schedule_urban_area_recompute`, the watersupply recomputes).
 
 ## Frontend changes

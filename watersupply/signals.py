@@ -4,6 +4,7 @@ Cross-model updates for the water supply chain (DPSIR / core/DAG.dot).
 Dependency chain implemented here (source -> dependent):
 
     City population (save, or the Neighborhood->District->City cascade)
+    PopulationProjection (CBS median forecast = the baseline of each year)
         -> ConsumptionCapita.total_consumption_m3_yr
         -> TotalWaterDemand -> SupplySecurity
         -> MeteredResidential -> OPEX
@@ -25,13 +26,16 @@ a change to them refreshes only the *latest* OPEX / SupplySecurity record of
 each affected unit (older years are historical snapshots).
 """
 import logging
+import threading
+from contextlib import contextmanager
 
 from django.core.exceptions import ValidationError
 from django.db.models.signals import m2m_changed, post_delete, post_save
 from django.dispatch import receiver
 from django.utils import timezone
 
-from administrative.models import City
+from administrative.models import City, PopulationProjection
+from administrative.population import DEFAULT_SCENARIO
 from administrative.signals import city_population_changed
 
 from .models import (
@@ -68,12 +72,53 @@ def _refresh_latest_supply_security(city_ids=None):
 
 # ── population -> consumption -> demand -> supply security ───────────
 
+# Per-thread set of cities whose water refresh is postponed; None when not deferring.
+_deferred = threading.local()
+
+
+@contextmanager
+def deferred_water_refresh():
+    """
+    Postpone the population -> water refresh until the block ends, then run it
+    once per affected city. A CBS forecast import saves ~28 years x 3 variants
+    per city; without this each median-forecast row would re-run the whole
+    water chain of its city. Nested uses defer to the outermost one.
+    """
+    if getattr(_deferred, "pending", None) is not None:
+        yield
+        return
+
+    _deferred.pending = set()
+    try:
+        yield
+    except BaseException:
+        pending, _deferred.pending = _deferred.pending, None
+        try:
+            _flush_water_refresh(pending)
+        except Exception:
+            # e.g. the transaction is already broken; don't mask the original error
+            logger.exception("Deferred water refresh failed after an aborted block")
+        raise
+    else:
+        pending, _deferred.pending = _deferred.pending, None
+        _flush_water_refresh(pending)
+
+
+def _flush_water_refresh(city_ids):
+    for city_id in city_ids:
+        _refresh_city_water(city_id)
+
+
 def _refresh_city_water(city_id):
     """
     Re-save the city's ConsumptionCapita records: that recalculates
-    total_consumption_m3_yr with the new population and, through the
+    total_consumption_m3_yr with the new baseline population and, through the
     ConsumptionCapita receiver below, TotalWaterDemand and MeteredResidential.
     """
+    pending = getattr(_deferred, "pending", None)
+    if pending is not None:
+        pending.add(city_id)
+        return
     _resave(ConsumptionCapita.objects.filter(city_id=city_id))
 
 
@@ -87,6 +132,22 @@ def city_saved(sender, instance, raw=False, **kwargs):
 def city_population_cascaded(sender, city_id, **kwargs):
     # The population cascade uses queryset.update(), which never fires post_save(City).
     _refresh_city_water(city_id)
+
+
+@receiver(post_save, sender=PopulationProjection, dispatch_uid="water_projection_saved")
+@receiver(post_delete, sender=PopulationProjection, dispatch_uid="water_projection_deleted")
+def projection_changed(sender, instance, raw=False, **kwargs):
+    """
+    The stored chain uses the median forecast of each record's year as its
+    population (watersupply/chain.py::baseline_population), so a new or
+    corrected forecast is a population change. The low/high variants only feed
+    the dashboard's what-if, which is computed per request.
+
+    DAG edges: Population_Growth -> Total_Population -> Total_Water_Demand
+    """
+    if raw or instance.scenario != DEFAULT_SCENARIO:
+        return
+    _refresh_city_water(instance.city_id)
 
 
 @receiver(post_save, sender=ConsumptionCapita, dispatch_uid="water_consumption_saved")

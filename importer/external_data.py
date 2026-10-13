@@ -405,6 +405,55 @@ def default_wms_legend_url(base_url: str, layer: str) -> Optional[str]:
     return None
 
 
+def register_wms_layer(dataset: Dict) -> ImportResult:
+    """
+    Create or update the target WMS model's row for a catalog entry. The map
+    only shows a WMS layer if such a row exists (mainMap/views.py::
+    available_layers lists WMS_REGISTRY models via .objects.all()).
+
+    The row is named after `wms_name` if the entry gives one (it is the
+    tile proxy's URL segment, so renaming an existing row breaks saved
+    links), otherwise after the catalog key. `wms_options` sets extra model
+    fields such as weather.WMSLayer's has_time_dimension or api_key_setting;
+    options the target model lacks are ignored. An entry that sets
+    `legend_url` (even to "") skips the legend lookup, which is needed for
+    servers that answer GetCapabilities only with an API key.
+    """
+    layer = dataset.get("layer", "unknown")
+    url = dataset["url"]
+
+    try:
+        Model = get_model_class(dataset["target_model"])
+    except ValueError as e:
+        return ImportResult("error", str(e))
+
+    if "legend_url" in dataset:
+        legend_url = dataset["legend_url"] or ""
+    else:
+        legend_url = default_wms_legend_url(url, layer)
+    defaults = {
+        "display_name": dataset.get("name", layer),
+        "url": url,
+        "layers_param": layer,
+        "legend_url": legend_url,
+        "is_active": True,
+    }
+    field_names = {f.name for f in Model._meta.get_fields()}
+    defaults.update({k: v for k, v in dataset.get("wms_options", {}).items() if k in field_names})
+
+    obj, created = Model.objects.update_or_create(
+        name=dataset.get("wms_name", dataset["key"]),
+        defaults=defaults,
+    )
+
+    return ImportResult(
+        "success",
+        f"WMS layer {'registered' if created else 'updated'}: {layer}.",
+        1,
+        0,
+    )
+
+
 def load_raster_into_target_model(
     filepath: str,
     dataset: Dict,
@@ -1433,32 +1482,7 @@ class PDOKImporter:
         models via .objects.all()), so no WMS dataset selected in the
         importer ever actually appeared on the map.
         """
-        layer = dataset.get("layer", "unknown")
-        url = dataset["url"]
-        model_path = dataset["target_model"]
-
-        try:
-            Model = get_model_class(model_path)
-        except ValueError as e:
-            return ImportResult("error", str(e))
-
-        obj, created = Model.objects.update_or_create(
-            name=dataset["key"],
-            defaults={
-                "display_name": dataset.get("name", layer),
-                "url": url,
-                "layers_param": layer,
-                "legend_url": dataset.get("legend_url") or default_wms_legend_url(url, layer),
-                "is_active": True,
-            },
-        )
-
-        return ImportResult(
-            "success",
-            f"WMS layer {'registered' if created else 'updated'}: {layer}.",
-            1,
-            0,
-        )
+        return register_wms_layer(dataset)
 
 class CBSImporter:
     """Import handler for CBS StatLine OData datasets."""
@@ -1634,7 +1658,9 @@ class CBSImporter:
             created_count = updated_count = 0
             errors = []
 
-            with transaction.atomic():
+            # deferred_cascades: a forecast import saves ~84 rows per city, and
+            # each median-forecast row would otherwise re-run the city's water chain.
+            with transaction.atomic(), deferred_cascades():
                 for row in all_rows:
                     try:
                         field_values = {}
@@ -1995,32 +2021,7 @@ class Sentinel2Importer:
         target WMS model — see PDOKImporter.register_wms for why this needs
         to actually write to the DB rather than just report success.
         """
-        layer = dataset.get("layer", "unknown")
-        url = dataset["url"]
-        model_path = dataset["target_model"]
-
-        try:
-            Model = get_model_class(model_path)
-        except ValueError as e:
-            return ImportResult("error", str(e))
-
-        obj, created = Model.objects.update_or_create(
-            name=dataset["key"],
-            defaults={
-                "display_name": dataset.get("name", layer),
-                "url": url,
-                "layers_param": layer,
-                "legend_url": dataset.get("legend_url") or default_wms_legend_url(url, layer),
-                "is_active": True,
-            },
-        )
-
-        return ImportResult(
-            "success",
-            f"WMS layer {'registered' if created else 'updated'}: {layer}.",
-            1,
-            0,
-        )
+        return register_wms_layer(dataset)
 
 
 class GEEImporter:
@@ -2638,6 +2639,8 @@ def import_dataset(
         return GEEImporter.export_raster(dataset, bbox, date_from, date_to)
 
     elif source == "knmi":
+        if fmt == "wms":
+            return register_wms_layer(dataset)
         return KNMIImporter.fetch_latest(dataset)
 
     elif source == "osm" and fmt == "overpass":

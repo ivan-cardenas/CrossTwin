@@ -20,6 +20,7 @@ from django.db import models, transaction
 from administrative.signals import deferred_population_cascade
 from core.cache import bump_layer_version
 from physicalEnv.signals import deferred_urban_area, schedule_urban_area_recompute
+from watersupply.signals import deferred_water_refresh
 
 logger = logging.getLogger(__name__)
 
@@ -88,14 +89,18 @@ class SpatialParentIndex:
 @contextmanager
 def deferred_cascades():
     """
-    Run the administrative population cascade and the land-cover urban-area
-    recompute once per affected parent when the block ends, instead of once
-    per row saved inside it. Enter this inside the import's transaction so
-    the recompute commits (or rolls back) with the rows.
+    Run the administrative population cascade, the land-cover urban-area
+    recompute and the population -> water refresh once per affected parent
+    when the block ends, instead of once per row saved inside it. Enter this
+    inside the import's transaction so the recompute commits (or rolls back)
+    with the rows.
     """
     with ExitStack() as stack:
         # Exit order is the reverse: urban area first (it re-enters the
-        # population cascade directly), then the deferred population cascade.
+        # population cascade directly), then the deferred population cascade
+        # (which announces city_population_changed), and the water refresh
+        # last, so it collects the cities of both and runs once per city.
+        stack.enter_context(deferred_water_refresh())
         stack.enter_context(deferred_population_cascade())
         stack.enter_context(deferred_urban_area())
         yield

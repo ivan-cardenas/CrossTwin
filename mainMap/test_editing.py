@@ -292,3 +292,38 @@ class BackupRestoreTests(EditingTestCase):
         self.post_building(NEW_URL)
         response = self.client.get(BACKUP_URL)
         self.assertContains(response, '2 objects changed')
+
+
+class LandCoverBufferRestoreTests(EditingTestCase):
+    """A building drawn in the editor makes a 10 m buffer urban fabric (physicalEnv.landcover); restore undoes it."""
+
+    def setUp(self):
+        super().setUp()
+        from physicalEnv.models import LandCoverClasses, LandCoverVector
+        self.LandCoverVector = LandCoverVector
+        pasture = LandCoverClasses.objects.create(class_name='pastures', description='test')
+        city = self.neighborhood.district.city
+        self.west = LandCoverVector.objects.create(
+            city=city, year=2024, land_cover_type=pasture, land_use='Agriculture',
+            geom=make_polygon(x=257250, half_size_m=250),
+            percentage=0)
+        self.cell = LandCoverVector.objects.create(   # entirely inside the new building's buffer
+            city=city, year=2024, land_cover_type=pasture, land_use='Agriculture',
+            geom=make_polygon(x=257300, half_size_m=5), percentage=0)
+        self.original = {lc.pk: lc.geom for lc in LandCoverVector.objects.all()}
+
+    def test_a_new_building_makes_its_buffer_urban_fabric_and_restore_reverts_it(self):
+        self.client.post(BACKUP_URL)
+        self.post_building(NEW_URL, geom=_wgs84_geojson(make_polygon(x=257300, half_size_m=10)))
+        self.assertFalse(self.LandCoverVector.objects.filter(pk=self.cell.pk).exists())
+        self.assertTrue(self.LandCoverVector.objects.filter(land_cover_type__class_name='urban fabric').exists())
+
+        response = self.client.post(RESTORE_URL)
+        layers = json.loads(response['HX-Trigger'])['backup-restored']['layers']
+        self.assertEqual(layers, ['builtup.Building', 'physicalEnv.LandCoverVector'])
+
+        restored = {lc.pk: lc.geom for lc in self.LandCoverVector.objects.all()}
+        self.assertEqual(restored.keys(), self.original.keys())
+        for pk, geom in self.original.items():
+            self.assertTrue(restored[pk].equals_exact(geom, tolerance=1e-6), pk)
+        self.assertFalse(Building.objects.filter(pk=-1).exists())

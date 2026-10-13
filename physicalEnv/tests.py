@@ -332,3 +332,107 @@ class DrainedLandCoverTests(SimpleTestCase):
         for name in ("pastures", "broad-leaved forest", "green urban areas", "water bodies", None):
             with self.subTest(name):
                 self.assertFalse(is_drained(name))
+
+
+class BuildingUrbanFabricBufferTests(TestCase):
+    """physicalEnv.signals.building_created -> landcover.urbanize_around (DAG edge New_Units -> LandCover)."""
+
+    def setUp(self):
+        square = _square(0, 0, 1000, 1000)
+        self.province = Province.objects.create(ProvinceName="P", geom=square)
+        self.city = City.objects.create(cityName="C", province=self.province, geom=square)
+        self.district = District.objects.create(
+            id="D1", districtName="D", city=self.city, geom=square, currentPopulation=0)
+        self.neighborhood = Neighborhood.objects.create(
+            id="N1", neighborhoodName="N", district=self.district, geom=square, currentPopulation=0)
+        self.pasture_class = LandCoverClasses.objects.create(class_name="pastures", description="test")
+        self.pasture = LandCoverVector.objects.create(
+            city=self.city, year=2024, land_cover_type=self.pasture_class,
+            land_use="Agriculture", geom=square, percentage=100.0)
+
+    def _building(self, pk=-1, x0=490, y0=490, x1=510, y1=510, **kwargs):
+        from builtup.models import Building
+        return Building.objects.create(id=pk, usageFunction="woonfunctie", geom=_square(x0, y0, x1, y1), **kwargs)
+
+    def _urban_fabric(self):
+        return LandCoverVector.objects.filter(land_cover_type__class_name__iexact="urban fabric")
+
+    def test_buffer_is_cut_out_and_inserted_as_urban_fabric(self):
+        self._building()
+
+        ring = self._urban_fabric().get()
+        # 20 m x 20 m footprint + 10 m: 400 + 4*200 + pi*100 (rounded corners, segmented)
+        self.assertAlmostEqual(ring.geom.area, 1514.2, delta=5)
+        self.assertEqual(ring.year, 2024)
+        self.assertEqual(ring.city_id, self.city.pk)
+        self.assertEqual(ring.land_use, "Residential")
+        self.assertAlmostEqual(ring.percentage, ring.geom.area / 1e6 * 100, places=6)
+
+        self.pasture.refresh_from_db()
+        self.assertAlmostEqual(self.pasture.geom.area + ring.geom.area, 1e6, delta=0.01)   # no overlap
+        self.assertAlmostEqual(self.pasture.geom.intersection(ring.geom).area, 0, delta=0.01)
+        self.assertAlmostEqual(self.pasture.percentage, self.pasture.geom.area / 1e6 * 100, places=6)
+
+        self.neighborhood.refresh_from_db()
+        self.city.refresh_from_db()
+        self.assertAlmostEqual(self.neighborhood.urban_area, ring.geom.area / 1e6, places=6)
+        self.assertAlmostEqual(self.city.urban_area, ring.geom.area / 1e6, places=6)
+
+    def test_an_existing_urban_fabric_class_is_reused(self):
+        existing = LandCoverClasses.objects.create(class_name="Urban fabric", description="BRT")
+        self._building()
+        self.assertEqual(self._urban_fabric().get().land_cover_type, existing)
+
+    def test_a_polygon_inside_the_buffer_is_deleted(self):
+        small = LandCoverVector.objects.create(
+            city=self.city, year=2024, land_cover_type=self.pasture_class,
+            land_use="Agriculture", geom=_square(495, 495, 505, 505), percentage=0.01)
+        self._building()
+        self.assertFalse(LandCoverVector.objects.filter(pk=small.pk).exists())
+
+    def test_the_buffer_is_clipped_to_the_city(self):
+        self._building(x0=0, y0=0, x1=20, y1=20)   # in the corner: the buffer sticks out on two sides
+        ring = self._urban_fabric().get()
+        self.assertTrue(self.city.geom.buffer(0.01).contains(ring.geom))
+        # 30 m x 30 m with the outer corner rounded: 900 - (100 - pi*100/4)
+        self.assertAlmostEqual(ring.geom.area, 878.5, delta=1)
+
+    def test_older_years_are_left_alone(self):
+        old = LandCoverVector.objects.create(
+            city=self.city, year=2018, land_cover_type=self.pasture_class,
+            land_use="Agriculture", geom=_square(0, 0, 1000, 1000), percentage=100.0)
+        self._building()
+        old.refresh_from_db()
+        self.assertAlmostEqual(old.geom.area, 1e6)
+
+    def test_imported_and_resaved_buildings_do_not_change_the_land_cover(self):
+        imported = self._building(pk=1234)      # BAG id
+        self.assertFalse(self._urban_fabric().exists())
+
+        drawn = self._building(pk=-1, x0=100, y0=100, x1=120, y1=120)
+        self.assertEqual(self._urban_fabric().count(), 1)
+        drawn.geom = _square(700, 700, 720, 720)
+        drawn.save()                            # a move does not add a second ring
+        imported.save()
+        self.assertEqual(self._urban_fabric().count(), 1)
+
+    def test_raw_saves_are_ignored(self):
+        from builtup.models import Building
+        from physicalEnv import signals
+        building = Building(id=-5, usageFunction=["Residential function"], buildingType="residential",
+                            geom=_square(490, 490, 510, 510))
+        signals.building_created(Building, building, created=True, raw=True)
+        self.assertFalse(self._urban_fabric().exists())
+
+    def test_a_city_without_land_cover_is_a_no_op(self):
+        LandCoverVector.objects.all().delete()
+        building = self._building()
+        self.assertTrue(type(building).objects.filter(pk=-1).exists())
+        self.assertFalse(LandCoverVector.objects.exists())
+
+    def test_a_failing_overlay_does_not_block_the_building(self):
+        from physicalEnv import signals
+        with mock.patch.object(signals, "urbanize_around", side_effect=RuntimeError("boom")), \
+                self.assertLogs("physicalEnv.signals", "ERROR"):
+            building = self._building()
+        self.assertTrue(type(building).objects.filter(pk=-1).exists())

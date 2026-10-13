@@ -37,15 +37,18 @@ class ConsumptionCapita(models.Model):
 
     def save(self, *args, **kwargs):
         """
-        DAG edges: Total_Population -> Total_Consumption
-                   ConsumptionCapita -> Total_Consumption
-        total_consumption_m3_yr = L/person/day / 1000 * population * 365
+        DAG edges: Total_Population, ConsumptionCapita -> Total_Water_Demand
+                   (yearly consumption is an intermediate, not a DAG node)
+        total_consumption_m3_yr = L/person/day / 1000 * population * 365, with
+        the baseline population of `year` (watersupply/chain.py).
         """
+        from .chain import baseline_population, consumption_m3_yr
+
         if self.consumption_capita_L_d < 0:
             raise ValidationError("Consumption Capita cannot be negative")
-        population = self.city.currentPopulation
+        population = baseline_population(self.city, self.year)
         if population is not None:
-            self.total_consumption_m3_yr = self.consumption_capita_L_d / 1000 * population * 365
+            self.total_consumption_m3_yr = consumption_m3_yr(self.consumption_capita_L_d, population)
         self.last_updated = timezone.now()
         super().save(*args, **kwargs)
 
@@ -71,8 +74,11 @@ class TotalWaterDemand(models.Model):
         """
         DAG edges: Total_Population -> Total_Water_Demand
                    ConsumptionCapita -> Total_Water_Demand
-        demandDay [Mm3/day] = population * L/person/day / 1e9   (L -> Mm3)
+        demandDay [Mm3/day] = population * L/person/day / 1e9   (L -> Mm3), with
+        the baseline population of `year` (watersupply/chain.py).
         """
+        from .chain import baseline_population, demand_m3_d
+
         consumption = ConsumptionCapita.objects.filter(
             city=self.city, year=self.year
         ).first()
@@ -81,8 +87,8 @@ class TotalWaterDemand(models.Model):
                 f"No ConsumptionCapita record for {self.city} in {self.year}; "
                 "cannot calculate the water demand."
             )
-        population = self.city.currentPopulation or 0
-        self.demandDay = population * consumption.consumption_capita_L_d / 1e9
+        population = baseline_population(self.city, self.year) or 0
+        self.demandDay = demand_m3_d(consumption.consumption_capita_L_d, population) / 1e6  # m3 -> Mm3
         self.demandYR = self.demandDay * 365
         self.last_updated = timezone.now()
         super().save(*args, **kwargs)
@@ -99,8 +105,6 @@ class SupplySecurity(models.Model):
     service_time_hours = models.FloatField(help_text="in hours per day") # hours/day
     last_updated = models.DateTimeField(default=timezone.now) 
     
-    SERVICE_HOURS_MAX = 24
-
     def __str__(self):
         return f"{self.city} - {self.year}: {self.supply_security_pct}%"
 
@@ -109,23 +113,21 @@ class SupplySecurity(models.Model):
         DAG edges: Total_Water_Demand -> Supply_Security
                    Total_Water_Prod   -> Supply_Security
                    Supply_Security    -> Service_Time
-        Same formulas as watersupply.views._build_indicators:
+        Same functions as watersupply.views._build_indicators (watersupply/chain.py):
           supply_security_pct = production / demand * 100
           service_time_hours  = 24 if production >= demand else 24 * production / demand
         Only recalculated when both demand (TotalWaterDemand for this city/year)
         and production are known; otherwise the supplied values are kept.
         """
         from .calculations import calculate_total_production_day  # avoid circular import
+        from .chain import service_time_hours, supply_security_pct
 
         demand = TotalWaterDemand.objects.filter(city=self.city, year=self.year).first()
         demand_m3_d = demand.demandDay * 1e6 if demand else 0       # Mm3/day -> m3/day
         production_m3_d = calculate_total_production_day(self.city)  # m3/day
         if demand_m3_d > 0 and production_m3_d > 0:
-            self.supply_security_pct = production_m3_d / demand_m3_d * 100
-            self.service_time_hours = (
-                self.SERVICE_HOURS_MAX if production_m3_d >= demand_m3_d
-                else round(self.SERVICE_HOURS_MAX * production_m3_d / demand_m3_d, 1)
-            )
+            self.supply_security_pct = supply_security_pct(production_m3_d, demand_m3_d)
+            self.service_time_hours = service_time_hours(production_m3_d, demand_m3_d)
         self.last_updated = timezone.now()
         super().save(*args, **kwargs)
 

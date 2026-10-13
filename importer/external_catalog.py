@@ -217,7 +217,7 @@ FIELD_MAPPINGS = {
         # (grasland, struiken, groenvoorziening, ...) before import.
         "__client_filter__": {"property": "fysiek_voorkomen", "in": ["loofbos", "naaldbos", "gemengd bos"]},
         # begroeidterreindeel has no name/title property at all.
-        "__name_template__": "{fysiek_voorkomen} ({lokaal_id})",
+        "__name_template__": "{fysiek_voorkomen}",
         "fysiek_voorkomen": "type",
     },
     "bgt_greenspace_park": {
@@ -228,7 +228,7 @@ FIELD_MAPPINGS = {
         # recreatie: speeltuin, ...) are the closest available proxy -- broader
         # than parks alone (also covers sports fields/playgrounds).
         "__client_filter__": {"property": "plus_type", "startswith": "recreatie"},
-        "__name_template__": "{plus_type} ({lokaal_id})",
+        "__name_template__": "{plus_type}",
         "plus_type": "type",
     },
 
@@ -1077,6 +1077,30 @@ EXTERNAL_DATA_CATALOG = [
         "format": "raster",
         # The key lives in the server's .env (KNMI_API_KEY), so the user
         # supplies nothing and no bbox is needed: the whole grid is stored.
+        "enabled": True,
+    },
+    {
+        "key": "knmi_radar_forecast",
+        "source": "knmi",
+        "category": "Climate",
+        "name": "KNMI Radar Forecast",
+        "description": "Precipitation radar with a two-hour nowcast from KNMI, animated on the map and refreshed every 5 minutes. Registers a WMS layer only; tiles are fetched live through the server, which sends KNMI_API_KEY.",
+        "target_model": "weather.WMSLayer",
+        "url": "https://api.dataplatform.knmi.nl/wms/adaguc-server?DATASET=radar_forecast_2.0",
+        "layer": "precipitation_nowcast",
+        "format": "wms",
+        # The row's name is the tile proxy's URL segment (/wms/<name>/);
+        # keep it equal to rows created earlier through the admin.
+        "wms_name": "radar_forecast_2.0",
+        # KNMI answers GetCapabilities/GetLegendGraphic only with the API
+        # key, which the browser never sees, so no legend is looked up.
+        "legend_url": "",
+        "wms_options": {
+            "has_time_dimension": True,
+            "time_frame_count": 12,
+            "time_refresh_minutes": 5,
+            "api_key_setting": "KNMI_API_KEY",
+        },
         "enabled": True,
     },
 

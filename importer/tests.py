@@ -385,6 +385,44 @@ class KNMIWbgtCatalogTests(TestCase):
         self.assertEqual(result.status, "success")
 
 
+class KNMIRadarCatalogTests(TestCase):
+    def _import(self):
+        from .external_data import import_dataset
+        with mock.patch("importer.external_data.KNMIImporter.fetch_latest") as fetch, \
+             mock.patch("importer.external_data.default_wms_legend_url") as legend:
+            result = import_dataset("knmi_radar_forecast")
+        fetch.assert_not_called()
+        legend.assert_not_called()   # KNMI's GetCapabilities needs the API key
+        return result
+
+    def test_registers_an_animated_proxied_wms_row(self):
+        from weather.models import WMSLayer
+        result = self._import()
+        self.assertEqual(result.status, "success")
+        layer = WMSLayer.objects.get(name="radar_forecast_2.0")
+        self.assertEqual(layer.layers_param, "precipitation_nowcast")
+        self.assertTrue(layer.has_time_dimension)
+        self.assertEqual(layer.api_key_setting, "KNMI_API_KEY")
+        self.assertTrue(layer.is_active)
+
+    def test_updates_a_row_created_in_the_admin_instead_of_duplicating_it(self):
+        from weather.models import WMSLayer
+        WMSLayer.objects.create(name="radar_forecast_2.0", display_name="Old",
+                                url="https://example.test/wms", layers_param="radar", is_active=False)
+        self._import()
+        layer = WMSLayer.objects.get(name="radar_forecast_2.0")
+        self.assertEqual(layer.display_name, "KNMI Radar Forecast")
+        self.assertTrue(layer.is_active)
+
+    def test_options_the_target_model_lacks_are_ignored(self):
+        from physicalEnv.models import DigitalElevationModelWMS
+        from .external_data import register_wms_layer
+        ds = dict(CATALOG_BY_KEY["pdok_dem_ahn_wms"], legend_url="",
+                  wms_options={"has_time_dimension": True})
+        self.assertEqual(register_wms_layer(ds).status, "success")
+        self.assertTrue(DigitalElevationModelWMS.objects.filter(name="pdok_dem_ahn_wms").exists())
+
+
 class KNMIToGeotiffTests(SimpleTestCase):
     def setUp(self):
         import tempfile

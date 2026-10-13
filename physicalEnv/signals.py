@@ -2,14 +2,16 @@ import logging
 import threading
 from contextlib import contextmanager
 
-from django.db import connection
+from django.db import connection, transaction
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from django.db.models import Max, Q
 from django.utils import timezone
 
 from core.cache import bump_layer_version
+from .landcover import urbanize_around
 from .models import LandCoverClasses, LandCoverVector
+from builtup.models import Building
 from administrative.models import Neighborhood, District, City, Province
 # Reused from administrative's own population cascade rather than
 # duplicated -- see administrative/signals.py for the shared aggregation
@@ -179,3 +181,38 @@ def landcover_changed(sender, instance, **kwargs):
     # importer/batching.py), so this recomputes once per city per import
     # instead of once per saved polygon.
     schedule_urban_area_recompute(instance.city_id)
+
+
+def _city_of(building):
+    """City of a building: through its neighborhood (Building.save() sets it), else the city containing its centroid."""
+    if building.neighborhood_id:
+        city_id = (Neighborhood.objects.filter(pk=building.neighborhood_id)
+                   .values_list("district__city_id", flat=True).first())
+        if city_id:
+            return city_id
+    return City.objects.filter(geom__contains=building.geom.centroid).values_list("pk", flat=True).first()
+
+
+@receiver(post_save, sender=Building, dispatch_uid="physicalEnv_building_saved")
+def building_created(sender, instance, created, raw=False, **kwargs):
+    """
+    DAG edge: New_Units -> LandCover. A building drawn in the map editor
+    turns a BUILDING_BUFFER_M buffer around it into urban fabric
+    (landcover.urbanize_around). Only new buildings with a negative id
+    (mainMap/editing.py::_next_negative_pk): BAG imports already match the
+    land cover, and moving or deleting a building leaves the land cover as
+    it is (the editor's backup restore reverts it).
+    """
+    if raw or not created or instance.pk is None or instance.pk >= 0 or not instance.geom:
+        return
+    city_id = _city_of(instance)
+    if not city_id:
+        return
+    land_use = instance.get_buildingType_display() if instance.buildingType else "Built-up"
+    try:
+        # Own savepoint: a failure rolls back only the land-cover change.
+        with transaction.atomic():
+            urbanize_around(instance.geom, city_id, land_use=land_use)
+    except Exception:
+        # Never block the building's own save.
+        logger.exception("Urban-fabric buffer around building %s failed", instance.pk)

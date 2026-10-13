@@ -150,6 +150,17 @@ A \code{physicalEnv.LandCoverVector} polygon qualifies if its \code{land\_cover\
 
 \textbf{DAG edge:} \code{LandCover -> Urbanization} is the closest existing edge in \code{core/DAG.dot}, but it runs in the opposite direction of what this computes (LandCover only feeds a not-yet-modelled \code{Urbanization} node, per \code{TODO.md}), and no Neighbourhood/District/City/Province/LandCoverVector nodes exist in the DAG at all --- \statuspartial{} (cascade and source computation fully implemented; no \code{Urbanization} model backs a DAG edge for it)
 
+\subsection{Urban-fabric buffer around new buildings --- \code{urbanize\_around()}, \code{building\_created}}
+Source: \code{physicalEnv/landcover.py}, receiver in \code{physicalEnv/signals.py}. When a building is drawn in the map editor (negative id), the land cover of its city's latest year is rewritten around it:
+\begin{align}
+  B &= \mathrm{buffer}(\mathrm{geom}_{\text{building}},\ 10\ \si{m}) \cap \mathrm{geom}_{\text{city}} \\
+  \mathcal{L}' &= \{\, P \setminus B : P \in \mathcal{L},\ P \setminus B \neq \emptyset \,\} \cup \{ B \text{ as urban fabric} \} \\
+  \mathrm{percentage}_P &= |P| / 10^6 \,/\, A_{\text{city}} \times 100
+\end{align}
+where $\mathcal{L}$ is the set of \code{LandCoverVector} polygons of the city's latest \code{year}. The buffer is cut out of every polygon it touches (\code{ST\_Difference}; polygons left empty are deleted) and inserted as one new polygon of class \emph{urban fabric}, so the layer stays free of overlaps and the urban-area cascade above counts each square metre once. Imported (BAG) buildings and later moves or deletes do not trigger it; the editor's backup journal records the rewritten rows, so a restore brings the original land cover back.
+
+\textbf{DAG edge:} \dagedge{New\_Units $\rightarrow$ LandCover} --- \statuspartial{} (map-editor buildings only; \code{calculate\_new\_units()} pipeline counts still do not change the land cover)
+
 \section{Physical environment app --- soil hydrology and infiltration}
 \label{sec:physicalenv}
 
@@ -460,7 +471,7 @@ where $S = \texttt{supply\_units}$, $D = \texttt{demand\_units}$ (stored, not de
   U_{\text{completed}} &= \sum_{\,\texttt{year\_expected\_completion} \le y} \texttt{project\_units} \\
   U_{\text{pipeline}} &= \sum_{\,\texttt{year\_expected\_completion} > y} \texttt{project\_units}
 \end{align}
-\textbf{DAG edges:} \dagedge{Zoning\_Status $\rightarrow$ New\_Units}, \dagedge{Network $\rightarrow$ New\_Units}, \dagedge{New\_Units $\rightarrow$ Housing\_Supply}, \dagedge{New\_Units $\rightarrow$ LandCover} --- \statuspartial{} (counts completions/pipeline; never writes back to \code{LandCover} or reads \code{Zoning\_Status}/\code{Network} as inputs)
+\textbf{DAG edges:} \dagedge{Zoning\_Status $\rightarrow$ New\_Units}, \dagedge{Network $\rightarrow$ New\_Units}, \dagedge{New\_Units $\rightarrow$ Housing\_Supply}, \dagedge{New\_Units $\rightarrow$ LandCover} --- \statuspartial{} (counts completions/pipeline; never writes back to \code{LandCover} or reads \code{Zoning\_Status}/\code{Network} as inputs --- the land-cover side of the edge is implemented for buildings drawn in the map editor, see \code{urbanize\_around()})
 
 \subsection{Mortgage indicators --- \code{calculate\_mortgage\_indicators()}}
 \textbf{Location:} \code{housing/calculations.py:123}
