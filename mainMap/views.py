@@ -588,30 +588,35 @@ def available_layers(request):
             continue
 
         raster_instances = model.objects.all()
-        
+
         for raster in raster_instances:
             if not raster.cog_path:
                 continue
-                
-            fallback_name = getattr(raster, 'name', None) or f'{model._meta.verbose_name} {raster.id}'
-            layers.append({
-                'key': f'raster-{app_label}-{model_name}-{raster.id}',
-                'display_name': raster_display_name(raster, key, fallback_name),
-                'app_label': app_label,
-                'model_name': model_name,
-                'layer_type': 'raster',
-                'raster_id': raster.id,
-                'geometry_type': 'raster',
-                'color': '#ff6b6b',
-                'count': 1,
-                # ✅ Point to your existing endpoint
-                'tile_url_template': f'/api/raster/{app_label}/{model_name}/tiles/?id={raster.id}',
-                'opacity': getattr(raster, 'opacity', 0.7),
-                'colormap': getattr(raster, 'colormap', 'viridis'),
-                'rescale': getattr(raster, 'rescale', '0,40'),
-            })
-            
+            layers.append(raster_layer_entry(raster))
+
     return JsonResponse({'layers': layers})
+
+
+def raster_layer_entry(raster):
+    """The layer-catalog entry of one raster row (also returned by the map's LST tool)."""
+    model = type(raster)
+    app_label, model_name = model._meta.app_label, model.__name__
+    fallback_name = getattr(raster, 'name', None) or f'{model._meta.verbose_name} {raster.id}'
+    return {
+        'key': f'raster-{app_label}-{model_name}-{raster.id}',
+        'display_name': raster_display_name(raster, f'{app_label}.{model_name}', fallback_name),
+        'app_label': app_label,
+        'model_name': model_name,
+        'layer_type': 'raster',
+        'raster_id': raster.id,
+        'geometry_type': 'raster',
+        'color': '#ff6b6b',
+        'count': 1,
+        'tile_url_template': f'/api/raster/{app_label}/{model_name}/tiles/?id={raster.id}',
+        'opacity': getattr(raster, 'opacity', 0.7),
+        'colormap': getattr(raster, 'colormap', 'viridis'),
+        'rescale': getattr(raster, 'rescale', '0,40'),
+    }
 
 
 # Below this many rows (planner estimate) an exact ST_Extent scan is cheap

@@ -388,3 +388,41 @@ class LayerStyleTests(SimpleTestCase):
         height = model['paint']['model-scale'][2]  # ['interpolate', ['linear'], input, ...]
         self.assertEqual(height[0], 'to-number')
         self.assertEqual(height[1][0], 'coalesce')
+
+
+class RasterStyleTests(SimpleTestCase):
+    """mainMap/styles/rasterStyles.py: style lookup and the data-driven value range."""
+
+    @staticmethod
+    def _raster(values, nodata=-9999):
+        from types import SimpleNamespace
+        from django.contrib.gis.gdal import GDALRaster
+        rows, cols = len(values), len(values[0])
+        raster = GDALRaster({
+            'driver': 'MEM', 'srid': 28992, 'width': cols, 'height': rows,
+            'origin': [0, rows * 30], 'scale': [30, -30], 'datatype': 6,
+            'bands': [{'data': [v for row in values for v in row], 'nodata_value': nodata}],
+        })
+        return SimpleNamespace(raster=raster, cog_path='/nowhere.tif', index=None)
+
+    def test_model_styles_match_registry_keys_case_insensitively(self):
+        from core.utils import RASTER_REGISTRY
+        from .styles.rasterStyles import MODEL_STYLES, DEFAULT_STYLE, _lookup_style
+        self.assertIn('urban_heat.LandSurfaceTemperature', RASTER_REGISTRY)
+        style, _ = _lookup_style(self._raster([[1.0]]), 'urban_heat.LandSurfaceTemperature')
+        self.assertEqual(style, MODEL_STYLES['urban_heat.landsurfacetemperature'])
+        self.assertNotEqual(style, DEFAULT_STYLE)
+
+    def test_lst_range_is_the_rasters_own_min_max_without_nodata(self):
+        from unittest import mock
+        from .styles.rasterStyles import resolve_raster_style
+        lst = self._raster([[31.0, -9999.0], [36.874, 33.5]])
+        with mock.patch('mainMap.styles.rasterStyles._cog_statistics') as titiler:
+            style = resolve_raster_style(lst, 'urban_heat.LandSurfaceTemperature')
+        titiler.assert_not_called()
+        self.assertEqual(style['colormap'], 'inferno')
+        self.assertEqual(style['rescale'], (31.0, 36.87))
+
+    def test_flat_raster_gets_a_non_empty_range(self):
+        from .styles.rasterStyles import _raster_statistics
+        self.assertEqual(_raster_statistics(self._raster([[20.0, 20.0]])), (19.5, 20.5))

@@ -2003,3 +2003,154 @@
     font-size: 12px;
 }
 .feature-editor-form small { color: var(--text-dim); font-size: 11px; }
+
+/* ============================================================
+   LST TOOL — Land Surface Temperature for the area in view
+   (core/static/js/LstTool.js). Same overlay look as the population dock.
+   ============================================================ */
+
+.lst-card {
+    position: absolute;
+    left: 12px;
+    bottom: 52px;               /* above the bottom bar, where the Actions menu opens */
+    width: 340px;
+    max-width: calc(100% - 24px);
+    max-height: min(560px, 72vh);
+    overflow-y: auto;
+    padding: 10px 12px 12px;
+    background: var(--overlay-bg);
+    backdrop-filter: var(--overlay-blur);
+    -webkit-backdrop-filter: var(--overlay-blur);
+    box-shadow: var(--overlay-shadow);
+    border: 1px solid var(--border-ui);
+    border-radius: 10px;
+    z-index: 13;
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    color: var(--text-main);
+    font-size: 12px;
+}
+.lst-card.visible { display: flex; }
+
+.lst-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border-ui);
+    cursor: grab;
+}
+.lst-card-header:active { cursor: grabbing; }
+.lst-card-title {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-tertiary);
+    font-weight: 600;
+}
+.lst-card-close {
+    border: none;
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    font-size: 15px;
+}
+.lst-card-close:hover { color: var(--text-main); }
+
+.lst-card-hint { margin: 0; color: var(--text-tertiary); font-size: 11px; line-height: 1.4; }
+
+.lst-card-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr 72px;
+    gap: 6px;
+}
+.lst-card-fields label {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 10px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+.lst-card-fields input,
+.lst-card-fields select {
+    min-width: 0;
+    padding: 4px 6px;
+    border-radius: 5px;
+    border: 1px solid var(--border-ui);
+    background: #181818;
+    color: var(--text-main);
+    font-size: 12px;
+    color-scheme: dark;
+}
+
+.lst-check { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 11px; }
+
+.lst-btn {
+    padding: 7px 10px;
+    border-radius: 6px;
+    border: 1px solid #242424;
+    background: #181818;
+    color: var(--text-main);
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+.lst-btn:hover:not(:disabled) { background: #202020; border-color: #303030; }
+.lst-btn:disabled { opacity: 0.45; cursor: default; }
+.lst-btn-primary {
+    background: rgba(var(--accent-rgb), 0.12);
+    border-color: rgba(var(--accent-rgb), 0.35);
+    color: var(--accent);
+    font-weight: 600;
+}
+.lst-btn-primary:hover:not(:disabled) { background: rgba(var(--accent-rgb), 0.2); }
+
+.lst-view-info { color: var(--text-tertiary); font-size: 11px; }
+.lst-view-info:empty { display: none; }
+
+.lst-scenes {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 220px;
+    overflow-y: auto;
+}
+.lst-scenes:empty { display: none; }
+.lst-scene {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas: "radio date clear" "radio meta meta";
+    column-gap: 8px;
+    align-items: center;
+    padding: 6px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border-ui);
+    cursor: pointer;
+}
+.lst-scene:hover { background: rgba(255, 255, 255, 0.03); }
+.lst-scene:has(input:checked) {
+    border-color: rgba(var(--accent-rgb), 0.45);
+    background: rgba(var(--accent-rgb), 0.08);
+}
+.lst-scene.poor { opacity: 0.55; }
+.lst-scene input { grid-area: radio; margin: 0; }
+.lst-scene-date { grid-area: date; }
+.lst-scene-date small { color: var(--text-tertiary); }
+.lst-scene-clear { grid-area: clear; font-weight: 600; font-variant-numeric: tabular-nums; }
+.lst-scene-meta { grid-area: meta; color: var(--text-tertiary); font-size: 10px; }
+.lst-empty { color: var(--text-tertiary); font-size: 11px; }
+
+.lst-status { font-size: 11px; line-height: 1.4; color: var(--text-secondary); }
+.lst-status:empty { display: none; }
+.lst-status.working { color: var(--text-tertiary); }
+.lst-status.ok { color: var(--success); }
+.lst-status.warn { color: var(--warning); }
+.lst-status.error { color: var(--error-text); }
+.lst-card.busy .lst-scenes { pointer-events: none; opacity: 0.6; }
+
+@media (max-width: 768px) {
+    .lst-card { left: 8px; right: 8px; width: auto; max-width: none; }
+}

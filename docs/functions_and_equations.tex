@@ -518,7 +518,7 @@ The house-price-to-income ratio formulation is the standard affordability metric
 \section{Urban heat app}
 \label{sec:urbanheat}
 
-Source: \code{urban\_heat/calculations.py}. Thermal-comfort rasters (SVF, $T_{mrt}$, PET, UTCI) are expected to arrive pre-computed from an external SOLWEIG run \cite{Lindberg2008SOLWEIG}; CrossTwin currently only reads and classifies them, it does not derive one raster from another.
+Source: \code{urban\_heat/calculations.py}. Thermal-comfort rasters (SVF, $T_{mrt}$, PET, UTCI) are expected to arrive pre-computed from an external SOLWEIG run \cite{Lindberg2008SOLWEIG}; CrossTwin currently only reads and classifies them, it does not derive one raster from another. The exception is LST, computed from Landsat and CrossTwin's NDVI layer (Section~\ref{sec:lst-smw}).
 
 \subsection{Green area and vegetation coverage}
 \textbf{Location:} \code{calculate\_green\_area()} (\code{urban\_heat/calculations.py:18}), \code{calculate\_vegetation\_coverage()} (\code{:55})
@@ -572,6 +572,20 @@ UTCI thresholds follow the 10-class scheme defined by the COST Action 730 UTCI f
   \quad (\text{9 intermediate bands; see } \code{urban\_heat/calculations.py:225})
 \end{equation}
 WBGT bands (\si{\celsius}: 25/28/30/33 thresholds) are marked \textbf{provisional} in the source (\code{urban\_heat/calculations.py:251--253}) pending confirmation against a named standard.
+
+\subsection{Land surface temperature, Statistical Mono-Window --- \code{urban\_heat/lst/}}
+\label{sec:lst-smw}
+\textbf{Location:} \code{urban\_heat/lst/smw.py} (equations), \code{gee.py} (inputs), \code{pipeline.py::calculate\_lst()}; run from the map's LST tool (Actions menu, over the area in view: the view clipped to the NDVI layers' coverage, overlapping NDVI layers merged newest first, scenes ranked by the clear share of the view) or with \code{manage.py calculate\_lst}. Recalculating a scene replaces its earlier rows inside the new extent.
+
+Python port of the Earth Engine modules of Ermida et al.\ \cite{Ermida2020SMW} (\texttt{users/sofiaermida/landsat\_smw\_lst}), with the Landsat NDVI replaced by CrossTwin's NDVI layer (\code{physicalEnv.LandCoverRaster}, \code{index = NDVI}, Sentinel-2, averaged onto a 30\,m grid in EPSG:28992 snapped to the layer's extent). Earth Engine supplies the Landsat~9 TIRS band-10 TOA brightness temperature $T_b$ (\si{K}), the Level-2 \texttt{QA\_PIXEL}, ASTER GED emissivities $\varepsilon_{13}, \varepsilon_{14}$ and NDVI, and NCEP precipitable water.
+\begin{align}
+  \mathrm{FVC} &= \operatorname{clip}_{[0,1]}\!\left(\left(\frac{\mathrm{NDVI} - 0.2}{0.86 - 0.2}\right)^{2}\right) \\
+  \varepsilon_{k,\text{bare}} &= \frac{\varepsilon_{k} - 0.99\,\mathrm{FVC}_{\text{ASTER}}}{1 - \mathrm{FVC}_{\text{ASTER}}}, \qquad k \in \{13, 14\} \\
+  \varepsilon &= 0.99\,\mathrm{FVC} + (1 - \mathrm{FVC})\,\big(0.6820\,\varepsilon_{13,\text{bare}} + 0.2578\,\varepsilon_{14,\text{bare}} + 0.0584\big) \\
+  \mathrm{TPW} &= \mathrm{TPW}_1\,\frac{\Delta t_2}{6\,\mathrm{h}} + \mathrm{TPW}_2\,\frac{\Delta t_1}{6\,\mathrm{h}}, \qquad i = \min\!\big(9, \max(0, \lceil \mathrm{TPW}/6 \rceil - 1)\big) \\
+  \mathrm{LST} &= A_i \frac{T_b}{\varepsilon} + \frac{B_i}{\varepsilon} + C_i
+\end{align}
+$\mathrm{TPW}_{1,2}$ are the two water-vapour fields of the acquisition day closest in time ($\Delta t_{1,2}$ their distances, in units of the source's field spacing: \SI{6}{h} for NCEP, \SI{1}{h} for ERA5). NCEP reanalysis (\texttt{NCEP\_RE/surface\_wv}), which the original code uses, ended on 2026-03-18; later scenes use ERA5 hourly \texttt{total\_column\_water\_vapour}, which over Enschede differs from NCEP by about 1--4\,mm, mostly within one \SI{6}{mm} coefficient bin. The source used is stored in \code{measurement\_method}. $(A_i, B_i, C_i)$ is the Landsat~9 row of the SMW table for TPW bin $i$ (\code{coefficients.py}). Water pixels (QA bit~7) get $\varepsilon = 0.99$, snow/ice (bit~5) $0.989$; cloud and cloud shadow (bits 3, 4), TPW $<0$ (masked water-vapour cell) and cells outside the NDVI layer are nodata. The clip in FVC is applied after squaring, as in the published code, so NDVI $<0.2$ gives a small positive FVC. With \code{--aster-emissivity} the vegetation correction is skipped: $\varepsilon = 0.6820\,\varepsilon_{13} + 0.2578\,\varepsilon_{14} + 0.0584$. Output: one \code{LandSurfaceTemperature} raster in \si{\celsius}, nodata $-9999$, COG via \code{core/signals.py}. Computed on demand, not by a receiver (it downloads from Earth Engine). \textbf{DAG edges:} \dagedge{RS\_Imagery $\rightarrow$ LST}, \dagedge{LandCover $\rightarrow$ LST} --- \statusdone{}
 
 \subsection{Nature-Based Solutions coverage --- \code{calculate\_nbs\_coverage()}}
 \textbf{Location:} \code{urban\_heat/calculations.py:283}
@@ -717,6 +731,7 @@ housing & \code{calculate\_property\_indicators()} & Housing\_Supply/Accessibili
 urban\_heat & \code{calculate\_green\_area()} / \code{calculate\_vegetation\_coverage()} & LandCover$\to$Green\_Area$\to$Vegetation\_Coverage & \statuspartial{} \\
 urban\_heat & \code{calculate\_urban\_morphology()} & Buildings/Streets$\to$Canyon\_Aspect & \statuspartial{} \\
 urban\_heat & \code{get\_thermal\_indices()} & DSM$\to$SVF$\to$Tmrt/PET$\to$UTCI & \statusgap{} \\
+urban\_heat & \code{lst.pipeline.calculate\_lst()} / \code{lst.smw} & RS\_Imagery/LandCover$\to$LST & \statusdone{} \\
 urban\_heat & \code{calculate\_nbs\_coverage()} & UTCI/PET$\to$NBS & \statusgap{} \\
 mainMap & \code{feature\_form()} / \code{feature\_delete()} & (tooling: edits State objects via \code{save()}) & \statusdone{} \\
 mainMap & \code{journal()} / \code{restore\_backup()} & (tooling: what-if restore point) & \statusdone{} \\
@@ -741,6 +756,8 @@ Beyond the CBS 85173NED forecasts used for the \texttt{Population\_Growth}$\to$\
 \bibitem{Demographia} Demographia. \textit{International Housing Affordability Survey} --- Median Multiple methodology (median house price / median household income). \url{http://www.demographia.com/}.
 
 \bibitem{Lindberg2008SOLWEIG} Lindberg, F., Holmer, B., \& Thorsson, S. (2008). SOLWEIG 1.0 -- Modelling spatial variations of 3D radiant fluxes and mean radiant temperature in complex urban settings. \textit{International Journal of Biometeorology}, 52(7), 697--713.
+
+\bibitem{Ermida2020SMW} Ermida, S. L., Soares, P., Mantas, V., Göttsche, F.-M., \& Trigo, I. F. (2020). Google Earth Engine open-source code for Land Surface Temperature estimation from the Landsat series. \textit{Remote Sensing}, 12(9), 1471. \url{https://doi.org/10.3390/rs12091471}.
 
 \bibitem{Oke1987} Oke, T. R. (1987). \textit{Boundary Layer Climates} (2nd ed.). Routledge. (Urban canyon height-to-width aspect ratio.)
 

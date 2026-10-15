@@ -283,6 +283,32 @@ async function reloadLayer(key) {
   }
 }
 
+/**
+ * Drop a layer whose row no longer exists (e.g. an LST raster replaced by a
+ * recalculation): its map layers and sources, legend and catalog entry.
+ */
+function removeLayer(key) {
+  const entry = loadedLayers[key];
+  if (entry) {
+    entry.layerIds.forEach(id => {
+      const layer = map.getLayer(id);
+      if (!layer) return;
+      const sourceId = layer.source;
+      map.removeLayer(id);
+      const stillUsed = map.getStyle().layers.some(l => l.source === sourceId);
+      if (!stillUsed && map.getSource(sourceId)) map.removeSource(sourceId);
+    });
+    delete loadedLayers[key];
+  }
+  document.getElementById(`legend-${key}`)?.remove();
+  const index = availableLayers.findIndex(l => l.key === key);
+  if (index >= 0) availableLayers.splice(index, 1);
+  delete layerVisibility[key];
+  repositionDynamicLegends();
+  renderLayerList();
+  updateIndicators();
+}
+
 // ---- WMS layers -------------------------------------------------------
 
 function addWmsLayer(layerConfig) {
@@ -1018,3 +1044,4 @@ function _popupTable(properties, fields = {}, skipKey = null) {
 window.toggleLayerVisibility = toggleLayerVisibility;
 window.zoomToLayer = zoomToLayer;
 window.reloadLayer = reloadLayer;
+window.removeLayer = removeLayer;

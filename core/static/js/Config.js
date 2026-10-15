@@ -74,7 +74,7 @@ const BASEMAPS = {
 const TOOL_CATEGORIES = {
   overview:      ['administrative', 'urban_heat', 'watersupply', 'weather', 'builtup', 'Energy', 'housing', 'nature', 'groundwater'],
   administrative:['administrative'],
-  temperature:   ['administrative', 'temperature', 'heat', 'weather', 'urban_heat'],
+  temperature:   ['administrative', 'temperature', 'weather', 'urban_heat'],
   builtup:       ['administrative', 'builtup'],
   energy:        ['administrative', 'Energy'],
   housing:       ['administrative', 'housing'],

@@ -25,6 +25,7 @@
 <script src="{% static 'js/Panels.js' %}"></script>
 <script src="{% static 'js/Layers.js' %}"></script>
 <script src="{% static 'js/Editing.js' %}"></script>
+<script src="{% static 'js/LstTool.js' %}"></script>
 <script src="{% static 'js/Events.js' %}"></script>
 <script src="{% static 'js/Map_init.js' %}"></script>
 {% endblock %} {% block content_section_class %}{% endblock %}
@@ -217,6 +218,37 @@
       <div class="population-panel-body" id="population-panel-body"></div>
     </div>
 
+    <!-- LST TOOL — Land Surface Temperature for the area in view
+         (core/static/js/LstTool.js, urban_heat/lst/views.py). -->
+    <div class="lst-card" id="lst-card"
+         data-scenes-url="{% url 'urban_heat:lst_scenes' %}"
+         data-calculate-url="{% url 'urban_heat:lst_calculate' %}"
+         data-can-calculate="{{ user.is_staff|yesno:'1,0' }}">
+      {% csrf_token %}
+      <div class="lst-card-header">
+        <div class="lst-card-title">LAND SURFACE TEMPERATURE</div>
+        <button class="lst-card-close" id="lst-card-close" aria-label="Close LST tool">✕</button>
+      </div>
+      <p class="lst-card-hint">Landsat 9 thermal band and the NDVI layer (Statistical Mono-Window), for the area in view.</p>
+      <div class="lst-card-fields">
+        <label>From <input type="date" id="lst-from"></label>
+        <label>To <input type="date" id="lst-to"></label>
+        <label>Cell
+          <select id="lst-resolution">
+            <option value="30" selected>30 m</option>
+            <option value="60">60 m</option>
+            <option value="100">100 m</option>
+          </select>
+        </label>
+      </div>
+      <label class="lst-check"><input type="checkbox" id="lst-use-ndvi" checked> Emissivity from the NDVI layer</label>
+      <button class="lst-btn" id="lst-find">Find scenes for this view</button>
+      <div class="lst-view-info" id="lst-view-info"></div>
+      <div class="lst-scenes" id="lst-scenes" role="radiogroup" aria-label="Landsat scenes"></div>
+      <button class="lst-btn lst-btn-primary" id="lst-calculate" disabled>Calculate LST for this view</button>
+      <div class="lst-status" id="lst-status" role="status"></div>
+    </div>
+
     <!-- LEGEND STACK — holds the static groundwater legend plus every
          dynamic raster/WMS/categorical legend added by Layers.js. Kept as
          a single draggable, repositionable unit so multiple legends never
@@ -320,6 +352,18 @@
         <button class="action-panel-btn" id="getDataBtn">
           <span class="bi bi-cloud-download"></span>
           <span class="action-btn-text">Retrieve Data from APIs</span>
+        </button>
+      </div>
+
+      <!-- Calculations run over the area in view -->
+      <div class="actions-divider"></div>
+      <div class="actions-header">
+        <span class="actions-title">CALCULATE FOR THIS VIEW</span>
+      </div>
+      <div class="actions-menu-row">
+        <button class="action-panel-btn" id="lstToolBtn">
+          <span class="bi bi-thermometer-sun"></span>
+          <span class="action-btn-text">Land Surface Temperature</span>
         </button>
       </div>
 
