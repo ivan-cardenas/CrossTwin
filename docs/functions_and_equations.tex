@@ -150,7 +150,7 @@ A \code{physicalEnv.LandCoverVector} polygon qualifies if its \code{land\_cover\
 
 \textbf{DAG edge:} \code{LandCover -> Urbanization} is the closest existing edge in \code{core/DAG.dot}, but it runs in the opposite direction of what this computes (LandCover only feeds a not-yet-modelled \code{Urbanization} node, per \code{TODO.md}), and no Neighbourhood/District/City/Province/LandCoverVector nodes exist in the DAG at all --- \statuspartial{} (cascade and source computation fully implemented; no \code{Urbanization} model backs a DAG edge for it)
 
-\subsection{Urban-fabric buffer around new buildings --- \code{urbanize\_around()}, \code{building\_created}}
+\subsection{Urban-fabric buffer around new buildings --- \code{urbanize\_around()}, \code{release\_ring()}}
 \label{sec:urban-fabric-buffer}
 Source: \code{physicalEnv/landcover.py}, receiver in \code{physicalEnv/signals.py}. When a building is drawn in the map editor (negative id), the land cover of its city's latest year is rewritten around it:
 \begin{align}
@@ -158,9 +158,16 @@ Source: \code{physicalEnv/landcover.py}, receiver in \code{physicalEnv/signals.p
   \mathcal{L}' &= \{\, P \setminus B : P \in \mathcal{L},\ P \setminus B \neq \emptyset \,\} \cup \{ B \text{ as urban fabric} \} \\
   \mathrm{percentage}_P &= |P| / 10^6 \,/\, A_{\text{city}} \times 100
 \end{align}
-where $\mathcal{L}$ is the set of \code{LandCoverVector} polygons of the city's latest \code{year}. The buffer is cut out of every polygon it touches (\code{ST\_Difference}; polygons left empty are deleted) and inserted as one new polygon of class \emph{urban fabric}, so the layer stays free of overlaps and the urban-area cascade above counts each square metre once. Imported (BAG) buildings and later moves or deletes do not trigger it; the editor's backup journal records the rewritten rows, so a restore brings the original land cover back.
+where $\mathcal{L}$ is the set of \code{LandCoverVector} polygons of the city's latest \code{year}. The buffer is cut out of every polygon it touches (\code{ST\_Difference}; polygons left empty are deleted) and inserted as one new polygon $R_b$ of class \emph{urban fabric}, tagged with the building id (\code{source\_building}), so the layer stays free of overlaps and the urban-area cascade above counts each square metre once. Each piece $c_P = P \cap B$ is stored as an \code{UrbanFabricCut} with $P$'s id and attributes.
 
-\textbf{DAG edge:} \dagedge{New\_Units $\rightarrow$ LandCover} --- \statuspartial{} (map-editor buildings only; \code{calculate\_new\_units()} pipeline counts still do not change the land cover)
+\textbf{Release (move or delete).} Deleting the building (\code{building\_deleted}) or moving it (\code{building\_created} on a changed footprint, followed by a new buffer around the new footprint) runs \code{release\_ring(b)}:
+\begin{align}
+  P' &= P \cup (c_P \cap R_b) \quad \text{for every cut } c_P \text{ of } b \\
+  c'_{b',T} &= c_{b',R_b} \cap c_{b,T} \quad \text{for every cut a later ring } b' \text{ took from } R_b
+\end{align}
+Only the area $R_b$ still holds is given back, so what a later ring $b'$ took from it stays urban; $P$ is recreated with its original id and attributes when it was swallowed whole. The second line re-targets $b'$'s cuts onto the polygons that lay under $R_b$, so releasing $b'$ later returns its land to them rather than to the deleted ring. Then $R_b$ and its cuts are deleted and \code{percentage} is recomputed for the rows given land back. Rings, cuts and recreated rows are journalled like the buffer itself; during a backup restore (\code{core.editing.is\_restoring()}) the delete receiver is skipped, since the restore puts the rows back itself. Imported (BAG, positive id) buildings never trigger either step; rings created before \code{source\_building} existed cannot be released.
+
+\textbf{DAG edge:} \dagedge{New\_Units $\rightarrow$ LandCover} --- \statusdone{} (stored for map-editor buildings; the housing pipeline's land take is a dashboard statistic, \S\ref{sec:pipeline-land-take})
 
 \section{Physical environment app --- soil hydrology and infiltration}
 \label{sec:physicalenv}
@@ -472,7 +479,16 @@ where $S = \texttt{supply\_units}$, $D = \texttt{demand\_units}$ (stored, not de
   U_{\text{completed}} &= \sum_{\,\texttt{year\_expected\_completion} \le y} \texttt{project\_units} \\
   U_{\text{pipeline}} &= \sum_{\,\texttt{year\_expected\_completion} > y} \texttt{project\_units}
 \end{align}
-\textbf{DAG edges:} \dagedge{Zoning\_Status $\rightarrow$ New\_Units}, \dagedge{Network $\rightarrow$ New\_Units}, \dagedge{New\_Units $\rightarrow$ Housing\_Supply}, \dagedge{New\_Units $\rightarrow$ LandCover} --- \statuspartial{} (counts completions/pipeline; never writes back to \code{LandCover} or reads \code{Zoning\_Status}/\code{Network} as inputs --- the land-cover side of the edge is implemented for buildings drawn in the map editor, see \code{urbanize\_around()})
+\textbf{DAG edges:} \dagedge{Zoning\_Status $\rightarrow$ New\_Units}, \dagedge{Network $\rightarrow$ New\_Units}, \dagedge{New\_Units $\rightarrow$ Housing\_Supply} --- \statuspartial{} (counts completions/pipeline; never reads \code{Zoning\_Status}/\code{Network} as inputs). The land-cover side is \code{calculate\_pipeline\_land\_take()} below.
+
+\subsubsection{Pipeline land take --- \code{calculate\_pipeline\_land\_take()}}
+\label{sec:pipeline-land-take}
+\textbf{Location:} \code{housing/calculations.py}. With $F_c = \bigcup$ footprints of the pipeline projects ($\texttt{year\_expected\_completion} > y$) of city $c$, overlapping projects counted once, and $\mathcal{L}_c$ the city's latest land-cover year:
+\begin{align}
+  A_k &= \sum_c \sum_{P \in \mathcal{L}_c,\ \text{class}(P) = k} |P \cap F_c| \\
+  A_{\text{greenfield}} &= \sum_{k \notin \mathcal{U}} A_k, \qquad A_{\text{infill}} = \sum_{k \in \mathcal{U}} A_k, \qquad A_{\text{uncovered}} = \textstyle\sum_c |F_c| - \sum_k A_k
+\end{align}
+where $\mathcal{U}$ are the classes that already count as urban area (\emph{urban fabric, road, rail, transport}). Greenfield is the land the new units would turn into urban fabric. Dashboard only (housing \emph{New Housing Units} card), nothing is written: observed land cover is not overwritten by plans. \textbf{DAG edge:} \dagedge{New\_Units $\rightarrow$ LandCover} --- \statusdone{}
 
 \subsection{Mortgage indicators --- \code{calculate\_mortgage\_indicators()}}
 \textbf{Location:} \code{housing/calculations.py:123}
@@ -597,10 +613,10 @@ $\mathrm{TPW}_{1,2}$ are the two water-vapour fields of the acquisition day clos
 \section{Map editing and what-if backup (mainMap app)}
 \label{sec:mapediting}
 
-Source: \code{mainMap/editing.py}, \code{mainMap/models.py}, \code{core/static/js/Editing.js}; design in \code{docs/MAP\_EDITING.md}. Staff users edit built-up objects (\code{Building}, \code{Street}, \code{Park}, \code{Facility}, \code{ZoningArea}) directly on the map, and can set one restore point so what-if edits can be undone. These functions implement no DPSIR edge themselves; they are \emph{Response}-side tooling that changes the State variables (buildings, streets, zoning) from which the indicator functions above are computed. Every write goes through the model's \code{save()}, so the derivations documented elsewhere in this registry (e.g.\ \code{Building.save()}, the cache invalidation in \code{core/signals.py}) apply unchanged.
+Source: \code{core/editing.py}, \code{core/editable\_layers.toml}, \code{mainMap/models.py}, \code{core/static/js/Editing.js}; design in \code{docs/MAP\_EDITING.md}. Staff users edit built-up objects (\code{Building}, \code{Street}, \code{Park}, \code{Facility}, \code{ZoningArea}) directly on the map, and can set one restore point so what-if edits can be undone. These functions implement no DPSIR edge themselves; they are \emph{Response}-side tooling that changes the State variables (buildings, streets, zoning) from which the indicator functions above are computed. Every write goes through the model's \code{save()}, so the derivations documented elsewhere in this registry (e.g.\ \code{Building.save()}, the cache invalidation in \code{core/signals.py}) apply unchanged.
 
 \subsection{Editable-layer allowlist --- \code{EDITABLE\_LAYERS}, \code{is\_editable()}}
-\textbf{Location:} \code{mainMap/editing.py:36}, \code{:55}
+\textbf{Location:} \code{core/editable\_layers.toml}, \code{core/editing.py:42}, \code{:79}
 
 For a layer $\ell$ and user $u$,
 \begin{equation}
@@ -609,7 +625,7 @@ For a layer $\ell$ and user $u$,
 where $\mathcal{E}$ is the allowlist. Each entry lists the fields the model derives itself (\code{exclude}, kept out of the form) and the fields the form must not require (\code{optional}). For \code{Building}: $\texttt{exclude} = \{\texttt{area\_sqm}, \texttt{neighborhood}, \texttt{last\_updated}, \texttt{connectivity}\}$, $\texttt{optional} = \{\texttt{buildingType}\}$; for \code{ZoningArea}: $\texttt{exclude} = \{\texttt{area}\}$. The layer catalog (\code{available\_layers}) adds \code{editable} and \code{edit\_geom\_type} to an entry only when $\mathrm{editable}(\ell, u)$ holds.
 
 \subsection{Attribute and geometry form --- \code{\_build\_form()}, \code{feature\_form()}}
-\textbf{Location:} \code{mainMap/editing.py:71}, \code{:134}
+\textbf{Location:} \code{core/editing.py:95}, \code{:158}
 
 The browser sends the edited shape as WGS84 GeoJSON in a hidden form field. Django's GIS form field parses it, rejects a geometry whose type differs from the model field's (e.g.\ a \code{Polygon} for a \code{MultiPolygonField}), and reprojects it to the storage CRS:
 \begin{equation}
@@ -620,7 +636,7 @@ The editor (\code{Editing.js::\_writeGeometry()}) wraps single geometries before
 Saving calls \code{obj.save()}, so for a \code{Building} the existing derivations run: $\texttt{area\_sqm} = \operatorname{area}(g_{\text{stored}})$ in \si{m^2}, \code{neighborhood} by point-in-polygon of the centroid, and \code{buildingType} from \code{usageFunction} (\code{builtup/models.py}).
 
 \subsection{Identifiers for new objects --- \code{\_next\_negative\_pk()}}
-\textbf{Location:} \code{mainMap/editing.py:84}
+\textbf{Location:} \code{core/editing.py:108}
 
 \code{Building.id} is the BAG identifier, not generated by the database. A user-created building gets
 \begin{equation}
@@ -629,12 +645,12 @@ Saving calls \code{obj.save()}, so for a \code{Building} the existing derivation
 so new objects count down from $-1$, never collide with (positive) BAG ids, and are recognisable as user-made. Models with a database-generated key (\code{AutoField}) keep it.
 
 \subsection{Deferred-constraint check --- \code{\_check\_constraints()}}
-\textbf{Location:} \code{mainMap/editing.py:94}
+\textbf{Location:} \code{core/editing.py:118}
 
 Django creates foreign keys as \code{DEFERRABLE INITIALLY DEFERRED}, and the project's spatial FKs use \code{on\_delete=DO\_NOTHING}, so a deletion that leaves a dangling reference (a \code{Property} pointing at a deleted \code{Building}) would only fail at \code{COMMIT}. \code{SET CONSTRAINTS ALL IMMEDIATE} checks all pending references inside the atomic block; a violation raises \code{IntegrityError}, rolls back just that operation and is reported as a message. Used by \code{feature\_delete()} (\code{:176}) and \code{restore\_backup()}.
 
 \subsection{Change journal --- \code{journal()}}
-\textbf{Location:} \code{mainMap/editing.py:216}; models \code{EditBackup}, \code{EditBackupRow} (\code{mainMap/models.py})
+\textbf{Location:} \code{core/editing.py:240}; models \code{EditBackup}, \code{EditBackupRow} (\code{mainMap/models.py})
 
 A backup $B$ is created empty at time $t_0$; nothing is copied. Let $s_t(o)$ be the stored row of object $o$ at time $t$, with $s_t(o) = \varnothing$ if $o$ does not exist. Before the first editor change to $o$ after $t_0$, the journal records
 \begin{equation}
@@ -647,7 +663,7 @@ A backup $B$ is created empty at time $t_0$; nothing is copied. Let $s_t(o)$ be 
 i.e.\ the first pre-image wins: an object edited $n$ times is still restored to its state at $t_0$. Rows are serialized with Django's serializer, which keeps the geometry in its stored CRS. The bar in the Layers panel reports $|\operatorname{dom}(J_B)|$ as ``objects changed''. Without an active backup, $J$ is not written and edits are permanent. At most one backup exists at a time.
 
 \subsection{Restore --- \code{restore\_backup()}}
-\textbf{Location:} \code{mainMap/editing.py:269}
+\textbf{Location:} \code{core/editing.py:293}
 
 In one transaction (wrapped in \code{importer/batching.py::deferred\_cascades()}), for every $o \in \operatorname{dom}(J_B)$:
 \begin{equation}
@@ -661,7 +677,7 @@ Re-insertions and updates run before deletions so that reference targets exist a
 
 \textbf{Caveat:} receivers that skip raw saves (\code{watersupply/signals.py}: \code{if raw: return}) would not fire on restore. Built-up models have none; adding such a layer to $\mathcal{E}$ requires triggering its cascades explicitly.
 
-\textbf{Side effects of an edit.} Rows that another app changes because of an edit are journalled too, through custom signals that \code{mainMap/signals.py} subscribes to. Creating a building runs \code{urbanize\_around()} (\S\ref{sec:urban-fabric-buffer}), which sends \code{landcover\_rewriting} with the land-cover rows $\mathcal{A}$ it is about to clip or delete and \code{landcover\_created} with the new urban-fabric row $u$; the receivers add $J_B(p) = s_{t_0}(p)$ for $p \in \mathcal{A}$ and $J_B(u) = \varnothing$ under the layer key \code{physicalEnv.LandCoverVector}. Restore therefore re-inserts the clipped and deleted polygons with their original geometry and deletes $u$, and the land-cover receiver recomputes the neighbourhoods' urban area inside the same deferred block.
+\textbf{Side effects of an edit.} Rows that another app changes because of an edit are journalled too, through custom signals that \code{mainMap/signals.py} subscribes to. Creating a building runs \code{urbanize\_around()} (\S\ref{sec:urban-fabric-buffer}), which sends \code{landcover\_rewriting} with the land-cover rows $\mathcal{A}$ it is about to clip or delete and \code{landcover\_created} with the new urban-fabric row $u$; the receivers add $J_B(p) = s_{t_0}(p)$ for $p \in \mathcal{A}$ and $J_B(u) = \varnothing$ under the key of the signal's sender (\code{physicalEnv.LandCoverVector}, or \code{physicalEnv.UrbanFabricCut} for the stored cuts). Moving or deleting a drawn building runs \code{release\_ring()}, which journals the same way. Restore therefore re-inserts the clipped and deleted polygons and cuts with their original geometry and deletes $u$, and the land-cover receiver recomputes the neighbourhoods' urban area inside the same deferred block. Only keys in the vector registry are returned as layers to reload.
 
 \subsection{Map-side editor --- \code{Editing.js}}
 \textbf{Location:} \code{core/static/js/Editing.js}; hooks in \code{Layers.js} (\code{reloadLayer()}, \code{\_popupEditButton()}), \code{MapUI.js::renderLayerList()}, \code{mainMap.js::refreshActivePanel()}, \code{Map\_init.js}
@@ -701,7 +717,7 @@ administrative & \code{extrapolate()} & Population\_Growth$\to$Total\_Pop & \sta
 administrative & \code{\_city\_growth\_factor()} & Population\_Growth$\to$Total\_Pop & \statusdone{} \\
 administrative & \code{annual\_growth\_rate()} & Population\_Growth$\to$Total\_Pop & \statusdone{} \\
 administrative & \code{City.save()} / \code{Province.save()} & (population cascade) & \statusdone{} \\
-physicalEnv & \code{urbanize\_around()} / \code{building\_created} & New\_Units$\to$LandCover (editor buildings) & \statuspartial{} \\
+physicalEnv & \code{urbanize\_around()} / \code{release\_ring()} & New\_Units$\to$LandCover (editor buildings) & \statusdone{} \\
 watersupply & \code{calculate\_total\_demand()} / \code{TotalWaterDemand.save()} & Total\_Pop$\to$Total\_Water\_Demand & \statusdone{} \\
 watersupply & \code{ConsumptionCapita.save()} & Total\_Pop$\to$Total\_Consumption & \statusdone{} \\
 watersupply & \code{calculate\_total\_extraction()} & Available\_FW$\to$Total\_Extraction & \statusdone{} \\
@@ -722,7 +738,8 @@ physicalEnv & \code{soil\_landcover\_composition()} & LandCover/Soil\_Type (+ gr
 physicalEnv & \code{scs\_runoff\_mm()} / \code{summarize\_infiltration()} & LandCover/Soil\_Type$\to$Infiltration & \statusdone{} \\
 watersupply & \code{calculate\_infiltration()} (dashboard) & LandCover/Soil\_Type$\to$Infiltration & \statusdone{} \\
 housing & \code{calculate\_supply\_demand()} & Urbanization$\to$Housing\_Demand & \statusgap{} \\
-housing & \code{calculate\_new\_units()} & New\_Units$\to$Housing\_Supply/LandCover & \statuspartial{} \\
+housing & \code{calculate\_new\_units()} & New\_Units$\to$Housing\_Supply & \statuspartial{} \\
+housing & \code{calculate\_pipeline\_land\_take()} (dashboard) & New\_Units$\to$LandCover & \statusdone{} \\
 housing & \code{calculate\_mortgage\_indicators()} & Central\_Bank/Credit\_Supply$\to$Mortgage & \statuspartial{} \\
 housing & \code{calculate\_house\_price\_index()} & Housing\_Demand/Property$\to$HPI & \statusgap{} \\
 housing & \code{HousingAffordability.save()} & Rent/Mortgage/Water\_Tariff$\to$Income\_Expenses$\to$Affordability\_Stress & \statusgap{} \\

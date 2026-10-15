@@ -1,0 +1,27 @@
+# Layers that staff users can edit on the map (core/editing.py, docs/MAP_EDITING.md).
+#
+# One table per layer, named by its registry key "app_label.ClassName" (as in
+# the layer catalog). Only vector layers (models with a geometry) can be edited.
+#
+#   exclude  = fields the model derives itself in save(); kept out of the form,
+#              otherwise save() would silently overwrite what the user typed
+#   optional = fields kept in the form but not required (save() fills them in)
+#
+# Both default to []. The primary key is never editable. An empty table makes
+# every field editable. Read the model's save() before adding a layer, and
+# restart the server after changing this file (it is read once at startup).
+# mainMap/test_editing.py checks every key and field name listed here.
+
+["builtup.Building"]
+exclude = ["area_sqm", "neighborhood", "last_updated", "connectivity"]
+optional = ["buildingType"]   # derived from usageFunction
+
+["builtup.Street"]
+
+["builtup.Park"]
+exclude = ["area"]            # save() sets it from geom
+
+["builtup.Facility"]
+
+["builtup.ZoningArea"]
+exclude = ["area"]            # save() sets it from geom

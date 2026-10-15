@@ -334,8 +334,8 @@ class DrainedLandCoverTests(SimpleTestCase):
                 self.assertFalse(is_drained(name))
 
 
-class BuildingUrbanFabricBufferTests(TestCase):
-    """physicalEnv.signals.building_created -> landcover.urbanize_around (DAG edge New_Units -> LandCover)."""
+class _UrbanFabricTestCase(TestCase):
+    """A 1 km x 1 km city covered by one pasture polygon (land-cover year 2024)."""
 
     def setUp(self):
         square = _square(0, 0, 1000, 1000)
@@ -356,6 +356,10 @@ class BuildingUrbanFabricBufferTests(TestCase):
 
     def _urban_fabric(self):
         return LandCoverVector.objects.filter(land_cover_type__class_name__iexact="urban fabric")
+
+
+class BuildingUrbanFabricBufferTests(_UrbanFabricTestCase):
+    """physicalEnv.signals.building_created -> landcover.urbanize_around (DAG edge New_Units -> LandCover)."""
 
     def test_buffer_is_cut_out_and_inserted_as_urban_fabric(self):
         self._building()
@@ -430,9 +434,390 @@ class BuildingUrbanFabricBufferTests(TestCase):
         self.assertTrue(type(building).objects.filter(pk=-1).exists())
         self.assertFalse(LandCoverVector.objects.exists())
 
+    def test_the_ring_and_its_cuts_record_the_building(self):
+        from .models import UrbanFabricCut
+        self._building()
+        ring = self._urban_fabric().get()
+        self.assertEqual(ring.source_building, -1)
+        cut = UrbanFabricCut.objects.get()
+        self.assertEqual((cut.owner_building, cut.target), (-1, self.pasture.pk))
+        self.assertEqual(cut.land_cover_type, self.pasture_class)
+        self.assertAlmostEqual(cut.geom.area, ring.geom.area, delta=0.01)
+
+
+class BuildingUrbanFabricReleaseTests(_UrbanFabricTestCase):
+    """Moving or deleting an editor building gives its ring's land back (landcover.release_ring)."""
+
+    def assertCovered(self, total=1e6):
+        """The layer still tiles the city: areas add up and no two polygons overlap."""
+        polygons = list(LandCoverVector.objects.filter(year=2024))
+        self.assertAlmostEqual(sum(p.geom.area for p in polygons), total, delta=0.5)
+        for i, a in enumerate(polygons):
+            for b in polygons[i + 1:]:
+                self.assertAlmostEqual(a.geom.intersection(b.geom).area, 0, delta=0.01, msg=(a.pk, b.pk))
+
+    def _pasture_area(self):
+        return sum(p.geom.area for p in LandCoverVector.objects.filter(land_cover_type=self.pasture_class))
+
+    def test_deleting_the_building_gives_the_land_back(self):
+        from .models import UrbanFabricCut
+        self._building().delete()
+        self.assertFalse(self._urban_fabric().exists())
+        self.assertFalse(UrbanFabricCut.objects.exists())
+        self.pasture.refresh_from_db()
+        self.assertAlmostEqual(self.pasture.geom.area, 1e6, delta=0.5)
+        self.assertAlmostEqual(self.pasture.percentage, 100.0, places=3)
+        self.neighborhood.refresh_from_db()
+        self.assertAlmostEqual(self.neighborhood.urban_area, 0.0, places=9)
+
+    def test_moving_the_building_moves_the_ring(self):
+        building = self._building()
+        building.geom = _square(100, 100, 120, 120)
+        building.save()
+
+        ring = self._urban_fabric().get()
+        self.assertTrue(ring.geom.contains(building.geom))
+        self.assertFalse(ring.geom.intersects(_square(490, 490, 510, 510)))
+        self.assertAlmostEqual(self._pasture_area() + ring.geom.area, 1e6, delta=0.5)
+        self.assertCovered()
+
+    def test_an_attribute_edit_keeps_the_ring(self):
+        building = self._building()
+        ring = self._urban_fabric().get()
+        building.name = "Renamed"
+        building.save()
+        self.assertEqual(self._urban_fabric().get().pk, ring.pk)
+
+    def test_a_swallowed_polygon_comes_back_with_its_id(self):
+        small = LandCoverVector.objects.create(
+            city=self.city, year=2024, land_cover_type=self.pasture_class,
+            land_use="Agriculture", geom=_square(495, 495, 505, 505), percentage=0.01)
+        self._building().delete()
+        small_back = LandCoverVector.objects.get(pk=small.pk)
+        self.assertAlmostEqual(small_back.geom.area, 100, delta=0.01)
+        self.assertEqual(small_back.land_use, "Agriculture")
+        self.assertAlmostEqual(self._pasture_area(), 1e6 + 100, delta=0.5)   # as before the building
+
+    def test_overlapping_rings_released_in_either_order(self):
+        for first, second in ((-1, -2), (-2, -1)):
+            with self.subTest(first=first):
+                a = self._building(pk=-1, x0=490, y0=490, x1=510, y1=510)
+                b = self._building(pk=-2, x0=515, y0=490, x1=535, y1=510)   # rings overlap by ~15 m
+                self.assertCovered()
+                buildings = {-1: a, -2: b}
+
+                buildings[first].delete()
+                remaining = self._urban_fabric().get()
+                self.assertEqual(remaining.source_building, second)
+                # the survivor keeps its full buffer
+                expected = buildings[second].geom.buffer(10)
+                self.assertAlmostEqual(remaining.geom.area, expected.area, delta=5)
+                self.assertCovered()
+
+                buildings[second].delete()
+                self.assertFalse(self._urban_fabric().exists())
+                self.assertAlmostEqual(self._pasture_area(), 1e6, delta=0.5)
+                self.assertCovered()
+
+    def test_a_ring_swallowed_by_a_later_one(self):
+        from .models import UrbanFabricCut
+        small = self._building(pk=-1, x0=495, y0=495, x1=505, y1=505)
+        big = self._building(pk=-2, x0=470, y0=470, x1=530, y1=530)   # its buffer covers small's ring
+        self.assertEqual(self._urban_fabric().get().source_building, -2)
+
+        small.delete()   # its ring is already gone: only the bookkeeping changes
+        self.assertEqual(self._urban_fabric().get().source_building, -2)
+        self.assertFalse(UrbanFabricCut.objects.filter(owner_building=-1).exists())
+        self.assertFalse(UrbanFabricCut.objects.filter(source_building=-1).exists())
+
+        big.delete()     # the land under both rings goes back to pasture
+        self.assertFalse(self._urban_fabric().exists())
+        self.assertAlmostEqual(self._pasture_area(), 1e6, delta=0.5)
+        self.assertCovered()
+
+    def test_imported_buildings_never_release_land(self):
+        imported = self._building(pk=1234)
+        drawn = self._building(pk=-1, x0=100, y0=100, x1=120, y1=120)
+        imported.delete()
+        self.assertEqual(self._urban_fabric().get().source_building, drawn.pk)
+
+    def test_a_failing_release_does_not_block_the_delete(self):
+        from builtup.models import Building
+        from physicalEnv import signals
+        building = self._building()
+        with mock.patch.object(signals, "release_ring", side_effect=RuntimeError("boom")), \
+                self.assertLogs("physicalEnv.signals", "ERROR"):
+            building.delete()
+        self.assertFalse(Building.objects.filter(pk=-1).exists())
+
     def test_a_failing_overlay_does_not_block_the_building(self):
         from physicalEnv import signals
         with mock.patch.object(signals, "urbanize_around", side_effect=RuntimeError("boom")), \
                 self.assertLogs("physicalEnv.signals", "ERROR"):
             building = self._building()
         self.assertTrue(type(building).objects.filter(pk=-1).exists())
+
+
+class SkyViewFactorTests(TestCase):
+    """physicalEnv/svf.py: DSM -> SVF horizon search."""
+
+    def test_flat_surface_sees_the_whole_sky(self):
+        import numpy as np
+        from .svf import sky_view_factor
+
+        svf = sky_view_factor(np.full((20, 20), 30.0), cell_size=1.0, radius_pixels=5)
+        np.testing.assert_allclose(svf, 1.0, atol=1e-6)
+
+    def test_pit_sees_less_sky_and_is_scaled_by_cell_size(self):
+        import numpy as np
+        from .svf import sky_view_factor
+
+        dsm = np.zeros((21, 21))
+        dsm[:, :] = 10.0
+        dsm[8:13, 8:13] = 0.0  # 5 x 5 cells, 10 m deep
+        fine = sky_view_factor(dsm, cell_size=1.0, radius_pixels=8)[10, 10]
+        coarse = sky_view_factor(dsm, cell_size=10.0, radius_pixels=8)[10, 10]
+        self.assertLess(fine, 0.5)
+        # Same heights over 10x wider cells: a much shallower pit.
+        self.assertGreater(coarse, fine)
+        # Wall 10 m high, 30 m away: horizon atan(1/3), SVF ~ 1 - sin(18.4 deg).
+        self.assertAlmostEqual(float(coarse), 0.68, delta=0.05)
+
+    def test_nodata_stays_nodata_and_is_not_a_horizon(self):
+        import numpy as np
+        from .svf import sky_view_factor
+
+        dsm = np.full((15, 15), 5.0)
+        dsm[7, 7] = -9999.0
+        svf = sky_view_factor(dsm, cell_size=1.0, radius_pixels=4, no_data=-9999.0)
+        self.assertTrue(np.isnan(svf[7, 7]))
+        self.assertAlmostEqual(float(svf[7, 8]), 1.0, places=5)
+
+    def test_blocks_match_a_single_pass(self):
+        import numpy as np
+        from .svf import sky_view_factor
+
+        rng = np.random.default_rng(0)
+        dsm = rng.uniform(0, 20, (40, 30))
+        whole = sky_view_factor(dsm, cell_size=1.0, radius_pixels=6, block_rows=1000)
+        blocked = sky_view_factor(dsm, cell_size=1.0, radius_pixels=6, block_rows=7)
+        np.testing.assert_array_equal(whole, blocked)
+
+    @mock.patch("core.rasterOperations.export_raster_to_cog")
+    def test_calculate_svf_stores_a_sky_view_factor_raster(self, _cog):
+        import numpy as np
+        from django.conf import settings
+        from django.contrib.gis.gdal import GDALRaster
+
+        from urban_heat.models import SkyViewFactor
+        from .models import DigitalSurfaceModel
+        from .svf import NODATA, calculate_svf
+
+        data = np.full((12, 10), 3.0, dtype="float32")
+        data[0, 0] = -1.0
+        dsm = DigitalSurfaceModel.objects.create(
+            year=2024, source="AHN4", resolution=2.0,
+            dsm_raster=GDALRaster({
+                "srid": int(settings.COORDINATE_SYSTEM), "width": 10, "height": 12,
+                "origin": (250000.0, 470000.0), "scale": (2.0, -2.0), "datatype": 6,
+                "bands": [{"data": data, "nodata_value": -1.0}],
+            }),
+        )
+
+        record = calculate_svf(dsm, radius_m=6).record
+
+        self.assertEqual(SkyViewFactor.objects.count(), 1)
+        self.assertEqual(record.resolution, 2.0)
+        self.assertIn("r=6 m", record.measurement_method)
+        stored = SkyViewFactor.objects.get(pk=record.pk).raster
+        self.assertEqual((stored.width, stored.height), (10, 12))
+        self.assertEqual(tuple(stored.origin), (250000.0, 470000.0))
+        values = stored.bands[0].data()
+        self.assertEqual(values[0, 0], NODATA)
+        self.assertAlmostEqual(float(values[5, 5]), 1.0, places=5)
+
+    def test_cog_path_divides_heights_by_the_source_cell_size(self):
+        """A COG in degrees: the cell size comes from the file, not dsm.resolution."""
+        import os
+        import tempfile
+
+        import numpy as np
+        import rasterio
+        from rasterio.transform import from_origin
+
+        from .models import DigitalSurfaceModel
+        from .svf import dsm_extent, load_dsm
+
+        # ~1 m cells near Enschede: 1e-5 deg lat ~ 1.11 m, 1.5e-5 deg lng ~ 1.02 m.
+        path = os.path.join(tempfile.mkdtemp(), "dsm_4326.tif")
+        with rasterio.open(path, "w", driver="GTiff", width=200, height=200, count=1,
+                           dtype="float32", crs="EPSG:4326", nodata=-9999.0,
+                           transform=from_origin(6.89, 52.22, 1.5e-5, 1e-5)) as dst:
+            dst.write(np.full((200, 200), 40.0, dtype="float32"), 1)
+        dsm = DigitalSurfaceModel(pk=1, year=2024, resolution=0.5, cog_path=path)
+
+        height, _, cell, _ = load_dsm(dsm, dsm_extent(dsm))
+        self.assertAlmostEqual(cell, 1.06, delta=0.1)  # not the stated 0.5 m
+        self.assertTrue(np.nanmax(height) == 40.0)
+        _, _, forced, _ = load_dsm(dsm, dsm_extent(dsm), resolution=2.0)
+        self.assertEqual(forced, 2.0)
+
+
+def _stored_dsm(data, origin=(250000.0, 470000.0), cell=1.0, year=2024):
+    """A DigitalSurfaceModel with its raster stored in Postgres."""
+    import numpy as np
+    from django.conf import settings
+    from django.contrib.gis.gdal import GDALRaster
+
+    from .models import DigitalSurfaceModel
+
+    data = np.ascontiguousarray(data, dtype="float32")
+    return DigitalSurfaceModel.objects.create(
+        year=year, source="AHN4", resolution=cell,
+        dsm_raster=GDALRaster({
+            "srid": int(settings.COORDINATE_SYSTEM), "width": data.shape[1],
+            "height": data.shape[0], "origin": origin, "scale": (cell, -cell),
+            "datatype": 6, "bands": [{"data": data, "nodata_value": -9999.0}],
+        }),
+    )
+
+
+def _city_blocks(rows=80, cols=80):
+    """Flat ground at 0 m with 20 m high blocks every 10 cells."""
+    import numpy as np
+
+    data = np.zeros((rows, cols), dtype="float32")
+    for r in range(2, rows, 10):
+        for c in range(2, cols, 10):
+            data[r:r + 5, c:c + 5] = 20.0
+    return data
+
+
+@mock.patch("core.rasterOperations.export_raster_to_cog")
+class SkyViewFactorViewWindowTests(TestCase):
+    """calculate_svf reads only the view + a halo, and replaces on recalculation."""
+
+    def test_reads_only_the_view_plus_one_radius(self, _cog):
+        from . import svf
+
+        dsm = _stored_dsm(_city_blocks())
+        view = (250020.0, 469940.0, 250040.0, 469960.0)  # 20 x 20 cells inside
+        with mock.patch.object(svf, "load_dsm", wraps=svf.load_dsm) as load:
+            result = svf.calculate_svf(bbox=view, radius_m=5)
+        window = load.call_args.args[1]
+        self.assertEqual(window, (250015.0, 469935.0, 250045.0, 469965.0))
+        self.assertEqual((result.width, result.height), (20, 20))
+        self.assertEqual(result.dsm, dsm)
+        self.assertEqual(tuple(result.record.raster.extent), view)
+
+    def test_view_result_equals_the_full_dsm_result_inside_the_view(self, _cog):
+        import numpy as np
+
+        from .svf import calculate_svf, sky_view_factor
+
+        data = _city_blocks()
+        dsm = _stored_dsm(data)
+        full = sky_view_factor(data, 1.0, radius_pixels=8)
+        result = calculate_svf(dsm, bbox=(250020.0, 469940.0, 250040.0, 469960.0), radius_m=8)
+        view = result.record.raster.bands[0].data()
+        # rows 40..60 from the top (y 469960 -> 469940), columns 20..40
+        np.testing.assert_allclose(view, full[40:60, 20:40], atol=1e-6)
+
+    def test_recalculating_replaces_the_rows_inside_the_new_view(self, _cog):
+        from urban_heat.models import SkyViewFactor
+
+        from .svf import calculate_svf
+
+        dsm = _stored_dsm(_city_blocks())
+        small = calculate_svf(dsm, bbox=(250020.0, 469940.0, 250030.0, 469950.0), radius_m=5).record
+        elsewhere = calculate_svf(dsm, bbox=(250060.0, 469930.0, 250070.0, 469940.0), radius_m=5).record
+        other_dsm = _stored_dsm(_city_blocks(), year=2020)
+        foreign = calculate_svf(other_dsm, bbox=(250020.0, 469940.0, 250030.0, 469950.0), radius_m=5).record
+
+        again = calculate_svf(dsm, bbox=(250010.0, 469930.0, 250040.0, 469960.0), radius_m=5)
+
+        self.assertEqual(again.replaced, [small.pk])
+        self.assertSetEqual(set(SkyViewFactor.objects.values_list("pk", flat=True)),
+                            {elsewhere.pk, foreign.pk, again.record.pk})
+
+    def test_picks_the_dsm_covering_most_of_the_view(self, _cog):
+        from .svf import dsm_for_view
+
+        _stored_dsm(_city_blocks(20, 20), year=2025)  # newer, covers a corner only
+        big = _stored_dsm(_city_blocks(), year=2020)
+        dsm, covered = dsm_for_view((250010.0, 469930.0, 250050.0, 469970.0))
+        self.assertEqual(dsm, big)
+        self.assertEqual(covered, (250010.0, 469930.0, 250050.0, 469970.0))
+
+    def test_refuses_a_view_above_the_cell_limit(self, _cog):
+        from . import svf
+
+        dsm = _stored_dsm(_city_blocks())
+        with mock.patch.object(svf, "MAX_CELLS", 100):
+            with self.assertRaisesMessage(svf.SVFError, "zoom in"):
+                svf.calculate_svf(dsm, bbox=(250020.0, 469940.0, 250040.0, 469960.0), radius_m=5)
+
+    def test_no_dsm_for_the_view(self, _cog):
+        from .svf import SVFError, calculate_svf
+
+        _stored_dsm(_city_blocks())
+        with self.assertRaisesMessage(SVFError, "No Digital Surface Model"):
+            calculate_svf(bbox=(100000.0, 400000.0, 100100.0, 400100.0))
+
+
+@mock.patch("core.rasterOperations.export_raster_to_cog")
+class SkyViewFactorToolViewTests(TestCase):
+    """physicalEnv/views.py: the map's SVF tool endpoints."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        from django.contrib.gis.geos import Polygon
+
+        self.dsm = _stored_dsm(_city_blocks())
+        # The middle 20 x 20 m of the DSM, as the map sends it (WGS84).
+        box = Polygon.from_bbox((250020.0, 469940.0, 250040.0, 469960.0))
+        from django.conf import settings
+        box.srid = int(settings.COORDINATE_SYSTEM)
+        box.transform(4326)
+        w, s, e, n = box.extent
+        # Shrink a little so the reprojected box stays inside the DSM.
+        dx, dy = (e - w) * 0.05, (n - s) * 0.05
+        self.bbox = f"{w + dx:.7f},{s + dy:.7f},{e - dx:.7f},{n - dy:.7f}"
+        self.staff = get_user_model().objects.create_user("svf_staff", password="x", is_staff=True)
+
+    def test_info_reports_the_dsm_and_existing_svf(self, _cog):
+        url = "/physicalEnv/svf/info/"
+        data = self.client.get(url, {"bbox": self.bbox, "radius": 5}).json()
+        self.assertEqual(data["dsm"]["id"], self.dsm.pk)
+        self.assertEqual(data["existing"], [])
+        self.assertFalse(data["can_calculate"])
+
+        self.client.force_login(self.staff)
+        self.client.post("/physicalEnv/svf/calculate/", {"bbox": self.bbox, "radius": 5})
+        data = self.client.get(url, {"bbox": self.bbox, "radius": 5}).json()
+        self.assertEqual(len(data["existing"]), 1)
+        self.assertTrue(data["can_calculate"])
+
+    def test_calculate_is_staff_only(self, _cog):
+        from urban_heat.models import SkyViewFactor
+
+        response = self.client.post("/physicalEnv/svf/calculate/", {"bbox": self.bbox})
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(SkyViewFactor.objects.exists())
+
+    def test_calculate_and_recalculate(self, _cog):
+        self.client.force_login(self.staff)
+        first = self.client.post("/physicalEnv/svf/calculate/", {"bbox": self.bbox, "radius": 5})
+        self.assertEqual(first.status_code, 200, first.content)
+        second = self.client.post("/physicalEnv/svf/calculate/", {"bbox": self.bbox, "radius": 10}).json()
+        self.assertEqual(second["replaced"], [first.json()["id"]])
+        self.assertEqual(second["dsm"]["id"], self.dsm.pk)
+        self.assertGreater(second["valid_fraction"], 0.99)
+
+    def test_bad_parameters_are_400(self, _cog):
+        self.client.force_login(self.staff)
+        for params in ({"bbox": "1,2,3"}, {"bbox": self.bbox, "radius": "1000"},
+                       {"bbox": "0,0,0.001,0.001"}):
+            response = self.client.post("/physicalEnv/svf/calculate/", params)
+            self.assertEqual(response.status_code, 400, params)
+            self.assertIn("error", response.json())

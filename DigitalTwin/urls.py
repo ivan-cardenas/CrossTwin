@@ -26,6 +26,7 @@ urlpatterns = [
     path("housing/", include("housing.urls")),
     path("builtup/", include("builtup.urls")),
     path("urban_heat/", include("urban_heat.urls")),
+    path("physicalEnv/", include("physicalEnv.urls")),
     path("weather/", include("weather.urls")),
     path("importer/", include("importer.urls")),
     path("", include("mainMap.urls")),

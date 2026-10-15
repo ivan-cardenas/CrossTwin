@@ -156,7 +156,7 @@ def overview():
                 "Django + PostGIS digital twin for Dutch urban data (EPSG:28992), with a separate TiTiler process for raster tiles", h=1040)
     # Browser
     d.group(40, 120, 300, 700, "Browser", "client")
-    d.box(60, 170, 260, 120, "Map UI", ["Mapbox GL JS", "Layers.js · Map_init.js", "mainMap.js · Events.js"], "client")
+    d.box(60, 170, 260, 120, "Map UI", ["Mapbox GL JS", "Layers.js · mainMap.js", "LstTool.js · SvfTool.js"], "client")
     d.box(60, 310, 260, 120, "Indicator panels", ["HTMX swaps (hx-get)", "water · heat · housing · builtup", "what-if sliders + switches"], "client")
     d.box(60, 450, 260, 120, "Map editing", ["Editing.js +", "Mapbox GL Draw", "(staff only)"], "client")
     d.box(60, 590, 260, 100, "Population dock", ["forecast curve +", "what-if controls"], "client")
@@ -164,9 +164,9 @@ def overview():
 
     # Django
     d.group(400, 120, 640, 700, "Django · DigitalTwin", "django", tag=":8000")
-    d.box(420, 170, 600, 76, "URL router  (DigitalTwin/urls.py)", ["/  ·  /api/  ·  /watersupply/  ·  /housing/  ·  /urban_heat/  ·  /weather/  ·  /importer/"], "django")
-    d.box(420, 266, 290, 150, "mainMap", ["layer catalog  /api/layers/", "GeoJSON + bounds endpoints", "admin-unit & population panels", "editing.py (forms, backup)"], "django")
-    d.box(730, 266, 290, 150, "Domain apps", ["watersupply · housing · urban_heat", "administrative · physicalEnv", "builtup · nature · weather · Energy", "models + calculations.py + views"], "django")
+    d.box(420, 170, 600, 76, "URL router  (DigitalTwin/urls.py)", ["/api/ · /watersupply/ · /housing/ · /urban_heat/ · /physicalEnv/ · /weather/ · /importer/"], "django")
+    d.box(420, 266, 290, 150, "mainMap", ["layer catalog  /api/layers/", "GeoJSON + bounds endpoints", "admin-unit & population panels", "map editing (core/editing.py)"], "django")
+    d.box(730, 266, 290, 150, "Domain apps", ["watersupply · housing · urban_heat", "administrative · physicalEnv", "builtup · nature · weather · Energy", "on demand: LST (lst/) · SVF"], "django")
     d.box(420, 436, 290, 150, "core", ["MODEL / VECTOR / RASTER /", "WMS registries (utils.py)", "rasterOperations → COG", "signals · cache versioning"], "django")
     d.box(730, 436, 290, 150, "importer", ["file upload (GeoJSON/SHP)", "external catalog (70 sets)", "SpatialParentIndex", "BulkWriter · deferred_cascades"], "django")
     d.box(420, 606, 290, 120, "weather WMS proxy", ["/weather/wms/<name>/tile/", "keep-alive session", "24 h cache for TIME= frames"], "django")
@@ -187,7 +187,7 @@ def overview():
         d.box(1402, 160 + i * 65, 146, 52, n, [], "external", title_size=14 if len(n) > 13 else 16)
 
     # DB
-    d.box(400, 865, 940, 90, "PostgreSQL 16 + PostGIS", ["83 models · GeometryField & RasterField (srid 28992) · GiST indexes · pg_stat_statements"], "data")
+    d.box(400, 865, 940, 90, "PostgreSQL 16 + PostGIS", ["84 models · GeometryField & RasterField (srid 28992) · GiST indexes · pg_stat_statements"], "data")
 
     # Edges
     d.edge([(320, 230), (420, 230)], "client", "JSON / HTML")
@@ -220,10 +220,10 @@ def apps():
     d.group(40, 120, 1520, 330, "Domain apps (allowed_apps)  —  models · calculations.py · views", "django")
     apps_ = [
         ("administrative", 5, ["Province › City ›", "District › Neighborhood", "PopulationProjection"]),
-        ("physicalEnv", 16, ["LandCover · DEM · DSM", "soil map · groundwater", "HILUCS · soil.py (SCS)"]),
+        ("physicalEnv", 17, ["LandCover · DEM · DSM", "soil map · groundwater", "HILUCS · soil.py (SCS)", "svf.py · UrbanFabricCut"]),
         ("watersupply", 17, ["extraction · treatment", "pipes · NRW · OPEX", "SupplySecurity"]),
         ("housing", 9, ["supply/demand · HPI", "mortgage · rentals", "affordability", "social profile (KEA)"]),
-        ("urban_heat", 12, ["UTCI · PET · Tmrt", "LST · SVF · SUHII", "NBS · WBGT", "heat per buurt (KEA)"]),
+        ("urban_heat", 12, ["UTCI · PET · Tmrt", "LST · SVF · SUHII", "NBS · WBGT · lst/ SMW", "heat per buurt (KEA)"]),
         ("builtup", 7, ["ZoningArea (HILUCS)", "Street · Park · Facility", "Building · Property", "climate risk (KEA)"]),
         ("nature", 7, ["green / blue", "layers · trees"]),
         ("weather", 7, ["WMS layers", "time steps"]),
@@ -290,7 +290,7 @@ def raster():
     d = Diagram("04-raster-pipeline", "Raster Pipeline — PostGIS Raster → COG → Tiles",
                 "core/rasterOperations.py::export_raster_to_cog() runs from a post_save signal on every RASTER_REGISTRY model", h=820)
     steps = [
-        ("Raster import", ["GEE / Sentinel-2 /", "KNMI / file upload", "→ RasterField row"], "external"),
+        ("Raster import", ["GEE · Sentinel-2 · KNMI", "upload · LST / SVF tools", "→ RasterField row"], "external"),
         ("post_save", ["core/signals.py", "RASTER_REGISTRY", "receiver"], "signal"),
         ("ST_AsGDALRaster", ["PostGIS → temp", "GeoTIFF (28992)"], "data"),
         ("Reproject", ["rasterio warp", "→ EPSG:4326"], "raster"),
@@ -387,11 +387,11 @@ def signals():
 
     # physicalEnv
     d.group(560, 120, 470, 550, "physicalEnv/signals.py", "signal")
-    d.box(600, 170, 390, 70, "Building created (map editor, id < 0)", ["building_created · DAG New_Units → LandCover"], "neutral")
-    d.box(600, 265, 390, 110, "urbanize_around(): 10 m buffer → urban fabric",
-          ["cut out of the city's latest-year land cover (ST_Difference),",
-           "inserted as one polygon · landcover_rewriting / _created",
-           "→ mainMap journal, undone by Restore"], "data")
+    d.box(600, 170, 390, 70, "Building saved / deleted (editor, id < 0)", ["building_created / _deleted · New_Units → LandCover"], "neutral")
+    d.box(600, 265, 390, 110, "urbanize_around() / release_ring()",
+          ["new: 10 m buffer cut from latest land cover",
+           "moved / deleted: UrbanFabricCut pieces returned",
+           "landcover_rewriting → mainMap journal (Restore)"], "data")
     d.box(600, 400, 390, 80, "LandCoverVector saved", ["schedule_urban_area_recompute(city_id)"], "neutral")
     d.box(600, 530, 390, 120, "One set-based UPDATE … RETURNING", ["ST_Intersection with urban-fabric polygons", "(latest year), skipped when fully inside;", "ST_Area in storage-CRS metres"], "data")
     d.edge([(795, 240), (795, 265)], "signal")
@@ -444,7 +444,7 @@ def editing():
     d.box(40, 170, 300, 170, "Editing.js", ["MutationObserver on #panel-body", "attaches Mapbox GL Draw", "popups & panel refresh", "suspended while editing"], "client")
     d.box(450, 170, 330, 170, "editing.feature_form", ["modelform_factory ModelForm", "geometry: WGS84 GeoJSON in", "hidden field → reprojected", "exclude / optional per layer"], "django")
     d.box(890, 170, 300, 170, "obj.save()", ["derived fields", "signals & cascades", "cache bump", "negative pk for BAG ids",
-                                             "new building → urbanize_around()", "(10 m buffer → urban fabric)"], "django")
+                                             "new / moved / deleted building", "→ urbanize_around / release_ring"], "django")
     d.box(1300, 170, 260, 170, "PostGIS", ["FKs DEFERRABLE", "INITIALLY DEFERRED", "_check_constraints()", "inside atomic block"], "data")
 
     d.box(450, 440, 330, 150, "journal()", ["store original row of each", "object before first change", "(first pre-image wins)",
@@ -463,7 +463,7 @@ def editing():
     d.edge([(1040, 590), (1040, 650)], "cache", "restore")
     d.edge([(1190, 725), (1430, 725), (1430, 340)], "signal", "revert", label_at=1)
     d.note(40, 680, ["Only edits made through the editor are journalled —", "importer, admin and psql changes are not.",
-                     "", "Make a layer editable: add its registry key to", "EDITABLE_LAYERS with exclude (fields save() derives)",
+                     "", "Make a layer editable: add its registry key to", "core/editable_layers.toml with exclude (fields save() derives)",
                      "and optional (fields save() fills in)."])
     return d
 
@@ -524,7 +524,67 @@ def infiltration():
     return d
 
 
-DIAGRAMS = [overview, apps, vector, raster, importer, signals, editing, infiltration]
+# =========================================================================
+# 9. On-demand calculations for the view (LST & SVF)
+# =========================================================================
+def on_demand():
+    d = Diagram("09-on-demand-lst-svf", "On-Demand Calculations — LST & Sky View Factor",
+                "Actions menu → Calculate for this view: the current map view is computed in numpy and stored as one raster row",
+                h=1100)
+    # browser
+    d.group(40, 120, 300, 700, "Browser", "client")
+    d.box(60, 170, 260, 170, "LstTool.js  #lst-card", ["lists Landsat scenes", "over the view", "(ranked by clear share)", "Calculate → POST bbox"], "client")
+    d.box(60, 370, 260, 120, "Actions menu", ["Calculate for this view", "opening one card", "closes the other"], "client")
+    d.box(60, 530, 260, 170, "SvfTool.js  #svf-card", ["asks /svf/info/ on open", "and after each map move", "radius 25–200 m", "cell DSM / 1 / 2 / 5 m"], "client")
+
+    # LST
+    d.group(380, 120, 1180, 330, "LST  ·  urban_heat/lst/  ·  RS_Imagery, LandCover → LST", "raster")
+    d.box(400, 170, 250, 150, "lst/views.py", ["GET  /urban_heat/lst/scenes/", "POST /urban_heat/lst/calculate/", "(calculate: staff only)"], "django")
+    d.box(680, 170, 270, 150, "pipeline.calculate_lst()", ["NDVI layers in the view,", "merged newest first", "30 m grid, EPSG:28992", "≤ 48 MB download (~40×40 km)"], "django")
+    d.box(980, 170, 250, 150, "gee.py · Earth Engine", ["Landsat 8/9 B10 TOA", "+ L2 QA_PIXEL · ASTER GED", "TPW: NCEP, then ERA5", "(NCEP stops 2026-03-18)"], "external")
+    d.box(1260, 170, 280, 150, "smw.py  (numpy)", ["NDVI → FVC → emissivity", "Statistical Mono-Window", "(Ermida et al.) → LST °C", "inputs only from GEE"], "raster")
+    d.note(400, 360, ["Grid = the view clipped to the NDVI layers' coverage. A scene with no water-vapour",
+                      "source for its day fails before the download. The TPW source is kept in measurement_method."])
+
+    # SVF
+    d.group(380, 480, 1180, 330, "SVF  ·  physicalEnv/svf.py  ·  DSM → SVF", "data")
+    d.box(400, 530, 250, 150, "physicalEnv/views.py", ["GET  /physicalEnv/svf/info/", "POST /physicalEnv/svf/calculate/", "(calculate: staff only)"], "django")
+    d.box(680, 530, 270, 150, "calculate_svf() · plan()", ["dsm_for_view(): DSM covering", "the view + a halo of one radius", "refused above 16 M cells", "→ Recalculate if stored"], "django")
+    d.box(980, 530, 250, 150, "load_dsm()", ["window of dsm_raster, or", "the DSM's COG warped back", "to the storage CRS", "at the COG's own cell"], "data")
+    d.box(1260, 530, 280, 150, "sky_view_factor()  (numpy)", ["RVT horizon search", "heights ÷ cell size", "SVF = mean(1 − sin h)", "halo cropped off"], "raster")
+    d.note(680, 720, ["Reads only the view plus the halo, so the horizon at the edge of the view is",
+                      "still seen. One SkyViewFactor row per view; source = \"DSM <id>: …\"."])
+
+    # storage + response
+    d.box(400, 860, 250, 110, "Map UI update", ["Layers.removeLayer(replaced)", "+ raster_layer_entry(new)"], "client")
+    d.box(680, 860, 270, 110, "post_save → COG", ["core/signals.py", "export_raster_to_cog() → TiTiler"], "raster")
+    d.box(980, 860, 560, 110, "save_lst() / save_svf()  ·  replace_covered()", ["one raster row per view: LandSurfaceTemperature (°C) / SkyViewFactor",
+          "a recalculation replaces the covered rows of the same scene / DSM (+ COG files)",
+          "no receiver: a post_save must never start an Earth Engine download"], "data")
+
+    # edges
+    d.edge([(190, 370), (190, 340)], "client", flow=False)
+    d.edge([(190, 490), (190, 530)], "client", flow=False)
+    d.edge([(320, 245), (400, 245)], "client", "?bbox")
+    d.edge([(320, 605), (400, 605)], "client", "?bbox")
+    d.edge([(650, 245), (680, 245)], "django")
+    d.edge([(950, 245), (980, 245)], "external")
+    d.edge([(1230, 245), (1260, 245)], "raster")
+    d.edge([(650, 605), (680, 605)], "django")
+    d.edge([(950, 605), (980, 605)], "data")
+    d.edge([(1230, 605), (1260, 605)], "raster")
+    d.edge([(1540, 245), (1565, 245), (1565, 915), (1540, 915)], "raster", "LST grid", label_at=1)
+    d.edge([(1400, 680), (1400, 860)], "raster", "SVF grid")
+    d.edge([(980, 915), (950, 915)], "raster")
+    d.edge([(525, 680), (525, 860)], "client", "JSON: new + replaced layers")
+    d.note(40, 1010, ["Both are synchronous requests (LST ~10–60 s). Earth Engine only serves the inputs; every equation runs in numpy.",
+                      "Same tools from the shell: manage.py calculate_lst --city Enschede  ·  physicalEnv.svf.calculate_svf(bbox=…)."])
+    d.legend([("client", "Browser"), ("django", "Django view / orchestration"), ("external", "Earth Engine"),
+              ("raster", "numpy / raster"), ("data", "Storage")])
+    return d
+
+
+DIAGRAMS = [overview, apps, vector, raster, importer, signals, editing, infiltration, on_demand]
 
 
 def main():

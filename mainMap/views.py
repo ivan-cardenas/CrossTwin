@@ -14,7 +14,7 @@ from django.urls import reverse
 from core.utils import VECTOR_REGISTRY, WMS_REGISTRY, RASTER_REGISTRY, MODEL_REGISTRY
 from .styles.rasterStyles import raster_display_name
 from .styles.landCoverStyles import build_landcover_style_and_legend
-from .editing import is_editable
+from core.editing import is_editable
 from .styles.layerStyles import FALLBACK_COLORS, LAYER_STYLES
 from .styles.soilStyles import build_soil_style_and_legend
 from .styles.treeStyles import build_tree_style

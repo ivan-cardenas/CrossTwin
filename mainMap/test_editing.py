@@ -1,10 +1,10 @@
-"""Tests for editing layer objects on the map and the backup / restore point (mainMap/editing.py)."""
+"""Tests for editing layer objects on the map and the backup / restore point (core/editing.py)."""
 import json
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.gis.geos import Point
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
 from builtup.models import Building, Property
@@ -155,7 +155,7 @@ class OtherEditableLayersTests(EditingTestCase):
     """Every allowlisted layer gets a working form, not just Building."""
 
     def test_every_editable_layer_renders_a_new_object_form(self):
-        from .editing import EDITABLE_LAYERS
+        from core.editing import EDITABLE_LAYERS
         for key in EDITABLE_LAYERS:
             with self.subTest(key=key):
                 response = self.client.get(reverse('map:feature_new', args=key.split('.')))
@@ -327,3 +327,84 @@ class LandCoverBufferRestoreTests(EditingTestCase):
         for pk, geom in self.original.items():
             self.assertTrue(restored[pk].equals_exact(geom, tolerance=1e-6), pk)
         self.assertFalse(Building.objects.filter(pk=-1).exists())
+
+    def _snapshot(self):
+        from physicalEnv.models import UrbanFabricCut
+        return ({lc.pk: (lc.geom, lc.source_building) for lc in self.LandCoverVector.objects.all()},
+                {c.pk: (c.target, c.geom) for c in UrbanFabricCut.objects.all()})
+
+    def assertSnapshotEqual(self, before, after):
+        for kind in (0, 1):
+            self.assertEqual(before[kind].keys(), after[kind].keys())
+        for pk, (geom, source) in before[0].items():
+            self.assertEqual(after[0][pk][1], source)
+            self.assertTrue(after[0][pk][0].equals_exact(geom, tolerance=1e-6), pk)
+        for pk, (target, geom) in before[1].items():
+            self.assertEqual(after[1][pk][0], target)
+            self.assertTrue(after[1][pk][1].equals_exact(geom, tolerance=1e-6), pk)
+
+    def test_deleting_or_moving_a_drawn_building_releases_its_ring_and_restore_brings_it_back(self):
+        # drawn before the backup: its ring and cuts are part of the baseline
+        self.post_building(NEW_URL, geom=_wgs84_geojson(make_polygon(x=257300, half_size_m=10)))
+        baseline = self._snapshot()
+        self.assertTrue(baseline[1])
+
+        for change in ('delete', 'move'):
+            with self.subTest(change):
+                self.client.post(BACKUP_URL)
+                if change == 'delete':
+                    self.client.post(reverse('map:feature_delete', args=['builtup', 'Building', -1]))
+                    self.assertFalse(self.LandCoverVector.objects.filter(source_building=-1).exists())
+                else:
+                    self.post_building(_edit_url(-1), geom=_wgs84_geojson(make_polygon(x=257200, half_size_m=10)))
+                    ring = self.LandCoverVector.objects.get(source_building=-1)
+                    self.assertTrue(ring.geom.intersects(make_polygon(x=257200, half_size_m=1)))
+
+                response = self.client.post(RESTORE_URL)
+                self.assertEqual(json.loads(response['HX-Trigger'])['backup-restored']['layers'],
+                                 ['builtup.Building', 'physicalEnv.LandCoverVector'])
+                self.assertSnapshotEqual(baseline, self._snapshot())
+                self.assertTrue(Building.objects.filter(pk=-1).exists())
+
+
+
+class EditableLayersConfigTests(SimpleTestCase):
+    """core/editable_layers.toml: what it lists must exist, and a malformed file fails at startup."""
+
+    def _load(self, text):
+        import tempfile
+        from pathlib import Path
+        from core.editing import load_editable_layers
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'layers.toml'
+            path.write_text(text, encoding='utf-8')
+            return load_editable_layers(path)
+
+    def test_every_listed_layer_and_field_exists(self):
+        from core.editing import EDITABLE_LAYERS, geometry_field
+        from core.utils import VECTOR_REGISTRY
+        self.assertIn('builtup.Building', EDITABLE_LAYERS)
+        for key, cfg in EDITABLE_LAYERS.items():
+            with self.subTest(layer=key):
+                self.assertIn(key, VECTOR_REGISTRY, 'not a vector layer (registry key is app_label.ClassName)')
+                model = VECTOR_REGISTRY[key]
+                self.assertIsNotNone(geometry_field(model))
+                fields = {f.name for f in model._meta.get_fields()}
+                for name in cfg['exclude'] + cfg['optional']:
+                    self.assertIn(name, fields)
+
+    def test_settings_default_to_empty_lists(self):
+        layers = self._load('["builtup.Street"]\n\n["builtup.Park"]\nexclude = ["area"]\n')
+        self.assertEqual(layers, {
+            'builtup.Street': {'exclude': [], 'optional': []},
+            'builtup.Park': {'exclude': ['area'], 'optional': []},
+        })
+
+    def test_malformed_files_are_rejected(self):
+        from django.core.exceptions import ImproperlyConfigured
+        for text in ('["builtup.Park"]\nexclud = ["area"]\n',      # typo in a setting
+                     '["builtup.Park"]\nexclude = "area"\n',        # not a list
+                     'builtup.Park = 1\n',                           # not a table
+                     '["builtup.Park"\n'):                           # invalid TOML
+            with self.subTest(text=text), self.assertRaises(ImproperlyConfigured):
+                self._load(text)

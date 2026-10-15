@@ -145,10 +145,38 @@ class LandCoverVector(models.Model):
     # thermal-property data, so those rows leave this unset rather than
     # guessing a material.
     material = models.ForeignKey(SurfaceMaterialProperties, on_delete=models.DO_NOTHING, null=True, blank=True, help_text="Material properties of the land cover type, where known")
+    # Set on the urban-fabric ring around a building drawn in the map editor
+    # (physicalEnv/landcover.py): moving or deleting that building releases
+    # this ring. Plain id, not an FK: builtup already depends on physicalEnv.
+    source_building = models.BigIntegerField(null=True, blank=True, db_index=True, help_text="Editor building whose 10 m urban-fabric buffer this polygon is")
     last_updated = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
         return f"{self.city} - {self.year}: {self.land_cover_type} ({self.percentage}%)"
+
+
+class UrbanFabricCut(models.Model):
+    """
+    A piece an editor building's urban-fabric ring cut out of another
+    land-cover polygon (physicalEnv/landcover.py). Releasing the ring (the
+    building moved or was deleted) gives each piece back to `target`, or
+    recreates `target` with the attributes copied here when it was swallowed
+    whole. Not a map layer (registry_hidden).
+    """
+    registry_hidden = True
+
+    owner_building = models.BigIntegerField(db_index=True, help_text="Editor building whose ring took this piece")
+    target = models.IntegerField(db_index=True, help_text="Id of the LandCoverVector row the piece was cut from")
+    city = models.ForeignKey("administrative.City", on_delete=models.DO_NOTHING, null=True, blank=True)
+    year = models.IntegerField()
+    land_cover_type = models.ForeignKey(LandCoverClasses, on_delete=models.DO_NOTHING)
+    land_use = models.CharField(max_length=100)
+    material = models.ForeignKey(SurfaceMaterialProperties, on_delete=models.DO_NOTHING, null=True, blank=True)
+    source_building = models.BigIntegerField(null=True, blank=True, db_index=True, help_text="The target's own source_building (set when the target is another ring)")
+    geom = models.MultiPolygonField(srid=CoordinateSystem)
+
+    def __str__(self):
+        return f"Cut of land cover {self.target} by building {self.owner_building}"
 
 class LandCoverRaster(models.Model):
     id = models.AutoField(primary_key=True)

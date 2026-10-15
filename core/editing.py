@@ -12,12 +12,20 @@ Backups are a change journal (mainMap.models.EditBackup / EditBackupRow):
 creating one copies nothing; each change made here first records the
 object's original row, once per object, and Restore reverts only those rows.
 Changes made through the importer, the admin, QGIS or psql are not recorded.
+
+Which layers are editable, and how their forms look, is configured in
+core/editable_layers.toml (read once at startup).
 """
 import json
+import threading
+import tomllib
+from pathlib import Path
 
 from django import forms
+from django.apps import apps
 from django.contrib.gis.db import models as gis_models
 from django.core import serializers
+from django.core.exceptions import ImproperlyConfigured
 from django.db import IntegrityError, connection, transaction
 from django.db.models import AutoField, Min
 from django.forms import modelform_factory
@@ -27,23 +35,40 @@ from django.urls import reverse
 from django.views.decorators.http import require_http_methods, require_POST
 
 from core.utils import VECTOR_REGISTRY
-from .models import EditBackup, EditBackupRow
+from mainMap.models import EditBackup, EditBackupRow
 
-# Registry key -> per-model form settings:
-#   exclude:  fields the model derives itself in save() (kept out of the form)
-#   optional: fields the form must not require (save() fills them in)
-# To make another layer editable, add its key here after reading its save().
-EDITABLE_LAYERS = {
-    'builtup.Building': {
-        'exclude': ['area_sqm', 'neighborhood', 'last_updated', 'connectivity'],
-        'optional': ['buildingType'],   # derived from usageFunction
-    },
-    'builtup.Street': {},
-    'builtup.Park': {
-        'exclude': ['area']},    
-    'builtup.Facility': {},
-    'builtup.ZoningArea': {'exclude': ['area']},   # save() sets it from geom
-}
+EDITABLE_LAYERS_FILE = Path(__file__).with_name('editable_layers.toml')
+_LAYER_SETTINGS = ('exclude', 'optional')
+
+
+def load_editable_layers(path=EDITABLE_LAYERS_FILE):
+    """
+    Registry key -> {'exclude': [...], 'optional': [...]} from the TOML file.
+    Only the file's shape is checked here; that every key is a vector layer
+    and every field exists is checked by mainMap/test_editing.py.
+    """
+    try:
+        with open(path, 'rb') as f:
+            config = tomllib.load(f)
+    except (OSError, tomllib.TOMLDecodeError) as e:
+        raise ImproperlyConfigured(f'Cannot read editable layers from {path}: {e}') from e
+
+    layers = {}
+    for key, settings in config.items():
+        if not isinstance(settings, dict):
+            raise ImproperlyConfigured(f'{path}: [{key!r}] must be a table, e.g. ["{key}"]')
+        unknown = set(settings) - set(_LAYER_SETTINGS)
+        if unknown:
+            raise ImproperlyConfigured(f'{path}: [{key!r}] has unknown setting(s) {sorted(unknown)}; '
+                                       f'allowed: {list(_LAYER_SETTINGS)}')
+        for name, value in settings.items():
+            if not (isinstance(value, list) and all(isinstance(v, str) for v in value)):
+                raise ImproperlyConfigured(f'{path}: [{key!r}].{name} must be a list of field names')
+        layers[key] = {name: list(settings.get(name, [])) for name in _LAYER_SETTINGS}
+    return layers
+
+
+EDITABLE_LAYERS = load_editable_layers()
 
 FORM_TEMPLATE = 'mainMap/partials/feature_form.html'
 BACKUP_TEMPLATE = 'mainMap/partials/backup_bar.html'
@@ -267,15 +292,40 @@ def backup_discard(request):
     return _backup_bar(request)
 
 
+_restoring = threading.local()
+
+
+def is_restoring():
+    """
+    True while restore_backup() runs. Receivers that undo an edit's side
+    effects on delete (e.g. physicalEnv's release of a building's land-cover
+    ring) check it: the restore puts those rows back itself, as with raw saves.
+    """
+    return getattr(_restoring, 'active', False)
+
+
 def restore_backup(backup):
     """
     Put every object recorded in `backup` back as it was, in one transaction,
-    then delete the backup. Returns the affected layer keys. Raises
-    IntegrityError (with everything rolled back) when a reference blocks it.
+    then delete the backup. Returns the affected map layer keys (journalled
+    bookkeeping tables such as physicalEnv.UrbanFabricCut are restored but not
+    listed). Raises IntegrityError (with everything rolled back) when a
+    reference blocks it.
     """
+    rows = list(backup.rows.all())
+    _restoring.active = True
+    try:
+        with transaction.atomic():
+            _restore_rows(rows)
+            backup.delete()
+    finally:
+        _restoring.active = False
+    return sorted({row.layer_key for row in rows if row.layer_key in VECTOR_REGISTRY})
+
+
+def _restore_rows(rows):
     from importer.batching import deferred_cascades
 
-    rows = list(backup.rows.all())
     with transaction.atomic():
         with deferred_cascades():
             # 1. Changed and deleted objects. A raw save writes the stored
@@ -290,10 +340,8 @@ def restore_backup(backup):
             #    reference targets are back first.
             for row in rows:
                 if row.original is None:
-                    VECTOR_REGISTRY[row.layer_key].objects.filter(pk=row.object_pk).delete()
+                    apps.get_model(row.layer_key).objects.filter(pk=row.object_pk).delete()
             _check_constraints()
-        backup.delete()
-    return sorted({row.layer_key for row in rows})
 
 
 @require_POST

@@ -26,6 +26,7 @@
 <script src="{% static 'js/Layers.js' %}"></script>
 <script src="{% static 'js/Editing.js' %}"></script>
 <script src="{% static 'js/LstTool.js' %}"></script>
+<script src="{% static 'js/SvfTool.js' %}"></script>
 <script src="{% static 'js/Events.js' %}"></script>
 <script src="{% static 'js/Map_init.js' %}"></script>
 {% endblock %} {% block content_section_class %}{% endblock %}
@@ -249,6 +250,42 @@
       <div class="lst-status" id="lst-status" role="status"></div>
     </div>
 
+    <!-- SVF TOOL — Sky-view factor from the DSM for the area in view
+         (core/static/js/SvfTool.js, physicalEnv/views.py). Same look as the
+         LST card, so it reuses its lst-* classes. -->
+    <div class="lst-card" id="svf-card"
+         data-info-url="{% url 'physicalEnv:svf_info' %}"
+         data-calculate-url="{% url 'physicalEnv:svf_calculate' %}"
+         data-can-calculate="{{ user.is_staff|yesno:'1,0' }}">
+      {% csrf_token %}
+      <div class="lst-card-header">
+        <div class="lst-card-title">SKY VIEW FACTOR</div>
+        <button class="lst-card-close" id="svf-card-close" aria-label="Close SVF tool">✕</button>
+      </div>
+      <p class="lst-card-hint">Horizon search over the Digital Surface Model, for the area in view only (plus one search radius around it).</p>
+      <div class="lst-card-fields">
+        <label>Radius
+          <select id="svf-radius">
+            <option value="25">25 m</option>
+            <option value="50" selected>50 m</option>
+            <option value="100">100 m</option>
+            <option value="200">200 m</option>
+          </select>
+        </label>
+        <label>Cell
+          <select id="svf-resolution">
+            <option value="" selected>DSM</option>
+            <option value="1">1 m</option>
+            <option value="2">2 m</option>
+            <option value="5">5 m</option>
+          </select>
+        </label>
+      </div>
+      <div class="lst-view-info" id="svf-view-info"></div>
+      <button class="lst-btn lst-btn-primary" id="svf-calculate" disabled>Calculate SVF for this view</button>
+      <div class="lst-status" id="svf-status" role="status"></div>
+    </div>
+
     <!-- LEGEND STACK — holds the static groundwater legend plus every
          dynamic raster/WMS/categorical legend added by Layers.js. Kept as
          a single draggable, repositionable unit so multiple legends never
@@ -364,6 +401,12 @@
         <button class="action-panel-btn" id="lstToolBtn">
           <span class="bi bi-thermometer-sun"></span>
           <span class="action-btn-text">Land Surface Temperature</span>
+        </button>
+      </div>
+      <div class="actions-menu-row">
+        <button class="action-panel-btn" id="svfToolBtn">
+          <span class="bi bi-brightness-high"></span>
+          <span class="action-btn-text">Sky View Factor</span>
         </button>
       </div>
 

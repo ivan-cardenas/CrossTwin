@@ -23,7 +23,7 @@ function renderLayerList() {
   });
 
   // Backup / restore point for what-if edits (staff only: only then does the
-  // catalog mark layers editable). Rendered by mainMap/editing.py::backup;
+  // catalog mark layers editable). Rendered by core/editing.py::backup;
   // its own Create/Restore/Discard responses re-render it in place.
   let html = availableLayers.some(l => l.editable)
     ? `<div id="edit-backup-bar" class="edit-backup-bar" hx-get="/api/editing/backup/"

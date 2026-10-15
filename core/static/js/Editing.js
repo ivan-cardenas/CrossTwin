@@ -1,6 +1,6 @@
 // ============================================================
 // Editing.js — visual editing of layer objects (docs/MAP_EDITING.md)
-// The attribute form is an HTMX partial in #panel-body (mainMap/editing.py);
+// The attribute form is an HTMX partial in #panel-body (core/editing.py);
 // this file adds the Mapbox GL Draw tools for its geometry, keeps the hidden
 // geometry input in sync, and reloads layers after a save, delete or restore.
 // Depends on: Config.js (map), Layers.js (loadedLayers, featurePopup,
@@ -175,7 +175,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // HX-Trigger events from mainMap/editing.py
+  // HX-Trigger events from core/editing.py
   document.body.addEventListener('feature-saved', (evt) => {
     const key = evt.detail?.layer;
     if (!key) return;

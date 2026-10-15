@@ -5,7 +5,7 @@ from django.db import models
 class EditBackup(models.Model):
     """
     Restore point for what-if edits made with the map editor
-    (mainMap/editing.py, docs/MAP_EDITING.md). Creating one copies nothing:
+    (core/editing.py, docs/MAP_EDITING.md). Creating one copies nothing:
     from then on every edit, create or delete made through the editor first
     stores the object's original row as an EditBackupRow, once per object.
     At most one backup exists at a time.

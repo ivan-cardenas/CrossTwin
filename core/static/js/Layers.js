@@ -975,7 +975,7 @@ function _popupHead(properties, layerName, titleKey, layerKey = null) {
   </div>`;
 }
 
-/** "Edit" button for staff on editable layers (the catalog marks them, see mainMap/editing.py). */
+/** "Edit" button for staff on editable layers (the catalog marks them, see core/editing.py). */
 function _popupEditButton(properties, layerKey) {
   if (!layerKey || properties.id === null || properties.id === undefined) return '';
   if (typeof startEdit !== 'function' || !availableLayers.find(l => l.key === layerKey)?.editable) return '';

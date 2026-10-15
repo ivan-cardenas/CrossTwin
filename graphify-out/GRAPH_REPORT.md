@@ -1,464 +1,530 @@
-# Graph Report - CrossTwin  (2026-10-06)
+# Graph Report - CrossTwin  (2026-10-15)
 
 ## Corpus Check
-- 2 files · ~106,999 words
+- 166 files · ~133,699 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1475 nodes · 2648 edges · 119 communities (71 shown, 33 thin omitted)
-- Extraction: 91% EXTRACTED · 9% INFERRED · 0% AMBIGUOUS · INFERRED: 249 edges (avg confidence: 0.92)
-- Token cost: 69,897 input · 0 output
+- 1612 nodes · 2944 edges · 120 communities (85 shown, 24 thin omitted)
+- Extraction: 91% EXTRACTED · 9% INFERRED · 0% AMBIGUOUS · INFERRED: 263 edges (avg confidence: 0.92)
+- Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
-- Map View Tests
-- Built-up & Property Models
-- Import Storage CRS Tests
-- Thermal Comfort Rasters
-- External Import Tests
-- Chart Geometry Helpers
-- Water Signal Cascade
-- Water Supply Indicators
+- Administrative Units & Population
+- Map Layers & Events JS
+- SVF Calculation
+- Water Supply Models
+- Land-Cover Release & Batching
+- Water Supply Calculations
+- LST/SVF Tool Frontend
+- Model Registry & Forms
+- Map Editing & Backup
+- Water Supply Models (2)
+- Housing & Built-up Models
+- Built-up Indicators
+- LST Pipeline & NDVI
+- External Importer Core
+- Earth Engine Auth & Inputs
+- SMW Equations
+- CBS & Enrichment Import
+- Heat Indicators
+- Urban Heat Models
+- Housing & Built-up Models (2)
+- Housing & Built-up Models (3)
 - WMS Tile Proxy
+- Map Views & Panels
+- Population Chart
+- Urban Fabric Buffer & Arch Diagrams
+- LST Tool Views
 - Spatial Parent Index
-- File Upload Importer
-- Water Model Chain
-- COG Raster Export
-- Spatial Parent Tests
-- Interpolated Weather Rasters
-- Bulk Writer
-- Nature Layers
-- Storage SRID Conversion
-- Administrative Hierarchy
-- Urban Area Signal Tests
-- Water Extraction & Production
-- Water Derived Saves
-- Housing Calculations
-- KNMI Importer
-- KNMI GeoTIFF Tests
-- Weather Models
-- WMS Proxy Tests
-- PDOK Importer
-- Non-Revenue Water
-- Building Derived Field Tests
-- Bbox Rounding
-- Bulk Land Cover Import
-- WBGT Heat Classification
-- WMS Fetch Retry
-- db_stats Command
-- Query Stats Middleware
-- Google Earth Engine Import
-- Water OPEX
-- Humidity Raster
-- Deferred Cascade Batching
-- Precipitation Raster
-- Temperature Raster
-- Administrative App Config
-- Core App Config
-- Signed Int URL Converter
-- Map Editing Backend
-- PhysicalEnv App Config
-- Watersupply App Config
-- Total Water Demand
-- Weather App Config
-- BuiltupConfig
-- EnergyConfig
-- HousingConfig
-- ImporterConfig
-- MainmapConfig
-- NatureConfig
-- UrbanheatConfig
-- Map Layer Management
-- Province Raster Generation
-- Project Architecture Docs
-- Population Chart Geometry
-- GeoJSON Layer API
-- Housing Views
-- Map Editing Frontend
-- Map Page Wiring & Tour
-- Map Initialization
+- Housing & Built-up Models (4)
+- COG Export
+- OSM Overpass Importer
+- Nature Models
+- External Catalog Views
+- LST Grid
 - Layer Cache Versioning
-- Indicator Dashboard Templates
-- Standalone Dashboard Pages
-- Weather Raster Views
+- LST/SVF Tool Frontend (2)
+- Raster Tile API
+- External Data Import UI
+- Weather Raster Models
+- Map Init & City Name
+- Housing Dashboard Cards
+- Housing & Built-up Models (5)
+- Postgres Check Tool
+- Weather Raster Models (2)
+- Administrative Units & Population (2)
+- LST/SVF Tool Frontend (3)
+- External Importer Core (2)
+- Heat Calculations
+- Heat Dashboard JS
+- KNMI Importer
+- Water Dashboard Cards
+- Design System & Base Template
+- Weather Raster Signals
+- Map Views & Panels (2)
+- README Architecture Concepts
+- Dependencies
 - Frontend Config
-- Water Dashboard Views
+- BulkWriter
+- Land-Cover & Soil Styles
+- Housing Panel JS
+- Housing & Built-up Models (6)
+- Built-up Dashboard Cards
 - Version Info
-- Water Panel & Slider JS
-- Land Cover Styles
-- WMS Legend Lookup
-- Map UI Layer List
+- Diagram Export
+- Precipitation Rasters
+- Land-Cover & Soil Styles (2)
+- Tree Styles
+- Map Views & Panels (3)
+- DB Stats Command
+- Query Stats Middleware
+- External Importer Core (3)
+- Earth Engine Auth & Inputs (2)
+- App Icon 512
+- Water Dashboard JS
+- Administrative Units & Population (3)
+- PhysicalEnv Admin
+- LST Grid (2)
+- Nature-Based Solutions
+- Precipitation Rasters (2)
+- Precipitation Rasters (3)
+- Admin Unit Lookup
+- Administrative AppConfig
+- Core AppConfig
+- App Icon 192
 - Django Settings
-- Django manage.py
-- get_area
-- Map URL Routes & Panels
-- profile_requests.py
-- External Data Import Page
-- Map Page Layout
+- CBS & Enrichment Import (2)
+- Importer Upload Templates
+- manage.py
+- PhysicalEnv AppConfig
+- NDVI Mosaic
+- Urban Heat Models (2)
+- Weather AppConfig
+- Builtup AppConfig
+- Geo Functions
+- Apple Touch Icon
+- Favicon 16
+- Favicon 32
+- Energy AppConfig
+- Housing AppConfig
+- Importer AppConfig
+- Nature AppConfig
+- Request Profiler
+- Urban Heat AppConfig
+- Meteorology
+- Bbox Rounding Tests
+- ASGI
+- WSGI
+- AppConfig Base
 - require_POST
-- asgi.py
-- wsgi.py
-- StyleSuggestion.md (design system sugges
-- Shared Info Popover & Base
-- Python Dependencies
-- Housing Indicator Cards
-- System Architecture Layers
-- Water Indicator Cards
-- App Icon Large
-- App Icon Small
-- Upload Templates
-- CrossTwin App Icon (apple-touch-icon
-- CrossTwin favicon 16x16
-- CrossTwin favicon (32x32
-- AppConfig
-- File Upload Import
-- TODO.md DAG gap analysis
-- External Catalog Import
-- Three-Layer Indicator Dashboard Pattern
+- Style Suggestion Doc
 
 ## God Nodes (most connected - your core abstractions)
-1. `City` - 50 edges
-2. `Neighborhood` - 39 edges
-3. `Province` - 38 edges
-4. `District` - 25 edges
-5. `Building` - 20 edges
-6. `import_dataset()` - 20 edges
-7. `ImportResult` - 19 edges
-8. `PopulationDockTests` - 17 edges
-9. `Meta` - 17 edges
-10. `InterpolatedRasterBase` - 17 edges
+1. `City` - 48 edges
+2. `Neighborhood` - 35 edges
+3. `Province` - 28 edges
+4. `Building` - 20 edges
+5. `import_dataset()` - 20 edges
+6. `District` - 19 edges
+7. `calculate_lst()` - 19 edges
+8. `LandCoverVector` - 18 edges
+9. `Diagram` - 18 edges
+10. `ImportResult` - 18 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `deferred_cascades()` --references--> `Deferred Cascades (bulk import batching)`  [EXTRACTED]
-  importer/batching.py → README.md
-- `model_geojson()` --references--> `model_geojson single-SQL GeoJSON endpoint`  [EXTRACTED]
-  mainMap/views.py → README.md
-- `Import Layer (File Upload UI)` --semantically_similar_to--> `Data Import Zone (GeoTIFF/Vector/API/Tabular Sources)`  [INFERRED] [semantically similar]
-  ImporterArchitecture.html → SystemArchitecuture.html
-- `PopulationDockTests` --uses--> `PopulationProjection`  [INFERRED]
-  mainMap/tests.py → administrative/models.py
+- `watersupply indicators_panel.html (HTMX side panel)` --semantically_similar_to--> `builtup indicators_panel.html (HTMX side panel)`  [INFERRED] [semantically similar]
+  watersupply/templates/watersupply/partials/indicators_panel.html → builtup/templates/builtup/partials/indicators_panel.html
+- `housing indicators_grid.html` --conceptually_related_to--> `No inline <script> blocks convention`  [AMBIGUOUS]
+  housing/templates/housing/partials/indicators_grid.html → README.md
 - `Building` --uses--> `Neighborhood`  [INFERRED]
   builtup/models.py → administrative/models.py
+- `Building` --uses--> `SurfaceMaterialProperties`  [INFERRED]
+  builtup/models.py → physicalEnv/models.py
+- `Building` --uses--> `WallMaterialProperties`  [INFERRED]
+  builtup/models.py → physicalEnv/models.py
 
 ## Import Cycles
 - None detected.
 
 ## Hyperedges (group relationships)
 - **External import area-of-interest picker flow** — importer_templates_importer_external_data_updateui, importer_templates_importer_external_data_pickerlevelfor, importer_templates_importer_external_data_setpickerlevel, importer_templates_importer_external_data_loadpickerlevel, importer_templates_importer_external_data_togglearea, importer_templates_importer_external_data_unionbbox [EXTRACTED 1.00]
-- **Domain what-if sliders driving HTMX #indicators-grid swap** — housing_templates_housing_partials_indicators_panel_mortgage_rate_slider, urban_heat_vegetation_slider, watersupply_consumption_slider, htmx_slider_recalculate_pattern [EXTRACTED 1.00]
 - **Shared ? info button and popover help system** — templates_partials__info_btn, templates_partials__info_popover, watersupply_templates_watersupply_partials_indicators_grid, housing_templates_housing_partials_indicators_grid, urban_heat_templates_urban_heat_partials_indicators_grid [EXTRACTED 1.00]
-- **External catalog data sources** — readme_pdok, readme_rivm, readme_cbs, readme_sentinel_2, readme_knmi_data_platform, readme_google_earth_engine [EXTRACTED 1.00]
-- **Four model registries built by build_model_registry** — readme_model_registry_dict, readme_vector_registry, readme_raster_registry, readme_wms_registry [EXTRACTED 1.00]
-- **Raster save to COG to TiTiler tile flow** — readme_raster_registry, readme_raster_pipeline, readme_cog, readme_titiler [EXTRACTED 1.00]
+- **Map editing UI (feature form, backup bar, Editing.js, core.editing)** — mainmap_templates_mainmap_partials_feature_form, mainmap_templates_mainmap_partials_backup_bar, core_static_js_editing, core_editing [EXTRACTED 1.00]
 - **Standalone dashboards extending indicators_base.html** — housing_templates_housing_housing_indicators, urban_heat_templates_urban_heat_heat_indicators, watersupply_templates_watersupply_water_indicators, templates_indicators_base [EXTRACTED 1.00]
+- **Water dashboard what-if controls (consumption, rain_mm, season) driving indicator grid recalculation** — watersupply_templates_watersupply_partials_indicators_panel_consumption_slider, watersupply_templates_watersupply_partials_rain_slider, watersupply_templates_watersupply_partials_rain_slider_season_switch, watersupply_templates_watersupply_partials_indicators_grid [EXTRACTED 1.00]
 - **CrossTwin icon composition: physical city, digital wireframe, orbit ring** — core_static_ico_android_chrome_512x512_isometric_city_block, core_static_ico_android_chrome_512x512_cyan_wireframe_grid, core_static_ico_android_chrome_512x512_orbit_ring [INFERRED 0.85]
-- **DAG gap tracking across docs** — todo [INFERRED 0.85]
-- **Water panel slider -> recalculate -> grid swap flow** — watersupply_templates_watersupply_partials_indicators_panel_consumption_slider, watersupply_views_recalculate_indicators, watersupply_templates_watersupply_partials_indicators_grid, core_static_js_indicators_water [INFERRED 0.85]
+- **Domain HTMX side-panel dashboards swapped into #panel-body** — mainmap_templates_mainmap_toolbar, mainmap_templates_mainmap_side_panel, builtup_templates_builtup_partials_indicators_panel, watersupply_templates_watersupply_partials_indicators_panel, housing_templates_housing_partials_indicators_grid [INFERRED 0.85]
 
-## Communities (119 total, 33 thin omitted)
+## Communities (120 total, 24 thin omitted)
 
-### Community 1 - "Map View Tests"
+### Community 0 - "Administrative Units & Population"
 Cohesion: 0.06
-Nodes (18): CityOfTests, DashboardSummaryTests, LayerBoundsTests, LayerStyleTests, ModelGeoJsonTests, PopulationDockTests, QueryStatsMiddlewareTests, _bbox_around_rd() (+10 more)
+Nodes (48): CityAdmin, NeighborhoodAdmin, ProvinceAdmin, cities_within(), city_of(), neighborhoods_within(), province_of(), Shared helpers for resolving and aggregating by administrative unit. Lets any… (+40 more)
 
-### Community 10 - "Built-up & Property Models"
-Cohesion: 0.09
-Nodes (22): Building, BuildingEnergyLabel, Facility, Meta, Park, Property, Street, ZoningArea (+14 more)
+### Community 1 - "Map Layers & Events JS"
+Cohesion: 0.06
+Nodes (64): initializeUI(), activateToolLayers(), addAnimatedWmsLayer(), addCategoricalLegend(), addCoordinatesToBounds(), addLayer(), addRasterLayer(), addRasterLayerFromConfig() (+56 more)
 
-### Community 11 - "Import Storage CRS Tests"
-Cohesion: 0.10
-Nodes (12): AdminAreasGeojsonTests, BulkUpsertImportTests, GenericImportStorageCrsTests, GeoJsonFeatureImportStorageCrsTests, KNMIWbgtCatalogTests, _rd_feature(), _wgs84_frame(), TestCase (+4 more)
+### Community 2 - "SVF Calculation"
+Cohesion: 0.06
+Nodes (55): DigitalSurfaceModel, _area(), calculate_svf(), dsm_extent(), dsm_for_view(), existing_svf(), horizon_shift_vector(), _intersection() (+47 more)
 
-### Community 12 - "Thermal Comfort Rasters"
+### Community 3 - "Water Supply Models"
+Cohesion: 0.06
+Nodes (42): The most recent cost record (the model has no province/year), or None., AppConfig, WatersupplyConfig, LossesChoices, LossesTypes, MeteredResidential, NonRevenueWater, OPEX (+34 more)
+
+### Community 4 - "Land-Cover Release & Batching"
 Cohesion: 0.07
-Nodes (20): LandSurfaceTemperature, MeanRadiantTemperature, Meta, NatureBasedSolutionPoint, NatureBasedSolutionPolygon, PET, SkyViewFactor, StressCategory (+12 more)
+Nodes (47): is_restoring(), True while restore_backup() runs. Receivers that undo an edit's side effects on…, calculate_pipeline_land_take(), Land cover the housing pipeline would build on (dashboard only, writes…, _buffer_sql(), Land-cover overlay edits driven by other layers. urbanize_around() turns a…, Undo urbanize_around() for an editor building that moved or was deleted: every…, The 'urban fabric' class, matched case-insensitively like the PDOK BRT import's… (+39 more)
 
-### Community 14 - "External Import Tests"
-Cohesion: 0.09
-Nodes (5): CBSPopulationForecastImportTests, _FakeResponse, KNMIWbgtImportTests, CBS 85173NED: region column RegioIndeling2021, x 1000 scale, forecast variants., Just enough of requests.Response for KNMIImporter.
+### Community 5 - "Water Supply Calculations"
+Cohesion: 0.07
+Nodes (48): calculate_available_freshwater(), calculate_co2_emission(), calculate_collection_ratio(), calculate_coverage(), calculate_drought_area(), calculate_energy_consumption(), calculate_infiltration(), calculate_nrw() (+40 more)
 
-### Community 15 - "Chart Geometry Helpers"
-Cohesion: 0.10
-Nodes (28): PopulationProjection, Scenario, city_of(), _adjust(), annual_growth_rate(), _city_growth_factor(), _city_value(), extrapolate() (+20 more)
+### Community 6 - "LST/SVF Tool Frontend"
+Cohesion: 0.07
+Nodes (43): _attachEditor(), _bindDrawEvents(), _cancelEdit(), _drawModeFor(), _featureUrl(), _hideOriginal(), _openEditorPanel(), _removeDrawControl() (+35 more)
 
-### Community 16 - "Water Signal Cascade"
-Cohesion: 0.16
-Nodes (25): ConsumptionCapita, TotalWaterProduction, city_population_cascaded(), city_saved(), consumption_saved(), demand_saved(), extraction_changed(), imported_changed() (+17 more)
-
-### Community 17 - "Water Supply Indicators"
-Cohesion: 0.10
-Nodes (22): AreaAffectedDrought, AvailableFreshWater, SensibilityChoices, WaterTreatment, cities_within(), calculate_available_freshwater(), calculate_coverage(), calculate_drought_area() (+14 more)
-
-### Community 18 - "WMS Tile Proxy"
-Cohesion: 0.13
-Nodes (19): WMSLayer, _fetch_with_retry(), _find_dimension_values(), _last_n_time_steps(), _local_tag(), _parse_iso8601(), _parse_iso8601_duration(), _retry_delay() (+11 more)
-
-### Community 19 - "Spatial Parent Index"
-Cohesion: 0.12
-Nodes (19): CBSImporter, GEEImporter, _ImportBlocked, get_raster_field_name(), deferred_cascades(), _import_feature_rows(), _import_geojson_features(), to_storage_srid() (+11 more)
-
-### Community 2 - "File Upload Importer"
+### Community 7 - "Model Registry & Forms"
 Cohesion: 0.06
-Nodes (41): ModelRegistryTests, GeoUploadForm, MappingForm, get_catalog_grouped(), get_target_model_choices(), gpd_read_any(), _build_mapping_form(), _cast_value() (+33 more)
+Nodes (39): atomic, build_model_registry(), Build MODEL_REGISTRY dynamically from specified apps., deferred_cascades(), _finalize_landcover(), Batch-import helpers shared by the file-upload and external-data importers. -…, Run the administrative population cascade, the land-cover urban-area recompute…, GeoUploadForm (+31 more)
 
-### Community 20 - "Water Model Chain"
-Cohesion: 0.11
-Nodes (12): ElectricityCost, Meta, WMSLayerAdmin, ImportedWater, Meta, MeteredResidential, PipeNetwork, UsersLocation (+4 more)
+### Community 8 - "Map Editing & Backup"
+Cohesion: 0.10
+Nodes (37): AppConfig, active_backup(), backup(), _backup_bar(), backup_discard(), backup_restore(), _build_form(), _check_constraints() (+29 more)
 
-### Community 21 - "COG Raster Export"
-Cohesion: 0.12
-Nodes (17): Command, _cog_filename(), export_all_rasters(), export_geotiff_to_cog(), export_raster_to_cog(), interpolate_raster(), _reproject_and_cog(), auto_export_cog() (+9 more)
+### Community 9 - "Water Supply Models (2)"
+Cohesion: 0.07
+Nodes (26): EnvironmentalCosts, WMSLayerAdmin, baseline_population(), consumption_m3_yr(), demand_m3_d(), The population -> consumption -> demand -> supply security -> service time…, Population the stored chain uses for `city` in `year`: the CBS median forecast…, Daily water demand in m3/day: L/person/day / 1000 * persons. (+18 more)
 
-### Community 22 - "Spatial Parent Tests"
-Cohesion: 0.14
-Nodes (8): SpatialParentIndex, DeferredCascadeImportTests, SpatialParentIndexTests, _rd_square(), GEOSGeometry, Point-in-polygon lookup against a fixed set of parent rows. Each parent's…, The parent containing `geom`'s representative point, or None., Neighborhoods saved inside deferred_cascades() cascade once per parent, at the…
+### Community 10 - "Housing & Built-up Models"
+Cohesion: 0.10
+Nodes (19): calculate_mortgage_indicators(), calculate_new_units(), calculate_supply_demand(), calculate_supply_demand_for_unit(), Housing supply vs demand for a city and year. DAG edges: Urbanization ->…, Mortgage indicators from central bank policy and credit conditions. DAG edges:…, Aggregate supply/demand across all cities within an admin unit., New housing units in the pipeline. DAG edges: Zoning_Status -> New_Units… (+11 more)
 
-### Community 24 - "Interpolated Weather Rasters"
-Cohesion: 0.14
-Nodes (10): InterpolatedRasterBase, Calculate bounds polygon from the raster's extent, Determine bounds for interpolation, Convert extent tuple to Polygon, Get measurements within time window for a specific field Args:…, Extract point data from measurements Args: measurements: QuerySet of…, Generate raster by interpolating measurements Must be implemented by child…, Override in child classes to specify which measurement field to use (+2 more)
-
-### Community 26 - "Bulk Writer"
-Cohesion: 0.14
-Nodes (7): BulkWriter, AdminBboxSourceCatalogTests, BulkImportRegistryTests, SimpleTestCase, Collects rows and writes them `batch_size` at a time. With a unique field, rows…, A writer when `Model` can safely be bulk-written, otherwise None (use the row…, Write what is left, replay the skipped signals and invalidate the layer cache.
-
-### Community 27 - "Nature Layers"
+### Community 11 - "Built-up Indicators"
 Cohesion: 0.15
-Nodes (8): Forests, GreenSpaces, Meta, ProtectedArea, ProtectionType, WaterBodies, WaterWaysLN, WaterWaysPG
+Nodes (22): calculate_building_age(), calculate_building_mix(), calculate_building_stock(), calculate_facilities(), calculate_green_space(), calculate_street_network(), _pct(), Distribution of construction years over the Dutch typology periods. DAG edges:… (+14 more)
 
-### Community 29 - "Storage SRID Conversion"
-Cohesion: 0.17
-Nodes (10): ToStorageSridTests, _square(), ensure_multipolygon(), _import_atom_gml_features(), _to_multipolygon(), MultiPolygon, Polygon, Load only what the lookup needs: pk, geom and any attributes read off the… (+2 more)
+### Community 12 - "LST Pipeline & NDVI"
+Cohesion: 0.15
+Nodes (20): LandCoverRaster, calculate_lst(), default_window(), grid_for(), LSTError, ndvi_layer(), ndvi_layers_in(), _ndvi_queryset() (+12 more)
 
-### Community 3 - "Administrative Hierarchy"
-Cohesion: 0.11
-Nodes (24): CityAdmin, NeighborhoodAdmin, ProvinceAdmin, City, District, Meta, Neighborhood, Province (+16 more)
+### Community 13 - "External Importer Core"
+Cohesion: 0.12
+Nodes (15): import_dataset(), ImportResult, Register a WMS layer by creating/updating its row in the target WMS model. This…, Fetch tabular data from CBS OData API and import to Django model. Args:…, Import handler for Sentinel-2 datasets., Look up the real acquisition timestamp of the most recent Sentinel-2 L2A scene…, Fetch raster from Sentinel-2 WCS (e.g., WorldCover)., Fetch processed Sentinel-2 imagery via the Copernicus Data Space Ecosystem's… (+7 more)
 
-### Community 30 - "Urban Area Signal Tests"
-Cohesion: 0.20
-Nodes (6): UrbanAreaSetBasedUpdateTests, UrbanAreaSourceComputationTests, _square(), TestCase, physicalEnv.signals.landcover_changed: Neighborhood.urban_area is derived from…, The single-statement recompute (docs/PERFORMANCE.md §2): clipping, cascade…
+### Community 14 - "Earth Engine Auth & Inputs"
+Cohesion: 0.13
+Nodes (20): GEEAuthManager, Manages Google Earth Engine authentication., Initialize GEE for the given Cloud project. `ee.Authenticate()` is a one-time-…, check_download_size(), _collections(), download_bytes(), fetch_scene_inputs(), find_scenes() (+12 more)
 
-### Community 35 - "Water Extraction & Production"
-Cohesion: 0.16
-Nodes (10): EnvironmentalCosts, ExtractionWater, calculate_co2_emission(), calculate_total_extraction(), calculate_total_production_day(), The most recent cost record (the model has no province/year), or None., Total CO₂ emissions from extraction pumps in kg CO₂/day. DAG edge:…, Total active extraction in m³/day from wells within the adminBund. DAG edges:… (+2 more)
+### Community 15 - "SMW Equations"
+Cohesion: 0.12
+Nodes (23): Constants of the Statistical Mono-Window (SMW) LST algorithm for Landsat 8/9.…, apply_qa_emissivity(), bare_ground_emissivity(), _bit_set(), cloud_mask(), fractional_vegetation_cover(), interpolate_tpw(), land_surface_temperature() (+15 more)
 
-### Community 36 - "Water Derived Saves"
-Cohesion: 0.14
-Nodes (6): CoverageWaterSupply, SupplySecurity, DAG edges: Total_Water_Demand -> Supply_Security Total_Water_Prod ->…, DAG edges: Total_Population -> Total_Consumption ConsumptionCapita ->…, Derived from the geometry: affected area (km2) and, if not given, the Province., Set productionDay/YR (Mm3) and costDay/YR (EUR) from the active wells of the…
-
-### Community 4 - "Housing Calculations"
-Cohesion: 0.08
-Nodes (29): CentralBankPolicy, CreditSupplyConditions, HousePriceIndex, HousingAffordability, HousingProject, HousingSupplyDemand, Meta, Mortgage (+21 more)
-
-### Community 41 - "KNMI Importer"
-Cohesion: 0.26
-Nodes (5): KNMIImporter, KNMIFilenameTests, datetime, KNMI Data Platform (Open Data API v1). Flow: list the newest file of a dataset…, UTC datetime encoded in a KNMI file name, or None if it has none.
-
-### Community 42 - "KNMI GeoTIFF Tests"
-Cohesion: 0.27
-Nodes (4): KNMIToGeotiffTests, _write_grid(), Convert a downloaded KNMI grid to a single-band float32 GeoTIFF in…, Small synthetic grid over the Netherlands standing in for a KNMI file.
-
-### Community 46 - "Weather Models"
-Cohesion: 0.18
-Nodes (6): Meta, Meteorology, WeatherStation, WindSpeedRaster, Interpolated wind speed raster layer, Time-series weather measurements from stations
-
-### Community 5 - "PDOK Importer"
-Cohesion: 0.08
-Nodes (24): ImportResult, PDOKImporter, Sentinel2Importer, get_model_class(), import_dataset(), load_raster_into_target_model(), Fetch raster data from PDOK WCS service, tiling the request when the area would…, Register a WMS layer by creating/updating its row in the target WMS model. This… (+16 more)
-
-### Community 50 - "Non-Revenue Water"
-Cohesion: 0.20
-Nodes (6): LossesChoices, LossesTypes, NonRevenueWater, calculate_nrw(), Non-Revenue Water breakdown. DAG edges: Real_Losses → NRW, ILI Apparent_Losses…, Create a random NonRevenueWater loss event. Picks a random LossesChoices,…
-
-### Community 52 - "Building Derived Field Tests"
-Cohesion: 0.31
-Nodes (5): BuildingDerivedFieldsTests, _square(), TestCase, Fields Building.save() derives must be stored on every save path., A square MultiPolygon in the storage CRS (metres).
-
-### Community 54 - "Bbox Rounding"
-Cohesion: 0.31
-Nodes (4): RoundBboxTests, _round_bbox(), SimpleTestCase, Round the numbers of the `bbox=` parameter in a raw query string, leaving…
-
-### Community 6 - "WBGT Heat Classification"
-Cohesion: 0.08
-Nodes (31): ClassifyWbgtTests, WbgtIndicatorTests, WbgtRasterStatsTests, calculate_nbs_coverage(), classify_pet(), classify_utci(), classify_wbgt(), get_latest_meteorology() (+23 more)
-
-### Community 61 - "db_stats Command"
-Cohesion: 0.33
-Nodes (3): Command, BaseCommand, Show the most expensive SQL statements recorded by pg_stat_statements…
-
-### Community 64 - "Google Earth Engine Import"
-Cohesion: 0.33
-Nodes (3): GEEAuthManager, Manages Google Earth Engine authentication., Initialize GEE for the given Cloud project. `ee.Authenticate()` is a one-time-…
-
-### Community 65 - "Water OPEX"
-Cohesion: 0.33
-Nodes (4): OPEX, calculate_opex_recovery(), OPEX recovery percentage. DAG edges: OPEX → OPEX_Recovery CollectionRatio →…, DAG edges: Total_Extraction/Total_Water_Prod -> OPEX Imported_Water -> OPEX,…
-
-### Community 7 - "Deferred Cascade Batching"
-Cohesion: 0.07
-Nodes (27): LandCoverClassesAdmin, SurfaceMaterialPropertiesAdmin, DigitalElevationModel, DigitalElevationModelWMS, DigitalSurfaceModel, DigitalSurfaceModelWMS, LandCoverClasses, LandCoverRaster (+19 more)
-
-### Community 8 - "Map Editing Backend"
+### Community 16 - "CBS & Enrichment Import"
 Cohesion: 0.10
-Nodes (36): EditBackup, EditBackupRow, Meta, active_backup(), backup(), _backup_bar(), backup_discard(), backup_restore() (+28 more)
+Nodes (22): Exception, GEOSGeometry, default_wms_legend_url(), ensure_multipolygon(), GEEImporter, _import_feature_rows(), _ImportBlocked, _legend_url_from_capabilities() (+14 more)
 
-### Community 0 - "Map Layer Management"
-Cohesion: 0.06
-Nodes (63): initializeUI(), activateToolLayers(), addAnimatedWmsLayer(), addCategoricalLegend(), addCoordinatesToBounds(), addLayer(), addRasterLayer(), addRasterLayerFromConfig() (+55 more)
+### Community 17 - "Heat Indicators"
+Cohesion: 0.13
+Nodes (22): Look up a Province/City/District/Neighborhood instance by level + name., resolve_admin_unit(), calculate_nbs_coverage(), calculate_urban_morphology(), classify_pet(), classify_utci(), get_latest_meteorology(), get_thermal_indices() (+14 more)
 
-### Community 13 - "Project Architecture Docs"
-Cohesion: 0.07
-Nodes (34): build_model_registry(), Build MODEL_REGISTRY dynamically from specified apps., External data sources (PDOK, RIVM, CBS, Sentinel-2, KNMI, GEE), Affordability stress chain gap (Rent/Mortgage/Water tariff -> Affordability_Stress), Product / feature backlog (alerts, narratives, new dashboards), Urban heat DSM->SVF->Tmrt/PET->UTCI chain (SOLWEIG, unimplemented), Watersupply DAG gaps (Network->Real_Losses, WT_Efficiency->WT_Cost, ...), CrossTwin README (+26 more)
+### Community 18 - "Urban Heat Models"
+Cohesion: 0.11
+Nodes (14): MeanRadiantTemperature, Meta, NeighborhoodHeat, PET, Physiological Equivalent Temperature (PET) measurements, Surface Urban Heat Island Intensity (SUHII)) measurements, Heat and shade indicators per neighborhood, from the Klimaateffectatlas WFS…, Mean Radiant Temperature (MRT) measurements (+6 more)
 
-### Community 23 - "Population Chart Geometry"
+### Community 19 - "Housing & Built-up Models (2)"
+Cohesion: 0.14
+Nodes (20): Pure function: takes DB data dict, returns flat indicators dict.…, calculate_affordability(), calculate_house_price_index(), calculate_new_units_for_unit(), calculate_property_indicators(), calculate_rent_indicators(), calculate_zoning(), Aggregate new units across all cities within an admin unit. (+12 more)
+
+### Community 20 - "Housing & Built-up Models (3)"
+Cohesion: 0.13
+Nodes (19): GroundwaterDepth, Groundwater depth statistic (GHG/GLG/GVG) of the BIS Nederland groundwater…, A polygon of the Dutch soil map, typed by SoilType., SoilArea, curve_number(), infiltration_coefficient(), is_drained(), _matches() (+11 more)
+
+### Community 21 - "WMS Tile Proxy"
+Cohesion: 0.15
+Nodes (19): WMSLayer, _fetch_with_retry(), _find_dimension_values(), _last_n_time_steps(), _local_tag(), _parse_iso8601(), _parse_iso8601_duration(), Return the raw text of the <Dimension name="time"> for a given layer. (+11 more)
+
+### Community 22 - "Map Views & Panels"
+Cohesion: 0.14
+Nodes (20): _display_field(), _extract_unit(), _field_label(), _field_meta_entry(), _field_metadata(), _geojson_sql(), _humanize_field_name(), model_geojson() (+12 more)
+
+### Community 23 - "Population Chart"
 Cohesion: 0.16
 Nodes (19): band_d(), build_population_chart(), pts(), x_of(), y_of(), _fmt(), monotone_segments(), nice_step() (+11 more)
 
-### Community 25 - "GeoJSON Layer API"
-Cohesion: 0.16
-Nodes (15): _cog_statistics(), colormap_legend_stops(), _lookup_style(), raster_display_name(), resolve_raster_style(), get_raster_info(), get_raster_tiles(), Colormap + value-range resolution for raster tile rendering. Previously every… (+7 more)
+### Community 24 - "Urban Fabric Buffer & Arch Diagrams"
+Cohesion: 0.14
+Nodes (10): apps(), Diagram, editing(), importer(), infiltration(), on_demand(), overview(), Generate the CrossTwin architecture diagram suite (SVG) into… (+2 more)
 
-### Community 28 - "Housing Views"
-Cohesion: 0.21
-Nodes (14): resolve_admin_unit(), get_population(), population_params(), _build_indicators(), _get_adminUnit_data(), housing_indicators(), housing_indicators_json(), recalculate_indicators() (+6 more)
-
-### Community 31 - "Map Editing Frontend"
-Cohesion: 0.28
-Nodes (13): _attachEditor(), _bindDrawEvents(), _cancelEdit(), _drawModeFor(), _featureUrl(), _hideOriginal(), _openEditorPanel(), _removeDrawControl() (+5 more)
-
-### Community 32 - "Map Page Wiring & Tour"
-Cohesion: 0.18
-Nodes (12): clearTourHighlight(), endTour(), findActiveAdminTool(), positionActionsMenu(), refreshActivePanel(), renderTourStep(), setActionsMenuOpen(), startTour() (+4 more)
-
-### Community 34 - "Map Initialization"
-Cohesion: 0.24
-Nodes (11): updateCityName(), add3DBuildings(), addExternalLayers(), changeBasemap(), getSavedCameraState(), initializeUrbanTwinMap(), onAdminLayerLoaded(), saveCameraState() (+3 more)
-
-### Community 38 - "Layer Cache Versioning"
-Cohesion: 0.24
-Nodes (9): bump_layer_version(), get_cache(), _label(), layer_version(), _version_key(), Versioned cache keys for data that only changes when rows are written. Every…, caches[alias], falling back to the default cache when the alias isn't…, Current cache version of a model's data. A missing version is seeded with the… (+1 more)
-
-### Community 39 - "Indicator Dashboard Templates"
-Cohesion: 0.23
-Nodes (9): applyZone(), zoneStyle(), initGauges() (global), Vegetation Coverage what-if slider, Urban Morphology aspect ratio (H/W), partials/_info_btn.html, partials/_info_popover.html, heat_indicators.html (Urban Heat Dashboard) (+1 more)
-
-### Community 40 - "Standalone Dashboard Pages"
+### Community 25 - "LST Tool Views"
 Cohesion: 0.20
-Nodes (10): applyZone(), zoneStyle(), Mortgage Interest Rate what-if slider, #indicators-grid HTMX swap target, Consumption per Capita what-if slider, pop_scenario / pop_growth population what-if params, housing_indicators.html (Province Housing Dashboard), indicators_base.html (standalone dashboard shell) (+2 more)
+Nodes (18): BadRequest, _bbox(), _date(), _error(), _grid_json(), lst_calculate(), view(), lst_scenes() (+10 more)
 
-### Community 44 - "Weather Raster Views"
+### Community 26 - "Spatial Parent Index"
+Cohesion: 0.12
+Nodes (9): Point-in-polygon lookup against a fixed set of parent rows. Each parent's…, Load only what the lookup needs: pk, geom and any attributes read off the…, The parent containing `geom`'s representative point, or None., SpatialParentIndex, _gml_multipolygon(), _import_atom_gml_features(), WGS84 MultiPolygon of every gml:Polygon below `elem` (None if there are none,…, Stream an INSPIRE Planned Land Use GML file over HTTP and import the… (+1 more)
+
+### Community 27 - "Housing & Built-up Models (4)"
+Cohesion: 0.14
+Nodes (9): Building, BuildingEnergyLabel, Meta, NeighborhoodClimateRisk, Park, Property, Proxy onto Building, filed under the Energy app so the energy-label fields…, Climate risks to the building stock of a neighborhood, from the… (+1 more)
+
+### Community 28 - "COG Export"
+Cohesion: 0.17
+Nodes (13): Command, _cog_filename(), export_all_rasters(), export_geotiff_to_cog(), export_raster_to_cog(), get_raster_field_name(), Build a COG filename from whatever satellite/process metadata the raster model…, Reproject a local GeoTIFF to EPSG:4326 and convert it to a COG on disk, saving… (+5 more)
+
+### Community 29 - "OSM Overpass Importer"
+Cohesion: 0.17
+Nodes (9): OSMImporter, Import handler for OpenStreetMap through the Overpass API. The Overpass JSON is…, Overpass QL for `dataset` inside bbox [west, south, east, north] (WGS84)., Leading number of an OSM tag value: '12 m' -> 12.0, '7,5' -> 7.5, '40 ft' ->…, (Multi)polygon of a multipolygon relation from its member ways. A ring may be…, GeoJSON geometry of one Overpass element (out center or out geom)., Overpass elements -> GeoJSON features whose properties are the OSM tags plus…, OSM tags are strings ('12 m'); give numeric model fields a number, or drop the… (+1 more)
+
+### Community 30 - "Nature Models"
+Cohesion: 0.12
+Nodes (9): Forests, GreenSpaces, Meta, ProtectedArea, ProtectionType, Tree, WaterBodies, WaterWaysLN (+1 more)
+
+### Community 31 - "External Catalog Views"
+Cohesion: 0.14
+Nodes (12): get_catalog_grouped(), _kea_building(), _kea_neighborhood(), Mapping for a per-buurt KEA layer: one row per stored neighborhood, keyed on…, Return the catalog grouped by category. Structure: { category: [datasets] }…, Mapping for a per-pand KEA layer: attributes written onto existing BAG…, get_external_data(), require_POST (+4 more)
+
+### Community 32 - "LST Grid"
+Cohesion: 0.13
+Nodes (10): Grid, The one raster grid every LST input is put on before the equations run., Smallest grid with corners on multiples of `resolution` that covers the extent., Affine in Earth Engine's order: [xScale, xShear, xOffset, yShear, yScale,…, [west, south, east, north] in EPSG:4326, for filtering image collections., North-up grid: (x0, y0) is the top-left corner, cells are `resolution` m square., Grid over the part of the view the NDVI layers cover (LST is empty elsewhere)., The [west, south, east, north] WGS84 box as a polygon in the storage CRS. (+2 more)
+
+### Community 33 - "Layer Cache Versioning"
+Cohesion: 0.20
+Nodes (13): bump_layer_version(), get_cache(), _label(), layer_version(), Versioned cache keys for data that only changes when rows are written. Every…, caches[alias], falling back to the default cache when the alias isn't…, Current cache version of a model's data. A missing version is seeded with the…, Invalidate every cached response built from these models' rows. (+5 more)
+
+### Community 34 - "LST/SVF Tool Frontend (2)"
+Cohesion: 0.18
+Nodes (12): actionsMenu, actionsMenuBtn, ADMIN_PANEL_TOOLS, clearTourHighlight(), endTour(), findActiveAdminTool(), positionActionsMenu(), refreshActivePanel() (+4 more)
+
+### Community 35 - "Raster Tile API"
+Cohesion: 0.21
+Nodes (12): get_raster_info(), get_raster_tiles(), Return raster metadata including bounds., Return TiTiler tile URL for a given raster layer., _cog_statistics(), colormap_legend_stops(), _lookup_style(), raster_display_name() (+4 more)
+
+### Community 36 - "External Data Import UI"
+Cohesion: 0.15
+Nodes (12): Catalog bbox_from (area-of-interest picker level), external_data.html (Import Public Data), clearBbox(), Import Selected click handler (POST start_external_import), initBboxMap(), loadPickerLevel(), pickerLevelFor(), setPickerLevel() (+4 more)
+
+### Community 37 - "Weather Raster Models"
+Cohesion: 0.15
+Nodes (8): interpolate_raster(), Interpolates raster data using Radial Basis Function (RBF) interpolation.…, HumidityRaster, Determine bounds for interpolation, Extract point data from measurements Args: measurements: QuerySet of…, Generate raster by interpolating measurements Must be implemented by child…, Generic interpolation method - works for all child classes, Interpolated relative humidity raster layer
+
+### Community 38 - "Map Init & City Name"
+Cohesion: 0.24
+Nodes (11): updateCityName(), add3DBuildings(), addExternalLayers(), ADMIN_LEVELS, changeBasemap(), getSavedCameraState(), initializeUrbanTwinMap(), onAdminLayerLoaded() (+3 more)
+
+### Community 39 - "Housing Dashboard Cards"
+Cohesion: 0.18
+Nodes (14): housing indicators_grid.html, Average Fixed Mortgage Rate card (annuity, 30y), Pipeline land take (greenfield vs infill) display, Zoning & Land Value card (HILUCS shares), Population dock, Three-Layer Indicator Dashboard Pattern, MOCK_DATA fallback, TODO - Unimplemented DAG Edges (+6 more)
+
+### Community 40 - "Housing & Built-up Models (5)"
+Cohesion: 0.14
+Nodes (8): DigitalElevationModelWMS, DigitalSurfaceModelWMS, HILUCSLandUse, LandCoverWMS, Meta, INSPIRE HILUCS land-use classification…, SurfaceMaterialProperties, WallMaterialProperties
+
+### Community 41 - "Postgres Check Tool"
+Cohesion: 0.32
+Nodes (13): _connect(), _create_extensions_help(), _diagnose_connection_error(), _install_postgis_help(), _install_postgres_help(), main(), _postgres_binaries(), Check that PostgreSQL is reachable with the .env settings and has PostGIS. Run… (+5 more)
+
+### Community 42 - "Weather Raster Models (2)"
+Cohesion: 0.15
+Nodes (7): InterpolatedRasterBase, Calculate bounds polygon from the raster's extent, Convert extent tuple to Polygon, Get measurements within time window for a specific field Args:…, Convenience method to generate raster for a Province Args: Province: Province…, Override in child classes to specify which measurement field to use, Override in child classes to specify metadata keys Returns tuple: (min_key,…
+
+### Community 43 - "Administrative Units & Population (2)"
+Cohesion: 0.28
+Nodes (12): city_changed(), _defer(), deferred_population_cascade(), district_changed(), _flush_population_cascade(), neighborhood_changed(), receiver, Postpone the District -> City -> Province cascade until the block ends, then… (+4 more)
+
+### Community 44 - "LST/SVF Tool Frontend (3)"
+Cohesion: 0.33
+Nodes (12): init(), calculate(), csrfToken(), loadInfo(), open(), params(), readJson(), refreshButton() (+4 more)
+
+### Community 45 - "External Importer Core (2)"
+Cohesion: 0.19
+Nodes (10): _enrich_rows(), get_model_class(), _import_geojson_features(), _keep_existing(), Fetch vector data from PDOK WFS service and import directly to Django model.…, Fetch vector data from an OGC API Features service (PDOK's newer REST/JSON…, __require_existing__ {"property", "model", "field" (default pk)}: drop the…, __enrich__: write the mapped attributes onto existing rows of Model, matched by… (+2 more)
+
+### Community 46 - "Heat Calculations"
+Cohesion: 0.19
+Nodes (12): calculate_green_area(), calculate_vegetation_coverage(), classify_wbgt(), _raster_stats_sql(), Get min/max/mean/stddev from a raster clipped to a geometry., Total green area (parks + green land cover) in km². DAG edges: LandCover →…, Classify a WBGT value (°C) into a heat-stress category., Gauge colour matching classify_wbgt (None when there is no value). (+4 more)
+
+### Community 47 - "Heat Dashboard JS"
+Cohesion: 0.23
+Nodes (9): applyZone(), zoneStyle(), initGauges() (global), partials/_info_btn.html, partials/_info_popover.html, Thermal comfort indices (LST, PET, UTCI, WBGT, SVF, SUHII), heat_indicators.html (Urban Heat Dashboard), Vegetation Coverage what-if slider (+1 more)
+
+### Community 48 - "KNMI Importer"
+Cohesion: 0.24
+Nodes (8): datetime, KNMIImporter, load_raster_into_target_model(), KNMI Data Platform (Open Data API v1). Flow: list the newest file of a dataset…, UTC datetime encoded in a KNMI file name, or None if it has none., Convert a downloaded KNMI grid to a single-band float32 GeoTIFF in…, Import the newest file of the dataset described by a catalog entry., Load a downloaded raster file into its catalog entry's target_model. The…
+
+### Community 49 - "Water Dashboard Cards"
+Cohesion: 0.26
+Nodes (12): No inline <script> blocks convention, Watersupply gaps (collection ratio, WT_Efficiency, Apparent_Losses -> ILI), Consumption per Capita what-if slider, watersupply indicators_grid.html, Infiltration card (SCS Curve Number), Non-Revenue Water card (ILI), Supply Security / Service Time cards, watersupply indicators_panel.html (HTMX side panel) (+4 more)
+
+### Community 50 - "Design System & Base Template"
+Cohesion: 0.18
+Nodes (12): Design anti-patterns (glow, hover-lift, shimmer gradients), Civic Cartography Dashboard design system, Palette (ink neutrals, cyanotype accent, traffic-light status), Typography (Archivo, Inter, IBM Plex Mono), base.html (site shell template), Template blocks (extra_css, extra_js, content), Header height CSS variable sync, HTMX 1.9.10 library (+4 more)
+
+### Community 51 - "Weather Raster Signals"
 Cohesion: 0.24
 Nodes (11): create_latest_view(), create_raster_view(), delete_raster_view(), on_raster_deleted(), on_raster_saved(), receiver, Create a view that always shows the latest raster, Create a database view for a single raster (+3 more)
 
-### Community 48 - "Frontend Config"
-Cohesion: 0.22
-Nodes (9): roundBboxInUrl(), roundCoord(), availableLayers, BASEMAPS, CONFIG, layerVisibility, loadedLayers, TOOL_CATEGORIES (+1 more)
-
-### Community 51 - "Water Dashboard Views"
-Cohesion: 0.31
-Nodes (8): _build_indicators(), _get_adminUnit_data(), _population_context(), recalculate_indicators(), water_indicators(), Pure function: takes DB data dict, returns indicators dict., Template context that lets the panel's own controls keep the population what-if., Fetch all fixed DB values for an administrative unit/year. Returns a dict.…
-
-### Community 55 - "Version Info"
-Cohesion: 0.32
-Nodes (6): _derive_version(), _get_git_info(), version_context(), Derive a semver-ish label from the raw commit count. 0–99 → v0.1, 100–199 →…, Inject git info into every template rendered by Django., Run git commands once and cache the result for the process lifetime. In…
-
-### Community 56 - "Water Panel & Slider JS"
-Cohesion: 0.38
-Nodes (6): applyZone(), zoneStyle(), Water Supply Indicators Panel (partial), consumption-slider (Consumption per Capita what-if), Population scenario what-if (pop_scenario / pop_growth), HTMX indicator recalculation pattern
-
-### Community 62 - "Land Cover Styles"
-Cohesion: 0.40
-Nodes (5): build_landcover_style_and_legend(), get_landcover_color(), Color scheme for LandCoverVector.land_cover_type…, Resolve a stable hex color for a LandCoverClasses.class_name value., Build a Mapbox `match` fill-color expression plus a legend for every class_name…
-
-### Community 67 - "WMS Legend Lookup"
-Cohesion: 0.40
-Nodes (4): default_wms_legend_url(), _legend_url_from_capabilities(), Look up a layer's <LegendURL><OnlineResource xlink:href="..."/> from the WMS…, Resolve a legend image URL for a WMS layer, used as a fallback when a catalog…
-
-### Community 79 - "Django manage.py"
-Cohesion: 0.50
-Nodes (3): main(), Run administrative tasks., Django's command-line utility for administrative tasks.
-
-### Community 9 - "Map URL Routes & Panels"
-Cohesion: 0.08
-Nodes (36): resolve_admin_unit_at_point(), _wgs84_to_storage(), admin_unit_at_point(), available_layers(), dashboard_summary(), _display_field(), _extract_unit(), _field_label() (+28 more)
-
-### Community 33 - "External Data Import Page"
-Cohesion: 0.15
-Nodes (12): clearBbox(), Import Selected click handler (POST start_external_import), initBboxMap(), loadPickerLevel(), pickerLevelFor(), setPickerLevel(), toggleArea(), updateUI() (+4 more)
-
-### Community 37 - "Map Page Layout"
-Cohesion: 0.19
-Nodes (13): #actions-menu (upload, API retrieve, year selector), #btn-dashboard, #legend-stack, #population-panel dock container, #side-panel / #panel-body, Left toolbar (topic tool buttons with hx-get indicator panels), applyPopulationControls() (window.POP_SCENARIO / POP_GROWTH), mainMap.html (map page) (+5 more)
-
-### Community 43 - "Shared Info Popover & Base"
+### Community 52 - "Map Views & Panels (2)"
 Cohesion: 0.18
-Nodes (12): base.html (site shell template), LoadingManager (fetch/XHR overlay interceptor), _info_btn.html (reusable ? helper button), _info_popover.html (shared popover + delegated script), Design anti-patterns (glow, hover-lift, shimmer gradients), Civic Cartography Dashboard design system, Palette (ink neutrals, cyanotype accent, traffic-light status), Typography (Archivo, Inter, IBM Plex Mono) (+4 more)
+Nodes (8): Like <int:>, but also matches negative ids (user-created Buildings, see…, SignedIntConverter, admin_unit_at_point(), layer_bounds(), map_view(), Display the map page., Point-in-polygon lookup for the map center: resolve the smallest administrative…, Returns the bounding box of a layer in WGS84, as [[west, south], [east, north]]…
 
-### Community 45 - "Python Dependencies"
+### Community 53 - "README Architecture Concepts"
+Cohesion: 0.29
+Nodes (11): CrossTwin README, DAG edge coverage (31 of 103 edges implemented), deferred_cascades() bulk-write batching, DPSIR Causal Framework (core/DAG.dot), Cached GeoJSON API with viewport loading, Importer System (file upload + external catalog), Model Registry (MODEL/VECTOR/RASTER/WMS_REGISTRY), Raster to COG Pipeline (+3 more)
+
+### Community 54 - "Dependencies"
 Cohesion: 0.18
 Nodes (10): django-crispy-forms + crispy-tailwind, Django 5.2.12, earthengine-api 1.7.18, GDAL 3.11.4 (Windows wheel), geopandas 1.1.2, openeo 0.51.0, owslib 0.35.0, rasterio 1.4.4 (+2 more)
 
-### Community 49 - "Housing Indicator Cards"
-Cohesion: 0.29
-Nodes (10): housing indicators_grid.html (HTMX swap partial), Affordability (Price-to-Income) indicator, Affordability Stress distribution indicator, House Price Index indicator, Average Fixed Mortgage Rate indicator, New Housing Units / Supply Deficit indicator, Property Market indicator, Rental Market indicator (+2 more)
+### Community 55 - "Frontend Config"
+Cohesion: 0.22
+Nodes (9): availableLayers, BASEMAPS, CONFIG, layerVisibility, loadedLayers, roundBboxInUrl(), roundCoord(), TOOL_CATEGORIES (+1 more)
 
-### Community 53 - "System Architecture Layers"
+### Community 56 - "BulkWriter"
+Cohesion: 0.27
+Nodes (4): BulkWriter, Collects rows and writes them `batch_size` at a time. With a unique field, rows…, A writer when `Model` can safely be bulk-written, otherwise None (use the row…, Write what is left, replay the skipped signals and invalidate the layer cache.
+
+### Community 57 - "Land-Cover & Soil Styles"
+Cohesion: 0.22
+Nodes (7): build_soil_style_and_legend(), Colours of the soil map (physicalEnv.SoilArea), taken from the legend of the…, (style_layers, legend) for physicalEnv.SoilArea: a `match` on the…, A soil unit of the Dutch soil map (Bodemkaart 1:50 000, BIS Nederland), stored…, SoilType, classify_soil_group(), Hydrologic soil group 'A'-'D' of a Dutch soil map name, or None if it names no…
+
+### Community 58 - "Housing Panel JS"
 Cohesion: 0.25
-Nodes (9): Application Layer (Django REST Parsers/Validation), Data Layer (PostgreSQL/PostGIS/GeoDjango ORM), Import Layer (File Upload UI), Visualization Layer (TiTiler/Mapbox GL), Data Import Zone (GeoTIFF/Vector/API/Tabular Sources), Database Zone (Django Models/PostGIS), Processing & Export Zone (COG Conversion), Tile Serving & Frontend Zone (TiTiler/Mapbox/React) (+1 more)
+Nodes (7): applyZone(), zoneStyle(), housing_indicators.html (Province Housing Dashboard), Mortgage Interest Rate what-if slider, pop_scenario / pop_growth population what-if params, indicators_base.html (standalone dashboard shell), #indicators-grid HTMX swap target
 
-### Community 59 - "Water Indicator Cards"
-Cohesion: 0.52
-Nodes (7): watersupply indicators_grid.html (HTMX swap partial), Non-Revenue Water (NRW / ILI) indicator, OPEX indicator, Service Time indicator, Supply Security indicator, Total Demand indicator, Total Supply indicator
+### Community 59 - "Housing & Built-up Models (6)"
+Cohesion: 0.25
+Nodes (8): _hilucs_lookup(), hilucs_lookup(), hilucs_q(), parse_hilucs_href(), INSPIRE HILUCS (Hierarchical INSPIRE Land Use Classification System) helpers. A…, (code, label) of a HILUCS URI, or None if it is not one. The label is spelled…, __fk_lookup__ parser for HILUCS URIs (importer/external_data.py): returns…, Q matching rows whose HILUCS FK `field` is one of `codes` or below it in the…
 
-### Community 66 - "App Icon Large"
+### Community 60 - "Built-up Dashboard Cards"
+Cohesion: 0.29
+Nodes (6): builtup_indicators.html (standalone dashboard), builtup indicators_grid.html, Built-up Coverage / FAR card, Park Area per Inhabitant card (WHO 9/50 m2), builtup indicators_panel.html (HTMX side panel), Additional Park Area slider (green_added_ha)
+
+### Community 61 - "Version Info"
+Cohesion: 0.32
+Nodes (6): _derive_version(), _get_git_info(), Derive a semver-ish label from the raw commit count. 0–99 → v0.1, 100–199 →…, Inject git info into every template rendered by Django., Run git commands once and cache the result for the process lifetime. In…, version_context()
+
+### Community 62 - "Diagram Export"
+Cohesion: 0.43
+Nodes (7): browser(), main(), page(), Export docs/architecture/latest/*.svg to PNG and PDF with headless Chrome/Edge.…, One page per SVG, each page sized to its diagram (named @page rules)., run(), size()
+
+### Community 63 - "Precipitation Rasters"
+Cohesion: 0.25
+Nodes (4): Meta, Interpolated wind speed raster layer, WeatherStation, WindSpeedRaster
+
+### Community 64 - "Land-Cover & Soil Styles (2)"
+Cohesion: 0.33
+Nodes (6): build_landcover_style_and_legend(), get_landcover_color(), available_layers(), raster_layer_entry(), Returns a list of all available layers (models with geometry fields). URL:…, The layer-catalog entry of one raster row (also returned by the map's LST tool).
+
+### Community 65 - "Tree Styles"
+Cohesion: 0.33
+Nodes (5): Map styling of the vector layers: Mapbox GL style layers, legend entries and…, build_tree_style(), Map style of nature.Tree: green dots when zoomed out, a 3D glTF tree per point…, style_layers for nature.Tree. The circle layer comes first: it is the click…, _uniform()
+
+### Community 66 - "Map Views & Panels (3)"
+Cohesion: 0.33
+Nodes (7): dashboard_summary(), population_panel(), The administrative unit the population views talk about, as (level, unit,…, HTMX partial for the Dashboard panel: total population of the selected…, HTML for the bottom dock opened from the Population pill: today's population,…, _resolve_summary_unit(), _unit_context()
+
+### Community 67 - "DB Stats Command"
+Cohesion: 0.33
+Nodes (3): BaseCommand, Command, Show the most expensive SQL statements recorded by pg_stat_statements…
+
+### Community 69 - "External Importer Core (3)"
+Cohesion: 0.40
+Nodes (4): PDOKImporter, Import handler for PDOK datasets - imports directly to Django models., Split [min_v, max_v] into evenly-sized segments, each no larger than…, Fetch raster data from PDOK WCS service, tiling the request when the area would…
+
+### Community 70 - "Earth Engine Auth & Inputs (2)"
+Cohesion: 0.33
+Nodes (3): Share of the area with a clear pixel, None if not computed., Scene, LSTResult
+
+### Community 71 - "App Icon 512"
 Cohesion: 0.50
-Nodes (5): Cyan wireframe/grid half representing geospatial digital model, Digital twin concept: real city (left) mirrored by wireframe model (right), Isometric city block with buildings, trees, park and river, Green-to-cyan orbit ring linking physical and digital halves, CrossTwin App Icon (android-chrome-512x512)
+Nodes (5): CrossTwin App Icon (android-chrome-512x512), Cyan wireframe/grid half representing geospatial digital model, Digital twin concept: real city (left) mirrored by wireframe model (right), Isometric city block with buildings, trees, park and river, Green-to-cyan orbit ring linking physical and digital halves
 
-### Community 74 - "App Icon Small"
+### Community 72 - "Water Dashboard JS"
+Cohesion: 0.60
+Nodes (4): applyRain(), applyZone(), rainStyle(), zoneStyle()
+
+### Community 73 - "Administrative Units & Population (3)"
+Cohesion: 0.40
+Nodes (3): ElectricityCost, EnergyEfficiencyLabels, Meta
+
+### Community 74 - "PhysicalEnv Admin"
+Cohesion: 0.40
+Nodes (4): HILUCSLandUseAdmin, LandCoverClassesAdmin, SoilTypeAdmin, SurfaceMaterialPropertiesAdmin
+
+### Community 75 - "LST Grid (2)"
+Cohesion: 0.40
+Nodes (4): Delete the other LST rows of the same scene that lie inside `grid` (a…, replace_covered(), LandSurfaceTemperature, Land Surface Temperature (LST) measurements
+
+### Community 76 - "Nature-Based Solutions"
+Cohesion: 0.40
+Nodes (3): NatureBasedSolutionPoint, NatureBasedSolutionPolygon, Nature-Based Solutions (NBS) for urban heat mitigation
+
+### Community 79 - "Admin Unit Lookup"
+Cohesion: 0.50
+Nodes (4): Built once per process: creating a GDAL/PROJ transformation is the slow part of…, Point-in-polygon lookup: find the smallest administrative unit (Neighborhood >…, resolve_admin_unit_at_point(), _wgs84_to_storage()
+
+### Community 82 - "App Icon 192"
 Cohesion: 0.67
-Nodes (4): Isometric digital twin city motif (solid buildings blending into wireframe buildings), Green park/land base with trees and blue water/street edge, Teal orbit rings and clouds on navy rounded-square background, CrossTwin App Icon (192x192)
+Nodes (4): CrossTwin App Icon (192x192), Isometric digital twin city motif (solid buildings blending into wireframe buildings), Green park/land base with trees and blue water/street edge, Teal orbit rings and clouds on navy rounded-square background
 
-### Community 77 - "Upload Templates"
+### Community 84 - "CBS & Enrichment Import (2)"
+Cohesion: 0.50
+Nodes (3): CBSImporter, Import handler for CBS StatLine OData datasets., Fetch column definitions and units for a CBS table. Useful for building field…
+
+### Community 85 - "Importer Upload Templates"
 Cohesion: 0.67
 Nodes (4): FieldMapping.html Template, upload.html Template, upload_result.html Template, importer:upload_geodata view
 
-### Community 86 - "CrossTwin App Icon (apple-touch-icon"
+### Community 86 - "manage.py"
+Cohesion: 0.50
+Nodes (3): main(), Run administrative tasks., Django's command-line utility for administrative tasks.
+
+### Community 88 - "NDVI Mosaic"
+Cohesion: 0.50
+Nodes (4): ndvi_mosaic(), Band 1 of a GDALRaster averaged onto `grid` (NaN outside it / at nodata)., NDVI on the grid; where layers overlap, the first (newest) one wins., resample_to_grid()
+
+### Community 93 - "Apple Touch Icon"
 Cohesion: 1.00
-Nodes (3): Isometric digital twin city block (solid buildings beside wireframe buildings), Urban environment elements: green park, water/canal, street grid, clouds, orbit rings, CrossTwin App Icon (apple-touch-icon)
+Nodes (3): CrossTwin App Icon (apple-touch-icon), Isometric digital twin city block (solid buildings beside wireframe buildings), Urban environment elements: green park, water/canal, street grid, clouds, orbit rings
 
-### Community 87 - "CrossTwin favicon 16x16"
+### Community 94 - "Favicon 16"
 Cohesion: 0.67
-Nodes (3): Browser tab icon (branding), CrossTwin favicon 16x16, Teal/blue cube-like glyph on light background
+Nodes (3): CrossTwin favicon 16x16, Browser tab icon (branding), Teal/blue cube-like glyph on light background
 
-### Community 88 - "CrossTwin favicon (32x32"
+### Community 95 - "Favicon 32"
 Cohesion: 0.67
-Nodes (3): Blue rounded-square app icon with city skyline motif, CrossTwin brand identity (digital twin platform), CrossTwin favicon (32x32)
+Nodes (3): CrossTwin favicon (32x32), Blue rounded-square app icon with city skyline motif, CrossTwin brand identity (digital twin platform)
 
-### Community 58 - "External Catalog Import"
-Cohesion: 0.33
-Nodes (7): CBS OData statistics, External Catalog Import, Google Earth Engine, KNMI Data Platform, PDOK, RIVM energy labels, Sentinel-2 via openEO (Copernicus Data Space)
-
-### Community 68 - "Three-Layer Indicator Dashboard Pattern"
-Cohesion: 0.40
-Nodes (5): Draggable Translucent Map Overlays, Three-Layer Indicator Dashboard Pattern, MOCK_DATA fallback, What-if Overrides (consumption_override, interest_rate_override), No Inline Script Blocks Convention
+## Ambiguous Edges - Review These
+- `housing indicators_grid.html` → `No inline <script> blocks convention`  [AMBIGUOUS]
+  housing/templates/housing/partials/indicators_grid.html · relation: conceptually_related_to
+- `watersupply indicators_grid.html` → `No inline <script> blocks convention`  [AMBIGUOUS]
+  watersupply/templates/watersupply/partials/indicators_grid.html · relation: conceptually_related_to
+- `DAG edge coverage (31 of 103 edges implemented)` → `Per-app DAG edge gap analysis`  [AMBIGUOUS]
+  TODO.md · relation: conceptually_related_to
 
 ## Knowledge Gaps
-- **90 isolated node(s):** `Scenario`, `SensibilityChoices`, `WMSLayerAdmin`, `ProtectionType`, `LossesChoices` (+85 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 596 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **33 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **70 isolated node(s):** `Scenario`, `TpwSource`, `WMSLayerAdmin`, `LossesChoices`, `LossesTypes` (+65 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 673 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **24 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `City` connect `Administrative Hierarchy` to `File Upload Importer`, `Housing Calculations`, `PDOK Importer`, `Water Derived Saves`, `Deferred Cascade Batching`, `Built-up & Property Models`, `Thermal Comfort Rasters`, `Chart Geometry Helpers`, `Water Signal Cascade`, `Water Supply Indicators`, `WMS Tile Proxy`, `Spatial Parent Index`, `Water Model Chain`, `Total Water Demand`, `Spatial Parent Tests`, `Bulk Land Cover Import`, `Nature Layers`, `Urban Area Signal Tests`?**
-  _High betweenness centrality (0.121) - this node is a cross-community bridge._
-- **Why does `Province` connect `Administrative Hierarchy` to `Housing Calculations`, `Deferred Cascade Batching`, `Import Storage CRS Tests`, `Chart Geometry Helpers`, `Water Signal Cascade`, `Water Supply Indicators`, `WMS Tile Proxy`, `Spatial Parent Index`, `Water Model Chain`, `Spatial Parent Tests`, `Interpolated Weather Rasters`, `Bulk Land Cover Import`, `Urban Area Signal Tests`?**
-  _High betweenness centrality (0.064) - this node is a cross-community bridge._
-- **Why does `recalculate_indicators()` connect `Water Dashboard Views` to `Water Panel & Slider JS`, `Water Indicator Cards`?**
-  _High betweenness centrality (0.052) - this node is a cross-community bridge._
-- **Are the 28 inferred relationships involving `City` (e.g. with `CityAdmin` and `cities_within()`) actually correct?**
-  _`City` has 28 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 21 inferred relationships involving `Neighborhood` (e.g. with `NeighborhoodAdmin` and `cities_within()`) actually correct?**
-  _`Neighborhood` has 21 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 22 inferred relationships involving `Province` (e.g. with `ProvinceAdmin` and `cities_within()`) actually correct?**
-  _`Province` has 22 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 14 inferred relationships involving `District` (e.g. with `cities_within()` and `city_of()`) actually correct?**
-  _`District` has 14 INFERRED edges - model-reasoned connections that need verification._
+- **What is the exact relationship between `housing indicators_grid.html` and `No inline <script> blocks convention`?**
+  _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
+- **What is the exact relationship between `watersupply indicators_grid.html` and `No inline <script> blocks convention`?**
+  _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
+- **What is the exact relationship between `DAG edge coverage (31 of 103 edges implemented)` and `Per-app DAG edge gap analysis`?**
+  _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
+- **Why does `City` connect `Administrative Units & Population` to `Water Supply Models`, `Land-Cover Release & Batching`, `Water Supply Calculations`, `Model Registry & Forms`, `Water Supply Models (2)`, `Administrative Units & Population (2)`, `LST Pipeline & NDVI`, `CBS & Enrichment Import`, `KNMI Importer`, `Urban Heat Models`, `CBS & Enrichment Import (2)`, `Nature Models`?**
+  _High betweenness centrality (0.210) - this node is a cross-community bridge._
+- **Why does `feature_form.html (map feature editor)` connect `LST/SVF Tool Frontend` to `Map Editing & Backup`?**
+  _High betweenness centrality (0.162) - this node is a cross-community bridge._
+- **Are the 27 inferred relationships involving `City` (e.g. with `CityAdmin` and `cities_within()`) actually correct?**
+  _`City` has 27 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 19 inferred relationships involving `Neighborhood` (e.g. with `NeighborhoodAdmin` and `cities_within()`) actually correct?**
+  _`Neighborhood` has 19 INFERRED edges - model-reasoned connections that need verification._

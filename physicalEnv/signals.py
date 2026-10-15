@@ -3,13 +3,13 @@ import threading
 from contextlib import contextmanager
 
 from django.db import connection, transaction
-from django.db.models.signals import post_save, post_delete
+from django.db.models.signals import post_save, post_delete, pre_save
 from django.dispatch import receiver
 from django.db.models import Max, Q
 from django.utils import timezone
 
 from core.cache import bump_layer_version
-from .landcover import urbanize_around
+from .landcover import release_ring, urbanize_around
 from .models import LandCoverClasses, LandCoverVector
 from builtup.models import Building
 from administrative.models import Neighborhood, District, City, Province
@@ -193,26 +193,69 @@ def _city_of(building):
     return City.objects.filter(geom__contains=building.geom.centroid).values_list("pk", flat=True).first()
 
 
+def _is_editor_building(instance):
+    """Drawn in the map editor: negative id (core/editing.py::_next_negative_pk)."""
+    return instance.pk is not None and instance.pk < 0
+
+
+def _urbanize(instance):
+    city_id = _city_of(instance)
+    if not city_id:
+        return
+    land_use = instance.get_buildingType_display() if instance.buildingType else "Built-up"
+    urbanize_around(instance.geom, city_id, land_use=land_use, building_id=instance.pk)
+
+
+def _land_cover_step(instance, step, action):
+    """Run one land-cover step in its own savepoint; a failure never blocks the building's save."""
+    try:
+        with transaction.atomic():
+            step()
+    except Exception:
+        logger.exception("Urban-fabric buffer %s for building %s failed", action, instance.pk)
+
+
+@receiver(pre_save, sender=Building, dispatch_uid="physicalEnv_building_presave")
+def building_presave(sender, instance, raw=False, **kwargs):
+    """Remember an editor building's stored footprint, so post_save can tell a move from an attribute edit."""
+    if raw or not _is_editor_building(instance):
+        return
+    instance._stored_geom = Building.objects.filter(pk=instance.pk).values_list("geom", flat=True).first()
+
+
 @receiver(post_save, sender=Building, dispatch_uid="physicalEnv_building_saved")
 def building_created(sender, instance, created, raw=False, **kwargs):
     """
     DAG edge: New_Units -> LandCover. A building drawn in the map editor
     turns a BUILDING_BUFFER_M buffer around it into urban fabric
-    (landcover.urbanize_around). Only new buildings with a negative id
-    (mainMap/editing.py::_next_negative_pk): BAG imports already match the
-    land cover, and moving or deleting a building leaves the land cover as
-    it is (the editor's backup restore reverts it).
+    (landcover.urbanize_around); moving it gives the old ring's land back
+    (landcover.release_ring) and urbanizes around the new footprint. Only
+    editor buildings (negative id): BAG imports already match the land
+    cover, and an attribute-only edit leaves it alone.
     """
-    if raw or not created or instance.pk is None or instance.pk >= 0 or not instance.geom:
+    if raw or not _is_editor_building(instance) or not instance.geom:
         return
-    city_id = _city_of(instance)
-    if not city_id:
+    if created:
+        _land_cover_step(instance, lambda: _urbanize(instance), "creation")
         return
-    land_use = instance.get_buildingType_display() if instance.buildingType else "Built-up"
-    try:
-        # Own savepoint: a failure rolls back only the land-cover change.
-        with transaction.atomic():
-            urbanize_around(instance.geom, city_id, land_use=land_use)
-    except Exception:
-        # Never block the building's own save.
-        logger.exception("Urban-fabric buffer around building %s failed", instance.pk)
+    stored = getattr(instance, "_stored_geom", None)
+    if stored is not None and stored.equals_exact(instance.geom, tolerance=1e-6):
+        return
+
+    def move():
+        release_ring(instance.pk)
+        _urbanize(instance)
+    _land_cover_step(instance, move, "move")
+
+
+@receiver(post_delete, sender=Building, dispatch_uid="physicalEnv_building_deleted")
+def building_deleted(sender, instance, **kwargs):
+    """
+    DAG edge: New_Units -> LandCover (inverse). Deleting an editor building
+    gives its ring's land back to the polygons it was cut from. Skipped while
+    the editor's backup restore runs: it puts the land-cover rows back itself.
+    """
+    from core.editing import is_restoring
+    if not _is_editor_building(instance) or is_restoring():
+        return
+    _land_cover_step(instance, lambda: release_ring(instance.pk), "release")

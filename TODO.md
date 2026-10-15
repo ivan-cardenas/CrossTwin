@@ -24,7 +24,7 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 
 - [ ] `RS_Imagery -> LandCover/LST` — raster models are plain imports, no ingestion/derivation code
 - [ ] `LandCover -> Infiltration` — `AvailableFreshWater.infiltrationRate_cm_h` is a flat field (see existing inline TODO)
-- [ ] `New_Units -> LandCover` — partly done: a building drawn in the map editor turns a 10 m buffer into urban fabric (`physicalEnv/landcover.py::urbanize_around`). Still open: moved/demolished buildings, and `calculate_new_units()` completions/pipeline never touch `LandCover`
+- [x] `New_Units -> LandCover` — a building drawn in the map editor turns a 10 m buffer into urban fabric (`physicalEnv/landcover.py::urbanize_around`); moving or deleting it gives the land back (`release_ring`, cut pieces kept in `UrbanFabricCut`). The housing pipeline's land take (greenfield vs infill) is a dashboard statistic (`housing/calculations.py::calculate_pipeline_land_take`)
 
 ## urban_heat
 

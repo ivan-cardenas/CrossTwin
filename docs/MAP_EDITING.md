@@ -1,6 +1,6 @@
 # Visual editing of layer objects on the map
 
-Status: implemented 2026-10-05 (proposal written 2026-10-01). Code: `mainMap/editing.py`, `mainMap/models.py` (`EditBackup`, `EditBackupRow`), `core/static/js/Editing.js`; tests in `mainMap/test_editing.py`; equations in `docs/functions_and_equations.tex` §"Map editing and what-if backup".
+Status: implemented 2026-10-05 (proposal written 2026-10-01). Code: `core/editing.py`, `mainMap/models.py` (`EditBackup`, `EditBackupRow`), `core/static/js/Editing.js`; tests in `mainMap/test_editing.py`; equations in `docs/functions_and_equations.tex` §"Map editing and what-if backup".
 
 ## Context
 
@@ -32,8 +32,8 @@ Decisions made:
 
 ## Server changes
 
-**New `mainMap/editing.py`**
-- `EDITABLE_LAYERS`: allowlist keyed by registry key, with per-model `exclude` (fields the model derives itself) and `optional` (fields the form must not require). Fill the lists by reading each model's `save()`. Known for Building: exclude `area_sqm`, `neighborhood`, `last_updated`, `connectivity`; `buildingType` optional (derived from `usageFunction`).
+**New `core/editing.py`**
+- `EDITABLE_LAYERS`: allowlist keyed by registry key, read at startup from `core/editable_layers.toml` (one TOML table per layer) by `load_editable_layers()`, with per-model `exclude` (fields the model derives itself) and `optional` (fields the form must not require). Fill the lists by reading each model's `save()`. Known for Building: exclude `area_sqm`, `neighborhood`, `last_updated`, `connectivity`; `buildingType` optional (derived from `usageFunction`).
 - `feature_form(request, app_label, model_name, pk=None)`:
   - 404 if the key is not in `EDITABLE_LAYERS`; 403 unless `request.user.is_staff`.
   - GET: render the partial with the form and the object's **full-resolution** geometry as WGS84 GeoJSON (`geom.transform(4326, clone=True).geojson`). Must not reuse the map's copy: viewport-loaded layers are simplified below zoom 14.
@@ -57,7 +57,7 @@ A **change journal**, not a table copy: "Create backup" only sets a restore poin
 - `EditBackup`: `created_at`, `created_by` (FK user). At most one row; creating a backup while one exists is refused with "restore or discard the current backup first".
 - `EditBackupRow`: `backup` (FK, `CASCADE`, since this is bookkeeping, not spatial reference data), `layer_key`, `object_pk` (CharField, works for BAG BigInteger ids and auto ids), `original` (JSONField; `null` = the object did not exist when the backup was made). Unique on (`backup`, `layer_key`, `object_pk`).
 
-**Recording, in `mainMap/editing.py`:** `journal(layer_key, model, pk)` runs inside the same `transaction.atomic()` as the change: *before* `form.save()` on edit and before the delete; *after* the save on create, with `original=None`. It writes only when the object has no row yet, so the first pre-image wins and editing an object twice still restores it to its state before the test. The row is serialized with `django.core.serializers.serialize("json", [obj])`, which handles GIS fields and keeps the geometry in its stored CRS (no WGS84 round trip, so no coordinate drift). Without an active backup nothing is recorded and edits are permanent, as before.
+**Recording, in `core/editing.py`:** `journal(layer_key, model, pk)` runs inside the same `transaction.atomic()` as the change: *before* `form.save()` on edit and before the delete; *after* the save on create, with `original=None`. It writes only when the object has no row yet, so the first pre-image wins and editing an object twice still restores it to its state before the test. The row is serialized with `django.core.serializers.serialize("json", [obj])`, which handles GIS fields and keeps the geometry in its stored CRS (no WGS84 round trip, so no coordinate drift). Without an active backup nothing is recorded and edits are permanent, as before.
 
 **Restore** (`POST api/editing/backup/restore/`, staff only): one transaction, wrapped in `importer/batching.py::deferred_cascades()`:
 1. Rows with an `original`: `serializers.deserialize(...)` → `.save()`. This is a raw save. It writes the stored values back exactly, derived fields included (`Building.save()` does not re-derive them), keeps the original pk so deleted objects come back with their id, and still fires `post_save`, so `core/signals.py` bumps the GeoJSON cache version.
@@ -69,8 +69,8 @@ A **change journal**, not a table copy: "Create backup" only sets a restore poin
 
 **Limits to keep in mind**
 - Changes made through the importer, the admin, QGIS or psql are not journalled. An object changed *only* that way is left alone by Restore. An object changed through **both** the editor and another route after the backup is set back to its pre-backup state, which also undoes the other change for that object.
-- Side effect on the land cover: a **new** building (negative id) makes a 10 m buffer around it urban fabric in its city's latest land-cover year (`physicalEnv/landcover.py::urbanize_around`, receiver `physicalEnv.signals.building_created`; DAG edge `New_Units -> LandCover`). The buffer is cut out of the polygons it touches and inserted as one new polygon. The rewritten rows are journalled under `physicalEnv.LandCoverVector` through the `landcover_rewriting` / `landcover_created` signals (`mainMap/signals.py`), so Restore puts the original land cover back and reloads that layer. Moving or deleting the building leaves the land cover as it is.
-- Raw saves: built-up models have no signal receivers that skip `raw=True`, but `watersupply/signals.py` does (`if raw: return`). When layers from such apps are added to `EDITABLE_LAYERS`, Restore must trigger their cascades itself (e.g. `physicalEnv.signals.schedule_urban_area_recompute`, the watersupply recomputes).
+- Side effect on the land cover: a **new** building (negative id) makes a 10 m buffer around it urban fabric in its city's latest land-cover year (`physicalEnv/landcover.py::urbanize_around`, receiver `physicalEnv.signals.building_created`; DAG edge `New_Units -> LandCover`). The buffer is cut out of the polygons it touches and inserted as one new polygon. The ring carries the building id (`LandCoverVector.source_building`) and each cut piece is kept as a `physicalEnv.UrbanFabricCut`. Moving or deleting the building gives the land back (`release_ring`: each piece returns to the polygon it was cut from, recreated with its id if it was swallowed; only what the ring still holds is returned, so overlapping rings stay consistent) and a move then buffers the new footprint. The rewritten rows are journalled under the sender's key (`physicalEnv.LandCoverVector` / `physicalEnv.UrbanFabricCut`) through the `landcover_rewriting` / `landcover_created` signals (`mainMap/signals.py`), so Restore puts the original land cover back and reloads that layer. While Restore runs (`core.editing.is_restoring()`) the building-delete receiver is skipped. Imported (BAG) buildings never change the land cover.
+- Raw saves: built-up models have no signal receivers that skip `raw=True`, but `watersupply/signals.py` does (`if raw: return`). When layers from such apps are added to `core/editable_layers.toml`, Restore must trigger their cascades itself (e.g. `physicalEnv.signals.schedule_urban_area_recompute`, the watersupply recomputes).
 
 ## Frontend changes
 
@@ -93,7 +93,7 @@ A **change journal**, not a table copy: "Create backup" only sets a restore poin
 ## Out of scope (first version)
 - Snapping to neighbouring objects, editing several objects at once.
 - Per-step undo, multiple named backups, and backups of changes made outside the editor (importer, admin). The first version has one restore point.
-- Administrative, water, nature and other layers (add to `EDITABLE_LAYERS` later; several have many required or computed fields and will need their `exclude` lists tuned).
+- Administrative, water, nature and other layers (add to `core/editable_layers.toml` later; several have many required or computed fields and will need their `exclude` lists tuned).
 - A login link on the map page: staff log in at `/admin/` as today.
 
 ## Verification

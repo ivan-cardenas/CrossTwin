@@ -4,7 +4,7 @@
 **/__pycache__/
 
 /docs/
-test_*.py
+test*.py
 __init__.py
 
 /.claude/
