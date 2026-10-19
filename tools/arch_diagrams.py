@@ -404,6 +404,13 @@ def signals():
     d.box(590, 740, 200, 110, "RASTER post_save", ["export_raster_to_cog()"], "raster")
     d.box(810, 740, 200, 110, "VECTOR save/delete", ["bump_layer_version()", "→ GeoJSON cache"], "cache")
 
+    # urban heat: computed on demand, deliberately outside the signal graph
+    d.group(40, 700, 470, 190, "On demand · no receiver", "raster", dashed=True)
+    d.box(60, 745, 205, 115, "LST", ["RS_Imagery, LandCover", "→ LST (Landsat + NDVI,", "SMW, urban_heat/lst/)"], "raster")
+    d.box(285, 745, 205, 115, "SVF", ["DSM → SVF", "(horizon search,", "physicalEnv/svf.py)"], "raster")
+    d.edge([(490, 785), (590, 785)], "raster", "save")
+    d.edge([(162, 860), (162, 875), (540, 875), (540, 825), (590, 825)], "raster", "save", label_at=1)
+
     # watersupply
     d.group(1080, 120, 480, 840, "watersupply/signals.py + save()", "signal")
     chain = [("Population (cascade)", "neutral"), ("ConsumptionCapita", "django"), ("TotalWaterDemand", "django"),
