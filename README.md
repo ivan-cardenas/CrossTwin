@@ -83,6 +83,7 @@ Dependencies are declared in `pyproject.toml` and pinned in `uv.lock`. `uv sync`
 
   On macOS and Linux the `gdal` Python package is not installed: Django loads the system library, and rasterio, pyogrio and pyproj bundle their own GDAL/PROJ in their wheels.
 
+##### Without uv
 Without uv, `python -m venv .venv` and `pip install -r requirements.txt` still work, but `requirements.txt` is a frozen Windows + Python 3.11 environment (its GDAL wheel is `cp311-win_amd64`).
 
 ### 1. Install PostgreSQL + PostGIS
