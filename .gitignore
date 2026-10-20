@@ -192,3 +192,5 @@ graphify-out/cache/
 *.aux
 docs/paper/
 paper/
+# Loose pg_dump files; the example package itself (example/crosstwin_example_data.zip) is committed
+*.dump

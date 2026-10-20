@@ -40,6 +40,11 @@ python manage.py export_cogs
 # LST from Landsat 9 + the NDVI layer (Earth Engine, GEE_PROJECT_ID); --list-scenes, --scene, --dry-run
 python manage.py calculate_lst --city Enschede
 
+# Package the DB of .env + its COG files as example data, or load such a package into an empty DB
+# (both default to example/crosstwin_example_data.zip, which is committed)
+python tools/example_db.py dump
+python tools/example_db.py load
+
 # Slowest SQL statements from pg_stat_statements (--order mean|calls|rows, --reset)
 python manage.py db_stats
 

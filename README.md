@@ -51,7 +51,7 @@ The project follows the **DPSIR framework** (Driver → Pressure → State → I
 ## 🔧 Requirements
 
 - Python 3.11 (the pinned GDAL wheel in `requirements.txt` targets `cp311`)
-- PostgreSQL with `postgis`, `postgis_topology`, `postgis_raster`, `postgis_sfcgal`, `pgrouting`
+- PostgreSQL 16 or 17 with the `postgis` and `postgis_raster` extensions
 - A Mapbox access token
 
 Optional, only needed for specific External Data Import sources:
@@ -78,7 +78,7 @@ Without uv, `python -m venv .venv` and `pip install -r requirements.txt` work th
 
 ### 1. Install PostgreSQL + PostGIS
 
-CrossTwin needs PostgreSQL (16 or 17) with the PostGIS extensions (`postgis`, `postgis_raster`, `postgis_topology`, `postgis_sfcgal`) and pgRouting.
+CrossTwin needs PostgreSQL (16 or 17) with the PostGIS extensions `postgis` and `postgis_raster`. Nothing in the code uses `postgis_topology`, `postgis_sfcgal` or pgRouting; `tools/check_postgres.py` only lists them as optional.
 
 **Windows**
 
@@ -87,7 +87,7 @@ CrossTwin needs PostgreSQL (16 or 17) with the PostGIS extensions (`postgis`, `p
    winget install --id PostgreSQL.PostgreSQL.17 -e
    ```
    Note the password you set for the `postgres` superuser and keep the default port `5432`.
-2. PostGIS is not on winget. At the end of the installer, launch **Stack Builder** (or later from the Start menu), pick your PostgreSQL server, and install **Spatial Extensions → PostGIS 3.x Bundle**. The bundle also contains pgRouting and SFCGAL. Alternatively, use the [OSGeo installer](https://download.osgeo.org/postgis/windows/).
+2. PostGIS is not on winget. At the end of the installer, launch **Stack Builder** (or later from the Start menu), pick your PostgreSQL server, and install **Spatial Extensions → PostGIS 3.x Bundle**. Alternatively, use the [OSGeo installer](https://download.osgeo.org/postgis/windows/).
 3. Make sure the service is running: `net start postgresql-x64-17` (or Services → `postgresql-x64-17` → Start).
 4. `psql` lives in `C:\Program Files\PostgreSQL\17\bin`; add it to `PATH` or use **SQL Shell (psql)** / pgAdmin from the Start menu.
 
@@ -95,14 +95,14 @@ CrossTwin needs PostgreSQL (16 or 17) with the PostGIS extensions (`postgis`, `p
 
 - [Postgres.app](https://postgresapp.com/) (bundles PostGIS), or Homebrew:
   ```bash
-  brew install postgresql@17 postgis pgrouting
+  brew install postgresql@17 postgis
   brew services start postgresql@17
   ```
 
 **Linux (Debian/Ubuntu)**
 
 ```bash
-sudo apt install postgresql postgresql-17-postgis-3 postgresql-17-pgrouting   # match your PostgreSQL major version
+sudo apt install postgresql postgresql-17-postgis-3   # match your PostgreSQL major version
 sudo systemctl enable --now postgresql
 sudo -u postgres psql        # opens psql as the superuser
 ```
@@ -123,10 +123,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO your_username;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO your_username;
 
 CREATE EXTENSION postgis;
-CREATE EXTENSION postgis_topology;
 CREATE EXTENSION postgis_raster;
-CREATE EXTENSION postgis_sfcgal;
-CREATE EXTENSION pgrouting;
 ```
 
 ### 3. Create the `.env` file
@@ -159,12 +156,12 @@ GEE_PROJECT_ID=your-google-cloud-project-id
 SENTINEL_CLIENT_ID=your-cdse-client-id
 SENTINEL_CLIENT_SECRET=your-cdse-client-secret
 KNMI_API_KEY=your-knmi-api-key
-OVERPASS_URL=https://overpass-api.de/api/interpreter  # OpenStreetMap imports
+# OVERPASS_URL=https://overpass-api.de/api/interpreter  # OpenStreetMap imports
 
 # Optional — performance measurement (see docs/PERFORMANCE.md §0)
-QUERY_STATS=True          # per-request query count + DB time (default: same as DEBUG)
-QUERY_STATS_SLOW_MS=500   # log requests slower than this as warnings
-SQL_LOG=False             # print every SQL statement (needs DEBUG=True)
+# QUERY_STATS=True          # per-request query count + DB time (default: same as DEBUG)
+# QUERY_STATS_SLOW_MS=500   # log requests slower than this as warnings
+# SQL_LOG=False             # print every SQL statement (needs DEBUG=True)
 ```
 
 Where each value comes from:
@@ -192,15 +189,30 @@ python tools/check_postgres.py
 
 It connects with the `DATABASE_*` values from `.env`, checks that PostGIS is installed and enabled, and tells you what to fix if not (the common cases are listed under **Running the Project** below).
 
-### 5. Migrate and create a superuser
+### 5. Fill the database: empty, or with the example data
 
-The superuser can log in at `/admin/` and is staff, so it can also edit layers on the map and run the LST/SVF tools.
+**Option A: empty database.** Create the tables, then import your own data through the importer (`/importer/`):
 
 ```bash
-python manage.py makemigrations
 python manage.py migrate
+```
+
+**Option B: example data.** The repository ships an example database in `example/crosstwin_example_data.zip`. Load it into the empty database of step 2 (instead of Option A's `migrate`):
+
+```bash
+python tools/example_db.py load   # = example/crosstwin_example_data.zip
+python manage.py migrate          # applies migrations newer than the package, if any
+```
+
+It restores the tables and data, copies the raster COG files into `cogs/` and points each raster row at them. The database must be empty and already have the `postgis`/`postgis_raster` extensions. If a load fails halfway, drop and re-create the database before trying again.
+
+**Then create a superuser** (users are not part of the example data). The superuser can log in at `/admin/` and is staff, so it can also edit layers on the map and run the LST/SVF tools.
+
+```bash
 python manage.py createsuperuser
 ```
+
+
 
 ## ▶️ Running the Project
 
