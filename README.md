@@ -114,7 +114,13 @@ CREATE EXTENSION pgrouting;
 
 ### 3. Create the `.env` file
 
-Create a file named `.env` in the project root (next to `manage.py`). It is git-ignored, so your keys never get committed.
+Copy the template to `.env` in the project root (next to `manage.py`) and fill in your values. `.env` is git-ignored, so your keys never get committed.
+
+```bash
+cp .env_template .env        # Windows: copy .env_template .env
+```
+
+The template contains:
 
 ```env
 SECRET_KEY=your-secret-key-here
