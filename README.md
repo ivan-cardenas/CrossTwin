@@ -41,7 +41,7 @@ Optional, only needed for specific External Data Import sources:
 - `SENTINEL_CLIENT_ID` / `SENTINEL_CLIENT_SECRET` — Copernicus Data Space (openEO), for Sentinel-2 imports
 - `KNMI_API_KEY` — KNMI Data Platform, for weather/WBGT imports
 - `OVERPASS_URL` — another Overpass API instance for OpenStreetMap imports (default: the public overpass-api.de)
-- A Google Earth Engine service-account JSON (pasted into the UI per import, not stored in `.env`)
+- `GEE_PROJECT_ID` — a Google Cloud project registered for Earth Engine, for GEE imports and the LST tool
 
 ## 📦 Installation
 
@@ -59,7 +59,40 @@ uv pip install -r requirements.txt
 
 Without uv, `python -m venv .venv` and `pip install -r requirements.txt` work the same way.
 
-**Database:**
+### 1. Install PostgreSQL + PostGIS
+
+CrossTwin needs PostgreSQL (16 or 17) with the PostGIS extensions (`postgis`, `postgis_raster`, `postgis_topology`, `postgis_sfcgal`) and pgRouting.
+
+**Windows**
+
+1. Install PostgreSQL with the EDB installer from [postgresql.org/download/windows](https://www.postgresql.org/download/windows/), or with winget:
+   ```powershell
+   winget install --id PostgreSQL.PostgreSQL.17 -e
+   ```
+   Note the password you set for the `postgres` superuser and keep the default port `5432`.
+2. PostGIS is not on winget. At the end of the installer, launch **Stack Builder** (or later from the Start menu), pick your PostgreSQL server, and install **Spatial Extensions → PostGIS 3.x Bundle**. The bundle also contains pgRouting and SFCGAL. Alternatively, use the [OSGeo installer](https://download.osgeo.org/postgis/windows/).
+3. Make sure the service is running: `net start postgresql-x64-17` (or Services → `postgresql-x64-17` → Start).
+4. `psql` lives in `C:\Program Files\PostgreSQL\17\bin`; add it to `PATH` or use **SQL Shell (psql)** / pgAdmin from the Start menu.
+
+**macOS**
+
+- [Postgres.app](https://postgresapp.com/) (bundles PostGIS), or Homebrew:
+  ```bash
+  brew install postgresql@17 postgis pgrouting
+  brew services start postgresql@17
+  ```
+
+**Linux (Debian/Ubuntu)**
+
+```bash
+sudo apt install postgresql postgresql-17-postgis-3 postgresql-17-pgrouting   # match your PostgreSQL major version
+sudo systemctl enable --now postgresql
+sudo -u postgres psql        # opens psql as the superuser
+```
+
+### 2. Create the database
+
+Run this in `psql` (or pgAdmin's Query Tool) **as the `postgres` superuser** — `CREATE EXTENSION` for PostGIS needs superuser rights. Pick your own user name and password; they go into `.env` in the next step.
 
 ```sql
 CREATE DATABASE crosstwin;
@@ -79,7 +112,9 @@ CREATE EXTENSION postgis_sfcgal;
 CREATE EXTENSION pgrouting;
 ```
 
-**`.env` file** (project root):
+### 3. Create the `.env` file
+
+Create a file named `.env` in the project root (next to `manage.py`). It is git-ignored, so your keys never get committed.
 
 ```env
 SECRET_KEY=your-secret-key-here
@@ -97,6 +132,7 @@ TITILER_BASE_URL=http://localhost:8001
 COORDINATE_SYSTEM=28992  # EPSG code for Dutch RD New
 
 # Optional — External Data Import sources
+GEE_PROJECT_ID=your-google-cloud-project-id
 SENTINEL_CLIENT_ID=your-cdse-client-id
 SENTINEL_CLIENT_SECRET=your-cdse-client-secret
 KNMI_API_KEY=your-knmi-api-key
@@ -108,7 +144,34 @@ QUERY_STATS_SLOW_MS=500   # log requests slower than this as warnings
 SQL_LOG=False             # print every SQL statement (needs DEBUG=True)
 ```
 
-**Migrate and create a superuser:**
+Where each value comes from:
+
+| Variable | Required | How to get it |
+|---|---|---|
+| `SECRET_KEY` | yes | Any long random string. Generate one (with the venv active): `python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"` |
+| `DEBUG` | yes | `True` for local development, `False` in production |
+| `DATABASE_NAME`, `DATABASE_USER`, `DATABASE_PASSWORD` | yes | The database, user and password you created in step 2 |
+| `DATABASE_HOST`, `DATABASE_PORT` | yes | `localhost` / `5432` for a local install (the port you chose in the PostgreSQL installer) |
+| `MAPBOX_ACCESS_TOKEN` | yes | Sign up at [mapbox.com](https://account.mapbox.com/auth/signup/), then **Account → Tokens**. The *Default public token* (`pk.…`) works; the free tier is enough for development |
+| `TITILER_BASE_URL` | yes | `http://localhost:8001` — the port you start `uvicorn tiler:app` on |
+| `COORDINATE_SYSTEM` | yes | `28992` (Amersfoort / RD New) for Dutch data. Set it **before** the first `migrate`: geometry columns are created in this CRS |
+| `GEE_PROJECT_ID` | for Earth Engine imports and the LST tool | Create a Google Cloud project and register it for Earth Engine at [code.earthengine.google.com/register](https://code.earthengine.google.com/register) (free for non-commercial/research use); use the project's ID. The first Earth Engine call opens a browser for Google sign-in and caches the token per machine (or run `earthengine authenticate` once) |
+| `SENTINEL_CLIENT_ID`, `SENTINEL_CLIENT_SECRET` | for Sentinel-2 imports | Register at [dataspace.copernicus.eu](https://dataspace.copernicus.eu/), open the [Sentinel Hub dashboard](https://shapps.dataspace.copernicus.eu/dashboard/) → **User settings → OAuth clients → Create**. The secret is shown only once |
+| `KNMI_API_KEY` | for KNMI weather/WBGT/radar imports | Register at the [KNMI Developer Portal](https://developer.dataplatform.knmi.nl/) and request an Open Data API key (KNMI also publishes a time-limited anonymous key there for testing) |
+| `OVERPASS_URL` | no | Only to use another Overpass instance for OpenStreetMap imports; leave out to use the public overpass-api.de |
+| `QUERY_STATS`, `QUERY_STATS_SLOW_MS`, `SQL_LOG` | no | Performance measurement flags, see `docs/PERFORMANCE.md` §0 |
+
+### 4. Check the database connection
+
+```bash
+python tools/check_postgres.py
+```
+
+It connects with the `DATABASE_*` values from `.env`, checks that PostGIS is installed and enabled, and tells you what to fix if not (the common cases are listed under **Running the Project** below).
+
+### 5. Migrate and create a superuser
+
+The superuser can log in at `/admin/` and is staff, so it can also edit layers on the map and run the LST/SVF tools.
 
 ```bash
 python manage.py makemigrations
