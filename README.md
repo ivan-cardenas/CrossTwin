@@ -46,14 +46,18 @@ Optional, only needed for specific External Data Import sources:
 ## 📦 Installation
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/ivan-cardenas/CrossTwin.git
 cd CrossTwin
 
-python -m venv .venv
+# Recommended: uv (https://docs.astral.sh/uv/)
+uv venv .venv
 .venv\Scripts\Activate        # Windows
+# source .venv/bin/activate   # Linux / macOS
 
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 ```
+
+Without uv, `python -m venv .venv` and `pip install -r requirements.txt` work the same way.
 
 **Database:**
 
