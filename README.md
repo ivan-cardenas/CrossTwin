@@ -6,10 +6,10 @@
 [![ORCID](https://img.shields.io/badge/ORCID-0009--0005--0245--633X-A6CE39?logo=orcid&logoColor=white)](https://orcid.org/0009-0005-0245-633X)
 [![Last commit](https://img.shields.io/github/last-commit/ivan-cardenas/CrossTwin)](https://github.com/ivan-cardenas/CrossTwin/commits/main)
 
-[![Python 3.11](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Django 5.2](https://img.shields.io/badge/django-5.2-092E20?logo=django&logoColor=white)](https://www.djangoproject.com/)
 [![PostgreSQL + PostGIS](https://img.shields.io/badge/PostgreSQL-PostGIS-4169E1?logo=postgresql&logoColor=white)](https://postgis.net/)
-[![GDAL 3.11](https://img.shields.io/badge/GDAL-3.11-5CAE58?logo=osgeo&logoColor=white)](https://gdal.org/)
+[![GDAL 3.11+](https://img.shields.io/badge/GDAL-3.11%2B-5CAE58?logo=osgeo&logoColor=white)](https://gdal.org/)
 [![TiTiler / FastAPI](https://img.shields.io/badge/TiTiler-FastAPI-009688?logo=fastapi&logoColor=white)](https://developmentseed.org/titiler/)
 [![Mapbox GL JS](https://img.shields.io/badge/Mapbox%20GL%20JS-000000?logo=mapbox&logoColor=white)](https://docs.mapbox.com/mapbox-gl-js/)
 [![HTMX 1.9](https://img.shields.io/badge/htmx-1.9-3366CC?logo=htmx&logoColor=white)](https://htmx.org/)
@@ -50,7 +50,8 @@ The project follows the **DPSIR framework** (Driver → Pressure → State → I
 
 ## 🔧 Requirements
 
-- Python 3.11 (the pinned GDAL wheel in `requirements.txt` targets `cp311`)
+- Python 3.11 or newer, on Windows, macOS or Linux
+- GDAL/GEOS: on Windows they come with the `gdal` wheel that `uv sync` installs; on macOS and Linux install them from the system package manager (see below)
 - PostgreSQL 16 or 17 with the `postgis` and `postgis_raster` extensions
 - A Mapbox access token
 
@@ -67,14 +68,22 @@ git clone https://github.com/ivan-cardenas/CrossTwin.git
 cd CrossTwin
 
 # Recommended: uv (https://docs.astral.sh/uv/)
-uv venv .venv
+uv sync                       # creates .venv and installs pyproject.toml + uv.lock
 .venv\Scripts\Activate        # Windows
 # source .venv/bin/activate   # Linux / macOS
-
-uv pip install -r requirements.txt
 ```
 
-Without uv, `python -m venv .venv` and `pip install -r requirements.txt` work the same way.
+Dependencies are declared in `pyproject.toml` and pinned in `uv.lock`. `uv sync` uses the Python version uv finds; pick another with `uv sync --python 3.13`. Add `--no-dev` to skip the Jupyter kernel (`ipykernel`).
+
+**GDAL.** GeoDjango needs the GDAL and GEOS C libraries:
+
+- **Windows**: nothing to install. `uv sync` installs [Christoph Gohlke's GDAL wheel](https://github.com/cgohlke/geospatial-wheels) for your Python version (3.11–3.15) and CPU (x64 or ARM64), which bundles the GDAL, GEOS and PROJ DLLs; `DigitalTwin/settings.py` finds them in the venv's `osgeo` folder. PyPI has no Windows wheel for GDAL, so `pyproject.toml` points uv straight at the GitHub release files (`[tool.uv.sources]`). 32-bit Python and Python 3.16+ have no wheel there and fall back to building GDAL from source.
+- **macOS**: `brew install gdal`
+- **Linux (Debian/Ubuntu)**: `sudo apt install gdal-bin libgdal-dev`
+
+  On macOS and Linux the `gdal` Python package is not installed: Django loads the system library, and rasterio, pyogrio and pyproj bundle their own GDAL/PROJ in their wheels.
+
+Without uv, `python -m venv .venv` and `pip install -r requirements.txt` still work, but `requirements.txt` is a frozen Windows + Python 3.11 environment (its GDAL wheel is `cp311-win_amd64`).
 
 ### 1. Install PostgreSQL + PostGIS
 
@@ -393,4 +402,5 @@ Always pass `--keepdb`: without it Django drops the test database the runner pre
 | Map shows old data after a direct DB edit | Rows changed outside Django (SQL, `psql`) don't invalidate the GeoJSON cache — restart the server, or wait for the 2-minute expiry |
 | Large layer shows only part of the city | Expected: layers with ≥ 5 000 features load by viewport; pan or zoom out to load more |
 | Tests fail with `type "geometry" does not exist` | Rerun with `--keepdb` |
+| `Could not find the GDAL library` at startup | macOS/Linux: install the system GDAL (`brew install gdal`, `apt install gdal-bin libgdal-dev`). Windows: `uv sync` did not install `gdal` (check `.venv\Lib\site-packages\osgeo\gdal.dll`); usually a 32-bit or unsupported Python version |
 | Sentinel-2 (openEO) import fails / asks for credentials | `SENTINEL_CLIENT_ID`/`SECRET` set + server restarted; CDSE OAuth client still valid at [shapps.dataspace.copernicus.eu/dashboard](https://shapps.dataspace.copernicus.eu/dashboard); otherwise paste a personal client ID/secret into the UI panel (used once, not saved) |

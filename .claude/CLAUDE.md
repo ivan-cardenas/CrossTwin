@@ -12,8 +12,13 @@ The project focuses on **Dutch geospatial data** — the default CRS is EPSG:289
 ## Common Commands
 
 ```bash
-# Activate virtual environment (Windows)
-.venv\Scripts\Activate
+# Install / update the environment from pyproject.toml + uv.lock (creates .venv)
+uv sync                      # --python 3.13 to pick a version, --no-dev to skip ipykernel
+uv add <pkg>                 # add a dependency (updates pyproject.toml and uv.lock)
+uv lock --upgrade-package <pkg>
+
+# Activate virtual environment
+.venv\Scripts\Activate       # Windows; source .venv/bin/activate on Linux/macOS
 
 # Check PostgreSQL + PostGIS (start.bat runs this first and stops on failure)
 python tools/check_postgres.py
@@ -64,6 +69,13 @@ Measurement flags in `.env` (see `docs/PERFORMANCE.md` §0): `QUERY_STATS=true` 
 - **Django project**: `DigitalTwin/` — settings load from `.env` via `python-dotenv`
 - **TiTiler**: `tiler.py` — a separate FastAPI app serving COG raster tiles on port 8001. Django proxies to it via `TITILER_BASE_URL` env var.
 - Windows GDAL/GEOS DLLs are auto-discovered from the venv's `osgeo` package in `settings.py`.
+
+### Dependencies (`pyproject.toml`, `uv.lock`)
+
+- Managed with uv; `uv.lock` is committed and resolved for every OS and Python ≥ 3.11 (no `[tool.uv] environments` restriction — keep it universal).
+- `gdal` is a **Windows-only** dependency: PyPI has no Windows wheel, so `[tool.uv.sources]` maps it to Christoph Gohlke's GitHub release wheels (`cgohlke/geospatial-wheels`; `cgohlke.com` is *not* a package index), one entry per `python_version` × `platform_machine` (`AMD64`/`ARM64`). Python 3.11 uses GDAL 3.11.4 (release v2025.10.25, the last with `cp311`), 3.12–3.15 use 3.13.3 (v2026.8.20); the two dependency lines in `[project].dependencies` carry the matching version + markers. To bump GDAL or add a new Python version, add the wheel URLs for each arch and update both lines, then `uv lock`.
+- On Linux/macOS `osgeo` is not installed: GeoDjango loads the system libgdal/libgeos (`apt install gdal-bin libgdal-dev` / `brew install gdal`), and rasterio, pyogrio and pyproj bundle their own GDAL/PROJ. Code must not `import osgeo` outside the Windows block in `settings.py`.
+- PostgreSQL drivers are `psycopg[binary]` (Django, `test_runner.py`, `tools/example_db.py`) and `psycopg2-binary` (only tried first by `tools/check_postgres.py`, which falls back to `psycopg`), so no libpq headers are needed on any OS.
 
 ### Model Registry System (`core/utils.py`)
 

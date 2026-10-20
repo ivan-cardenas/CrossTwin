@@ -1,0 +1,71 @@
+[project]
+name = "crosstwin"
+version = "0.1.0"
+description = "Django digital twin platform for Dutch geospatial urban data"
+readme = "README.md"
+# Floor set by numpy/scipy; no upper bound.
+requires-python = ">=3.11"
+dependencies = [
+    # Web / Django
+    "django>=5.2.12,<5.3",
+    "django-crispy-forms>=2.4",
+    "crispy-tailwind>=1.0.3",
+    "django-extensions>=4.1",
+    "python-dotenv>=1.2.1",
+    # [binary] / -binary ship libpq, so no PostgreSQL client headers are needed on any OS.
+    "psycopg[binary]>=3.2.12",
+    "psycopg2-binary>=2.9.11",
+    "requests>=2.32.5",
+    # Geospatial
+    # GDAL Python bindings are only needed on Windows: settings.py points GeoDjango at the
+    # DLLs inside osgeo/. On Linux/macOS GeoDjango uses the system libgdal/libgeos
+    # (apt install gdal-bin / brew install gdal), and rasterio, pyogrio and pyproj bundle
+    # their own GDAL/PROJ in their wheels.
+    "gdal==3.11.4; sys_platform == 'win32' and python_version == '3.11'",
+    "gdal==3.13.3; sys_platform == 'win32' and python_version >= '3.12'",
+    "geopandas>=1.1.2",
+    "pyogrio>=0.11.1",
+    "shapely>=2.1.2",
+    "pyproj>=3.7.2",
+    "rasterio>=1.4.4",
+    "affine>=2.4.0",
+    "rio-cogeo>=7.0.1",
+    "rio-tiler>=8.0.5",
+    "owslib>=0.35.0",
+    "lxml>=6.0.2",
+    # Tile server (tiler.py)
+    "titiler-core>=1.2.0",
+    "fastapi>=0.129.0",
+    "uvicorn>=0.41.0",
+    # Science / remote sensing
+    "numpy>=2.3.4",
+    "scipy>=1.17.0",
+    "pandas>=2.3.3",
+    "xarray>=2025.1.1",
+    "matplotlib>=3.10.8",
+    "earthengine-api>=1.7.18",
+    "openeo>=0.51.0",
+    "pydot>=4.0.1",
+]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.2.0",
+]
+
+[tool.uv.sources]
+# Christoph Gohlke's GDAL wheels (bundle the GDAL/GEOS/PROJ DLLs). cgohlke.com is not a
+# package index; the wheels are GitHub releases of cgohlke/geospatial-wheels. GDAL 3.13.3
+# (v2026.8.20) has no cp311 wheel, so Python 3.11 stays on 3.11.4 (v2025.10.25).
+gdal = [
+    { url = "https://github.com/cgohlke/geospatial-wheels/releases/download/v2025.10.25/gdal-3.11.4-cp311-cp311-win_amd64.whl", marker = "python_version == '3.11' and platform_machine == 'AMD64'" },
+    { url = "https://github.com/cgohlke/geospatial-wheels/releases/download/v2025.10.25/gdal-3.11.4-cp311-cp311-win_arm64.whl", marker = "python_version == '3.11' and platform_machine == 'ARM64'" },
+    { url = "https://github.com/cgohlke/geospatial-wheels/releases/download/v2026.8.20/gdal-3.13.3-cp312-cp312-win_amd64.whl", marker = "python_version == '3.12' and platform_machine == 'AMD64'" },
+    { url = "https://github.com/cgohlke/geospatial-wheels/releases/download/v2026.8.20/gdal-3.13.3-cp312-cp312-win_arm64.whl", marker = "python_version == '3.12' and platform_machine == 'ARM64'" },
+    { url = "https://github.com/cgohlke/geospatial-wheels/releases/download/v2026.8.20/gdal-3.13.3-cp313-cp313-win_amd64.whl", marker = "python_version == '3.13' and platform_machine == 'AMD64'" },
+    { url = "https://github.com/cgohlke/geospatial-wheels/releases/download/v2026.8.20/gdal-3.13.3-cp313-cp313-win_arm64.whl", marker = "python_version == '3.13' and platform_machine == 'ARM64'" },
+    { url = "https://github.com/cgohlke/geospatial-wheels/releases/download/v2026.8.20/gdal-3.13.3-cp314-cp314-win_amd64.whl", marker = "python_version == '3.14' and platform_machine == 'AMD64'" },
+    { url = "https://github.com/cgohlke/geospatial-wheels/releases/download/v2026.8.20/gdal-3.13.3-cp314-cp314-win_arm64.whl", marker = "python_version == '3.14' and platform_machine == 'ARM64'" },
+    { url = "https://github.com/cgohlke/geospatial-wheels/releases/download/v2026.8.20/gdal-3.13.3-cp315-cp315-win_amd64.whl", marker = "python_version == '3.15' and platform_machine == 'AMD64'" },
+    { url = "https://github.com/cgohlke/geospatial-wheels/releases/download/v2026.8.20/gdal-3.13.3-cp315-cp315-win_arm64.whl", marker = "python_version == '3.15' and platform_machine == 'ARM64'" },
+]
