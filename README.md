@@ -1,5 +1,22 @@
 # 🌍 CrossTwin
 
+[![Version](https://img.shields.io/badge/version-0.7.15-blue)](CITATION.cff)
+[![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/license-CC%20BY--NC--SA%204.0-lightgrey)](LICENSE)
+[![Cite this software](https://img.shields.io/badge/cite-CITATION.cff-orange)](CITATION.cff)
+[![ORCID](https://img.shields.io/badge/ORCID-0009--0005--0245--633X-A6CE39?logo=orcid&logoColor=white)](https://orcid.org/0009-0005-0245-633X)
+[![Last commit](https://img.shields.io/github/last-commit/ivan-cardenas/CrossTwin)](https://github.com/ivan-cardenas/CrossTwin/commits/main)
+
+[![Python 3.11](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Django 5.2](https://img.shields.io/badge/django-5.2-092E20?logo=django&logoColor=white)](https://www.djangoproject.com/)
+[![PostgreSQL + PostGIS](https://img.shields.io/badge/PostgreSQL-PostGIS-4169E1?logo=postgresql&logoColor=white)](https://postgis.net/)
+[![GDAL 3.11](https://img.shields.io/badge/GDAL-3.11-5CAE58?logo=osgeo&logoColor=white)](https://gdal.org/)
+[![TiTiler / FastAPI](https://img.shields.io/badge/TiTiler-FastAPI-009688?logo=fastapi&logoColor=white)](https://developmentseed.org/titiler/)
+[![Mapbox GL JS](https://img.shields.io/badge/Mapbox%20GL%20JS-000000?logo=mapbox&logoColor=white)](https://docs.mapbox.com/mapbox-gl-js/)
+[![HTMX 1.9](https://img.shields.io/badge/htmx-1.9-3366CC?logo=htmx&logoColor=white)](https://htmx.org/)
+[![Google Earth Engine](https://img.shields.io/badge/Google%20Earth%20Engine-4285F4?logo=googleearth&logoColor=white)](https://earthengine.google.com/)
+[![CRS EPSG:28992](https://img.shields.io/badge/CRS-EPSG%3A28992%20RD%20New-red)](https://epsg.io/28992)
+[![DPSIR](https://img.shields.io/badge/framework-DPSIR-8A2BE2)](core/DAG.dot)
+
 A **Django-based digital twin platform** for Dutch geospatial urban data — water supply, urban heat, energy, housing, and nature. PostgreSQL/PostGIS handles spatial storage, Mapbox GL JS renders the map, and a separate TiTiler (FastAPI) service serves raster (COG) tiles.
 
 The project follows the **DPSIR framework** (Driver → Pressure → State → Impact → Response) to model causal relationships between urban systems — see [`core/DAG.dot`](core/DAG.dot).
