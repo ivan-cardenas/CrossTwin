@@ -64,3 +64,16 @@ def service_time_hours(production_m3_d, demand):
     if production_m3_d >= demand:
         return SERVICE_HOURS_MAX
     return round(SERVICE_HOURS_MAX * production_m3_d / demand, 1)
+
+
+def recharge_Mm3_yr(infiltration_depth_cm_yr, area_m2):
+    """
+    Yearly recharge of a fresh-water source in Mm3/year: the depth of water
+    that infiltrates in a year over the source's area.
+        V = depth [cm/yr] / 100 * area [m2] / 1e6
+    The infiltration *rate* (cm/h) is a capacity during rain, not a yearly
+    amount, so it does not enter here.
+
+    DAG edge: Infiltration -> Available_FW
+    """
+    return infiltration_depth_cm_yr / 100 * area_m2 / 1e6

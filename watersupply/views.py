@@ -12,6 +12,7 @@ from administrative.admin_units import resolve_admin_unit
 from administrative.population import DEFAULT_SCENARIO, get_population, population_params
 from .calculations import (
     _get_consumption_capita,
+    consumption_data_years,
     calculate_supply_security,
     calculate_total_extraction,
     calculate_total_production_day,
@@ -106,6 +107,8 @@ def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, po
         'province':             adminUnit,
         'population':           get_population(adminUnit, year, pop_scenario, pop_growth),
         'consumption_capita':   _get_consumption_capita(adminUnit, year),
+        # years the consumption comes from, when not `year` itself (closest earlier survey)
+        'consumption_years':    [y for y in consumption_data_years(adminUnit, year) if y != year],
         'demand_m3_d':          demand_m3_d,
         'supply_m3_d':          supply_m3_d,
         'supply_security':      supply_security,
@@ -219,11 +222,12 @@ def _build_indicators(data, consumption_override=None, rain_mm=RAIN_MM_DEFAULT):
     # request's population what-if instead of the baseline projection.
     demand_m3_d  = chain.demand_m3_d(consumption, data['population'])
     supply_m3_d  = data['supply_m3_d']
-    available    = data['available_water_Mm3']
     opex_total   = data['opex_total']
 
     demand_Mm3_yr  = demand_m3_d  * 365 / 1_000_000
     supply_Mm3_yr  = supply_m3_d  * 365 / 1_000_000
+    # Supply and demand share one scale (the larger of the two) so their bars compare
+    balance_scale  = max(supply_Mm3_yr, demand_Mm3_yr)
 
     service_time = chain.service_time_hours(supply_m3_d, demand_m3_d)
 
@@ -244,11 +248,17 @@ def _build_indicators(data, consumption_override=None, rain_mm=RAIN_MM_DEFAULT):
         # ── Existing indicators ──
         'population':            data['population'],
         'consumption_capita':    consumption,
+        # shown next to the slider while it still holds the stored value
+        'consumption_years':     [] if consumption_override else data.get('consumption_years', []),
         'consumption_percent':   min(consumption / MAX_CONSUMPTION * 100, 100),
         'total_supply_Mm3':      round(supply_Mm3_yr, 2),
         'total_demand_Mm3':      round(demand_Mm3_yr, 2),
-        'total_supply_percent':  round(min(supply_Mm3_yr / available * 100, 100), 1) if available else 0,
-        'total_demand_percent':  round(min(demand_Mm3_yr / available * 100, 100), 1) if available else 0,
+        'supply_m3_d':           round(supply_m3_d),
+        'demand_m3_d':           round(demand_m3_d),
+        'supply_bar_pct':        round(supply_Mm3_yr / balance_scale * 100, 1) if balance_scale else 0,
+        'demand_bar_pct':        round(demand_Mm3_yr / balance_scale * 100, 1) if balance_scale else 0,
+        'balance_Mm3':           round(supply_Mm3_yr - demand_Mm3_yr, 2),
+        'balance_abs_Mm3':       round(abs(supply_Mm3_yr - demand_Mm3_yr), 2),
         'supply_security':       chain.supply_security_pct(supply_m3_d, demand_m3_d),
         'service_time':          service_time,
         'service_time_percent':  round(service_time / chain.SERVICE_HOURS_MAX * 100, 1),

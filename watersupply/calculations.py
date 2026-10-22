@@ -1,12 +1,15 @@
-from django.db.models import Sum, Avg, F, FloatField, ExpressionWrapper
+from django.db.models import (
+    Sum, Avg, F, FloatField, IntegerField, ExpressionWrapper, OuterRef, Subquery,
+)
+from django.db.models.functions import Coalesce
 from django.contrib.gis.db import models as gis_models
-from django.contrib.gis.db.models.functions import Intersection, Length
+from django.contrib.gis.db.models.functions import Intersection, Length, PointOnSurface
 
 from .models import (
     ConsumptionCapita, TotalWaterDemand, ExtractionWater, ImportedWater,
     AvailableFreshWater, PipeNetwork, CoverageWaterSupply, NonRevenueWater,
     WaterTreatment, MeteredResidential, UsersLocation, OPEX,
-    TotalWaterProduction,
+    TotalWaterProduction, Watershed,
 )
 from administrative.models import City, Province, Neighborhood
 from administrative.admin_units import cities_within, neighborhoods_within
@@ -14,15 +17,28 @@ from administrative.admin_units import cities_within, neighborhoods_within
 
 # ── Consumption & Demand ─────────────────────────────────────────────
 
+def _get_consumption_record_years(adminBund, year):
+    """Per city of the unit, the ConsumptionCapita record used for `year` (ConsumptionCapita.for_year)."""
+    records = (ConsumptionCapita.for_year(city, year) for city in cities_within(adminBund))
+    return [r for r in records if r is not None]
+
+
 def _get_consumption_capita(adminBund, year):
-    """Return per-capita consumption (L/person/day) for an admin unit and year."""
-    cities = cities_within(adminBund)
-    record = (
-        ConsumptionCapita.objects
-        .filter(city__in=cities, year=year)
-        .aggregate(avg=Avg('consumption_capita_L_d'))
-    )
-    return record['avg'] or 0
+    """Per-capita consumption (L/person/day) for an admin unit and year.
+
+    Mean over the unit's cities of each city's record for `year`, or of its
+    latest earlier year when there is none (ConsumptionCapita.for_year), so an
+    old survey is the default until newer data exists.
+    """
+    records = _get_consumption_record_years(adminBund, year)
+    if not records:
+        return 0
+    return sum(r.consumption_capita_L_d for r in records) / len(records)
+
+
+def consumption_data_years(adminBund, year):
+    """The years the consumption of `year` actually comes from (sorted, may be empty)."""
+    return sorted({r.year for r in _get_consumption_record_years(adminBund, year)})
 
 
 def calculate_total_demand(adminBund, year):
@@ -36,17 +52,81 @@ def calculate_total_demand(adminBund, year):
 
 # ── Extraction & Production ──────────────────────────────────────────
 
+def active_wells_with_watershed():
+    """Active wells annotated with `ws`, the id of the watershed their water belongs to.
+
+    The watershed of the well's AvailableFreshWater source when set, otherwise
+    the watershed containing the well; None when neither exists.
+    """
+    containing = Watershed.objects.filter(geom__contains=OuterRef('geom')).values('pk')[:1]
+    return ExtractionWater.objects.filter(is_active=True).annotate(
+        ws=Coalesce('source__watershed', Subquery(containing), output_field=IntegerField()),
+    )
+
+
+def _watershed_neighborhoods(watershed):
+    """Neighborhoods served by a watershed: those whose point on surface lies in it.
+
+    One point per neighborhood, so a neighborhood crossing a watershed border
+    counts in exactly one watershed and the shares of a watershed sum to 1.
+    """
+    return (
+        Neighborhood.objects
+        .annotate(pos=PointOnSurface('geom'))
+        .filter(pos__within=watershed.geom)
+    )
+
+
+def watershed_share(adminBund, watershed):
+    """Share (0-1) of a watershed's water that goes to the population of adminBund.
+
+    share = population of the unit's neighborhoods in the watershed
+            / population of all neighborhoods in the watershed
+    Falls back to the unit's share of the watershed area when no neighborhood
+    population is stored there (e.g. only cities were imported).
+    """
+    served = _watershed_neighborhoods(watershed)
+    total_pop = served.aggregate(p=Sum('currentPopulation'))['p'] or 0
+    if total_pop > 0:
+        unit_pop = (
+            served.filter(pk__in=neighborhoods_within(adminBund).values('pk'))
+            .aggregate(p=Sum('currentPopulation'))['p'] or 0
+        )
+        return unit_pop / total_pop
+    if not watershed.geom.area:
+        return 0.0
+    return adminBund.geom.intersection(watershed.geom).area / watershed.geom.area
+
+
 def calculate_total_extraction(adminBund):
-    """Total active extraction in m³/day from wells within the adminBund.
+    """Active extraction in m³/day available to the population of adminBund.
+
+    Wells may lie outside the unit: the water they pump belongs to their
+    watershed (the watershed of the well's AvailableFreshWater source, or the
+    watershed containing the well) and is distributed over the population of
+    that watershed. Per watershed:
+        E_u = Σ_w V_w × share(u, watershed)
+    with V_w the well's volume in m³/day (ExtractionWater.volume_m3_d: measured
+    yearly extraction, else pump flow x operation time, else flow x 24 h).
+    Wells with no watershed keep the location rule (counted in full for the
+    units they lie in).
 
     DAG edges:  Available_FW → Total_Extraction
     """
-    wells = ExtractionWater.objects.filter(
-        is_active=True,
-        geom__intersects=adminBund.geom,
-    )
-    total_m3_s = wells.aggregate(total=Sum('pumpflow_m3_s'))['total'] or 0
-    return total_m3_s * 86400  # m³/day
+    wells = active_wells_with_watershed()
+    volume = ExtractionWater.volume_m3_d()
+    flows = wells.values('ws').annotate(m3_d=Sum(volume))
+    m3_d_by_ws = {row['ws']: row['m3_d'] or 0 for row in flows}
+
+    total_m3_d = 0.0
+    if None in m3_d_by_ws:
+        total_m3_d += (
+            wells.filter(ws__isnull=True, geom__intersects=adminBund.geom)
+            .aggregate(total=Sum(volume))['total'] or 0
+        )
+    for watershed in Watershed.objects.filter(pk__in=[ws for ws in m3_d_by_ws if ws is not None]):
+        total_m3_d += m3_d_by_ws[watershed.pk] * watershed_share(adminBund, watershed)
+    return total_m3_d
 
 
 def calculate_total_production_day(adminBund=None):
@@ -58,11 +138,10 @@ def calculate_total_production_day(adminBund=None):
     if adminBund:
         extraction_m3_d = calculate_total_extraction(adminBund)
     else:
-        total_m3_s = (
+        extraction_m3_d = (
             ExtractionWater.objects.filter(is_active=True)
-            .aggregate(total=Sum('pumpflow_m3_s'))['total'] or 0
+            .aggregate(total=Sum(ExtractionWater.volume_m3_d()))['total'] or 0
         )
-        extraction_m3_d = total_m3_s * 86400
 
     imported_m3_d = (
         ImportedWater.objects.filter(is_active=True)

@@ -6,6 +6,11 @@
   --accent:    #2E6478; /* Blueprint Cyanotype (UI tint of #1F4E5F) */
   --accent2:   #B5674A; /* Zoning Brick */
   --accent3:   #C99A3E; /* Survey Ochre */
+  /* Series colours for charts on the dark panel (dataviz validator: lightness,
+     chroma, CVD and 3:1 contrast pass on #151618). Supply is a brighter step
+     of the cyanotype hue: --accent itself is too dark to read as a mark. */
+  --series-supply: #2F8FBF;
+  --series-demand: #B5674A;
   --text:      #ececea;
   --muted:     rgba(236,236,234,0.45);
 }
@@ -86,6 +91,79 @@
   border-radius: 99px;
   background: var(--accent-card, var(--accent));
   transition: width 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ── Supply vs Demand: two bars on one shared scale ───── */
+.balance-headline { display: flex; align-items: baseline; gap: 8px; }
+.balance-tag { margin-left: auto; align-self: center; }
+.balance-bars { display: flex; flex-direction: column; gap: 14px; margin-top: auto; }
+.balance-row { display: flex; flex-direction: column; gap: 6px; padding: 2px 0; }
+.balance-meta { display: flex; align-items: baseline; gap: 8px; }
+/* Identity sits in the key swatch; the text keeps the text tokens */
+.balance-key {
+  width: 8px; height: 8px;
+  border-radius: 2px;
+  align-self: center;
+  flex: none;
+}
+.balance-label {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  transition: color 0.2s;
+}
+.balance-value {
+  margin-left: auto;
+  font-family: var(--font-base);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.balance-unit, .balance-sub {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--muted);
+  margin-left: 4px;
+}
+.balance-sub::before { content: "· "; }
+.balance-track {
+  height: 8px;
+  background: rgba(255,255,255,0.04);   /* the shared scale's full length */
+  border-radius: 0 4px 4px 0;
+}
+.balance-fill {
+  height: 100%;
+  border-radius: 0 4px 4px 0;            /* anchored at the baseline, rounded data end */
+  transition: width 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.balance-row.supply .balance-fill, .balance-row.supply .balance-key { background: var(--series-supply); }
+.balance-row.demand .balance-fill, .balance-row.demand .balance-key { background: var(--series-demand); }
+.balance-row:hover .balance-label { color: var(--text); }
+
+/* ── Standalone dashboard pages (indicators_base.html) ─── */
+.indicators-page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+  font-size: 13px;
+}
+.indicators-page header { margin-bottom: 16px; }
+.indicators-page header h1 {
+  font-family: var(--font-base);
+  font-size: 1.8rem;
+  font-weight: 700;
+  margin: 4px 0;
+}
+.indicators-page .label-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 /* ── Pips ─────────────────────────────────────────────── */

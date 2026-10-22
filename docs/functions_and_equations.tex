@@ -319,12 +319,27 @@ where $P$ is \code{city.currentPopulation}. Note the two representations differ 
 \end{equation}
 \textbf{DAG edges:} \dagedge{Total\_Population $\rightarrow$ Total\_Consumption}, \dagedge{ConsumptionCapita $\rightarrow$ Total\_Consumption} --- \statusdone{}
 
-\subsection{Total extraction --- \code{calculate\_total\_extraction()}}
-\textbf{Location:} \code{watersupply/calculations.py:38}
+\subsection{Source recharge --- \code{AvailableFreshWater.save()}}
+\textbf{Location:} \code{watersupply/chain.py::recharge\_Mm3\_yr}, called by \code{AvailableFreshWater.save()} (\code{watersupply/models.py})
 \begin{equation}
-  E = \left(\sum_{w\,\in\,\text{active wells} \,\cap\, \text{geom}(u)} q_w\right) \times 86400, \qquad [q_w] = \si{m^3/s},\ [E] = \si{m^3/day}
+  Y = \frac{d_{\text{inf}}}{100} \times \frac{A}{10^6}, \qquad [d_{\text{inf}}] = \si{cm/yr}\ (\texttt{infiltrationDepth\_cm}),\ [A] = \si{m^2},\ [Y] = \si{Mm^3/yr}\ (\texttt{yield\_Mm3\_year})
 \end{equation}
-\textbf{DAG edge:} \dagedge{Available\_FW $\rightarrow$ Total\_Extraction} --- \statusdone{}
+$A$ is the source polygon's area in the storage CRS. Recalculated on every save when $d_{\text{inf}}$ is known; otherwise a supplied yield is kept. \texttt{infiltrationRate\_cm\_h} is a capacity during rain, not a yearly amount, and is not used.
+
+\textbf{DAG edge:} \dagedge{Infiltration $\rightarrow$ Available\_FW} --- \statuspartial{} ($d_{\text{inf}}$ is still a flat input; linking it to the SCS event infiltration and precipitation is open)
+
+\subsection{Total extraction --- \code{calculate\_total\_extraction()}}
+\textbf{Location:} \code{watersupply/calculations.py} (\code{calculate\_total\_extraction}, \code{watershed\_share})
+
+A well's water belongs to its watershed $h(w)$ (the \code{watershed} of its \code{AvailableFreshWater} source, else the watershed containing the well) and is shared by the population of that watershed, wherever the well lies. Neighborhoods are assigned to one watershed by their point on surface:
+\begin{align}
+  E_u &= \sum_{h} s_{u,h} \sum_{w:\,h(w)=h} V_w \;+\; \sum_{w:\,h(w)=\varnothing,\ w \,\cap\, \text{geom}(u)} V_w \\
+  s_{u,h} &= \frac{\sum_{n \,\in\, u,\ \text{pos}(n) \in h} P_n}{\sum_{\text{pos}(n) \in h} P_n}
+  \quad\text{(area share } |u \cap h| / |h| \text{ when the watershed has no neighborhood population)}
+\end{align}
+$V_w$ (\code{ExtractionWater.volume\_m3\_d()}, also used by \code{TotalWaterProduction}) is the first known of \texttt{current\_extraction\_Mm3\_yr} $\times 10^6 / 365$, $q_w \times t_w \times 3600$ ($t_w$ = \texttt{OperationTime\_h\_day}) and $q_w \times 86400$, with $[q_w] = \si{m^3/s}$; $[V_w] = [E_u] = \si{m^3/day}$; $\sum_u s_{u,h} = 1$ over the neighborhoods of a watershed. Wells without a watershed keep the location rule.
+
+\textbf{DAG edge:} \dagedge{Available\_FW $\rightarrow$ Total\_Extraction} --- \statusdone{}; the share also makes \dagedge{Total\_Population} of every city in the watershed an input of its neighbours' supply security (receivers \code{city\_population\_cascaded}, \code{city\_saved}, \code{watershed\_changed}, \code{extraction\_changed} in \code{watersupply/signals.py}).
 
 \subsection{Total production --- \code{calculate\_total\_production\_day()}}
 \textbf{Location:} \code{watersupply/calculations.py:51}

@@ -399,6 +399,31 @@ def _to_multipolygon(geos):
     return None  # skip non-area types
 
 
+_MULTI_OF = {'Point': 'MultiPoint', 'LineString': 'MultiLineString', 'Polygon': 'MultiPolygon'}
+
+
+def _fit_geometry_type(geos, field):
+    """
+    Convert between single and multi geometries to match the target field:
+    a Point into a MultiPointField is wrapped, a one-part MultiPoint into a
+    PointField is unwrapped (shapefiles/GeoPackages often store single points
+    as multi). Anything else is returned unchanged and rejected by the field.
+    """
+    from django.contrib.gis import geos as geos_mod
+
+    target = field.geom_type.replace('_', '').upper()  # 'POINT', 'MULTIPOINT', 'GEOMETRY', ...
+    current = geos.geom_type
+    if target == current.upper() or target == 'GEOMETRY':
+        return geos
+    if target == _MULTI_OF.get(current, '').upper():
+        return getattr(geos_mod, _MULTI_OF[current])([geos], srid=geos.srid)
+    if current.startswith('Multi') and target == current[5:].upper() and len(geos) == 1:
+        single = geos[0]
+        single.srid = geos.srid
+        return single
+    return geos
+
+
 @transaction.atomic
 def _generic_import(gdf, target_label, colmap, dry_run=True):
     """
@@ -426,8 +451,13 @@ def _generic_import(gdf, target_label, colmap, dry_run=True):
     created = updated = skipped = errors = 0
     sample_errors = []
 
-    # Prepare a field lookup for type casting
-    field_by_name = {f.name: f for f in opts.get_fields() if isinstance(f, GeometryField) or isinstance(f, RasterField)}
+    # Every concrete field the mapping form can target (attributes, FKs,
+    # geometry, raster). Limiting this to spatial fields silently dropped
+    # every mapped attribute column.
+    field_by_name = {
+        f.name: f for f in opts.get_fields()
+        if isinstance(f, Field) and not (f.many_to_many or f.auto_created or f.primary_key)
+    }
 
     geom_field_name = spec['geometry_field'] if spec['has_geometry'] else None
     geom_field_obj = field_by_name.get(geom_field_name) if geom_field_name else None
@@ -496,6 +526,8 @@ def _generic_import(gdf, target_label, colmap, dry_run=True):
 
                     if geos and isinstance(geom_field_obj, MultiPolygonField):
                         geos = _to_multipolygon(geos)
+                    elif geos and isinstance(geom_field_obj, GeometryField):
+                        geos = _fit_geometry_type(geos, geom_field_obj)
 
                     if geos is None:
                         if geom_field_name in spec['required']:

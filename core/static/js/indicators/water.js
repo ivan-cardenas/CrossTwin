@@ -60,20 +60,11 @@
     document.querySelectorAll('[data-gauge-id]').forEach(card => {
       const val     = parseFloat(card.dataset.gaugeVal) || 0;
       const id      = card.dataset.gaugeId;
-      const display = card.dataset.gaugeDisplay || '';
       const path    = document.getElementById(id);
       const txt     = document.getElementById(id + '-txt');
       if (!path) return;
 
-      if (id === 'gauge-supply' || id === 'gauge-demand') {
-        const total  = 157.08;
-        const capped = Math.min(val, 100);
-        requestAnimationFrame(() => {
-          path.style.strokeDashoffset = total - (total * capped / 100);
-        });
-        if (txt) txt.textContent = display;
-
-      } else if (id === 'gauge-sec') {
+      if (id === 'gauge-sec') {
         const circ   = 238.76;
         const MAX    = 200;
         const capped = Math.min(val, MAX);

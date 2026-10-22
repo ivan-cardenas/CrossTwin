@@ -1410,3 +1410,38 @@ class KeaAreaImportTests(TestCase):
         self.assertEqual((created, errors), (4, []))
         levels = dict(AreaAffectedDrought.objects.values_list("sourceID", "SensibilityLevel"))
         self.assertEqual(levels, {"droogte.0": 2, "droogte.1": 3, "droogte.2": 4, "droogte.3": 0})
+
+
+class GenericImportAttributeTests(TestCase):
+    """Mapped attribute columns (numbers, text, booleans, FKs) reach the model, not only the geometry."""
+
+    def test_extraction_well_attributes_are_imported(self):
+        from shapely.geometry import MultiPoint as ShapelyMultiPoint
+
+        from physicalEnv.models import EnvironmentalCosts
+        from watersupply.models import AvailableFreshWater, ExtractionWater
+
+        EnvironmentalCosts.objects.create(price_EUR_kg_CO2=0.05, price_EUR_droughtDamage_m3=0.02)
+        x, y = 257000.0, 470000.0
+        square = Polygon(((x - 500, y - 500), (x + 500, y - 500), (x + 500, y + 500),
+                          (x - 500, y + 500), (x - 500, y - 500)))
+        source = AvailableFreshWater.objects.create(
+            SourceName="Src", geom=MultiPolygon(square, srid=RD), infiltrationRate_cm_h=1.0,
+            infiltrationDepth_cm=10.0, totalQuantity_Mm3=100.0, yield_Mm3_year=10.0)
+        gdf = gpd.GeoDataFrame(
+            {"naam": ["Well A"], "flow": [0.05], "uren": [12.0], "diepte": [80.0],
+             "actief": ["false"], "bron": [source.pk]},
+            geometry=[ShapelyMultiPoint([(x, y)])], crs=f"EPSG:{RD}")
+        colmap = {"stationName": "naam", "pumpflow_m3_s": "flow", "OperationTime_h_day": "uren",
+                  "depth_m": "diepte", "is_active": "actief", "source": "bron"}
+
+        report = _generic_import(gdf, "watersupply.ExtractionWater", colmap, dry_run=False)
+
+        self.assertEqual(report["errors"], 0, report["sample_errors"])
+        well = ExtractionWater.objects.get()
+        self.assertEqual(well.stationName, "Well A")
+        self.assertEqual(well.pumpflow_m3_s, 0.05)
+        self.assertEqual(well.OperationTime_h_day, 12.0)
+        self.assertEqual(well.depth_m, 80.0)
+        self.assertFalse(well.is_active)
+        self.assertEqual(well.source, source)

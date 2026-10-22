@@ -39,7 +39,7 @@ def make_source(**kwargs):
 
 def make_well(**kwargs):
     defaults = dict(
-        geom=MultiPoint(Point(X, Y), srid=RD), stationName="Well 1",
+        geom=Point(X, Y, srid=RD), stationName="Well 1",
         pumpflow_m3_s=0.1, pumpMaxFlow_m3_s=0.2, OperationTime_h_day=10.0,
         depth_m=50.0, pumpEfficiency=70.0, pumpEnergyRate_kWh_h=50.0,
         pumpEmmissionFactor_kg_CO2_kWh=0.4,
@@ -156,10 +156,10 @@ class ExtractionAndProductionTests(TestCase):
 
     def test_extraction_outside_any_source_is_a_validation_error(self):
         with self.assertRaises(ValidationError):
-            make_well(geom=MultiPoint(Point(1000.0, 1000.0), srid=RD))
+            make_well(geom=Point(1000.0, 1000.0, srid=RD))
 
     def test_production_uses_3600_seconds_per_hour_and_default_price(self):
-        make_well()
+        make_well(current_extraction_Mm3_yr=None)  # flow x hours path
         production = TotalWaterProduction.objects.create(year=2024, productionDay=0)
         production.source.add(self.source)  # m2m signal recalculates
 
@@ -183,7 +183,7 @@ class ExtractionAndProductionTests(TestCase):
         production.refresh_from_db()
         self.assertEqual(production.productionDay, 0)
 
-        make_well()
+        make_well(current_extraction_Mm3_yr=None)  # flow x hours path
         production.refresh_from_db()
         self.assertAlmostEqual(production.productionDay, 0.0036)
 

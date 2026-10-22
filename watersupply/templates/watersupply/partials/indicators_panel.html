@@ -26,6 +26,7 @@
       <div class="slider-header-left">
         <div class="card-icon" style="background:rgba(34,197,94,0.08);border-color:rgba(34,197,94,0.15);">🏠</div>
         <span class="card-label">Consumption per Capita</span>
+        {% if indicators.consumption_years %}<span class="slider-unit" title="No consumption data for {{ year }}; using the closest year with data">({{ indicators.consumption_years|join:", " }} data)</span>{% endif %}
       </div>
       <div class="slider-value-display">
         <span id="slider-display">{{ indicators.consumption_capita }}</span>

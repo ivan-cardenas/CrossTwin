@@ -22,4 +22,5 @@ admin.site.register(ImportedWater)
 admin.site.register(WaterTreatment)
 admin.site.register(CoverageWaterSupply)
 admin.site.register(NonRevenueWater)
+admin.site.register(Watershed)
 
