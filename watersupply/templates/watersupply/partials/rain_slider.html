@@ -1,0 +1,60 @@
+{% load l10n %}
+{% comment %}
+Rain-event slider and groundwater season switch of the infiltration what-if
+(SCS Curve Number), shared by water_indicators.html and
+partials/indicators_panel.html. Every control sends all three values
+(consumption, rain_mm, season), so changing one keeps the others' setting.
+Zones follow KNMI's daily rain classes: heavy from 25 mm, extreme from 50 mm.
+{% endcomment %}
+<div class="slider-container">
+  <div class="slider-header">
+    <div class="slider-header-left">
+      <div class="card-icon" style="background:rgba(56,189,248,0.08);border-color:rgba(56,189,248,0.15);">🌧️</div>
+      <span class="card-label">Rain Event</span>
+      {% include 'partials/_info_btn.html' with title="Rain Event" text="Rain depth of a single event, used by the infiltration indicator (SCS Curve Number method). Heavier events run off a larger share, since the soil's retention is used up first." %}
+    </div>
+    <div class="slider-value-display">
+      <span id="rain-display">{{ indicators.rain_mm|floatformat:0 }}</span>
+      <span class="slider-unit">mm</span>
+    </div>
+  </div>
+  <div class="slider-zones-container">
+    <div class="slider-zones">
+      <div class="sz-ok" style="flex:25;"></div>
+      <div class="sz-warn" style="flex:25;"></div>
+      <div class="sz-bad" style="flex:50;"></div>
+    </div>
+    <div class="slider-zone-wrap">
+      <input id="rain-slider"
+             class="zone-slider"
+             type="range"
+             name="rain_mm"
+             min="1" max="100" step="1"
+             value="{{ indicators.rain_mm|unlocalize }}"
+             hx-get="{% url 'watersupply:recalculate_indicators' level location year %}"
+             hx-vals='{"pop_scenario": "{{ pop_scenario|default:"prognose" }}", "pop_growth": "{{ pop_growth|default:0|unlocalize }}"}'
+             hx-trigger="input changed delay:200ms"
+             hx-target="#indicators-grid"
+             hx-include="#consumption-slider, #rain-slider, input[name=season]:checked"/>
+    </div>
+    <div class="slider-threshold-labels">
+      <span>1</span><span>25</span><span>50</span><span>100</span>
+    </div>
+  </div>
+  <div><span id="rain-tag" class="threshold-tag ok">Moderate</span></div>
+
+  <!-- Groundwater season: which level (GHG/GLG) marks shallow groundwater -->
+  <div class="season-switch-row">
+    <span class="card-label">Groundwater</span>
+    {% include 'partials/_info_btn.html' with title="Groundwater Season" text="Which groundwater level decides where the soil is waterlogged: the mean highest level (GHG, winter) or the mean lowest (GLG, summer). Where it is within 60 cm of the surface, undrained land counts as soil group D (NEH 630). Built-up and paved land is drained, so it keeps its texture group; BIS Nederland has no groundwater values for most of it, nor for water bodies, whose curve number is 100 anyway." %}
+    <div class="season-switch" role="radiogroup" aria-label="Groundwater season"
+         hx-get="{% url 'watersupply:recalculate_indicators' level location year %}"
+         hx-vals='{"pop_scenario": "{{ pop_scenario|default:"prognose" }}", "pop_growth": "{{ pop_growth|default:0|unlocalize }}"}'
+         hx-trigger="change"
+         hx-target="#indicators-grid"
+         hx-include="#consumption-slider, #rain-slider, input[name=season]:checked">
+      <label><input type="radio" name="season" value="wet" {% if indicators.season != 'dry' %}checked{% endif %}/><span>💧 Wet · GHG</span></label>
+      <label><input type="radio" name="season" value="dry" {% if indicators.season == 'dry' %}checked{% endif %}/><span>☀️ Dry · GLG</span></label>
+    </div>
+  </div>
+</div>

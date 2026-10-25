@@ -1,15 +1,33 @@
 import hashlib
 import re
+import time
 from datetime import datetime, timedelta
 from xml.etree import ElementTree
 
 import requests
+from requests.adapters import HTTPAdapter
 from django.conf import settings
 from django.core.cache import cache
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 
+from core.cache import get_cache
 from .models import WMSLayer
+
+# One HTTP session for every upstream WMS call. requests.get() opens a new
+# TCP + TLS connection per call; a shared session keeps connections alive,
+# so only the first tile pays the handshake. The pool is sized for the tile
+# requests the dev server handles in parallel threads.
+_session = requests.Session()
+_session.mount("https://", HTTPAdapter(pool_connections=4, pool_maxsize=16))
+_session.mount("http://", HTTPAdapter(pool_connections=4, pool_maxsize=16))
+
+# How long a proxied tile may be reused, by the server cache and the browser.
+# A tile for a given TIME is a fixed radar frame and never changes; one
+# without TIME shows "the latest frame" and changes as new frames arrive.
+TILE_TTL_FIXED_FRAME = 24 * 3600
+TILE_TTL_LATEST = 300
+_TIME_PARAM = re.compile(r'(^|&)time=[^&]+', re.IGNORECASE)
 
 # ADAGUC/WMS capabilities documents are namespaced; strip the namespace
 # instead of hardcoding it, since it can vary between WMS servers.
@@ -31,20 +49,37 @@ def _wms_auth_headers(layer):
     return {'Authorization': api_key}
 
 
+def _retry_delay(exc):
+    """Seconds to wait before retrying: honour a 429's Retry-After (capped), else retry at once."""
+    response = getattr(exc, "response", None)
+    if response is None or response.status_code != 429:
+        return 0
+    try:
+        return min(float(response.headers.get("Retry-After", 1)), 2.0)
+    except (TypeError, ValueError):
+        return 1.0
+
+
 def _fetch_with_retry(url, headers=None, timeout=15, attempts=2):
     """GET a URL, retrying once on transient network errors (timeouts, resets).
 
     Time-dimension WMS servers are often slow (generating a capabilities
     document on the fly), so a single blip shouldn't take the layer down.
+    A 429 (rate limited) waits for Retry-After first: retrying straight
+    away would only be rate-limited again.
     """
     last_error = None
     for attempt in range(attempts):
         try:
-            response = requests.get(url, headers=headers, timeout=timeout)
+            response = _session.get(url, headers=headers, timeout=timeout)
             response.raise_for_status()
             return response
         except requests.exceptions.RequestException as exc:
             last_error = exc
+            if attempt < attempts - 1:
+                delay = _retry_delay(exc)
+                if delay:
+                    time.sleep(delay)
     raise last_error
 
 
@@ -166,6 +201,29 @@ def wms_time_steps(request, wms_name):
     return JsonResponse({'times': times, 'default': times[-1]})
 
 
+WMS_BBOX_DECIMALS = 4   # same as the map's COORD_DECIMALS (core/static/js/Config.js)
+_BBOX_PARAM = re.compile(r'(^|&)(bbox=)([^&]*)', re.IGNORECASE)
+
+
+def _round_bbox(query_string, decimals=WMS_BBOX_DECIMALS):
+    """
+    Round the numbers of the `bbox=` parameter in a raw query string, leaving
+    everything else byte-for-byte as it was. Mapbox sends the bbox at full
+    float precision; rounding it keeps the upstream request short and gives
+    identical tiles identical cache keys.
+    """
+    def round_value(match):
+        parts = []
+        for part in match.group(3).replace('%2C', ',').replace('%2c', ',').split(','):
+            try:
+                parts.append(f'{round(float(part), decimals):.{decimals}f}'.rstrip('0').rstrip('.'))
+            except ValueError:
+                parts.append(part)
+        return f'{match.group(1)}{match.group(2)}{",".join(parts)}'
+
+    return _BBOX_PARAM.sub(round_value, query_string, count=1)
+
+
 def wms_tile_proxy(request, wms_name):
     """Proxy a GetMap tile request to a WMS that requires an API key.
 
@@ -175,19 +233,30 @@ def wms_tile_proxy(request, wms_name):
     forwards the request Mapbox already builds (the same querystring
     `addWmsLayer`/`addAnimatedWmsLayer` construct for a direct WMS) to the
     real WMS URL with the header attached, and streams the image back.
+
+    Tiles are cached in their own cache (CACHES["wms_tiles"]) and sent with
+    Cache-Control, so the browser reuses them too: a tile for a fixed TIME
+    for a day (it never changes), one without TIME for 5 minutes. The
+    Server-Timing header reports the upstream time and whether the tile came
+    from the cache (DevTools -> Network -> Timing).
     """
     layer = get_object_or_404(WMSLayer, name=wms_name)
 
-    query_hash = hashlib.sha1(request.META.get("QUERY_STRING", "").encode()).hexdigest()
+    query_string = _round_bbox(request.META.get("QUERY_STRING", ""))
+    ttl = TILE_TTL_FIXED_FRAME if _TIME_PARAM.search(query_string) else TILE_TTL_LATEST
+    tiles = get_cache("wms_tiles")
+    query_hash = hashlib.sha1(query_string.encode()).hexdigest()
     cache_key = f'wms_tile_{layer.name}_{query_hash}'
-    cached = cache.get(cache_key)
+
+    cached = tiles.get(cache_key)
     if cached is not None:
         content, content_type = cached
-        return HttpResponse(content, content_type=content_type)
+        return _tile_response(content, content_type, ttl, 'cache;desc="hit"')
 
     separator = '&' if '?' in layer.url else '?'
-    upstream_url = f'{layer.url}{separator}{request.META.get("QUERY_STRING", "")}'
+    upstream_url = f'{layer.url}{separator}{query_string}'
 
+    start = time.perf_counter()
     try:
         response = _fetch_with_retry(
             upstream_url, headers=_wms_auth_headers(layer), timeout=10,
@@ -196,7 +265,20 @@ def wms_tile_proxy(request, wms_name):
         # A missing tile is a normal, non-fatal thing for a raster source —
         # Mapbox just leaves that area blank rather than breaking the layer.
         return HttpResponse(status=502)
+    upstream_ms = (time.perf_counter() - start) * 1000
 
     content_type = response.headers.get('Content-Type', 'image/png')
-    cache.set(cache_key, (response.content, content_type), timeout=300)
-    return HttpResponse(response.content, content_type=content_type)
+    tiles.set(cache_key, (response.content, content_type), timeout=ttl)
+    return _tile_response(
+        response.content, content_type, ttl,
+        f'cache;desc="miss", upstream;dur={upstream_ms:.1f};desc="{layer.name}"',
+    )
+
+
+def _tile_response(content, content_type, ttl, server_timing):
+    response = HttpResponse(content, content_type=content_type)
+    response['Cache-Control'] = (
+        f'public, max-age={ttl}, immutable' if ttl == TILE_TTL_FIXED_FRAME else f'public, max-age={ttl}'
+    )
+    response['Server-Timing'] = server_timing
+    return response

@@ -1,0 +1,64 @@
+{% load static humanize l10n %}
+
+<div style="padding: 0 4px;">
+
+  <!-- Header -->
+  <div style="margin-bottom:16px;">
+    <div style="font-size:10px; letter-spacing:0.14em; text-transform:uppercase;
+                color:rgba(232,244,255,0.45); margin-bottom:4px;">
+      Built-up Indicators
+    </div>
+    <div style="font-family:var(--font-base); font-size:1.1rem; font-weight:700;">
+      {{ location }}
+      <span style="color:rgba(232,244,255,0.4); font-size:0.85rem;">· {{ year }}</span>
+    </div>
+    {% if indicators.population %}
+    <div id="panel-population" style="margin-top:4px; font-size:0.78rem; color:rgba(232,244,255,0.55);">
+      👥 {{ indicators.population|intcomma }} inhabitants
+      <span style="opacity:.7;">· {{ pop_scenario|default:"prognose" }}{% if pop_growth %}, {{ pop_growth|floatformat:1 }}%/yr extra growth{% endif %}</span>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Styled slider — additional park area what-if -->
+  <div class="slider-container">
+    <div class="slider-header">
+      <div class="slider-header-left">
+        <div class="card-icon" style="background:rgba(34,197,94,0.08);border-color:rgba(34,197,94,0.15);">🌳</div>
+        <span class="card-label">Additional Park Area</span>
+      </div>
+      <div class="slider-value-display">
+        <span id="green-slider-display">0</span>
+        <span class="slider-unit">ha</span>
+      </div>
+    </div>
+    <div class="slider-zones-container">
+      <div class="slider-zone-wrap">
+        <input id="green-added-slider"
+               class="zone-slider"
+               type="range"
+               name="green_added_ha"
+               min="0" max="200" step="5"
+               value="0"
+               hx-get="{% url 'builtup:recalculate_indicators' level location year %}"
+               hx-vals='{"pop_scenario": "{{ pop_scenario|default:"prognose" }}", "pop_growth": "{{ pop_growth|default:0|unlocalize }}"}'
+               hx-trigger="input changed delay:200ms"
+               hx-target="#indicators-grid"
+               hx-include="this"/>
+      </div>
+      <div class="slider-threshold-labels">
+        <span>0 ha</span><span>50</span><span>100</span><span>150</span><span>200 ha</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cards — swap target for recalculate -->
+  <div id="indicators-grid">
+    {% include 'builtup/partials/indicators_grid.html' %}
+  </div>
+
+</div>
+
+{% include 'partials/_info_popover.html' %}
+
+<script src="{% static 'js/indicators/builtup.js' %}"></script>

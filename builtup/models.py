@@ -3,7 +3,7 @@ from django.contrib.gis.db import models
 from django.contrib.postgres.fields import ArrayField
 from django.db.models import Sum
 from administrative.models import City, Neighborhood
-from physicalEnv.models import SurfaceMaterialProperties, WallMaterialProperties
+from physicalEnv.models import HILUCSLandUse, SurfaceMaterialProperties, WallMaterialProperties
 from Energy.models import EnergyEfficiencyLabels
 
 from django.conf import settings
@@ -15,7 +15,7 @@ class ZoningArea(models.Model):
     id = models.AutoField(primary_key=True)
     neighborhood = models.ForeignKey(Neighborhood, verbose_name="Neighborhood", on_delete=models.DO_NOTHING)
 
-    zone_type = models.CharField(max_length=100, null=True, blank=True, choices=[('residential', 'Residential'), ('commercial', 'Commercial'), ('industrial', 'Industrial'), ('mixed', 'Mixed Use')], help_text="Type of zoning area, where known")
+    zone_type = models.ForeignKey(HILUCSLandUse, on_delete=models.DO_NOTHING, null=True, blank=True, related_name="zoning_areas", help_text="HILUCS land use of the zoning area (INSPIRE planned land use hilucsLandUse), where known")
     # Dutch legal plan instrument from INSPIRE Planned Land Use's
     # planTypeName codelist (e.g. 'bestemmingsplan', 'wijzigingsplan',
     # 'omgevingsvergunning') — populated by the pdok_landcover_kadaster
@@ -58,15 +58,21 @@ class Street(models.Model):
         
 class Park(models.Model):
     id = models.AutoField(primary_key=True)
+    sourceID = models.CharField(max_length=100, unique=True, null=True, blank=True, help_text="Identifier in the source dataset, e.g. 'osm:way/123' for OpenStreetMap")
     name = models.CharField(max_length=100, help_text="Name of the park")
     area = models.FloatField(help_text="Area of the park in square meters")
-    vegetationType = models.CharField(max_length=100, help_text="Type of vegetation in the park (e.g., grass, trees, shrubs)")
+    vegetationType = models.CharField(max_length=100, null=True, blank=True, help_text="Type of vegetation in the park (e.g., grass, trees, shrubs), where known")
     neighborhood = models.ForeignKey(Neighborhood, on_delete=models.DO_NOTHING, null=True, blank=True, help_text="City code from administrative.City")
     geom = models.MultiPolygonField(srid=CoordinateSystem)
-    
+
     def __str__(self):
         return self.name
-    
+
+    def save(self, *args, **kwargs):
+        if self.geom:
+            self.area = self.geom.area
+        super().save(*args, **kwargs)
+
     class Meta:
         verbose_name = "Park"
         verbose_name_plural = "Parks"
@@ -77,6 +83,8 @@ class Facility(models.Model):
     type = models.CharField(max_length=100, choices=[('school', 'School'), ('hospital', 'Hospital'), ('fire_station', 'Fire Station'), 
                                                      ('police_station', 'Police Station'), ('market', 'Market'), ('transportNode', 'Transport Node')], 
                             help_text="Type of facility")
+    subtype = models.CharField(max_length=100, null=True, blank=True, help_text="Finer source category within the type, e.g. OSM amenity 'kindergarten' or 'clinic'")
+    sourceID = models.CharField(max_length=100, unique=True, null=True, blank=True, help_text="Identifier in the source dataset, e.g. 'osm:node/123' for OpenStreetMap")
     neighborhood = models.ForeignKey(Neighborhood, on_delete=models.DO_NOTHING, null=True, blank=True, help_text="City code from administrative.City")
     geom = models.PointField(srid=CoordinateSystem)
     
@@ -151,6 +159,14 @@ class Building(models.Model):
     numberFloors = models.IntegerField(null=True, blank=True, help_text="Number of floors in the building")
     vacant= models.BooleanField(default=False, help_text="Is the building vacant?")
     vacancyRate = models.FloatField(null=True, blank=True, help_text="Vacancy rate in percentage (%)")
+    # Climate-effect attributes from the Klimaateffectatlas WFS (importer
+    # catalog kea_*, docs/KEA_WFS_MAPPING.md). Written by enrichment imports
+    # onto existing BAG buildings; no save() derivation reads them.
+    canopyCover_pct = models.FloatField(null=True, blank=True, help_text="Tree canopy cover around the building, % (KEA RMK_30percBKB_AHN4.perc_bkb); informs the Vegetation_Coverage DAG node")
+    meetsCanopy30Rule = models.BooleanField(null=True, blank=True, help_text="Whether the 3-30-300 rule's 30% canopy cover is met around the building (KEA RMK_30percBKB_AHN4.bkb_30perc_gehaald)")
+    facadeShadeScore = models.FloatField(null=True, blank=True, help_text="Shade on the facades of the building's block, 0-1 (KEA 'Schaduw op gebouwen'.SOG.Score)")
+    floodDepth_p99_m = models.FloatField(null=True, blank=True, help_text="99th percentile water depth around the building in a 70 mm/h cloudburst, m (KEA nl_fcab_omgevingsscore_wateroverlast.waterdiepte_p99)")
+    floodDepthClass = models.CharField(max_length=50, null=True, blank=True, help_text="Water depth class around the building, e.g. '10 tot 15 cm' (KEA nl_fcab_omgevingsscore_wateroverlast.waterdiepte_klasse)")
     connectivity = models.ManyToManyField(Facility, verbose_name="Connections to Facilities", blank=True, help_text="Facilities the property is connected to")  #TODO: Define connectivity index and calculation method
     last_updated = models.DateTimeField(default=timezone.now)
     geom = models.MultiPolygonField(srid=CoordinateSystem)
@@ -187,6 +203,12 @@ class Building(models.Model):
         if self.geom:
             self.area_sqm = self.geom.area
             self.neighborhood = Neighborhood.objects.filter(geom__contains=self.geom.centroid).first()
+
+        # update_or_create() -- the importer's path for a building that already
+        # exists -- saves with update_fields = the fields it was handed. Without
+        # this, the fields derived above are computed and then never written.
+        if kwargs.get("update_fields"):
+            kwargs["update_fields"] = set(kwargs["update_fields"]) | {"buildingType", "area_sqm", "neighborhood"}
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -218,7 +240,10 @@ class BuildingEnergyLabel(Building):
 
 
 class Property(models.Model):
-    id = models.AutoField(primary_key=True)
+    # 64-bit: the PDOK import (pdok_properties) stores the BAG verblijfsobject
+    # identificatie here, a 16-digit number beyond a 32-bit integer. Still
+    # auto-numbered for properties created in the editor or admin.
+    id = models.BigAutoField(primary_key=True)
     name = models.CharField(max_length=100, help_text="Name of the property")
     houseNumber = models.CharField(max_length=5, null=True, blank=True, help_text="House number of the property")
     building = models.ForeignKey(Building, verbose_name="Building", on_delete=models.DO_NOTHING)
@@ -227,7 +252,7 @@ class Property(models.Model):
     greenVisibility = models.FloatField(help_text="Green visibility index of the property", null=True, blank=True)  #TODO: Define green visibility index and calculation method
     bedrooms = models.IntegerField(help_text="Number of bedrooms in the property", null=True, blank=True)
     bathrooms = models.IntegerField(help_text="Number of bathrooms in the property", null=True, blank=True)
-    
+    postalCode = models.CharField(max_length=10, help_text="Postal code of the property", null=True, blank=True) # TODO: This can be a ForeignKey to a PostalCode model of national postal codes, if such a model is created in the future.
     listingPrice_EUR = models.FloatField(help_text="Listing price of the property in EUR", null=True, blank=True)
     salePrice_EUR = models.FloatField(help_text="Sale price of the property in EUR", null=True, blank=True)
     unitaryPrice_EUR_per_sqm = models.FloatField(help_text="Unitary price in EUR per square meter", null=True, blank=True)
@@ -249,3 +274,30 @@ class Property(models.Model):
         verbose_name = "Property"
         verbose_name_plural = "Properties"
     
+
+
+class NeighborhoodClimateRisk(models.Model):
+    """
+    Climate risks to the building stock of a neighborhood, from the
+    Klimaateffectatlas WFS (importer catalog kea_*, docs/KEA_WFS_MAPPING.md).
+    One row per neighborhood; each KEA layer fills its own columns. Stored
+    inputs only (no save() derivation, no DAG edge implemented).
+    """
+    id = models.AutoField(primary_key=True)
+    neighborhood = models.OneToOneField(Neighborhood, verbose_name="Neighborhood", on_delete=models.DO_NOTHING, related_name="climate_risk")
+    pileRotRisk_current_pct = models.FloatField(null=True, blank=True, help_text="Buildings at risk of wooden pile rot, current climate, % (KEA risicopaalrot_huidig)")
+    pileRotRisk_2050low_pct = models.FloatField(null=True, blank=True, help_text="Buildings at risk of wooden pile rot, 2050 low scenario, % (KEA risicopaalrot_2050laag)")
+    pileRotRisk_2050high_pct = models.FloatField(null=True, blank=True, help_text="Buildings at risk of wooden pile rot, 2050 high scenario, % (KEA risicopaalrot_2050hoog)")
+    settlementRisk_2050low_pct = models.FloatField(null=True, blank=True, help_text="Buildings at risk of differential settlement, 2050 low scenario, % (KEA risicoverschilzetting_2050laag)")
+    settlementRisk_2050high_pct = models.FloatField(null=True, blank=True, help_text="Buildings at risk of differential settlement, 2050 high scenario, % (KEA risicoverschilzetting_2050hoog)")
+    dryFloors_pct = models.FloatField(null=True, blank=True, help_text="Share of floors that stay dry in an extremely unlikely flood, % (KEA droge_verdiepingen_extreem_kleine_kans)")
+    source = models.CharField(max_length=100, default="Klimaateffectatlas", help_text="Data provider")
+    geom = models.MultiPolygonField(srid=CoordinateSystem)
+    last_updated = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return f"Climate risk {self.neighborhood_id}"
+
+    class Meta:
+        verbose_name = "Neighborhood Climate Risk"
+        verbose_name_plural = "Neighborhood Climate Risks"

@@ -6,6 +6,7 @@ from administrative.population import DEFAULT_SCENARIO, get_population, populati
 from .calculations import (
     calculate_supply_demand_for_unit,
     calculate_new_units_for_unit,
+    calculate_pipeline_land_take,
     calculate_mortgage_indicators,
     calculate_rent_indicators,
     calculate_house_price_index,
@@ -32,6 +33,7 @@ def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, po
 
     supply_demand = calculate_supply_demand_for_unit(adminUnit, year)
     new_units = calculate_new_units_for_unit(adminUnit, year)
+    land_take = calculate_pipeline_land_take(adminUnit, year)
     mortgage = calculate_mortgage_indicators(adminUnit, year)
     rent = calculate_rent_indicators(adminUnit)
     hpi = calculate_house_price_index(adminUnit, year)
@@ -44,6 +46,7 @@ def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, po
         'population': get_population(adminUnit, year, pop_scenario, pop_growth),
         'supply_demand': supply_demand,
         'new_units': new_units,
+        'land_take': land_take,
         'mortgage': mortgage,
         'rent': rent,
         'hpi': hpi,
@@ -65,6 +68,14 @@ MOCK_DATA = {
     'new_units': {
         'completed_units': 2_500, 'completed_projects': 12,
         'pipeline_units': 4_800, 'pipeline_projects': 18,
+    },
+    'land_take': {
+        'by_class': [
+            {'class_name': 'pastures', 'area_ha': 21.4, 'urban': False},
+            {'class_name': 'urban fabric', 'area_ha': 9.8, 'urban': True},
+            {'class_name': 'arable land', 'area_ha': 6.1, 'urban': False},
+        ],
+        'footprint_ha': 38.0, 'greenfield_ha': 27.5, 'infill_ha': 9.8, 'uncovered_ha': 0.7,
     },
     'mortgage': {
         'interest_rate': 3.5, 'ltv_limit': 100.0, 'lti_limit': 4.5,
@@ -114,6 +125,7 @@ def _build_indicators(data, interest_rate_override=None):
     """Pure function: takes DB data dict, returns flat indicators dict."""
     sd = data['supply_demand']
     nu = data['new_units']
+    land_take = data.get('land_take') or {}
     mtg = data['mortgage']
     rent = data['rent']
     hpi = data['hpi']
@@ -168,6 +180,10 @@ def _build_indicators(data, interest_rate_override=None):
         'completed_projects': nu['completed_projects'],
         'pipeline_units': nu['pipeline_units'],
         'pipeline_projects': nu['pipeline_projects'],
+        'pipeline_footprint_ha': land_take.get('footprint_ha', 0.0),
+        'pipeline_greenfield_ha': land_take.get('greenfield_ha', 0.0),
+        'pipeline_infill_ha': land_take.get('infill_ha', 0.0),
+        'pipeline_land_take_classes': [c for c in land_take.get('by_class', []) if not c['urban']][:3],
 
         # -- Mortgage --
         'interest_rate': mtg.get('interest_rate'),

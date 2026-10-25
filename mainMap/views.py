@@ -2,18 +2,22 @@ from django.shortcuts import render, redirect
 
 import re
 import json
-from django.http import JsonResponse, Http404
+from django.http import HttpResponse, JsonResponse, Http404
 from django.core.serializers import serialize
 from django.contrib.gis.db import models as gis_models
-from django.db import connection
+from django.db import connection, transaction
 from django.apps import apps
 
 from django.conf import settings
 from django.urls import reverse
 
 from core.utils import VECTOR_REGISTRY, WMS_REGISTRY, RASTER_REGISTRY, MODEL_REGISTRY
-from core.rasterStyles import raster_display_name
-from core.landCoverStyles import build_landcover_style_and_legend
+from .styles.rasterStyles import raster_display_name
+from .styles.landCoverStyles import build_landcover_style_and_legend
+from core.editing import is_editable
+from .styles.layerStyles import FALLBACK_COLORS, LAYER_STYLES
+from .styles.soilStyles import build_soil_style_and_legend
+from .styles.treeStyles import build_tree_style
 
 
 # Ordered from most specific to least — first match wins
@@ -26,6 +30,7 @@ _UNIT_PATTERNS = [
     (r'\bL/person/day\b|liters? per person per day',            'L/person/day'),
     (r'\bEUR/m[³3]\b|EUR per cubic met',             '€/m³'),
     (r'\bcm/h\b|centimeters? per hour',              'cm/h'),
+    (r'\bmm/h\b|millimet(?:er|re)s? per hour',       'mm/h'),
     (r'\bkg[_ ]CO2/h\b|kg CO2 per hour',             'kg CO₂/h'),
     (r'\bkm[²2]\b|square kilo',                      'km²'),
     (r'\bm[²2]\b|square met',                        'm²'),
@@ -66,8 +71,57 @@ def _field_label(field) -> str:
     return _humanize_field_name(field.name)
 
 
+# Columns of an FK's target shown in a layer's popup besides the FK's display
+# field: {model label: {fk name: [(related field, popup label or None)]}}.
+# They reach the GeoJSON as "<fk>__<field>" (one more column on the existing
+# JOIN), and _field_metadata labels them. A "…__name" property becomes the
+# popup title (Layers.js::_featureTitleKey). Styles can match on them too
+# (soil_type__unitCode, mainMap/styles/soilStyles.py).
+POPUP_RELATED_FIELDS = {
+    'physicalEnv.SoilArea': {
+        'soil_type': [
+            ('name', None),
+            ('unitCode', 'Soil unit'),
+            ('unitName', 'Soil unit name'),
+            ('soilGroup', None),
+            ('infiltrationMin_mm_h', 'Infiltration rate min'),
+            ('infiltrationMax_mm_h', 'Infiltration rate max'),
+        ],
+    },
+}
+
+
+def _popup_related_fields(model):
+    """[(fk field, related field, property key, label)] configured for `model`."""
+    out = []
+    for fk_name, extras in POPUP_RELATED_FIELDS.get(model._meta.label, {}).items():
+        fk = model._meta.get_field(fk_name)
+        for field_name, label in extras:
+            rel = fk.related_model._meta.get_field(field_name)
+            out.append((fk, rel, f'{fk_name}__{field_name}', label))
+    return out
+
+
+def _field_meta_entry(field, label=None) -> dict:
+    help_text = str(getattr(field, 'help_text', '') or '')
+    field_class = type(field).__name__
+    if 'DateTime' in field_class:
+        field_type = 'datetime'
+    elif 'Date' in field_class:
+        field_type = 'date'
+    else:
+        field_type = 'other'
+    return {
+        'label': label or _field_label(field),
+        'help_text': help_text,
+        'unit': _extract_unit(help_text),
+        'type': field_type,
+    }
+
+
 def _field_metadata(model) -> dict:
-    """Return {field_name: {label, help_text, unit}} for simple (non-geometry) fields."""
+    """Return {field_name: {label, help_text, unit}} for simple (non-geometry)
+    fields, plus the related columns of POPUP_RELATED_FIELDS."""
     meta = {}
     for f in model._meta.get_fields():
         if f.many_to_many or f.one_to_many:
@@ -76,20 +130,9 @@ def _field_metadata(model) -> dict:
             continue
         if not hasattr(f, 'column'):
             continue
-        help_text = getattr(f, 'help_text', '') or ''
-        field_class = type(f).__name__
-        if 'DateTime' in field_class:
-            field_type = 'datetime'
-        elif 'Date' in field_class:
-            field_type = 'date'
-        else:
-            field_type = 'other'
-        meta[f.name] = {
-            'label': _field_label(f),
-            'help_text': str(help_text),
-            'unit': _extract_unit(str(help_text)),
-            'type': field_type,
-        }
+        meta[f.name] = _field_meta_entry(f)
+    for _fk, rel, key, label in _popup_related_fields(model):
+        meta[key] = _field_meta_entry(rel, label)
     return meta
 
 
@@ -227,308 +270,166 @@ def population_panel(request):
     return render(request, 'mainMap/partials/population_panel.html', context)
 
 
-def model_geojson(request, app_label, model_name):
+# ── GeoJSON endpoint tuning (docs/PERFORMANCE.md §1) ─────────────────────────
+# 6 decimal places of a degree is ~10 cm, well below one screen pixel at any
+# zoom Mapbox renders; PostGIS's default of 9 only makes the payload bigger.
+GEOJSON_PRECISION = 5
+# Below this zoom, lines and polygons are simplified to about one screen pixel.
+GEOJSON_SIMPLIFY_BELOW_ZOOM = 14
+# Metres per pixel at zoom 0 on the equator for Mapbox GL's 512 px tiles.
+_MAPBOX_METRES_PER_PIXEL_Z0 = 78271.517
+_METRES_PER_DEGREE = 111_320.0
+GEOJSON_CACHE_ALIAS = 'geojson'
+# Short on purpose: edits made outside Django (QGIS, psql, other people's
+# scripts) don't invalidate the cache, so this bounds how stale the map can get.
+GEOJSON_CACHE_TTL = 120
+# Whole-table responses of large layers are not cached: a local-memory cache
+# would hold every one of them per process. Those layers load by viewport.
+GEOJSON_CACHE_MAX_BYTES = 8 * 1024 * 1024
+
+
+def _parse_bbox(raw):
+    """`minLng,minLat,maxLng,maxLat` (WGS84) -> tuple of floats; ValueError if malformed."""
+    parts = [float(v) for v in raw.split(',')]
+    if len(parts) != 4:
+        raise ValueError("bbox needs 4 comma-separated numbers")
+    min_lng, min_lat, max_lng, max_lat = parts
+    if not (-180 <= min_lng < max_lng <= 180 and -90 <= min_lat < max_lat <= 90):
+        raise ValueError("bbox must be minLng,minLat,maxLng,maxLat in WGS84")
+    return min_lng, min_lat, max_lng, max_lat
+
+
+def _simplify_tolerance(zoom, lat, geodetic):
+    """About one screen pixel at `zoom`, in the storage CRS's units (metres, or degrees if geodetic)."""
+    import math
+    metres = _MAPBOX_METRES_PER_PIXEL_Z0 * math.cos(math.radians(lat)) / (2 ** zoom)
+    return metres / _METRES_PER_DEGREE if geodetic else metres
+
+
+def _geojson_sql(model, geom_field, bbox=None, zoom=None):
     """
-    Generic GeoJSON endpoint for any registered model.
-    URL: /api/<app_label>/<model_name>/geojson/
+    (sql, params) returning the layer as one FeatureCollection JSON text.
+
+    - FK columns come from LEFT JOINs on the related table (one hash join
+      per FK) instead of a correlated sub-SELECT evaluated once per row.
+    - `bbox` restricts the rows with `&&`, which uses the geometry's GiST index.
+    - `zoom` below GEOJSON_SIMPLIFY_BELOW_ZOOM simplifies lines/polygons to
+      about one pixel before reprojecting.
     """
-    # Find the model in registry
-    key = f"{app_label}.{model_name}"
-    
-    if key not in VECTOR_REGISTRY:
-        raise Http404(f"Model {key} not found in registry")
-    
-    model = VECTOR_REGISTRY[key]
-    
-    # Find the geometry field automatically
-    geom_field = None
-    for field in model._meta.get_fields():
-        if isinstance(field, gis_models.GeometryField):
-            geom_field = field.name
-            break
-    
-    if not geom_field:
-        raise Http404(f"Model {key} has no geometry field")
-    
-    # Get all non-geometry fields for properties (use db_column if available)
-    # EXCLUDE ManyToMany and reverse relations
-    table_name = model._meta.db_table
-    property_fields = []
+    table = model._meta.db_table
+    joins = []
+    parts = []
+    related_extras = {}
+    for fk, rel, key, _label in _popup_related_fields(model):
+        related_extras.setdefault(fk.name, []).append((rel, key))
     for f in model._meta.get_fields():
-        # Skip if it's a geometry field
         if isinstance(f, gis_models.GeometryField):
             continue
-
-        # Skip ManyToMany fields and reverse relations
-        if f.many_to_many or f.one_to_many:
+        if f.many_to_many or f.one_to_many or not hasattr(f, 'column'):
             continue
-
-        # Only include fields that have actual database columns
-        if not hasattr(f, 'column'):
-            continue
-
         if f.is_relation and f.many_to_one:
             # FK fields: show the related object's name instead of its raw id
             related_model = f.related_model
-            related_field = _display_field(related_model)
-            related_table = related_model._meta.db_table
-            expr = (
-                f'(SELECT "{related_field.column}" FROM "{related_table}" '
-                f'WHERE "{related_table}"."{related_model._meta.pk.column}" = '
-                f'"{table_name}"."{f.column}")'
+            alias = f"j{len(joins)}"
+            joins.append(
+                f'LEFT JOIN "{related_model._meta.db_table}" {alias} '
+                f'ON {alias}."{related_model._meta.pk.column}" = t."{f.column}"'
             )
-            property_fields.append({'name': f.name, 'expr': expr})
+            parts.append(f"'{f.name}', {alias}.\"{_display_field(related_model).column}\"")
+            for rel, key in related_extras.get(f.name, []):
+                parts.append(f"'{key}', {alias}.\"{rel.column}\"")
         else:
-            property_fields.append({
-                'name': f.name,
-                'column': f.column  # Actual database column name
-            })
+            parts.append(f"'{f.name}', t.\"{f.column}\"")
+    props_expr = f"json_build_object({', '.join(parts)})" if parts else "'{}'::json"
 
-    # Build properties JSON object with quoted column names
-    if property_fields:
-        parts = [
-            f"'{pf['name']}', {pf['expr']}" if 'expr' in pf
-            else f"'{pf['name']}', \"{pf['column']}\""
-            for pf in property_fields
-        ]
-        props_sql = ", ".join(parts)
-        props_expr = f"json_build_object({props_sql})"
-    else:
-        props_expr = "'{}'::json"
-    
-    # Quote the geometry field name too
+    params = []
+    geom_expr = f't."{geom_field.column}"'
+    is_point = geom_field.geom_type in ('POINT', 'MULTIPOINT')
+    if zoom is not None and zoom < GEOJSON_SIMPLIFY_BELOW_ZOOM and not is_point:
+        lat = (bbox[1] + bbox[3]) / 2 if bbox else 52.0   # the Netherlands, when no viewport is given
+        geom_expr = f"ST_SimplifyPreserveTopology({geom_expr}, %s)"
+        params.append(_simplify_tolerance(zoom, lat, geom_field.geodetic(connection)))
+
+    where = ""
+    if bbox:
+        where = (
+            f'WHERE t."{geom_field.column}" && '
+            f'ST_Transform(ST_MakeEnvelope(%s, %s, %s, %s, 4326), {geom_field.srid})'
+        )
+        params.extend(bbox)
+
     sql = f"""
         SELECT json_build_object(
             'type', 'FeatureCollection',
-            'features', COALESCE(json_agg(
-                json_build_object(
-                    'type', 'Feature',
-                    'geometry', ST_AsGeoJSON(ST_Transform("{geom_field}", 4326))::json,
-                    'properties', {props_expr}
-                )
-            ), '[]'::json)
-        )
-        FROM "{table_name}"
+            'features', COALESCE(json_agg(f.feature), '[]'::json)
+        )::text
+        FROM (
+            SELECT json_build_object(
+                'type', 'Feature',
+                'geometry', ST_AsGeoJSON(ST_Transform({geom_expr}, 4326), {GEOJSON_PRECISION})::json,
+                'properties', {props_expr}
+            ) AS feature
+            FROM "{table}" t
+            {' '.join(joins)}
+            {where}
+        ) f
     """
-    
-    with connection.cursor() as cursor:
-        cursor.execute(sql)
-        result = cursor.fetchone()[0]
-    
-    return JsonResponse(result, safe=False)
+    return sql, params
 
 
-LAYER_STYLES = {
-    # ── administrative hierarchy ────────────────────────────────────────────
-    'administrative.Province': {
-        'color': '#37474f',
-        'layers': [
-            {'type': 'fill',   'paint': {'fill-color': '#37474f', 'fill-opacity': 0.08}},
-            {'type': 'line',   'paint': {'line-color': '#37474f', 'line-width': 2.5}},
-        ],
-    },
-    'administrative.City': {
-        'color': '#1565c0',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#1565c0', 'fill-opacity': 0.1}},
-            {'type': 'line', 'paint': {'line-color': '#1565c0', 'line-width': 2}},
-        ],
-    },
-    'administrative.District': {
-        'color': '#1976d2',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#1976d2', 'fill-opacity': 0.12}},
-            {'type': 'line', 'paint': {'line-color': '#1976d2', 'line-width': 1.5, 'line-dasharray': [4, 2]}},
-        ],
-    },
-    'administrative.Neighborhood': {
-        'color': '#42a5f5',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#42a5f5', 'fill-opacity': 0.15}},
-            {'type': 'line', 'paint': {'line-color': '#42a5f5', 'line-width': 1, 'line-dasharray': [3, 2]}},
-        ],
-    },
-    'physicalEnv.LandCoverVector': {
-        'color': '#558b2f',
-    },
+def model_geojson(request, app_label, model_name):
+    """
+    Generic GeoJSON endpoint for any registered vector model.
+    URL: /api/layers/<app_label>/<model_name>/geojson/[?bbox=minLng,minLat,maxLng,maxLat][&zoom=z]
 
-    # ── watersupply ────────────────────────────────────────────────────────
-    'watersupply.UsersLocation': {
-        'color': '#0277bd',
-        'layers': [
-            {'type': 'circle', 'paint': {'circle-radius': 5, 'circle-color': '#0277bd', 'circle-stroke-width': 1, 'circle-stroke-color': '#ffffff'}},
-        ],
-    },
-    'watersupply.Watershed': {
-        'color': '#0097a7',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#0097a7', 'fill-opacity': 0.15}},
-            {'type': 'line', 'paint': {'line-color': '#0097a7', 'line-width': 1.5}},
-        ],
-    },
-    'watersupply.PipeNetwork': {
-        'color': '#00acc1',
-        'layers': [
-            {'type': 'line', 'paint': {'line-color': '#00acc1', 'line-width': 2.5, 'line-dasharray': [4, 1]}},
-        ],
-    },
-    'watersupply.CoverageWaterSupply': {
-        'color': '#26c6da',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#26c6da', 'fill-opacity': 0.2}},
-            {'type': 'line', 'paint': {'line-color': '#26c6da', 'line-width': 1}},
-        ],
-    },
-    'watersupply.AreaAffectedDrought': {
-        'color': '#f57f17',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#f57f17', 'fill-opacity': 0.3}},
-            {'type': 'line', 'paint': {'line-color': '#e65100', 'line-width': 1.5}},
-        ],
-    },
+    Without `bbox` the whole layer is returned. The map requests large
+    layers by viewport instead (Layers.js, VIEWPORT_LOAD_MIN_FEATURES).
+    Responses are cached per (layer, bbox, whole zoom level) and invalidated
+    whenever the layer's rows change (core/cache.py).
+    """
+    from core.cache import get_cache, layer_version
 
-    # ── builtup ────────────────────────────────────────────────────────────
-    'builtup.ZoningArea': {
-        'color': '#f57c00',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#f57c00', 'fill-opacity': 0.2}},
-            {'type': 'line', 'paint': {'line-color': '#f57c00', 'line-width': 1}},
-        ],
-    },
-    'builtup.Street': {
-        'color': '#8d6e63',
-        'layers': [
-            {'type': 'line', 'paint': {'line-color': '#8d6e63', 'line-width': 2}},
-        ],
-    },
-    'builtup.Park': {
-        'color': '#66bb6a',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#66bb6a', 'fill-opacity': 0.4}},
-            {'type': 'line', 'paint': {'line-color': '#388e3c', 'line-width': 1}},
-        ],
-    },
-    'builtup.Facility': {
-        'color': '#ab47bc',
-        'layers': [
-            {'type': 'circle', 'paint': {'circle-radius': 7, 'circle-color': '#ab47bc', 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff'}},
-        ],
-    },
-    'builtup.Building': {
-        'color': '#ffa726',
-        'layers': [
-            {'type': 'fill-extrusion', 'paint': {
-                'fill-extrusion-color': '#ffa726',
-                'fill-extrusion-height': ['coalesce', ['get', 'height'], 10],
-                'fill-extrusion-base': 0,
-                'fill-extrusion-opacity': 0.75,
-            }},
-        ],
-    },
-    'builtup.Property': {
-        'color': '#ef5350',
-        'layers': [
-            {'type': 'circle', 'paint': {'circle-radius': 5, 'circle-color': '#ef5350', 'circle-stroke-width': 1, 'circle-stroke-color': '#ffffff'}},
-        ],
-    },
+    key = f"{app_label}.{model_name}"
+    if key not in VECTOR_REGISTRY:
+        raise Http404(f"Model {key} not found in registry")
+    model = VECTOR_REGISTRY[key]
 
-    # ── Energy ─────────────────────────────────────────────────────────────
-    'Energy.BuildingEnergyLabel': {
-        'color': '#66bb6a',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': [
-                'match', ['get', 'energyLabel'],
-                'A+++', '#00441b', 'A++', '#00622a', 'A+', '#037f39',
-                'A', '#1a9850', 'B', '#66bd63', 'C', '#a6d96a',
-                'D', '#fee08b', 'E', '#fdae61', 'F', '#f46d43', 'G', '#d73027',
-                '#9e9e9e',
-            ], 'fill-opacity': 0.65}},
-            {'type': 'line', 'paint': {'line-color': '#37474f', 'line-width': 0.5}},
-        ],
-    },
+    geom_field = next(
+        (f for f in model._meta.get_fields() if isinstance(f, gis_models.GeometryField)), None
+    )
+    if geom_field is None:
+        raise Http404(f"Model {key} has no geometry field")
 
-    # ── housing ────────────────────────────────────────────────────────────
-    'housing.HousingProject': {
-        'color': '#ec407a',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#ec407a', 'fill-opacity': 0.25}},
-            {'type': 'line', 'paint': {'line-color': '#ec407a', 'line-width': 1.5, 'line-dasharray': [3, 2]}},
-        ],
-    },
+    try:
+        bbox = _parse_bbox(request.GET['bbox']) if request.GET.get('bbox') else None
+        # Whole zoom levels only: the simplification tolerance and the cache
+        # key then change once per level instead of on every wheel tick.
+        zoom = int(float(request.GET['zoom'])) if request.GET.get('zoom') else None
+    except ValueError as exc:
+        return JsonResponse({'error': str(exc)}, status=400)
 
-    # ── nature ─────────────────────────────────────────────────────────────
-    'nature.ProtectedArea': {
-        'color': '#2e7d32',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#2e7d32', 'fill-opacity': 0.2}},
-            {'type': 'line', 'paint': {'line-color': '#1b5e20', 'line-width': 1.5}},
-        ],
-    },
-    'nature.WaterWaysLN': {
-        'color': '#1e88e5',
-        'layers': [
-            {'type': 'line', 'paint': {'line-color': '#1e88e5', 'line-width': 2}},
-        ],
-    },
-    'nature.WaterWaysPG': {
-        'color': '#039be5',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#039be5', 'fill-opacity': 0.35}},
-            {'type': 'line', 'paint': {'line-color': '#0277bd', 'line-width': 1}},
-        ],
-    },
-    
-    'nature.WaterBodies': {
-        'color': '#039be5',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#039be5', 'fill-opacity': 0.35}},
-            {'type': 'line', 'paint': {'line-color': '#0277bd', 'line-width': 1}},
-        ],
-    },
-    'nature.Forests': {
-        'color': '#388e3c',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#388e3c', 'fill-opacity': 0.35}},
-            {'type': 'line', 'paint': {'line-color': '#1b5e20', 'line-width': 1}},
-        ],
-    },
-    'nature.GreenSpaces': {
-        'color': '#81c784',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#81c784', 'fill-opacity': 0.4}},
-            {'type': 'line', 'paint': {'line-color': '#388e3c', 'line-width': 1}},
-        ],
-    },
+    cache = get_cache(GEOJSON_CACHE_ALIAS)
+    # 4 decimals, as the map sends them (Config.js COORD_DECIMALS)
+    bbox_key = ','.join(f'{v:.4f}' for v in bbox) if bbox else 'all'
+    zoom_key = zoom if zoom is not None and zoom < GEOJSON_SIMPLIFY_BELOW_ZOOM else 'full'
+    cache_key = f"geojson:{key}:{layer_version(model)}:{bbox_key}:{zoom_key}"
 
-    # ── urban_heat ─────────────────────────────────────────────────────────
-    'urban_heat.NatureBasedSolutionPolygon': {
-        'color': '#43a047',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#43a047', 'fill-opacity': 0.4}},
-            {'type': 'line', 'paint': {'line-color': '#2e7d32', 'line-width': 1.5}},
-        ],
-    },
-    'urban_heat.NatureBasedSolutionPoint': {
-        'color': '#66bb6a',
-        'layers': [
-            {'type': 'circle', 'paint': {'circle-radius': 6, 'circle-color': '#66bb6a', 'circle-stroke-width': 2, 'circle-stroke-color': '#2e7d32'}},
-        ],
-    },
+    body = cache.get(cache_key)
+    cache_status = 'HIT'
+    if body is None:
+        cache_status = 'MISS'
+        sql, params = _geojson_sql(model, geom_field, bbox, zoom)
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            body = cursor.fetchone()[0]
+        if len(body) <= GEOJSON_CACHE_MAX_BYTES:
+            cache.set(cache_key, body, GEOJSON_CACHE_TTL)
 
-    # ── weather ────────────────────────────────────────────────────────────
-    'weather.WeatherStation': {
-        'color': '#7e57c2',
-        'layers': [
-            {'type': 'circle', 'paint': {'circle-radius': 7, 'circle-color': '#7e57c2', 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff'}},
-        ],
-    },
-}
-
-_FALLBACK_COLORS = [
-    '#3388ff', '#e74c3c', '#2ecc71', '#9b59b6', '#f39c12',
-    '#1abc9c', '#e91e63', '#00bcd4', '#ff5722', '#607d8b',
-    '#8bc34a', '#673ab7', '#ffeb3b', '#795548', '#009688',
-]
+    # PostgreSQL already produced the JSON text; parsing it into Python and
+    # re-serialising it (JsonResponse) would only cost time and memory.
+    response = HttpResponse(body, content_type='application/json')
+    response['X-Cache'] = cache_status
+    return response
 
 
 def available_layers(request):
@@ -580,7 +481,7 @@ def available_layers(request):
                 count = 0
 
             style_layers = LAYER_STYLES.get(key, {}).get('layers')
-            legend = None
+            legend = LAYER_STYLES.get(key, {}).get('legend')
 
             if key == 'physicalEnv.LandCoverVector':
                 # Categorical color-per-class_name — computed per-request
@@ -590,6 +491,13 @@ def available_layers(request):
                     style_layers, legend = build_landcover_style_and_legend()
                 except Exception:
                     legend = None
+            elif key == 'physicalEnv.SoilArea':
+                # Same idea: colours of the BRO soil map legend, for the
+                # soil units actually imported.
+                style_layers, legend = build_soil_style_and_legend()
+            elif key == 'nature.Tree':
+                # 3D tree model, whose URL static() resolves per request.
+                style_layers = build_tree_style()
 
             layer_entry = {
                 'key': key,
@@ -599,13 +507,18 @@ def available_layers(request):
                 'url': f'/api/layers/{app_label}/{model_name}/geojson/',
                 'geometry_type': geom_type,
                 'geometry_field': geom_field,
-                'color': LAYER_STYLES.get(key, {}).get('color', _FALLBACK_COLORS[color_index % len(_FALLBACK_COLORS)]),
+                'color': LAYER_STYLES.get(key, {}).get('color', FALLBACK_COLORS[color_index % len(FALLBACK_COLORS)]),
                 'style_layers': style_layers,
                 'fields': _field_metadata(model),
                 'count': count,
             }
             if legend:
                 layer_entry['legend'] = legend
+            if is_editable(key, request.user):
+                # Makes the popup's Edit button and the Layers panel's ＋ appear;
+                # edit_geom_type tells the editor whether to wrap drawn shapes in Multi*.
+                layer_entry['editable'] = True
+                layer_entry['edit_geom_type'] = field.geom_type
             layers.append(layer_entry)
 
             color_index += 1
@@ -675,61 +588,90 @@ def available_layers(request):
             continue
 
         raster_instances = model.objects.all()
-        
+
         for raster in raster_instances:
             if not raster.cog_path:
                 continue
-                
-            fallback_name = getattr(raster, 'name', None) or f'{model._meta.verbose_name} {raster.id}'
-            layers.append({
-                'key': f'raster-{app_label}-{model_name}-{raster.id}',
-                'display_name': raster_display_name(raster, key, fallback_name),
-                'app_label': app_label,
-                'model_name': model_name,
-                'layer_type': 'raster',
-                'raster_id': raster.id,
-                'geometry_type': 'raster',
-                'color': '#ff6b6b',
-                'count': 1,
-                # ✅ Point to your existing endpoint
-                'tile_url_template': f'/api/raster/{app_label}/{model_name}/tiles/?id={raster.id}',
-                'opacity': getattr(raster, 'opacity', 0.7),
-                'colormap': getattr(raster, 'colormap', 'viridis'),
-                'rescale': getattr(raster, 'rescale', '0,40'),
-            })
-            
+            layers.append(raster_layer_entry(raster))
+
     return JsonResponse({'layers': layers})
+
+
+def raster_layer_entry(raster):
+    """The layer-catalog entry of one raster row (also returned by the map's LST tool)."""
+    model = type(raster)
+    app_label, model_name = model._meta.app_label, model.__name__
+    fallback_name = getattr(raster, 'name', None) or f'{model._meta.verbose_name} {raster.id}'
+    return {
+        'key': f'raster-{app_label}-{model_name}-{raster.id}',
+        'display_name': raster_display_name(raster, f'{app_label}.{model_name}', fallback_name),
+        'app_label': app_label,
+        'model_name': model_name,
+        'layer_type': 'raster',
+        'raster_id': raster.id,
+        'geometry_type': 'raster',
+        'color': '#ff6b6b',
+        'count': 1,
+        'tile_url_template': f'/api/raster/{app_label}/{model_name}/tiles/?id={raster.id}',
+        'opacity': getattr(raster, 'opacity', 0.7),
+        'colormap': getattr(raster, 'colormap', 'viridis'),
+        'rescale': getattr(raster, 'rescale', '0,40'),
+    }
+
+
+# Below this many rows (planner estimate) an exact ST_Extent scan is cheap
+# enough, and unlike the estimate it is never stale.
+ESTIMATED_EXTENT_MIN_ROWS = 100_000
 
 
 def layer_bounds(request, app_label, model_name):
     """
-    Returns the bounding box extent of a layer.
-    URL: /api/<app_label>/<model_name>/bounds/
+    Returns the bounding box of a layer in WGS84, as [[west, south], [east, north]]
+    (what Mapbox GL's fitBounds takes).
+    URL: /api/layers/<app_label>/<model_name>/bounds/
+
+    For large tables it uses ST_EstimatedExtent, which answers from the
+    planner's statistics instead of scanning the table. Those statistics are
+    only as fresh as the last ANALYZE, so smaller tables (where a scan is
+    cheap anyway) and tables without statistics get the exact ST_Extent.
     """
     key = f"{app_label}.{model_name}"
-    
     if key not in MODEL_REGISTRY:
         raise Http404(f"Model '{key}' not found in registry")
-    
     model = MODEL_REGISTRY[key]
-    
-    # Find the geometry field
-    geom_field = None
-    for field in model._meta.get_fields():
-        if isinstance(field, gis_models.GeometryField):
-            geom_field = field.name
-            break
-    
-    if not geom_field:
+
+    geom_field = next(
+        (f for f in model._meta.get_fields() if isinstance(f, gis_models.GeometryField)), None
+    )
+    if geom_field is None:
         raise Http404(f"Model '{key}' has no geometry field")
-    
-    # Get extent
-    from django.contrib.gis.db.models import Extent
-    extent = model.objects.aggregate(extent=Extent(geom_field))['extent']
-    
-    if extent:
-        return JsonResponse({
-            'bounds': [[extent[0], extent[1]], [extent[2], extent[3]]]
-        })
-    else:
-        return JsonResponse({'bounds': None})
+
+    table = model._meta.db_table
+    to_wgs84 = (
+        "SELECT ST_XMin(b), ST_YMin(b), ST_XMax(b), ST_YMax(b) "
+        f"FROM (SELECT ST_Transform(ST_SetSRID(%s::box2d::geometry, {geom_field.srid}), 4326)::box2d AS b) s"
+    )
+    with connection.cursor() as cursor:
+        extent = None
+        cursor.execute("SELECT reltuples FROM pg_class WHERE oid = to_regclass(%s)", [f'"{table}"'])
+        row = cursor.fetchone()
+        if row and row[0] >= ESTIMATED_EXTENT_MIN_ROWS:
+            try:
+                with transaction.atomic():   # a failure here must not poison the fallback query
+                    cursor.execute(
+                        "SELECT ST_EstimatedExtent(current_schema()::text, %s, %s)::text",
+                        [table, geom_field.column],
+                    )
+                    extent = cursor.fetchone()[0]
+            except Exception:
+                extent = None
+        if extent is None:
+            cursor.execute(f'SELECT ST_Extent("{geom_field.column}")::text FROM "{table}"')
+            extent = cursor.fetchone()[0]
+        if extent is None:
+            return JsonResponse({'bounds': None})
+
+        cursor.execute(to_wgs84, [extent])
+        west, south, east, north = cursor.fetchone()
+
+    return JsonResponse({'bounds': [[west, south], [east, north]]})

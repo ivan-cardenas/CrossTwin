@@ -1,12 +1,15 @@
+import json
+import re
+
 from django.conf import settings
-from django.contrib.gis.geos import Point
-from django.test import SimpleTestCase, TestCase
+from django.contrib.gis.geos import MultiPolygon, Point
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
 from administrative.admin_units import city_of
 from builtup.models import Building
 from .views import _field_label, _humanize_field_name
-from watersupply.tests.factories import make_city, make_district, make_neighborhood, make_province
+from watersupply.tests.factories import make_city, make_district, make_neighborhood, make_polygon, make_province
 
 URL = 'map:dashboard_summary'
 
@@ -169,19 +172,257 @@ class PopulationDockTests(TestCase):
         self.assertContains(response, 'city at the map centre')
 
 
-class FieldLabelTests(SimpleTestCase):
-    """Popup labels: camelCase field names become readable sentence-case words."""
+# ── Map GeoJSON endpoint (docs/PERFORMANCE.md §1) ─────────────────────────────
 
-    def test_humanize_splits_camel_and_snake_case(self):
-        self.assertEqual(_humanize_field_name('usageFunction'), 'Usage function')
-        self.assertEqual(_humanize_field_name('constructionYear'), 'Construction year')
-        self.assertEqual(_humanize_field_name('area_km2'), 'Area km2')
+def _geojson_url(app_label, model_name):
+    return reverse('map:model_geojson', args=[app_label, model_name])
 
-    def test_humanize_keeps_acronyms(self):
-        self.assertEqual(_humanize_field_name('totalOPEX_EUR'), 'Total OPEX EUR')
 
-    def test_explicit_verbose_name_wins(self):
-        self.assertEqual(_field_label(Building._meta.get_field('neighborhood')), 'Neighborhood')
+def _bbox_around_rd(x, y, half_size_m=600.0):
+    west, south = _lonlat_of_rd(x - half_size_m, y - half_size_m)
+    east, north = _lonlat_of_rd(x + half_size_m, y + half_size_m)
+    return f"{west},{south},{east},{north}"
 
-    def test_automatic_verbose_name_is_humanized(self):
-        self.assertEqual(_field_label(Building._meta.get_field('usageFunction')), 'Usage function')
+
+def _coordinate_count(feature_collection):
+    return len(re.findall(r'-?\d+\.\d+', json.dumps([f['geometry'] for f in feature_collection['features']])))
+
+
+class ModelGeoJsonTests(TestCase):
+    def setUp(self):
+        from core.cache import get_cache
+        get_cache('geojson').clear()
+        self.province = make_province(ProvinceName="Overijssel")
+        self.enschede = make_city(province=self.province, cityName="Enschede", geom=make_polygon(257000.0, 470000.0))
+        self.zwolle = make_city(province=self.province, cityName="Zwolle", geom=make_polygon(203000.0, 502000.0))
+
+    def get(self, app_label='administrative', model_name='City', **params):
+        return self.client.get(_geojson_url(app_label, model_name), params)
+
+    def test_whole_layer_in_a_single_query_with_fk_names(self):
+        with self.assertNumQueries(1):   # the FK name comes from a JOIN, not a query per row
+            response = self.get()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/json')
+        data = response.json()
+        self.assertEqual(data['type'], 'FeatureCollection')
+        self.assertEqual(sorted(f['properties']['cityName'] for f in data['features']), ['Enschede', 'Zwolle'])
+        self.assertEqual({f['properties']['province'] for f in data['features']}, {'Overijssel'})
+        lng, lat = data['features'][0]['geometry']['coordinates'][0][0][0]
+        self.assertTrue(3 < lng < 8 and 50 < lat < 54, (lng, lat))   # WGS84, not RD metres
+
+    def test_coordinates_have_at_most_six_decimals(self):
+        decimals = re.findall(r'\.(\d+)', json.dumps([f['geometry'] for f in self.get().json()['features']]))
+        self.assertTrue(decimals)
+        self.assertLessEqual(max(len(d) for d in decimals), 6)
+
+    def test_bbox_returns_only_the_features_in_view(self):
+        data = self.get(bbox=_bbox_around_rd(257000.0, 470000.0)).json()
+        self.assertEqual([f['properties']['cityName'] for f in data['features']], ['Enschede'])
+
+    def test_malformed_bbox_is_rejected(self):
+        for bbox in ('1,2,3', 'a,b,c,d', '7,53,6,52'):   # too short, not numbers, min > max
+            with self.subTest(bbox=bbox):
+                self.assertEqual(self.get(bbox=bbox).status_code, 400)
+
+    def test_low_zoom_simplifies_detailed_geometry(self):
+        from nature.models import Forests
+        round_forest = Point(257000.0, 470000.0, srid=settings.COORDINATE_SYSTEM).buffer(400, quadsegs=64)
+        Forests.objects.create(name="Round wood", geom=MultiPolygon(round_forest, srid=round_forest.srid))
+
+        full = self.get('nature', 'Forests').json()
+        simplified = self.get('nature', 'Forests', zoom=9).json()
+        self.assertEqual(len(simplified['features']), 1)
+        self.assertLess(_coordinate_count(simplified), _coordinate_count(full) / 4)
+        # from zoom 14 on nothing is simplified
+        self.assertEqual(_coordinate_count(self.get('nature', 'Forests', zoom=15).json()), _coordinate_count(full))
+
+    def test_repeated_request_is_served_from_the_cache(self):
+        self.assertEqual(self.get()['X-Cache'], 'MISS')
+        with self.assertNumQueries(0):
+            response = self.get()
+        self.assertEqual(response['X-Cache'], 'HIT')
+        self.assertEqual(len(response.json()['features']), 2)
+
+    def test_saving_a_row_invalidates_the_cached_layer(self):
+        self.get()
+        make_city(province=self.province, cityName="Deventer", geom=make_polygon(208000.0, 474000.0))
+        response = self.get()
+        self.assertEqual(response['X-Cache'], 'MISS')
+        self.assertEqual(len(response.json()['features']), 3)
+
+    def test_population_cascade_invalidates_the_parent_layer(self):
+        """The cascade writes District/City with update(), which fires no post_save."""
+        district = make_district(city=self.enschede, currentPopulation=0)
+        self.get('administrative', 'District')
+        make_neighborhood(district=district, currentPopulation=1500)
+
+        response = self.get('administrative', 'District')
+        self.assertEqual(response['X-Cache'], 'MISS')
+        self.assertEqual(response.json()['features'][0]['properties']['currentPopulation'], 1500)
+
+    def test_soil_area_popup_carries_its_soil_type(self):
+        """POPUP_RELATED_FIELDS: name, group and rates ride on the soil_type JOIN."""
+        from physicalEnv.models import SoilArea, SoilType
+        from .views import _field_metadata
+        soil = SoilType.objects.create(code="Hn21", name="Veldpodzolgronden; leemarm en zwak lemig fijn zand")
+        SoilArea.objects.create(mapAreaID="soilarea.1", soil_type=soil, geom=make_polygon(257000.0, 470000.0))
+
+        with self.assertNumQueries(1):
+            props = self.get('physicalEnv', 'SoilArea').json()['features'][0]['properties']
+        self.assertEqual(props['soil_type'], "Hn21")
+        self.assertEqual(props['soil_type__name'], soil.name)
+        self.assertEqual(props['soil_type__soilGroup'], soil.soilGroup)
+        self.assertEqual(props['soil_type__infiltrationMin_mm_h'], soil.infiltrationMin_mm_h)
+        self.assertEqual(props['soil_type__infiltrationMax_mm_h'], soil.infiltrationMax_mm_h)
+
+        meta = _field_metadata(SoilArea)
+        self.assertEqual(meta['soil_type__infiltrationMin_mm_h']['label'], 'Infiltration rate min')
+        self.assertEqual(meta['soil_type__infiltrationMin_mm_h']['unit'], 'mm/h')
+
+    def test_soil_map_is_coloured_by_legend_unit(self):
+        """Fill colour = BRO legend colour of SoilType.unitCode, legend = units present."""
+        from physicalEnv.models import SoilArea, SoilType
+        from .styles.soilStyles import SOIL_UNIT_COLORS, SOIL_UNKNOWN_COLOR, build_soil_style_and_legend
+        peat = SoilType.objects.create(code="zVp", unitCode="zVp", unitName="Meerveengronden",
+                                       name="Meerveengronden op zand met humuspodzol, beginnend ondieper dan 1.2 m")
+        sand = SoilType.objects.create(code="kHn21", unitCode="Hn21", unitName="Veldpodzolgronden",
+                                       name="Veldpodzolgronden; leemarm en zwak lemig fijn zand")
+        SoilType.objects.create(code="Xx1", unitCode="Xx1", unitName="Not on the map", name="Unused")
+        SoilArea.objects.create(mapAreaID="a", soil_type=peat, geom=make_polygon(257000.0, 470000.0))
+        SoilArea.objects.create(mapAreaID="b", soil_type=sand, geom=make_polygon(258000.0, 470000.0))
+
+        layers, legend = build_soil_style_and_legend()
+        fill = layers[0]['paint']['fill-color']
+        self.assertEqual(fill[:2], ['match', ['get', 'soil_type__unitCode']])
+        pairs = dict(zip(fill[2:-1:2], fill[3:-1:2]))
+        self.assertEqual(pairs, {'Hn21': SOIL_UNIT_COLORS['Hn21'], 'zVp': SOIL_UNIT_COLORS['zVp']})
+        self.assertEqual(fill[-1], SOIL_UNKNOWN_COLOR)
+        # legend order = BRO legend order (peat before podzol); unused types left out
+        self.assertEqual([e['label'] for e in legend], ['zVp Meerveengronden', 'Hn21 Veldpodzolgronden'])
+
+        props = self.get('physicalEnv', 'SoilArea').json()['features'][0]['properties']
+        self.assertIn(props['soil_type__unitCode'], pairs)
+
+    def test_unknown_layer_is_404(self):
+        self.assertEqual(self.get('administrative', 'Nope').status_code, 404)
+
+
+class LayerBoundsTests(TestCase):
+    def test_bounds_are_wgs84_west_south_east_north(self):
+        make_city(cityName="Enschede", geom=make_polygon(257000.0, 470000.0))
+        response = self.client.get(reverse('map:layer_bounds', args=['administrative', 'City']))
+        (west, south), (east, north) = response.json()['bounds']
+        self.assertTrue(6.8 < west < east < 7.0, (west, east))
+        self.assertTrue(52.1 < south < north < 52.3, (south, north))
+
+    def test_empty_layer_has_no_bounds(self):
+        response = self.client.get(reverse('map:layer_bounds', args=['nature', 'Forests']))
+        self.assertIsNone(response.json()['bounds'])
+
+
+class QueryStatsMiddlewareTests(TestCase):
+    """§0: every response reports its query count and DB time."""
+
+    def test_headers_report_queries_and_db_time(self):
+        middleware = ['core.middleware.QueryStatsMiddleware'] + [
+            m for m in settings.MIDDLEWARE if m != 'core.middleware.QueryStatsMiddleware']
+        make_city(cityName="Enschede")
+        with override_settings(MIDDLEWARE=middleware):
+            response = self.client.get(_geojson_url('administrative', 'City'))
+        self.assertEqual(response['X-DB-Queries'], '1')
+        self.assertRegex(response['Server-Timing'], r'^db;dur=[\d.]+;desc="1 queries", app;dur=[\d.]+$')
+
+
+class LayerStyleTests(SimpleTestCase):
+    """Style expressions read GeoJSON properties, which are model field names (_geojson_sql)."""
+
+    @staticmethod
+    def _gets(expr):
+        if isinstance(expr, list):
+            if len(expr) == 2 and expr[0] == 'get' and isinstance(expr[1], str):
+                yield expr[1]
+            for item in expr:
+                yield from LayerStyleTests._gets(item)
+
+    def test_every_style_property_is_a_field_of_its_model(self):
+        from core.utils import VECTOR_REGISTRY
+        from .styles.layerStyles import LAYER_STYLES
+        for key, style in LAYER_STYLES.items():
+            model = VECTOR_REGISTRY.get(key)
+            if model is None:
+                continue
+            fields = {f.name for f in model._meta.get_fields()}
+            for layer in style.get('layers', []):
+                for name in self._gets(list(layer.get('paint', {}).values()) + list(layer.get('layout', {}).values())):
+                    with self.subTest(layer=key, property=name):
+                        self.assertIn(name, fields)
+
+    def test_building_colour_and_height_follow_type_and_stored_height(self):
+        from .styles.layerStyles import BUILDING_TYPE_COLORS, LAYER_STYLES
+        paint = LAYER_STYLES['builtup.Building']['layers'][0]['paint']
+        color = paint['fill-extrusion-color']
+        self.assertEqual(color[:2], ['match', ['get', 'buildingType']])
+        pairs = dict(zip(color[2:-1:2], color[3:-1:2]))
+        self.assertEqual(pairs['residential'], BUILDING_TYPE_COLORS['residential'])
+        self.assertEqual(pairs['mixed'], BUILDING_TYPE_COLORS['mixed'])
+        self.assertEqual(color[-1], BUILDING_TYPE_COLORS['unknown'])
+        self.assertIn('height_m', list(self._gets(paint['fill-extrusion-height'])))
+
+    def test_trees_render_as_3d_models_scaled_by_height(self):
+        from django.contrib.staticfiles import finders
+        from nature.models import Tree
+        from .styles.treeStyles import TREE_MODEL_MIN_ZOOM, TREE_MODEL_PATH, build_tree_style
+        circle, model = build_tree_style()
+        self.assertEqual(circle['type'], 'circle')  # first layer = popup click target
+        self.assertEqual(model['type'], 'model')
+        self.assertEqual(model['minzoom'], TREE_MODEL_MIN_ZOOM)
+        self.assertTrue(model['layout']['model-id'].endswith(TREE_MODEL_PATH))
+        self.assertIsNotNone(finders.find(TREE_MODEL_PATH))
+        fields = {f.name for f in Tree._meta.get_fields()}
+        for layer in (circle, model):
+            for name in self._gets(list(layer['paint'].values())):
+                self.assertIn(name, fields)
+        self.assertIn('height_m', list(self._gets(model['paint']['model-scale'])))
+        # The default height must replace a null before to-number, which maps null to 0.
+        height = model['paint']['model-scale'][2]  # ['interpolate', ['linear'], input, ...]
+        self.assertEqual(height[0], 'to-number')
+        self.assertEqual(height[1][0], 'coalesce')
+
+
+class RasterStyleTests(SimpleTestCase):
+    """mainMap/styles/rasterStyles.py: style lookup and the data-driven value range."""
+
+    @staticmethod
+    def _raster(values, nodata=-9999):
+        from types import SimpleNamespace
+        from django.contrib.gis.gdal import GDALRaster
+        rows, cols = len(values), len(values[0])
+        raster = GDALRaster({
+            'driver': 'MEM', 'srid': 28992, 'width': cols, 'height': rows,
+            'origin': [0, rows * 30], 'scale': [30, -30], 'datatype': 6,
+            'bands': [{'data': [v for row in values for v in row], 'nodata_value': nodata}],
+        })
+        return SimpleNamespace(raster=raster, cog_path='/nowhere.tif', index=None)
+
+    def test_model_styles_match_registry_keys_case_insensitively(self):
+        from core.utils import RASTER_REGISTRY
+        from .styles.rasterStyles import MODEL_STYLES, DEFAULT_STYLE, _lookup_style
+        self.assertIn('urban_heat.LandSurfaceTemperature', RASTER_REGISTRY)
+        style, _ = _lookup_style(self._raster([[1.0]]), 'urban_heat.LandSurfaceTemperature')
+        self.assertEqual(style, MODEL_STYLES['urban_heat.landsurfacetemperature'])
+        self.assertNotEqual(style, DEFAULT_STYLE)
+
+    def test_lst_range_is_the_rasters_own_min_max_without_nodata(self):
+        from unittest import mock
+        from .styles.rasterStyles import resolve_raster_style
+        lst = self._raster([[31.0, -9999.0], [36.874, 33.5]])
+        with mock.patch('mainMap.styles.rasterStyles._cog_statistics') as titiler:
+            style = resolve_raster_style(lst, 'urban_heat.LandSurfaceTemperature')
+        titiler.assert_not_called()
+        self.assertEqual(style['colormap'], 'inferno')
+        self.assertEqual(style['rescale'], (31.0, 36.87))
+
+    def test_flat_raster_gets_a_non_empty_range(self):
+        from .styles.rasterStyles import _raster_statistics
+        self.assertEqual(_raster_statistics(self._raster([[20.0, 20.0]])), (19.5, 20.5))

@@ -45,12 +45,12 @@ class Command(BaseCommand):
             
             if options['id']:
                 instance = Model.objects.get(id=options['id'])
-                export_raster_to_cog(instance, model_key)
+                export_raster_to_cog(instance)
             else:
                 # Export all records from that model
                 for instance in Model.objects.all():
                     try:
-                        export_raster_to_cog(instance, model_key)
+                        export_raster_to_cog(instance)
                         self.stdout.write(self.style.SUCCESS(f"  ✓ {model_key} id={instance.id}"))
                     except Exception as e:
                         self.stderr.write(f"  ✗ {model_key} id={instance.id}: {e}")
@@ -61,7 +61,7 @@ class Command(BaseCommand):
             self.stdout.write(f"\nProcessing {model_key}...")
             for instance in Model.objects.all():
                 try:
-                    export_raster_to_cog(instance, model_key)
+                    export_raster_to_cog(instance)
                     self.stdout.write(self.style.SUCCESS(f"  ✓ id={instance.id}"))
                 except Exception as e:
                     self.stderr.write(f"  ✗ id={instance.id}: {e}")

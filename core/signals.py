@@ -1,7 +1,10 @@
-from django.db.models.signals import post_save
+from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
-from core.utils import RASTER_REGISTRY
-from core.rasterOperations import export_raster_to_cog
+from core.cache import bump_layer_version
+from core.utils import RASTER_REGISTRY, VECTOR_REGISTRY
+# core.rasterOperations (numpy, scipy, rasterio, rio-cogeo) is imported inside
+# auto_export_cog: this module loads at startup of every process (server,
+# tests, every manage.py command), and that import alone took ~1.6 s.
 
 
 def auto_export_cog(sender, instance, created, **kwargs):
@@ -21,6 +24,7 @@ def auto_export_cog(sender, instance, created, **kwargs):
 
     if not getattr(instance, 'cog_path', None):
         try:
+            from core.rasterOperations import export_raster_to_cog
             export_raster_to_cog(instance)
             print(f"[auto_export_cog] COG exported for {instance}")
         except Exception as e:
@@ -30,4 +34,18 @@ def auto_export_cog(sender, instance, created, **kwargs):
 # Connect the signal to EVERY raster model in the registry
 for label, model_class in RASTER_REGISTRY.items():
     post_save.connect(auto_export_cog, sender=model_class)
+
+
+def invalidate_layer_cache(sender, **kwargs):
+    """Orphan the cached GeoJSON of a vector layer whenever one of its rows changes."""
+    bump_layer_version(sender)
+
+
+# weak=False: the receiver is a module-level function, but keep a strong
+# reference anyway so it can't be collected if this module is reloaded.
+for label, model_class in VECTOR_REGISTRY.items():
+    post_save.connect(invalidate_layer_cache, sender=model_class, weak=False,
+                      dispatch_uid=f"layer_cache_save_{label}")
+    post_delete.connect(invalidate_layer_cache, sender=model_class, weak=False,
+                        dispatch_uid=f"layer_cache_delete_{label}")
 

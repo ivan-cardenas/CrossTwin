@@ -15,6 +15,86 @@ class LandCoverClasses(models.Model):
     def __str__(self):
         return self.class_name
 
+class HILUCSLandUse(models.Model):
+    """
+    INSPIRE HILUCS land-use classification
+    (http://inspire.ec.europa.eu/codelist/HILUCSValue), stored once and
+    referenced by FK so land-use rows carry a smallint instead of the URI.
+    The 98 registry values are loaded by migration 0003; physicalEnv/hilucs.py
+    turns a HILUCS URI into its code.
+    """
+    id = models.SmallAutoField(primary_key=True)
+    code = models.CharField(max_length=10, unique=True, help_text="Hierarchical HILUCS code, e.g. '6.3.2'")
+    label = models.CharField(max_length=200, help_text="Registry label, e.g. 'water areas not in other economic use'")
+    description = models.TextField(blank=True, help_text="Registry definition of the class")
+
+    def __str__(self):
+        return f"{self.code} {self.label}"
+
+    class Meta:
+        ordering = ["code"]
+        verbose_name = "HILUCS Land Use"
+        verbose_name_plural = "HILUCS Land Uses"
+
+
+class SoilType(models.Model):
+    """
+    A soil unit of the Dutch soil map (Bodemkaart 1:50 000, BIS Nederland),
+    stored once and referenced by SoilArea. save() derives the hydrologic
+    soil group from the soil name and its infiltration rate range from the
+    group (physicalEnv/soil.py).
+    """
+    SOIL_GROUP_CHOICES = [
+        ('A', 'A: sand, gravel (low runoff)'),
+        ('B', 'B: loam, silt loam (moderate runoff)'),
+        ('C', 'C: clay loam (moderately high runoff)'),
+        ('D', 'D: clay, peat (high runoff)'),
+    ]
+
+    id = models.SmallAutoField(primary_key=True)
+    code = models.CharField(max_length=20, help_text="Soil code of the soil map, e.g. 'Hn21'")
+    name = models.CharField(max_length=200, help_text="Soil name of the soil map, e.g. 'Veldpodzolgronden; leemarm en zwak lemig fijn zand'")
+    unitCode = models.CharField(max_length=20, null=True, blank=True, help_text="Main soil unit of the map legend (first_soilcode), e.g. 'Hn21' for 'Hn21/Hd21'; colours the soil map (mainMap/styles/soilStyles.py)")
+    unitName = models.CharField(max_length=200, null=True, blank=True, help_text="Legend name of the main soil unit (first_soilname)")
+    soilGroup = models.CharField(max_length=1, choices=SOIL_GROUP_CHOICES, null=True, blank=True, help_text="Hydrologic soil group (SCS), derived from the soil name's texture")
+    infiltrationMin_mm_h = models.FloatField(null=True, blank=True, help_text="Lower bound of the final infiltration rate of the soil group, mm/h")
+    infiltrationMax_mm_h = models.FloatField(null=True, blank=True, help_text="Upper bound of the final infiltration rate of the soil group, mm/h (empty for group A: no upper bound)")
+
+    def save(self, *args, **kwargs):
+        from .soil import SOIL_GROUPS, classify_soil_group
+        self.soilGroup = classify_soil_group(self.name)
+        rates = SOIL_GROUPS.get(self.soilGroup, {})
+        self.infiltrationMin_mm_h = rates.get('min_mm_h')
+        self.infiltrationMax_mm_h = rates.get('max_mm_h')
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.code} {self.name}"
+
+    class Meta:
+        # one code appears with two names in the 2025 map (zVp)
+        constraints = [models.UniqueConstraint(fields=['code', 'name'], name='unique_soil_code_name')]
+        ordering = ['code']
+        verbose_name = "Soil Type"
+        verbose_name_plural = "Soil Types"
+
+
+class SoilArea(models.Model):
+    """A polygon of the Dutch soil map, typed by SoilType."""
+    id = models.AutoField(primary_key=True)
+    mapAreaID = models.CharField(max_length=100, unique=True, help_text="maparea_id of the soil map, e.g. 'V2025-1..soilarea.0000016921'")
+    soil_type = models.ForeignKey(SoilType, on_delete=models.DO_NOTHING, related_name='areas')
+    geom = models.MultiPolygonField(srid=CoordinateSystem)
+    last_updated = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return f"{self.mapAreaID} ({self.soil_type_id})"
+
+    class Meta:
+        verbose_name = "Soil Area"
+        verbose_name_plural = "Soil Areas"
+
+
 class SurfaceMaterialProperties(models.Model):
     id = models.AutoField(primary_key=True)
     material_name = models.CharField(max_length=100, help_text="Name of the material (e.g., 'Concrete', 'Asphalt', 'Grass', etc.)")
@@ -65,10 +145,38 @@ class LandCoverVector(models.Model):
     # thermal-property data, so those rows leave this unset rather than
     # guessing a material.
     material = models.ForeignKey(SurfaceMaterialProperties, on_delete=models.DO_NOTHING, null=True, blank=True, help_text="Material properties of the land cover type, where known")
+    # Set on the urban-fabric ring around a building drawn in the map editor
+    # (physicalEnv/landcover.py): moving or deleting that building releases
+    # this ring. Plain id, not an FK: builtup already depends on physicalEnv.
+    source_building = models.BigIntegerField(null=True, blank=True, db_index=True, help_text="Editor building whose 10 m urban-fabric buffer this polygon is")
     last_updated = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
         return f"{self.city} - {self.year}: {self.land_cover_type} ({self.percentage}%)"
+
+
+class UrbanFabricCut(models.Model):
+    """
+    A piece an editor building's urban-fabric ring cut out of another
+    land-cover polygon (physicalEnv/landcover.py). Releasing the ring (the
+    building moved or was deleted) gives each piece back to `target`, or
+    recreates `target` with the attributes copied here when it was swallowed
+    whole. Not a map layer (registry_hidden).
+    """
+    registry_hidden = True
+
+    owner_building = models.BigIntegerField(db_index=True, help_text="Editor building whose ring took this piece")
+    target = models.IntegerField(db_index=True, help_text="Id of the LandCoverVector row the piece was cut from")
+    city = models.ForeignKey("administrative.City", on_delete=models.DO_NOTHING, null=True, blank=True)
+    year = models.IntegerField()
+    land_cover_type = models.ForeignKey(LandCoverClasses, on_delete=models.DO_NOTHING)
+    land_use = models.CharField(max_length=100)
+    material = models.ForeignKey(SurfaceMaterialProperties, on_delete=models.DO_NOTHING, null=True, blank=True)
+    source_building = models.BigIntegerField(null=True, blank=True, db_index=True, help_text="The target's own source_building (set when the target is another ring)")
+    geom = models.MultiPolygonField(srid=CoordinateSystem)
+
+    def __str__(self):
+        return f"Cut of land cover {self.target} by building {self.owner_building}"
 
 class LandCoverRaster(models.Model):
     id = models.AutoField(primary_key=True)
@@ -140,6 +248,38 @@ class DigitalElevationModel(models.Model):
 
     def __str__(self):
         return f"{self.city} - {self.year}: Digital Elevation Model"
+
+class GroundwaterDepth(models.Model):
+    """
+    Groundwater depth statistic (GHG/GLG/GVG) of the BIS Nederland
+    groundwater model, 50 m cells in cm below ground level. Values are
+    capped at 254 (= 254 cm or deeper); 255 is nodata. Kept in Postgres (no
+    SKIP_RASTER_DB_STORAGE): physicalEnv/soil.py reads GHG with PostGIS
+    raster SQL to mark shallow groundwater for the SCS soil groups.
+    """
+    STATISTIC_CHOICES = [
+        ('GHG', 'GHG: mean highest groundwater level'),
+        ('GLG', 'GLG: mean lowest groundwater level'),
+        ('GVG', 'GVG: mean spring groundwater level'),
+    ]
+
+    id = models.AutoField(primary_key=True)
+    city = models.ForeignKey("administrative.City", on_delete=models.DO_NOTHING, help_text="City code from administrative.City", null=True, blank=True)
+    year = models.IntegerField()
+    statistic = models.CharField(max_length=3, choices=STATISTIC_CHOICES, help_text="Which groundwater level statistic the raster holds")
+    source = models.CharField(max_length=100, null=True, blank=True, help_text="Data provider of the raster (e.g., 'BIS Nederland')")
+    resolution = models.FloatField(null=True, blank=True, help_text="Spatial resolution of the raster in meters")
+    depth_raster = models.RasterField(srid=CoordinateSystem, null=True, blank=True, help_text="Groundwater depth in cm below ground level (254 = 254 cm or deeper, 255 = nodata)")
+    cog_path = models.CharField(max_length=500, null=True, blank=True, help_text="Path to the exported Cloud-Optimized GeoTIFF served by TiTiler")
+    last_updated = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return f"{self.city} - {self.year}: {self.statistic}"
+
+    class Meta:
+        verbose_name = "Groundwater Depth"
+        verbose_name_plural = "Groundwater Depths"
+
 
 class DigitalElevationModelWMS(models.Model):
     name = models.CharField(max_length=200)

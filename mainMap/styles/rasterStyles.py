@@ -20,7 +20,8 @@ from urllib.parse import quote
 
 import requests
 from django.conf import settings
-from rio_tiler.colormap import cmap as rio_cmap
+# rio_tiler (which pulls in scipy) is imported inside colormap_legend_stops:
+# at module level it cost ~0.4 s on the first request of every server process.
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ logger = logging.getLogger(__name__)
 # `None` for the range means "compute it from the actual pixel data" (used
 # for products with no fixed physical bounds, e.g. population density).
 INDEX_STYLES = {
-    "NDVI": ("rdylgn", (-1, 1), "NDVI (Vegetation Index)", ""),
+    "NDVI": ("rdylgn", (-0.8, 0.8), "NDVI (Vegetation Index)", ""),
     "NDWI": ("rdbu", (-1, 1), "NDWI (Water Index)", ""),
     "MOISTURE_INDEX": ("ylgnbu", (-1, 1), "Moisture Index", ""),
     # Multi-band RGB composite — no colormap, but it still needs a rescale:
@@ -67,14 +68,18 @@ RESAMPLING_OVERRIDES = {
     "HRSL_POP": "cubic",
 }
 
-# Fallback by "app_label.model_name", used when the raster has no `index`
-# value (SOLWEIG thermal-comfort outputs, elevation models, etc).
+# Fallback by "app_label.modelname" (lowercase; registry keys are
+# "app_label.ClassName", so _lookup_style compares case-insensitively), used
+# when the raster has no `index` value (SOLWEIG thermal-comfort outputs,
+# elevation models, etc). LST has no fixed range: a scene's surface
+# temperatures span a few degrees in winter and 20-50 °C in summer, so a
+# fixed 0-50 scale washes most scenes out; it is stretched to its own min/max.
 MODEL_STYLES = {
     "urban_heat.meanradianttemperature": ("inferno", (0, 70), "Mean Radiant Temperature", "°C"),
     "urban_heat.utci": ("rdylbu_r", (-40, 46), "UTCI", "°C"),
     "urban_heat.skyviewfactor": ("viridis", (0, 1), "Sky View Factor", ""),
     "urban_heat.pet": ("rdylbu_r", (4, 41), "PET", "°C"),
-    "urban_heat.landsurfacetemperature": ("inferno", (0, 50), "Land Surface Temperature", "°C"),
+    "urban_heat.landsurfacetemperature": ("inferno", None, "Land Surface Temperature", "°C"),
     "urban_heat.surfaceurbanheatislandintensity": ("rdylbu_r", (-2, 8), "SUHII", "°C"),
     "physicalenv.digitalelevationmodel": ("terrain", None, "Elevation", "m"),
     "physicalenv.digitalsurfacemodel": ("terrain", None, "Surface Height", "m"),
@@ -90,7 +95,7 @@ def _lookup_style(instance, registry_key):
     style = INDEX_STYLES.get(index_value)
     categorical = index_value in CATEGORICAL_INDICES
     if style is None:
-        style = MODEL_STYLES.get(registry_key, DEFAULT_STYLE)
+        style = MODEL_STYLES.get(registry_key.lower(), DEFAULT_STYLE)
     return style, categorical
 
 
@@ -110,6 +115,29 @@ def raster_display_name(instance, registry_key, fallback=None):
     if date_value:
         return f"{label} - {date_value.strftime('%m-%y')}"
     return label
+
+
+def _raster_statistics(instance):
+    """Band-1 min/max of the stored raster itself (GDAL skips nodata cells).
+
+    The raster is already in memory (the RasterField is loaded with the row),
+    so this is exact and costs no TiTiler round trip. None when the instance
+    has no raster or every cell is nodata.
+    """
+    raster = getattr(instance, "raster", None)
+    if raster is None:
+        return None
+    try:
+        vmin, vmax, *_ = raster.bands[0].statistics(approximate=False)
+    except Exception as e:
+        logger.warning(f"Could not compute raster statistics for {instance!r}: {e}")
+        return None
+    if vmin is None or vmax is None:
+        return None
+    vmin, vmax = round(float(vmin), 2), round(float(vmax), 2)
+    if vmin == vmax:  # a flat raster still needs a non-empty scale
+        vmin, vmax = vmin - 0.5, vmax + 0.5
+    return vmin, vmax
 
 
 def _cog_statistics(cog_path):
@@ -142,7 +170,7 @@ def resolve_raster_style(instance, registry_key):
     colormap, rescale, label, unit = style
 
     if colormap is not None and rescale is None:
-        rescale = _cog_statistics(instance.cog_path)
+        rescale = _raster_statistics(instance) or _cog_statistics(instance.cog_path)
 
     index_value = (getattr(instance, "index", None) or "").strip().upper()
 
@@ -166,6 +194,7 @@ def colormap_legend_stops(colormap_name, rescale, steps=6):
     if not colormap_name or not rescale:
         return []
 
+    from rio_tiler.colormap import cmap as rio_cmap
     table = rio_cmap.get(colormap_name)
     vmin, vmax = rescale
     stops = []

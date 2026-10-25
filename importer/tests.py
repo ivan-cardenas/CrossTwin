@@ -385,6 +385,44 @@ class KNMIWbgtCatalogTests(TestCase):
         self.assertEqual(result.status, "success")
 
 
+class KNMIRadarCatalogTests(TestCase):
+    def _import(self):
+        from .external_data import import_dataset
+        with mock.patch("importer.external_data.KNMIImporter.fetch_latest") as fetch, \
+             mock.patch("importer.external_data.default_wms_legend_url") as legend:
+            result = import_dataset("knmi_radar_forecast")
+        fetch.assert_not_called()
+        legend.assert_not_called()   # KNMI's GetCapabilities needs the API key
+        return result
+
+    def test_registers_an_animated_proxied_wms_row(self):
+        from weather.models import WMSLayer
+        result = self._import()
+        self.assertEqual(result.status, "success")
+        layer = WMSLayer.objects.get(name="radar_forecast_2.0")
+        self.assertEqual(layer.layers_param, "precipitation_nowcast")
+        self.assertTrue(layer.has_time_dimension)
+        self.assertEqual(layer.api_key_setting, "KNMI_API_KEY")
+        self.assertTrue(layer.is_active)
+
+    def test_updates_a_row_created_in_the_admin_instead_of_duplicating_it(self):
+        from weather.models import WMSLayer
+        WMSLayer.objects.create(name="radar_forecast_2.0", display_name="Old",
+                                url="https://example.test/wms", layers_param="radar", is_active=False)
+        self._import()
+        layer = WMSLayer.objects.get(name="radar_forecast_2.0")
+        self.assertEqual(layer.display_name, "KNMI Radar Forecast")
+        self.assertTrue(layer.is_active)
+
+    def test_options_the_target_model_lacks_are_ignored(self):
+        from physicalEnv.models import DigitalElevationModelWMS
+        from .external_data import register_wms_layer
+        ds = dict(CATALOG_BY_KEY["pdok_dem_ahn_wms"], legend_url="",
+                  wms_options={"has_time_dimension": True})
+        self.assertEqual(register_wms_layer(ds).status, "success")
+        self.assertTrue(DigitalElevationModelWMS.objects.filter(name="pdok_dem_ahn_wms").exists())
+
+
 class KNMIToGeotiffTests(SimpleTestCase):
     def setUp(self):
         import tempfile
@@ -455,7 +493,8 @@ class KNMIWbgtImportTests(TestCase):
         self.addCleanup(overrides.disable)
 
         # COG export is exercised by core.signals; here we only check it is triggered.
-        export = mock.patch("core.signals.export_raster_to_cog")
+        # core.signals imports it when the signal fires, so patch it at its source.
+        export = mock.patch("core.rasterOperations.export_raster_to_cog")
         self.export = export.start()
         self.addCleanup(export.stop)
 
@@ -549,3 +588,860 @@ class KNMIWbgtImportTests(TestCase):
             result = self._fetch()
         self.assertEqual(result.status, "error")
         self.assertIn("no files", result.message)
+
+
+# ── Import throughput (docs/PERFORMANCE.md §2/§3) ──────────────────────────────
+
+def _rd_square(x0, y0, x1, y1):
+    return MultiPolygon(Polygon(((x0, y0), (x1, y0), (x1, y1), (x0, y1), (x0, y0))), srid=RD)
+
+
+def _rd_feature(x0, y0, x1, y1, **props):
+    ring = [[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]
+    return {"type": "Feature", "properties": props, "geometry": {"type": "Polygon", "coordinates": [ring]}}
+
+
+RD_DATASET = {"key": "test", "params": {"srsName": f"EPSG:{RD}"}}
+
+
+class SpatialParentIndexTests(SimpleTestCase):
+    def setUp(self):
+        from types import SimpleNamespace
+        from .batching import SpatialParentIndex
+        self.west = SimpleNamespace(name="west", geom=_rd_square(0, 0, 1000, 1000))
+        self.east = SimpleNamespace(name="east", geom=_rd_square(1000, 0, 2000, 1000))
+        self.index = SpatialParentIndex([self.west, self.east])
+
+    def test_feature_is_attributed_to_the_parent_it_lies_in(self):
+        self.assertIs(self.index.find(_rd_square(1200, 200, 1400, 400)), self.east)
+        self.assertIs(self.index.find(GEOSGeometry("POINT (100 900)", srid=RD)), self.west)
+
+    def test_point_on_a_shared_boundary_still_finds_a_parent(self):
+        self.assertIn(self.index.find(GEOSGeometry("POINT (1000 500)", srid=RD)), (self.west, self.east))
+
+    def test_feature_outside_every_parent(self):
+        self.assertIsNone(self.index.find(_rd_square(5000, 5000, 5100, 5100)))
+
+    def test_ring_shaped_feature_uses_a_point_on_itself_not_its_centroid(self):
+        # A U-shape inside `west` whose centroid falls in the gap, outside the feature.
+        u_shape = GEOSGeometry(
+            "POLYGON ((100 100, 900 100, 900 900, 700 900, 700 300, 300 300, 300 900, 100 900, 100 100))",
+            srid=RD,
+        )
+        self.assertFalse(u_shape.contains(u_shape.centroid))
+        self.assertIs(self.index.find(u_shape), self.west)
+
+
+class BulkLandCoverImportTests(TestCase):
+    """pdok_landcover_brt goes through bulk_create, and the urban-area recompute runs once per city."""
+
+    def setUp(self):
+        from administrative.models import City, District, Neighborhood
+        from .external_catalog import FIELD_MAPPINGS
+        square = _rd_square(0, 0, 1000, 1000)
+        province = Province.objects.create(ProvinceName="P", geom=square)
+        self.city = City.objects.create(cityName="C", province=province, geom=square)
+        district = District.objects.create(id="D1", districtName="D", city=self.city, geom=square, currentPopulation=0)
+        self.neighborhood = Neighborhood.objects.create(
+            id="N1", neighborhoodName="N", district=district, geom=square, currentPopulation=0)
+        self.mapping = FIELD_MAPPINGS["pdok_landcover_brt"]
+
+    def _features(self):
+        common = {"observationDate": "2024-05-01T00:00:00Z"}
+        return [
+            _rd_feature(0, 0, 250, 1000, landCoverObservationClass="urban fabric", **common),   # 0.25 km2
+            _rd_feature(250, 0, 500, 1000, landCoverObservationClass="road", **common),         # 0.25 km2
+            _rd_feature(500, 0, 1000, 1000, landCoverObservationClass="arable land", **common),  # not urban
+        ]
+
+    def test_rows_are_bulk_written_with_parent_percentage_and_one_recompute(self):
+        from physicalEnv import signals as landcover_signals
+        from physicalEnv.models import LandCoverVector
+
+        with mock.patch.object(landcover_signals, "_recompute_neighborhood_urban_area",
+                               wraps=landcover_signals._recompute_neighborhood_urban_area) as recompute:
+            created, updated, errors = _import_geojson_features(
+                self._features(), RD_DATASET, LandCoverVector, self.mapping)
+
+        self.assertEqual((created, updated, errors), (3, 0, []))
+        recompute.assert_called_once_with(self.city.pk)   # not once per polygon
+
+        rows = LandCoverVector.objects.order_by("id")
+        self.assertEqual({r.city_id for r in rows}, {self.city.pk})
+        self.assertEqual([r.year for r in rows], [2024, 2024, 2024])
+        self.assertEqual([round(r.percentage) for r in rows], [25, 25, 50])
+        self.neighborhood.refresh_from_db()
+        self.assertAlmostEqual(self.neighborhood.urban_area, 0.5)
+        self.city.refresh_from_db()
+        self.assertAlmostEqual(self.city.urban_area, 0.5)
+
+    def test_parents_are_loaded_without_their_other_columns(self):
+        from physicalEnv.models import LandCoverVector
+        from .batching import SpatialParentIndex
+
+        loaded = {}
+        original = SpatialParentIndex.for_model.__func__
+
+        def spy(cls, ParentModel, extra_fields=()):
+            index = original(cls, ParentModel, extra_fields)
+            loaded["deferred"] = next(iter(index._entries))[0].get_deferred_fields()
+            return index
+
+        with mock.patch.object(SpatialParentIndex, "for_model", classmethod(spy)):
+            _import_geojson_features(self._features()[:1], RD_DATASET, LandCoverVector, self.mapping)
+        self.assertIn("cityName", loaded["deferred"])
+        self.assertNotIn("area_km2", loaded["deferred"])   # read by __percentage_of_parent__
+
+
+class BulkUpsertImportTests(TestCase):
+    """Upserts through INSERT ... ON CONFLICT keep update_or_create's behaviour."""
+
+    MAPPING = {
+        "__geometry__": "geom",
+        "__unique__": "localId",
+        "__unique_field__": "localId",
+        "geographicalName": "name",
+        "type": "type",
+    }
+
+    def _import(self, features):
+        from nature.models import WaterBodies
+        return _import_geojson_features(features, RD_DATASET, WaterBodies, self.MAPPING)
+
+    def test_reimport_updates_changed_rows_and_creates_new_ones(self):
+        from nature.models import WaterBodies
+
+        self.assertEqual(self._import([
+            _rd_feature(0, 0, 10, 10, localId="a", geographicalName="Lake A", type="lake"),
+            _rd_feature(20, 0, 30, 10, localId="b", geographicalName="Pond B", type="pond"),
+        ]), (2, 0, []))
+
+        # "a" comes back renamed and without its optional `type`; "c" is new
+        self.assertEqual(self._import([
+            _rd_feature(0, 0, 10, 10, localId="a", geographicalName="Lake A (renamed)"),
+            _rd_feature(40, 0, 50, 10, localId="c", geographicalName="Canal C", type="canal"),
+        ]), (1, 1, []))
+
+        rows = {w.localId: w for w in WaterBodies.objects.all()}
+        self.assertEqual(sorted(rows), ["a", "b", "c"])
+        self.assertEqual(rows["a"].name, "Lake A (renamed)")
+        self.assertEqual(rows["a"].type, "lake")   # a missing property doesn't blank the stored value
+
+    def test_one_bad_row_does_not_lose_the_rest_of_its_batch(self):
+        from nature.models import WaterBodies
+
+        created, updated, errors = self._import([
+            _rd_feature(0, 0, 10, 10, localId="ok-1", geographicalName="Fine"),
+            _rd_feature(20, 0, 30, 10, localId="bad", geographicalName="x" * 300),   # name max_length=200
+            _rd_feature(40, 0, 50, 10, localId="ok-2", geographicalName="Also fine"),
+        ])
+        self.assertEqual((created, updated), (2, 0))
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(sorted(WaterBodies.objects.values_list("localId", flat=True)), ["ok-1", "ok-2"])
+
+    def test_bulk_writes_invalidate_the_cached_layer(self):
+        from core.cache import layer_version
+        from nature.models import WaterBodies
+
+        before = layer_version(WaterBodies)
+        self._import([_rd_feature(0, 0, 10, 10, localId="a", geographicalName="Lake A")])
+        self.assertNotEqual(layer_version(WaterBodies), before)
+
+
+class BulkImportRegistryTests(SimpleTestCase):
+    def test_bulk_models_have_no_save_logic_that_bulk_create_would_skip(self):
+        from django.apps import apps
+        from django.db import models
+        from .batching import BULK_IMPORT_MODELS
+
+        for label in BULK_IMPORT_MODELS:
+            with self.subTest(label):
+                self.assertIs(apps.get_model(label).save, models.Model.save)
+
+    def test_models_with_save_logic_keep_the_row_path(self):
+        from administrative.models import Neighborhood
+        from builtup.models import Building
+        from .batching import BulkWriter
+
+        self.assertIsNone(BulkWriter.for_model(Building, "id"))
+        self.assertIsNone(BulkWriter.for_model(Neighborhood, "id"))
+
+
+class DeferredCascadeImportTests(TestCase):
+    """Neighborhoods saved inside deferred_cascades() cascade once per parent, at the end."""
+
+    def setUp(self):
+        from administrative.models import City, District
+        square = _rd_square(0, 0, 1000, 1000)
+        self.province = Province.objects.create(ProvinceName="P", geom=square)
+        self.city = City.objects.create(cityName="C", province=self.province, geom=square)
+        self.district = District.objects.create(id="D1", districtName="D", city=self.city, geom=square)
+
+    def test_each_parent_is_recomputed_once_with_the_final_totals(self):
+        from administrative import signals as population_signals
+        from administrative.models import Neighborhood
+        from .batching import deferred_cascades
+
+        with mock.patch.object(population_signals, "_recompute_population",
+                               wraps=population_signals._recompute_population) as recompute:
+            with deferred_cascades():
+                for i, population in enumerate((100, 200, 300)):
+                    Neighborhood.objects.create(
+                        id=f"N{i}", neighborhoodName=f"N{i}", district=self.district,
+                        geom=_rd_square(i * 100, 0, i * 100 + 100, 100), currentPopulation=population)
+                self.assertEqual(recompute.call_count, 0)   # nothing until the block ends
+
+        # district, city and province once each, instead of 3 x 3
+        self.assertEqual(recompute.call_count, 3)
+        for unit in (self.district, self.city, self.province):
+            unit.refresh_from_db()
+            self.assertEqual(unit.currentPopulation, 600, unit)
+
+    def test_cascade_still_runs_when_the_block_fails(self):
+        from administrative.models import Neighborhood
+        from .batching import deferred_cascades
+
+        with self.assertRaises(RuntimeError):
+            with deferred_cascades():
+                Neighborhood.objects.create(
+                    id="N1", neighborhoodName="N1", district=self.district,
+                    geom=_rd_square(0, 0, 100, 100), currentPopulation=42)
+                raise RuntimeError("feed dropped mid-import")
+        # the row that was written before the failure is reflected upward
+        self.district.refresh_from_db()
+        self.assertEqual(self.district.currentPopulation, 42)
+
+
+# ---------------------------------------------------------------------------
+# OpenStreetMap (Overpass)
+# ---------------------------------------------------------------------------
+
+def _ll_way(way_id, lonlats, **tags):
+    """An Overpass `out geom` way."""
+    return {"type": "way", "id": way_id, "tags": tags,
+            "geometry": [{"lon": lon, "lat": lat} for lon, lat in lonlats]}
+
+
+AMS_BBOX = [4.85, 52.35, 4.95, 52.40]   # west, south, east, north
+LL_SQUARE = [(4.90, 52.37), (4.91, 52.37), (4.91, 52.38), (4.90, 52.38), (4.90, 52.37)]
+
+
+class OSMConversionTests(SimpleTestCase):
+    def test_query_uses_overpass_bbox_order_and_output_per_geometry(self):
+        from .external_data import OSMImporter
+        dataset = {"osm_query": ['node["natural"="tree"]']}
+
+        points = OSMImporter.build_query(dataset, AMS_BBOX, as_points=True)
+        self.assertIn("[bbox:52.35,4.85,52.4,4.95]", points)   # south, west, north, east
+        self.assertIn('node["natural"="tree"];', points)
+        self.assertTrue(points.endswith("out center tags;"))
+        self.assertTrue(OSMImporter.build_query(dataset, AMS_BBOX, as_points=False).endswith("out geom;"))
+
+    def test_tag_numbers(self):
+        from .external_data import OSMImporter
+        self.assertEqual(OSMImporter.parse_number("12"), 12.0)
+        self.assertEqual(OSMImporter.parse_number("12 m"), 12.0)
+        self.assertEqual(OSMImporter.parse_number("7,5"), 7.5)
+        self.assertAlmostEqual(OSMImporter.parse_number("40 ft"), 12.192)
+        self.assertIsNone(OSMImporter.parse_number("tall"))
+
+    def test_elements_become_features_with_synthesized_properties(self):
+        from .external_data import OSMImporter
+        elements = [
+            {"type": "node", "id": 1, "lat": 52.37, "lon": 4.90, "tags": {"amenity": "clinic", "name": "Kliniek"}},
+            {"type": "way", "id": 2, "center": {"lat": 52.38, "lon": 4.91}, "tags": {"railway": "station"}},
+            {"type": "node", "id": 3, "lat": 52.37, "lon": 4.90, "tags": {"amenity": "bench"}},   # no class
+        ]
+        features = OSMImporter.to_geojson_features(elements, CATALOG_BY_KEY["osm_amenities"])
+
+        self.assertEqual([f["properties"]["osm_id"] for f in features], ["osm:node/1", "osm:way/2"])
+        clinic, station = (f["properties"] for f in features)
+        self.assertEqual((clinic["osm_class"], clinic["osm_subtype"], clinic["osm_name"]),
+                         ("hospital", "clinic", "Kliniek"))
+        self.assertEqual((station["osm_class"], station["osm_name"]), ("transportNode", "Facility osm:way/2"))
+        self.assertEqual(features[1]["geometry"], {"type": "Point", "coordinates": [4.91, 52.38]})
+
+        # polygon targets keep closed ways and drop open ones
+        ways = [_ll_way(10, LL_SQUARE), _ll_way(11, LL_SQUARE[:3])]
+        kept = OSMImporter.to_geojson_features(ways, {}, polygons_only=True)
+        self.assertEqual([f["properties"]["osm_id"] for f in kept], ["osm:way/10"])
+        self.assertEqual(kept[0]["geometry"]["type"], "Polygon")
+
+    def test_multipolygon_relation_rings_are_assembled_from_split_ways(self):
+        from shapely.geometry import shape
+        from .external_data import OSMImporter
+
+        def member(role, coords):
+            return {"type": "way", "role": role, "geometry": [{"lon": x, "lat": y} for x, y in coords]}
+
+        # the outer ring is split over two ways; the inner ring cuts a hole
+        north = [(4.90, 52.37), (4.90, 52.38), (4.92, 52.38), (4.92, 52.37)]
+        south = [(4.92, 52.37), (4.90, 52.37)]
+        hole = [(4.905, 52.372), (4.915, 52.372), (4.915, 52.378), (4.905, 52.378), (4.905, 52.372)]
+        relation = {
+            "type": "relation", "id": 5, "tags": {"type": "multipolygon", "leisure": "park"},
+            "members": [member("outer", north), member("outer", south), member("inner", hole)],
+        }
+        geom = shape(OSMImporter.element_geometry(relation))
+        self.assertEqual(geom.geom_type, "Polygon")
+        self.assertEqual(len(geom.interiors), 1)
+        self.assertAlmostEqual(geom.area, 0.02 * 0.01 - 0.01 * 0.006)
+
+
+class OSMImportTests(TestCase):
+    """End to end through OSMImporter.fetch with Overpass mocked."""
+
+    def setUp(self):
+        from administrative.models import City, District, Neighborhood
+        area = MultiPolygon(to_storage_srid(Polygon(AMS_LONLAT, srid=4326)), srid=RD)
+        province = Province.objects.create(ProvinceName="P", geom=area)
+        city = City.objects.create(cityName="C", province=province, geom=area)
+        district = District.objects.create(id="D1", districtName="D", city=city, geom=area, currentPopulation=0)
+        self.neighborhood = Neighborhood.objects.create(
+            id="N1", neighborhoodName="N", district=district, geom=area, currentPopulation=0)
+
+    def _fetch(self, key, elements, remark=None):
+        from .external_data import OSMImporter
+        body = {"elements": elements}
+        if remark:
+            body["remark"] = remark
+        with mock.patch("importer.external_data.requests.post",
+                        return_value=_FakeResponse(json_data=body)) as post:
+            result = OSMImporter.fetch(CATALOG_BY_KEY[key], AMS_BBOX)
+        return result, post
+
+    def test_trees_are_upserted_with_numeric_tags_and_neighborhood(self):
+        from nature.models import Tree
+        tree = {"type": "node", "id": 42, "lat": 52.37, "lon": 4.90,
+                "tags": {"natural": "tree", "genus": "Tilia", "height": "12 m", "circumference": "n/a"}}
+
+        result, post = self._fetch("osm_trees", [tree])
+        self.assertEqual((result.status, result.records_created), ("success", 1), result.message)
+        self.assertIn("out center tags;", post.call_args.kwargs["data"]["data"])
+
+        row = Tree.objects.get()
+        self.assertEqual((row.sourceID, row.genus, row.height_m), ("osm:node/42", "Tilia", 12.0))
+        self.assertIsNone(row.circumference_m)
+        self.assertEqual(row.neighborhood_id, self.neighborhood.pk)
+        self.assertEqual(row.geom.srid, RD)
+
+        tree["tags"]["height"] = "14"
+        result, _ = self._fetch("osm_trees", [tree])
+        self.assertEqual((result.records_created, result.records_updated), (0, 1))
+        self.assertEqual(Tree.objects.get().height_m, 14.0)
+
+    def test_parks_get_area_from_save_and_feed_the_dashboard_filter(self):
+        from builtup.models import Park
+        result, post = self._fetch("osm_parks", [_ll_way(7, LL_SQUARE, leisure="park", name="Vondelpark")])
+
+        self.assertEqual(result.status, "success", result.message)
+        self.assertIn("out geom;", post.call_args.kwargs["data"]["data"])
+        park = Park.objects.get(neighborhood=self.neighborhood)
+        self.assertEqual((park.name, park.sourceID), ("Vondelpark", "osm:way/7"))
+        self.assertTrue(700_000 < park.area < 800_000, park.area)   # ~680 m x ~1110 m, in m2
+
+    def test_amenities_are_classified_into_facility_types(self):
+        from builtup.models import Facility
+        elements = [
+            {"type": "node", "id": 1, "lat": 52.37, "lon": 4.90, "tags": {"amenity": "kindergarten"}},
+            {"type": "node", "id": 2, "lat": 52.38, "lon": 4.91, "tags": {"amenity": "police", "name": "Bureau"}},
+        ]
+        result, post = self._fetch("osm_amenities", elements)
+        self.assertEqual(result.records_created, 2, result.message)
+        rows = {f.sourceID: f for f in Facility.objects.all()}
+        self.assertEqual((rows["osm:node/1"].type, rows["osm:node/1"].subtype), ("school", "kindergarten"))
+        self.assertEqual((rows["osm:node/2"].type, rows["osm:node/2"].name), ("police_station", "Bureau"))
+
+        # only nodes are asked for: no way/relation (or nwr) statements
+        query = post.call_args.kwargs["data"]["data"]
+        statements = [line.strip() for line in query.splitlines()
+                      if line.strip().endswith("];") and not line.startswith("[")]   # skip the settings line
+        self.assertEqual(len(statements), 2)
+        self.assertTrue(all(s.startswith("node[") for s in statements), statements)
+
+    def test_water_bodies_take_their_type_from_the_water_tag(self):
+        from nature.models import WaterBodies
+        result, _ = self._fetch("osm_water_bodies", [
+            _ll_way(3, LL_SQUARE, natural="water", water="pond"),
+            _ll_way(4, LL_SQUARE[:3], natural="water"),   # open way: not an area
+        ])
+        self.assertEqual(result.records_created, 1, result.message)
+        water = WaterBodies.objects.get()
+        self.assertEqual((water.localId, water.type, water.name), ("osm:way/3", "pond", "Water body osm:way/3"))
+
+    def test_overpass_runtime_error_is_reported(self):
+        result, _ = self._fetch("osm_trees", [], remark="runtime error: Query timed out at line 3")
+        self.assertEqual(result.status, "error")
+        self.assertIn("smaller area", result.message)
+
+    def test_dispatcher_routes_osm_datasets(self):
+        from .external_data import ImportResult, import_dataset
+        with mock.patch("importer.external_data.OSMImporter.fetch",
+                        return_value=ImportResult("success", "ok")) as fetch:
+            import_dataset("osm_parks", AMS_BBOX)
+        fetch.assert_called_once_with(CATALOG_BY_KEY["osm_parks"], AMS_BBOX)
+
+
+# ---------------------------------------------------------------------------
+# HILUCS land use / INSPIRE planned land use (ATOM GML)
+# ---------------------------------------------------------------------------
+
+HILUCS = "http://inspire.ec.europa.eu/codelist/HILUCSValue/"
+
+
+class HILUCSHrefTests(SimpleTestCase):
+    def test_code_and_label_come_from_the_uri(self):
+        from physicalEnv.hilucs import parse_hilucs_href
+        self.assertEqual(parse_hilucs_href(HILUCS + "6_3_2_WaterAreasNotInOtherEconomicUse"),
+                         ("6.3.2", "water areas not in other economic use"))
+        self.assertEqual(parse_hilucs_href(HILUCS + "1_1_Agriculture"), ("1.1", "agriculture"))
+        self.assertIsNone(parse_hilucs_href("http://example.org/no-code-here"))
+        self.assertIsNone(parse_hilucs_href(None))
+
+
+class HILUCSTableTests(TestCase):
+    def test_migration_loads_the_inspire_codelist(self):
+        from physicalEnv.models import HILUCSLandUse
+        self.assertEqual(HILUCSLandUse.objects.count(), 98)
+        water = HILUCSLandUse.objects.get(code="6.3.2")
+        self.assertEqual(water.label, "water areas not in other economic use")
+        self.assertEqual(water.description, "Water areas which are not in any other socio-economic use.")
+
+
+def _pos_list(lonlats):
+    # EPSG:4258 GML axis order is lat lon
+    return " ".join(f"{lat} {lon}" for lon, lat in lonlats)
+
+
+def _plu_gml(members):
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<wfs:FeatureCollection xmlns:wfs="http://www.opengis.net/wfs/2.0" '
+        'xmlns:gml="http://www.opengis.net/gml/3.2" xmlns:xlink="http://www.w3.org/1999/xlink" '
+        'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" '
+        'xmlns:plu="http://inspire.ec.europa.eu/schemas/plu/4.0" '
+        'xmlns:base="http://inspire.ec.europa.eu/schemas/base/3.3">'
+        + "".join(f"<wfs:member>{m}</wfs:member>" for m in members)
+        + "</wfs:FeatureCollection>"
+    ).encode("utf-8")
+
+
+def _surface(tag, lonlats, hole=None):
+    interior = (f"<gml:interior><gml:LinearRing><gml:posList>{_pos_list(hole)}</gml:posList>"
+                f"</gml:LinearRing></gml:interior>") if hole else ""
+    return (f"<plu:{tag}><gml:MultiSurface><gml:surfaceMember><gml:Polygon><gml:exterior><gml:LinearRing>"
+            f"<gml:posList>{_pos_list(lonlats)}</gml:posList></gml:LinearRing></gml:exterior>{interior}"
+            f"</gml:Polygon></gml:surfaceMember></gml:MultiSurface></plu:{tag}>")
+
+
+def _spatial_plan(gml_id, title, lonlats):
+    return (f'<plu:SpatialPlan gml:id="{gml_id}"><plu:inspireId><base:Identifier><base:localId>{gml_id}'
+            f'</base:localId></base:Identifier></plu:inspireId>{_surface("extent", lonlats)}'
+            f'<plu:officialTitle>{title}</plu:officialTitle><plu:validFrom>2024-03-12</plu:validFrom>'
+            f'<plu:planTypeName xlink:href="http://inspireregister.nl/codelijst/PlanTypeNameValue/bestemmingsplan"/>'
+            f'</plu:SpatialPlan>')
+
+
+def _zoning_element(local_id, plan_id, hilucs, lonlats, hole=None):
+    return (f'<plu:ZoningElement><plu:inspireId><base:Identifier><base:localId>{local_id}</base:localId>'
+            f'</base:Identifier></plu:inspireId>{_surface("geometry", lonlats, hole)}'
+            f'<plu:hilucsLandUse xlink:href="{HILUCS}{hilucs}"/>'
+            f'<plu:plan xlink:href="#{plan_id}"/></plu:ZoningElement>')
+
+
+def _ll_box(x0, y0, x1, y1):
+    return [(x0, y0), (x1, y0), (x1, y1), (x0, y1), (x0, y0)]
+
+
+class AtomZoningElementImportTests(TestCase):
+    """_import_atom_gml_features turns plu:ZoningElements into ZoningArea rows with a HILUCS zone_type."""
+
+    def setUp(self):
+        from administrative.models import City, District, Neighborhood
+        area = MultiPolygon(to_storage_srid(Polygon(AMS_LONLAT, srid=4326)), srid=RD)
+        province = Province.objects.create(ProvinceName="P", geom=area)
+        city = City.objects.create(cityName="C", province=province, geom=area)
+        district = District.objects.create(id="D1", districtName="D", city=city, geom=area, currentPopulation=0)
+        self.neighborhood = Neighborhood.objects.create(
+            id="N1", neighborhoodName="N", district=district, geom=area, currentPopulation=0)
+
+    def _import(self, gml_bytes):
+        import io
+        from .external_catalog import FIELD_MAPPINGS
+        from .external_data import _import_atom_gml_features
+        from builtup.models import ZoningArea
+
+        class Raw(io.BytesIO):
+            pass
+
+        response = mock.MagicMock()
+        response.__enter__.return_value = response
+        response.raw = Raw(gml_bytes)
+        with mock.patch("importer.external_data.requests.get", return_value=response):
+            return _import_atom_gml_features("http://example.org/plu.gml", Polygon.from_bbox(AMS_BBOX),
+                                             ZoningArea, FIELD_MAPPINGS["pdok_landcover_kadaster"])
+
+    def test_zoning_elements_get_their_hilucs_class_and_plan(self):
+        from builtup.models import ZoningArea
+        from physicalEnv.models import HILUCSLandUse
+
+        plan_box = _ll_box(4.89, 52.36, 4.93, 52.39)
+        gml = _plu_gml([
+            _spatial_plan("NL.IMRO.plan-in", "Bestemmingsplan Centrum", plan_box),
+            _spatial_plan("NL.IMRO.plan-out", "Elders", _ll_box(6.0, 52.0, 6.1, 52.1)),
+            _zoning_element("NL.IMRO.1", "NL.IMRO.plan-in", "6_3_2_WaterAreasNotInOtherEconomicUse",
+                            _ll_box(4.90, 52.37, 4.91, 52.38), hole=_ll_box(4.903, 52.373, 4.905, 52.375)),
+            # PDOK's misspelt URI still resolves to the registry's 5.2
+            _zoning_element("NL.IMRO.2", "NL.IMRO.plan-in", "5_2_ResidentialUseWithOtherComptibleUses",
+                            _ll_box(4.91, 52.37, 4.92, 52.38)),
+            _zoning_element("NL.IMRO.3", "NL.IMRO.plan-out", "1_1_Agriculture", _ll_box(6.0, 52.0, 6.01, 52.01)),
+            "<plu:SupplementaryRegulation><plu:name>skipped</plu:name></plu:SupplementaryRegulation>",
+        ])
+
+        created, errors = self._import(gml)
+
+        self.assertEqual((created, errors), (2, []))
+        self.assertEqual(HILUCSLandUse.objects.count(), 98)   # no row added for the misspelt URI
+        water, mixed = ZoningArea.objects.order_by("id")
+        self.assertEqual(water.zone_type.code, "6.3.2")
+        self.assertEqual(water.zone_type.label, "water areas not in other economic use")
+        self.assertEqual(mixed.zone_type.code, "5.2")
+        self.assertEqual((water.description, water.plan_type, str(water.valid_from)),
+                         ("Bestemmingsplan Centrum", "bestemmingsplan", "2024-03-12"))
+        self.assertEqual(water.neighborhood_id, self.neighborhood.pk)
+        self.assertEqual(len(water.geom[0]), 2)   # exterior + hole
+        self.assertLess(water.area, mixed.area)
+
+    def test_unknown_code_is_added_with_a_label_from_the_uri(self):
+        from builtup.models import ZoningArea
+        gml = _plu_gml([
+            _spatial_plan("P", "Plan", _ll_box(4.89, 52.36, 4.93, 52.39)),
+            _zoning_element("Z", "P", "9_9_SomeFutureLandUse", _ll_box(4.90, 52.37, 4.91, 52.38)),
+        ])
+        self.assertEqual(self._import(gml), (1, []))
+        zone_type = ZoningArea.objects.get().zone_type
+        self.assertEqual((zone_type.code, zone_type.label, zone_type.description),
+                         ("9.9", "some future land use", ""))
+
+
+# ---------------------------------------------------------------------------
+# Soil map (BIS Nederland WFS)
+# ---------------------------------------------------------------------------
+
+class SoilMapImportTests(TestCase):
+    """bodemdata_soil_map: polygons upsert on maparea_id and share one SoilType per code + name."""
+
+    def _import(self, features):
+        from physicalEnv.models import SoilArea
+        from .external_catalog import FIELD_MAPPINGS
+        return _import_geojson_features(features, RD_DATASET, SoilArea, FIELD_MAPPINGS["bodemdata_soil_map"])
+
+    @staticmethod
+    def _soil(x0, maparea_id, code, name, unit=None, unit_name="Veldpodzolgronden"):
+        return _rd_feature(x0, 0, x0 + 10, 10, maparea_id=maparea_id, soilcode=code,
+                           normal_soilprofile_name=name, first_soilcode=unit or code,
+                           first_soilname=unit_name)
+
+    def test_soil_type_stores_its_legend_unit(self):
+        """first_soilcode/name fill SoilType.unitCode/unitName, also on a soil
+        type imported before the fields existed."""
+        from physicalEnv.models import SoilType
+        sand = "Veldpodzolgronden; leemarm en zwak lemig fijn zand"
+        SoilType.objects.create(code="kHn21", name=sand)   # unitCode empty
+        _created, _updated, errors = self._import([
+            self._soil(0, "m1", "kHn21", sand, unit="Hn21"),
+            self._soil(20, "m2", "Hn21/Hd21", sand, unit="Hn21"),
+        ])
+        self.assertEqual(errors, [])
+        self.assertEqual(
+            set(SoilType.objects.values_list("code", "unitCode", "unitName")),
+            {("kHn21", "Hn21", "Veldpodzolgronden"), ("Hn21/Hd21", "Hn21", "Veldpodzolgronden")},
+        )
+
+    def test_soil_types_are_shared_and_classified(self):
+        from physicalEnv.models import SoilArea, SoilType
+        sand = "Veldpodzolgronden; leemarm en zwak lemig fijn zand"
+        created, updated, errors = self._import([
+            self._soil(0, "m1", "Hn21", sand),
+            self._soil(20, "m2", "Hn21", sand),
+            # one code, two names in the 2025 map: two soil types
+            self._soil(40, "m3", "zVp", "Meerveengronden op zand met humuspodzol, beginnend ondieper dan 1.2 m"),
+            self._soil(60, "m4", "zVp", "Veenafbraakgebied"),
+        ])
+        self.assertEqual((created, updated, errors), (4, 0, []))
+        self.assertEqual(SoilType.objects.count(), 3)
+        self.assertEqual(SoilType.objects.get(code="Hn21").areas.count(), 2)
+        self.assertEqual(set(SoilType.objects.values_list("soilGroup", flat=True)), {"A", "D"})
+
+        # re-import updates on maparea_id
+        created, updated, errors = self._import([self._soil(0, "m1", "Hn21", sand)])
+        self.assertEqual((created, updated), (0, 1))
+        self.assertEqual(SoilArea.objects.count(), 4)
+
+    def test_polygon_without_soil_code_is_skipped(self):
+        from physicalEnv.models import SoilArea
+        feature = _rd_feature(0, 0, 10, 10, maparea_id="m1", normal_soilprofile_name="x")
+        created, _updated, errors = self._import([feature])
+        self.assertEqual(created, 0)
+        self.assertEqual(len(errors), 1)
+        self.assertFalse(SoilArea.objects.exists())
+
+    def test_catalog_entry_targets_the_soil_layer(self):
+        dataset = CATALOG_BY_KEY["bodemdata_soil_map"]
+        self.assertEqual((dataset["source"], dataset["format"], dataset["layer"]),
+                         ("bodemdata", "wfs", "bodem:Bodemkaart50000_v2025"))
+        with mock.patch("importer.external_data.PDOKImporter.fetch_wfs") as fetch:
+            from .external_data import import_dataset
+            import_dataset("bodemdata_soil_map", AMS_BBOX)
+        fetch.assert_called_once_with(dataset, AMS_BBOX)
+
+
+# ---------------------------------------------------------------------------
+# Groundwater depth (BIS Nederland WCS)
+# ---------------------------------------------------------------------------
+
+def _ghg_tiff_bytes(value=40):
+    """A small uint8 GeoTIFF in RD New, as BIS Nederland's WCS returns it."""
+    import numpy as np
+    from rasterio.io import MemoryFile
+    from rasterio.transform import from_origin
+    with MemoryFile() as mem:
+        with mem.open(driver="GTiff", width=4, height=4, count=1, dtype="uint8", crs="EPSG:28992",
+                      transform=from_origin(256000, 471000, 50, 50), nodata=255) as dst:
+            dst.write(np.full((1, 4, 4), value, dtype="uint8"))
+        return mem.read()
+
+
+class GroundwaterDepthImportTests(TestCase):
+    def setUp(self):
+        # fetch_wcs writes its downloads under MEDIA_ROOT; keep them out of the real imports/
+        import tempfile
+        from django.test import override_settings
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        media = override_settings(MEDIA_ROOT=tmp.name)
+        media.enable()
+        self.addCleanup(media.disable)
+
+    def _fetch(self, key, value=40):
+        from .external_data import PDOKImporter
+        response = _FakeResponse(content=_ghg_tiff_bytes(value))
+        response.content = response._content
+        with mock.patch("importer.external_data.requests.get", return_value=response) as get, \
+                mock.patch("core.rasterOperations.export_raster_to_cog"):
+            result = PDOKImporter.fetch_wcs(CATALOG_BY_KEY[key], [6.89, 52.21, 6.90, 52.22])
+        return result, get
+
+    def test_subset_uses_the_coverage_axis_labels(self):
+        result, get = self._fetch("bodemdata_ghg")
+        self.assertEqual(result.status, "success", result.message)
+        subset = get.call_args.kwargs["params"]["subset"]
+        self.assertTrue(subset[0].startswith("X(") and subset[1].startswith("Y("), subset)
+        self.assertEqual(get.call_args.kwargs["params"]["CoverageId"], "bodem__ghg-mediaan")
+
+    def test_each_statistic_keeps_its_own_row(self):
+        from physicalEnv.models import GroundwaterDepth
+        self._fetch("bodemdata_ghg", value=40)
+        self._fetch("bodemdata_glg", value=120)
+        self._fetch("bodemdata_ghg", value=45)   # re-import updates the GHG row
+
+        rows = {g.statistic: g for g in GroundwaterDepth.objects.all()}
+        self.assertEqual(sorted(rows), ["GHG", "GLG"])
+        self.assertEqual(rows["GHG"].depth_raster.bands[0].data()[0][0], 45)
+        self.assertEqual(rows["GLG"].depth_raster.bands[0].data()[0][0], 120)
+        self.assertEqual(rows["GHG"].source, "BIS Nederland (WUR)")
+
+    def test_pdok_wcs_keeps_lowercase_axes(self):
+        self.assertNotIn("wcs_axis_labels", CATALOG_BY_KEY["pdok_dem_ahn_raster"])
+
+
+# ── Klimaateffectatlas (KEA) WFS: docs/KEA_WFS_MAPPING.md ─────────────────────
+
+def _kea_import(key, features, notes=None):
+    from .external_catalog import FIELD_MAPPINGS
+    from .external_data import get_model_class
+    Model = get_model_class(CATALOG_BY_KEY[key]["target_model"])
+    return _import_geojson_features(features, RD_DATASET, Model, FIELD_MAPPINGS[key], notes)
+
+
+def _buurt_feature(**props):
+    """A KEA neighborhood feature over watersupply.tests.factories.make_neighborhood()'s square."""
+    return _rd_feature(256600, 469600, 257400, 470400, **props)
+
+
+class KeaCatalogTests(SimpleTestCase):
+    def test_every_kea_entry_maps_onto_real_model_fields(self):
+        from .external_catalog import FIELD_MAPPINGS
+        from .external_data import get_model_class
+        keys = [k for k in CATALOG_BY_KEY if k.startswith("kea_")]
+        self.assertEqual(len(keys), 21)
+        self.assertEqual(sorted(keys), sorted(k for k in FIELD_MAPPINGS if k.startswith("kea_")))
+        for key in keys:
+            entry = CATALOG_BY_KEY[key]
+            self.assertEqual(entry["source"], "kea")
+            self.assertTrue(entry["layer"].startswith("kea_public:"), key)
+            Model = get_model_class(entry["target_model"])
+            for prop, field in FIELD_MAPPINGS[key].items():
+                if not prop.startswith("__"):
+                    name = field[:-3] if field.endswith("_id") else field
+                    Model._meta.get_field(name)   # raises FieldDoesNotExist on a typo
+
+    def test_kea_datasets_go_through_the_wfs_importer(self):
+        from .external_data import ImportResult, PDOKImporter, import_dataset
+        with mock.patch.object(PDOKImporter, "fetch_wfs", return_value=ImportResult("success", "ok")) as fetch:
+            import_dataset("kea_waterschappen", [6.8, 52.2, 6.9, 52.3])
+        self.assertEqual(fetch.call_args.args[0]["key"], "kea_waterschappen")
+
+
+class KeaNeighborhoodImportTests(TestCase):
+    def setUp(self):
+        from watersupply.tests.factories import make_neighborhood
+        self.neighborhood = make_neighborhood(id="BU01530000")
+
+    def test_known_buurt_gets_a_row_and_unknown_buurten_are_skipped(self):
+        from builtup.models import NeighborhoodClimateRisk
+        notes = []
+        created, updated, errors = _kea_import("kea_risicopaalrot_huidig", [
+            _buurt_feature(buurtcode="BU01530000", no_cc_risi=0.025),
+            _buurt_feature(buurtcode="BU99999999", no_cc_risi=0.5),
+        ], notes)
+
+        self.assertEqual((created, errors), (1, []))
+        risk = NeighborhoodClimateRisk.objects.get()
+        self.assertEqual(risk.neighborhood_id, "BU01530000")
+        self.assertAlmostEqual(risk.pileRotRisk_current_pct, 2.5)   # fraction scaled to %
+        self.assertIn("skipped 1 feature(s)", notes[0])
+
+    def test_each_layer_fills_its_own_columns_of_the_same_row(self):
+        from builtup.models import NeighborhoodClimateRisk
+        _kea_import("kea_risicopaalrot_2050hoog", [_buurt_feature(buurtcode="BU01530000", sterke_c_2=0.05)])
+        created, updated, _ = _kea_import("kea_risicoverschilzetting_2050hoog",
+                                          [_buurt_feature(buurtcode="BU01530000", sterke_c_1=12.5)])
+        _kea_import("kea_droge_verdiepingen", [_buurt_feature(BU_CODE="BU01530000", VALUE=83)])
+
+        self.assertEqual((created, updated), (0, 1))
+        risk = NeighborhoodClimateRisk.objects.get()
+        self.assertAlmostEqual(risk.pileRotRisk_2050high_pct, 5.0)
+        self.assertAlmostEqual(risk.settlementRisk_2050high_pct, 12.5)   # already a %
+        self.assertEqual(risk.dryFloors_pct, 83)
+
+    def test_rivm_nodata_codes_are_stored_as_null(self):
+        from housing.models import NeighborhoodSocialProfile
+        _kea_import("kea_broze_gezondheid", [_buurt_feature(buurtcode="BU01530000", broze_gezondheid=-99997)])
+        _kea_import("kea_huurwoningen", [_buurt_feature(buurtcode="BU01530000", percentage_huurwoningen=41)])
+        profile = NeighborhoodSocialProfile.objects.get()
+        self.assertIsNone(profile.frailHealth_pct)
+        self.assertEqual(profile.rentalHousing_pct, 41)
+
+    def test_heat_layers_use_their_own_code_properties(self):
+        from urban_heat.models import NeighborhoodHeat
+        _kea_import("kea_gevoelstemperatuur_buurt_2022",
+                    [_buurt_feature(buurtcode="BU01530000", _mean=46.2, RIVMClass=7)])
+        _kea_import("kea_verkoeling", [_buurt_feature(bu_code="BU01530000", KanGoedVerkoelingVindenBinnen_59=34.8,
+                                                      KanGoedVerkoelingVindenBuiten_60=27.6)])
+        heat = NeighborhoodHeat.objects.get()
+        self.assertAlmostEqual(heat.petMean_2022_C, 46.2)
+        self.assertEqual(heat.heatClass_2022, 7)
+        self.assertAlmostEqual(heat.coolingOutdoor_pct, 27.6)
+
+
+class KeaBuildingEnrichmentTests(TestCase):
+    def setUp(self):
+        from builtup.models import Building
+        self.a = Building.objects.create(id=153100000201990, usageFunction="woonfunctie",
+                                         geom=_rd_square(257000, 470000, 257020, 470020))
+        self.b = Building.objects.create(id=153100000202207, usageFunction="woonfunctie",
+                                         geom=_rd_square(257100, 470000, 257120, 470020))
+
+    def test_enrichment_updates_existing_buildings_only_and_keeps_their_geometry(self):
+        from builtup.models import Building
+        from core.cache import layer_version
+        before = (layer_version("builtup.Building"), layer_version("Energy.BuildingEnergyLabel"))
+        notes = []
+        created, updated, errors = _kea_import("kea_boomkroon_panden", [
+            _rd_feature(256900, 469900, 257100, 470100, identificatie="0153100000201990",
+                        perc_bkb=31.5, bkb_30perc_gehaald=True),
+            _rd_feature(256900, 469900, 257100, 470100, identificatie="0153100000999999",
+                        perc_bkb=10.0, bkb_30perc_gehaald=False),
+        ], notes)
+
+        self.assertEqual((created, updated, errors), (0, 1, []))
+        self.assertIn("skipped 1", notes[0])
+        self.assertFalse(Building.objects.filter(pk=153100000999999).exists())
+        a = Building.objects.get(pk=self.a.pk)
+        self.assertAlmostEqual(a.canopyCover_pct, 31.5)
+        self.assertTrue(a.meetsCanopy30Rule)
+        self.assertTrue(a.geom.equals_exact(self.a.geom, tolerance=1e-6))   # the KEA polygon is not stored
+        after = (layer_version("builtup.Building"), layer_version("Energy.BuildingEnergyLabel"))
+        self.assertNotEqual(before[0], after[0])
+        self.assertNotEqual(before[1], after[1])   # the Energy proxy shares the table
+
+    def test_a_block_feature_updates_every_listed_building(self):
+        from builtup.models import Building
+        created, updated, errors = _kea_import("kea_schaduw_op_gebouwen", [
+            _rd_feature(256900, 469900, 257200, 470100,
+                        **{"BAG.Id": "153100000201990,153100000202207", "SOG.Score": 0.38}),
+        ])
+        self.assertEqual((created, updated, errors), (0, 2, []))
+        self.assertEqual(set(Building.objects.values_list("facadeShadeScore", flat=True)), {0.38})
+
+
+class KeaAreaImportTests(TestCase):
+    def test_climate_buffers_upsert_on_the_feature_id(self):
+        from nature.models import ProtectedArea
+        feature = _rd_feature(0, 0, 1000, 1000, Type="Hoog Nederland", Legenda="")
+        feature["id"] = "totaalkaartklimaatbuffers.5110"
+        _kea_import("kea_klimaatbuffers", [feature])
+        _kea_import("kea_klimaatbuffers", [feature])
+        area = ProtectedArea.objects.get()
+        self.assertEqual((area.inspireID, area.name, area.protection_type),
+                         ("totaalkaartklimaatbuffers.5110", "Hoog Nederland", "OTH"))
+
+    def test_drought_sensitivity_letters_map_onto_levels(self):
+        from watersupply.models import AreaAffectedDrought
+        from watersupply.tests.factories import make_province
+        make_province(geom=_rd_square(0, 0, 10_000, 10_000))
+        features = []
+        for i, letter in enumerate(["W", "G", "Z", None]):
+            f = _rd_feature(i * 1000, 0, i * 1000 + 500, 500, blad1__naa="Haagbeuken- en essenbos", blad1__gev=letter)
+            f["id"] = f"droogte.{i}"
+            features.append(f)
+        created, _, errors = _kea_import("kea_droogtegevoelige_natuur", features)
+        self.assertEqual((created, errors), (4, []))
+        levels = dict(AreaAffectedDrought.objects.values_list("sourceID", "SensibilityLevel"))
+        self.assertEqual(levels, {"droogte.0": 2, "droogte.1": 3, "droogte.2": 4, "droogte.3": 0})
+
+
+class GenericImportAttributeTests(TestCase):
+    """Mapped attribute columns (numbers, text, booleans, FKs) reach the model, not only the geometry."""
+
+    def test_extraction_well_attributes_are_imported(self):
+        from shapely.geometry import MultiPoint as ShapelyMultiPoint
+
+        from physicalEnv.models import EnvironmentalCosts
+        from watersupply.models import AvailableFreshWater, ExtractionWater
+
+        EnvironmentalCosts.objects.create(price_EUR_kg_CO2=0.05, price_EUR_droughtDamage_m3=0.02)
+        x, y = 257000.0, 470000.0
+        square = Polygon(((x - 500, y - 500), (x + 500, y - 500), (x + 500, y + 500),
+                          (x - 500, y + 500), (x - 500, y - 500)))
+        source = AvailableFreshWater.objects.create(
+            SourceName="Src", geom=MultiPolygon(square, srid=RD), infiltrationRate_cm_h=1.0,
+            infiltrationDepth_cm=10.0, totalQuantity_Mm3=100.0, yield_Mm3_year=10.0)
+        gdf = gpd.GeoDataFrame(
+            {"naam": ["Well A"], "flow": [0.05], "uren": [12.0], "diepte": [80.0],
+             "actief": ["false"], "bron": [source.pk]},
+            geometry=[ShapelyMultiPoint([(x, y)])], crs=f"EPSG:{RD}")
+        colmap = {"stationName": "naam", "pumpflow_m3_s": "flow", "OperationTime_h_day": "uren",
+                  "depth_m": "diepte", "is_active": "actief", "source": "bron"}
+
+        report = _generic_import(gdf, "watersupply.ExtractionWater", colmap, dry_run=False)
+
+        self.assertEqual(report["errors"], 0, report["sample_errors"])
+        well = ExtractionWater.objects.get()
+        self.assertEqual(well.stationName, "Well A")
+        self.assertEqual(well.pumpflow_m3_s, 0.05)
+        self.assertEqual(well.OperationTime_h_day, 12.0)
+        self.assertEqual(well.depth_m, 80.0)
+        self.assertFalse(well.is_active)
+        self.assertEqual(well.source, source)

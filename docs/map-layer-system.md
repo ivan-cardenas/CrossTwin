@@ -10,7 +10,7 @@ This document covers the changes made to the map layer catalog, styling, and pop
 Colors were assigned by cycling through a 15-color palette in the order `VECTOR_REGISTRY` iterated — unpredictable and impossible to control per layer without changing registration order.
 
 ### Solution
-Replaced the cycling palette with `LAYER_STYLES` in `mainMap/views.py` — a static dict keyed by `"app_label.ModelName"` (matching the `VECTOR_REGISTRY` key format).
+Replaced the cycling palette with `LAYER_STYLES` in `mainMap/styles/layerStyles.py` — a static dict keyed by `"app_label.ModelName"` (matching the `VECTOR_REGISTRY` key format).
 
 ```python
 LAYER_STYLES = {
@@ -24,7 +24,7 @@ LAYER_STYLES = {
 
 - `color` is always required — used for the legend chip in the sidebar.
 - `layers` is optional. If absent, the JS falls back to a default style based on `geometry_type`.
-- A `_FALLBACK_COLORS` list handles any model not listed in `LAYER_STYLES`.
+- A `FALLBACK_COLORS` list handles any model not listed in `LAYER_STYLES`.
 
 **To add a new model's color**, add one entry to `LAYER_STYLES`. No migration, no DB change.
 
@@ -181,11 +181,36 @@ To add a unit for a field, update its `help_text` in the model — the extractor
 
 ---
 
+## 5. Styles Package, Data-Driven Legends and Related Popup Fields
+
+### Styles package (`mainMap/styles/`)
+All map styling lives in one package:
+
+| Module | Contents |
+|---|---|
+| `layerStyles.py` | `LAYER_STYLES` (static style per registry key), `FALLBACK_COLORS`, building type colours/labels and extrusion heights |
+| `landCoverStyles.py` | `build_landcover_style_and_legend()`: a `match` on `land_cover_type` for every class present on `LandCoverVector` |
+| `soilStyles.py` | `SOIL_UNIT_COLORS` (the 305 soil units of the BRO Bodemkaart 1:50 000 legend, in legend order) and `build_soil_style_and_legend()` |
+| `rasterStyles.py` | Raster colormaps, value ranges and legend stops (used by `core/views.py` for TiTiler tiles) |
+
+`available_layers` reads `LAYER_STYLES` for every vector layer and, for land cover and the soil map, replaces `layers`/`legend` with the per-request result, so the legend lists only the classes actually imported.
+
+### Soil map colours
+The BRO legend colours each **main soil unit** (`first_soilcode` of the WFS, e.g. `Hn21`), not the full map code (`Hn21/Hd21`, `kHn21`). The importer stores it as `SoilType.unitCode`/`unitName` (the soil lookup's `defaults_from`, which also fills soil types imported earlier). The colours were sampled from the PDOK legend image (`legend/soilarea/soilslope.png`); three names occur twice in that legend, the first row is the marine (M) code, the second the river (R) code. Units not in `SOIL_UNIT_COLORS` and soil types without a `unitCode` (re-import the soil map) are drawn grey.
+
+### Related fields in popups and styles
+`POPUP_RELATED_FIELDS` in `mainMap/views.py` lists, per layer, columns of an FK's target to send along: `{'physicalEnv.SoilArea': {'soil_type': [('name', None), ('unitCode', 'Soil unit'), ...]}}`. `_geojson_sql` adds them to the existing `LEFT JOIN` as `<fk>__<field>` (still one query per layer), and `_field_metadata` gives them a label, unit and help text. A `…__name` property becomes the popup title (`_featureTitleKey`), and a style can `match` on them (`['get', 'soil_type__unitCode']`).
+
+---
+
 ## File Map
 
 | File | What changed |
 |---|---|
-| `mainMap/views.py` | Added `LAYER_STYLES`, `_FALLBACK_COLORS`, `_extract_unit()`, `_field_metadata()`; updated `available_layers` to return `color`, `style_layers`, `fields` |
+| `mainMap/views.py` | Added `LAYER_STYLES`, `_FALLBACK_COLORS`, `_extract_unit()`, `_field_metadata()`; updated `available_layers` to return `color`, `style_layers`, `fields` (styles since moved to `mainMap/styles/`, see §5) |
+| `mainMap/styles/` | §5: `layerStyles.py`, `soilStyles.py`, `landCoverStyles.py` and `rasterStyles.py` (the last two moved from `core/`) |
+| `mainMap/views.py` | §5: `POPUP_RELATED_FIELDS`, `_popup_related_fields()`, `_field_meta_entry()`; `mm/h` unit |
+| `physicalEnv/models.py`, `importer/` | §5: `SoilType.unitCode`/`unitName`, `defaults_from` on `__fk_lookup__` |
 | `mainMap/urls.py` | Removed leading `/` from `api/layers/` route |
 | `mainMap/templates/mainMap.html` | Removed hardcoded `window.CONFIG`; template now only passes `mapboxToken` |
 | `common/static/js/Config.js` | `layersApiUrl` set to `'/api/layers/'` (absolute); is now the single source of truth for all map config defaults |

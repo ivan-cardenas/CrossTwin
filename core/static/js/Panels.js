@@ -66,7 +66,7 @@ function showDashboardSummary() {
       </div>
 
       <p class="dashboard-note">
-        Pick a thematic tool (Water Supply, Heat, Housing) on the left toolbar to see its indicators.
+        Pick a thematic tool (Water Supply, Heat, Housing, Built-up) on the left toolbar to see its indicators.
       </p>
     `;
   }
@@ -88,8 +88,8 @@ function populationRequestParams() {
   }
   if (typeof map !== 'undefined' && map) {
     const center = map.getCenter();
-    params.set('lng', center.lng);
-    params.set('lat', center.lat);
+    params.set('lng', roundCoord(center.lng));
+    params.set('lat', roundCoord(center.lat));
   }
   params.set('pop_scenario', window.POP_SCENARIO || 'prognose');
   params.set('pop_growth', window.POP_GROWTH || 0);

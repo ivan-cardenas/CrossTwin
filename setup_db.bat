@@ -3,7 +3,8 @@ REM ===========================================================================
 REM  CrossTwin - first-time database setup
 REM
 REM  Creates the PostgreSQL/PostGIS database and login role for CrossTwin,
-REM  grants the privileges you choose, and writes .env from .env_template.
+REM  grants the privileges you choose, writes .env from .env_template, and
+REM  offers to create the tables (migrate) or load the example data.
 REM  Double-click it or run it from a terminal in the project folder.
 REM
 REM  Prerequisite: PostgreSQL with PostGIS installed locally (Stack Builder ->
@@ -277,25 +278,12 @@ if ($r.Code -ne 0) { Stop-Setup "Granting database privileges failed:`n$($r.Outp
 # ------------------------------------------------------------- extensions ---
 
 Write-Step 'Installing PostGIS extensions'
-# postgis + postgis_raster are required (vector + raster models); the rest are
-# used by optional features and the test runner, so a failure only warns.
-$extensions = [ordered]@{
-    postgis           = $true
-    postgis_raster    = $true
-    postgis_topology  = $false
-    postgis_sfcgal    = $false
-    pgrouting         = $false
-    fuzzystrmatch     = $false
-}
-foreach ($ext in $extensions.Keys) {
+# Only what the code needs, the REQUIRED_EXTENSIONS of tools/check_postgres.py.
+# tools/example_db.py load expects exactly these to exist already.
+foreach ($ext in 'postgis', 'postgis_raster') {
     $r = Invoke-Psql $DbName @('-c', "CREATE EXTENSION IF NOT EXISTS $ext")
-    if ($r.Code -eq 0) {
-        Write-Host "  [ok]   $ext" -ForegroundColor Green
-    } elseif ($extensions[$ext]) {
-        Stop-Setup "Required extension '$ext' could not be installed:`n$($r.Output)"
-    } else {
-        Write-Host "  [skip] $ext (not available on this server, optional)" -ForegroundColor Yellow
-    }
+    if ($r.Code -ne 0) { Stop-Setup "Extension '$ext' could not be installed:`n$($r.Output)" }
+    Write-Host "  [ok] $ext" -ForegroundColor Green
 }
 
 # ------------------------------------------------------ schema privileges ---
@@ -314,7 +302,6 @@ GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO $u;
 ALTER DEFAULT PRIVILEGES FOR ROLE $su IN SCHEMA public GRANT ALL ON TABLES TO $u;
 ALTER DEFAULT PRIVILEGES FOR ROLE $su IN SCHEMA public GRANT ALL ON SEQUENCES TO $u;
 "@
-        $topologyGrant = 'GRANT USAGE ON SCHEMA topology TO {0}; GRANT ALL ON ALL TABLES IN SCHEMA topology TO {0}; GRANT ALL ON ALL SEQUENCES IN SCHEMA topology TO {0};'
     }
     2 {
         $grants = @"
@@ -324,7 +311,6 @@ GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO $u;
 ALTER DEFAULT PRIVILEGES FOR ROLE $su IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO $u;
 ALTER DEFAULT PRIVILEGES FOR ROLE $su IN SCHEMA public GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO $u;
 "@
-        $topologyGrant = 'GRANT USAGE ON SCHEMA topology TO {0}; GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA topology TO {0}; GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA topology TO {0};'
     }
     3 {
         $grants = @"
@@ -334,12 +320,8 @@ GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO $u;
 ALTER DEFAULT PRIVILEGES FOR ROLE $su IN SCHEMA public GRANT SELECT ON TABLES TO $u;
 ALTER DEFAULT PRIVILEGES FOR ROLE $su IN SCHEMA public GRANT SELECT ON SEQUENCES TO $u;
 "@
-        $topologyGrant = 'GRANT USAGE ON SCHEMA topology TO {0}; GRANT SELECT ON ALL TABLES IN SCHEMA topology TO {0};'
     }
 }
-# The topology schema only exists when postgis_topology was installed.
-$grants += "`nDO `$do`$ BEGIN IF EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'topology') THEN EXECUTE $(Format-SqlLiteral ($topologyGrant -f $u)); END IF; END `$do`$;`n"
-
 $r = Invoke-SqlScript $DbName $grants
 if ($r.Code -ne 0) { Stop-Setup "Granting schema privileges failed:`n$($r.Output)" }
 Write-Host 'Privileges granted.' -ForegroundColor Green
@@ -388,21 +370,38 @@ if ($writeEnv) {
     Write-Host '.env written from .env_template.' -ForegroundColor Green
 }
 
-# ------------------------------------------------------------- migrations ---
+# ------------------------------------------------------- fill the database ---
 
 $python = Join-Path $Root '.venv\Scripts\python.exe'
+$example = Join-Path $Root 'example\crosstwin_example_data.zip'
+$filled = $false
 if ($Level -eq 1 -and $writeEnv -and (Test-Path -LiteralPath $python)) {
-    Write-Step 'Django migrations'
-    if (Read-YesNo 'Run "python manage.py migrate" now?' $true) {
-        $ErrorActionPreference = 'Continue'
-        & $python manage.py migrate
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host 'Migrations failed; fix the error above and run "python manage.py migrate" again.' -ForegroundColor Yellow
-        } else {
-            Write-Host 'Migrations applied.' -ForegroundColor Green
-        }
-        $ErrorActionPreference = 'Stop'
+    Write-Step 'Fill the database'
+    Write-Host '  1) Empty   - create the tables (python manage.py migrate); import your own data later'
+    if (Test-Path -LiteralPath $example) {
+        Write-Host '  2) Example - load example\crosstwin_example_data.zip, then migrate'
     }
+    Write-Host '  3) Later   - do nothing now'
+    $choice = Read-Value 'Choose' '1' '^[123]$' 'Enter 1, 2 or 3.'
+    if ($choice -eq '2' -and -not (Test-Path -LiteralPath $example)) { $choice = '3' }
+
+    # Native tools print progress on stderr; don't let 'Stop' turn that into an error.
+    $ErrorActionPreference = 'Continue'
+    if ($choice -eq '2') {
+        & $python tools\example_db.py load
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host 'Loading the example data failed (see above). Drop and re-create the database before trying again.' -ForegroundColor Yellow
+        } else {
+            & $python manage.py migrate
+            $filled = ($LASTEXITCODE -eq 0)
+        }
+    } elseif ($choice -eq '1') {
+        & $python manage.py migrate
+        $filled = ($LASTEXITCODE -eq 0)
+        if (-not $filled) { Write-Host 'Migrations failed; fix the error above and run "python manage.py migrate" again.' -ForegroundColor Yellow }
+    }
+    $ErrorActionPreference = 'Stop'
+    if ($filled) { Write-Host 'Database ready.' -ForegroundColor Green }
 }
 
 # ---------------------------------------------------------------- summary ---
@@ -416,12 +415,13 @@ Write-Host "  User       : $AppUser ($levelName$(if ($CreateDb) { ', can create 
 Write-Host '======================================================' -ForegroundColor Green
 Write-Host 'Next steps:'
 if (-not (Test-Path -LiteralPath $python)) {
-    Write-Host '  python -m venv .venv'
-    Write-Host '  .venv\Scripts\Activate'
-    Write-Host '  pip install -r requirements.txt'
+    Write-Host '  uv sync                           (creates .venv with the Python packages)'
 }
 if ($Level -eq 1) {
-    Write-Host '  python manage.py migrate          (if not done above)'
+    if (-not $filled) {
+        Write-Host '  python manage.py migrate          (empty database)'
+        Write-Host '    or: python tools\example_db.py load, then python manage.py migrate  (example data)'
+    }
 } else {
     Write-Host "  Migrations must be run by a user with schema rights (e.g. '$SuUser')."
 }

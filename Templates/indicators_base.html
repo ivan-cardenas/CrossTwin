@@ -15,11 +15,16 @@ differs per domain rather than being copy-pasted.
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}CrossTwin Dashboard{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  {# theme.css: fonts, dark background, text tokens (the map loads it through mainMap.css) #}
+  <link rel="stylesheet" href="{% static 'css/theme.css' %}" />
   <link rel="stylesheet" href="{% static 'css/indicators.css' %}" />
   <script src="https://unpkg.com/htmx.org@1.9.10"></script>
   {% block extra_head %}{% endblock %}
 </head>
-<body>
+<body class="indicators-page">
 
   <header>
     <span class="label-tag">{% block label_tag %}CrossTwin{% endblock %}</span>

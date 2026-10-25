@@ -1,5 +1,6 @@
 from django.contrib.gis.db import models
 from django.db.models import Sum, F, ExpressionWrapper, FloatField
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 from administrative.models import Province, City, Neighborhood
@@ -37,21 +38,37 @@ class ConsumptionCapita(models.Model):
 
     def save(self, *args, **kwargs):
         """
-        DAG edges: Total_Population -> Total_Consumption
-                   ConsumptionCapita -> Total_Consumption
-        total_consumption_m3_yr = L/person/day / 1000 * population * 365
+        DAG edges: Total_Population, ConsumptionCapita -> Total_Water_Demand
+                   (yearly consumption is an intermediate, not a DAG node)
+        total_consumption_m3_yr = L/person/day / 1000 * population * 365, with
+        the baseline population of `year` (watersupply/chain.py).
         """
+        from .chain import baseline_population, consumption_m3_yr
+
         if self.consumption_capita_L_d < 0:
             raise ValidationError("Consumption Capita cannot be negative")
-        population = self.city.currentPopulation
+        population = baseline_population(self.city, self.year)
         if population is not None:
-            self.total_consumption_m3_yr = self.consumption_capita_L_d / 1000 * population * 365
+            self.total_consumption_m3_yr = consumption_m3_yr(self.consumption_capita_L_d, population)
         self.last_updated = timezone.now()
         super().save(*args, **kwargs)
 
 
     def __str__(self):
         return f"{self.city} - {self.year}: {self.consumption_capita_L_d} L/person/day"
+
+    @classmethod
+    def for_year(cls, city, year):
+        """
+        The record to use for `city` in `year`: that year's, else the latest
+        earlier one (a 2015 survey still describes 2026 until a newer one
+        exists), else the earliest later one. None when the city has none.
+        """
+        records = cls.objects.filter(city=city)
+        return (
+            records.filter(year__lte=year).order_by('-year', '-id').first()
+            or records.filter(year__gt=year).order_by('year', 'id').first()
+        )
     
     class Meta:
         verbose_name = "Consumption Capita"
@@ -71,18 +88,21 @@ class TotalWaterDemand(models.Model):
         """
         DAG edges: Total_Population -> Total_Water_Demand
                    ConsumptionCapita -> Total_Water_Demand
-        demandDay [Mm3/day] = population * L/person/day / 1e9   (L -> Mm3)
+        demandDay [Mm3/day] = population * L/person/day / 1e9   (L -> Mm3), with
+        the baseline population of `year` (watersupply/chain.py) and the
+        consumption of `year` or the closest year before it
+        (ConsumptionCapita.for_year).
         """
-        consumption = ConsumptionCapita.objects.filter(
-            city=self.city, year=self.year
-        ).first()
+        from .chain import baseline_population, demand_m3_d
+
+        consumption = ConsumptionCapita.for_year(self.city, self.year)
         if consumption is None:
             raise ValidationError(
-                f"No ConsumptionCapita record for {self.city} in {self.year}; "
+                f"No ConsumptionCapita record for {self.city}; "
                 "cannot calculate the water demand."
             )
-        population = self.city.currentPopulation or 0
-        self.demandDay = population * consumption.consumption_capita_L_d / 1e9
+        population = baseline_population(self.city, self.year) or 0
+        self.demandDay = demand_m3_d(consumption.consumption_capita_L_d, population) / 1e6  # m3 -> Mm3
         self.demandYR = self.demandDay * 365
         self.last_updated = timezone.now()
         super().save(*args, **kwargs)
@@ -99,8 +119,6 @@ class SupplySecurity(models.Model):
     service_time_hours = models.FloatField(help_text="in hours per day") # hours/day
     last_updated = models.DateTimeField(default=timezone.now) 
     
-    SERVICE_HOURS_MAX = 24
-
     def __str__(self):
         return f"{self.city} - {self.year}: {self.supply_security_pct}%"
 
@@ -109,23 +127,21 @@ class SupplySecurity(models.Model):
         DAG edges: Total_Water_Demand -> Supply_Security
                    Total_Water_Prod   -> Supply_Security
                    Supply_Security    -> Service_Time
-        Same formulas as watersupply.views._build_indicators:
+        Same functions as watersupply.views._build_indicators (watersupply/chain.py):
           supply_security_pct = production / demand * 100
           service_time_hours  = 24 if production >= demand else 24 * production / demand
         Only recalculated when both demand (TotalWaterDemand for this city/year)
         and production are known; otherwise the supplied values are kept.
         """
         from .calculations import calculate_total_production_day  # avoid circular import
+        from .chain import service_time_hours, supply_security_pct
 
         demand = TotalWaterDemand.objects.filter(city=self.city, year=self.year).first()
         demand_m3_d = demand.demandDay * 1e6 if demand else 0       # Mm3/day -> m3/day
         production_m3_d = calculate_total_production_day(self.city)  # m3/day
         if demand_m3_d > 0 and production_m3_d > 0:
-            self.supply_security_pct = production_m3_d / demand_m3_d * 100
-            self.service_time_hours = (
-                self.SERVICE_HOURS_MAX if production_m3_d >= demand_m3_d
-                else round(self.SERVICE_HOURS_MAX * production_m3_d / demand_m3_d, 1)
-            )
+            self.supply_security_pct = supply_security_pct(production_m3_d, demand_m3_d)
+            self.service_time_hours = service_time_hours(production_m3_d, demand_m3_d)
         self.last_updated = timezone.now()
         super().save(*args, **kwargs)
 
@@ -133,7 +149,6 @@ class SupplySecurity(models.Model):
         verbose_name = "Supply Security"
         verbose_name_plural = "Supply Security Records"
     
-
 class UsersLocation(models.Model):
     id = models.AutoField(primary_key=True)
     neighborhood = models.ForeignKey(Neighborhood, on_delete=models.DO_NOTHING, help_text="Neighborhood code from administrative.Neighborhood") #TODO: Change to City or make per point?
@@ -206,10 +221,17 @@ class Watershed(models.Model):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=100, help_text="Name of the watershed")
     geom = models.MultiPolygonField(srid=COORDINATE_SYSTEM)
+    area_km2 = models.FloatField(help_text="Area of the watershed in square kilometers")
     last_updated = models.DateTimeField(default=timezone.now)
     
     def __str__(self):
         return f"{self.name}"
+    
+    def save(self, *args, **kwargs):
+        # Calculate area in square kilometers from the geometry
+        self.area_km2 = self.geom.area / 1e6  # Convert from m² to km²
+        self.last_updated = timezone.now()
+        super().save(*args, **kwargs)
     
     class Meta:
         verbose_name = "Watershed"
@@ -220,19 +242,33 @@ class AvailableFreshWater(models.Model):
     SourceName = models.CharField(max_length=100, help_text="Name of the water source. Corresponds to the Balance Area ")
     watershed = models.ForeignKey(Watershed, on_delete=models.DO_NOTHING, null=True, help_text="Watershed code from watersupply.Watershed. ")
     geom = models.MultiPolygonField(srid=COORDINATE_SYSTEM)
-    infiltrationRate_cm_h = models.FloatField(help_text="Infiltration rate in centimeters per hour") #TODO: this should be calculated from land cover and soil type
-    infiltrationDepth_cm = models.FloatField(help_text="Infiltration depth in centimeters")
-    totalQuantity_Mm3 = models.FloatField(help_text="total quantity in million cubic meters")
-    yield_Mm3_year = models.FloatField(help_text="Yield in million cubic meters per year")
+    infiltrationRate_cm_h = models.FloatField(help_text="Infiltration rate in centimeters per hour", null=True, blank=True) #TODO: this should be calculated from land cover and soil type
+    infiltrationDepth_cm = models.FloatField(help_text="Yearly infiltration (recharge) depth in centimeters per year over the source area", null=True, blank=True) #TODO: this should be calculated from land cover and soil type
+    totalQuantity_Mm3 = models.FloatField(help_text="total quantity in million cubic meters", null=True, blank=True) #TODO: this should be calculated from land cover and soil type
+    yield_Mm3_year = models.FloatField(help_text="Yield in million cubic meters per year. Derived in save() from infiltrationDepth_cm and the area when the depth is given", null=True, blank=True)
     last_updated = models.DateTimeField(default=timezone.now)
     
     def __str__(self):
         return f"{self.SourceName} - {self.totalQuantity_Mm3} Mm3"
     
-    # No save() override: the previous one shadowed the `Province` class with a
-    # local variable (UnboundLocalError on every save) and assigned to an
-    # attribute that is not a model field, so it derived nothing.
-    # infiltrationRate_cm_h stays an input (see TODO above).
+    def save(self, *args, **kwargs):
+        """
+        DAG edge: Infiltration -> Available_FW
+        yield_Mm3_year = infiltrationDepth_cm / 100 * area_m2 / 1e6 (chain.recharge_Mm3_yr),
+        recalculated whenever the depth is known so it follows edits to the depth
+        or the polygon; without a depth a supplied yield is kept. The infiltration
+        rate is not used: it is a capacity during rain, not a yearly amount.
+        Area in the storage CRS's metres (projected, EPSG:28992).
+        """
+        from .chain import recharge_Mm3_yr
+
+        if self.infiltrationDepth_cm is not None and self.geom is not None:
+            self.yield_Mm3_year = recharge_Mm3_yr(self.infiltrationDepth_cm, self.geom.area)
+        # Assign the watershed from location only when none was given explicitly
+        if self.watershed_id is None:
+            self.watershed = Watershed.objects.filter(geom__contains=self.geom.centroid).first()
+        self.last_updated = timezone.now()
+        super().save(*args, **kwargs)
 
     class Meta:
         verbose_name = "Available Fresh Water"
@@ -241,8 +277,8 @@ class AvailableFreshWater(models.Model):
 class ExtractionWater(models.Model):
     id=models.AutoField(primary_key=True)
     source = models.ForeignKey(AvailableFreshWater,
-                               on_delete=models.DO_NOTHING, help_text="AvailableFreshWater ID from watersupply.AvailableFreshWater. Corresponds to the Balance Area")
-    geom = models.MultiPointField(srid=COORDINATE_SYSTEM)
+                               on_delete=models.DO_NOTHING, help_text="AvailableFreshWater ID from watersupply.AvailableFreshWater. Corresponds to the Balance Area", null=True)
+    geom = models.PointField(srid=COORDINATE_SYSTEM)
     stationName = models.CharField(max_length=100, 
                                    help_text="Name of the extraction station or well")
     type = models.CharField(max_length=100,
@@ -266,12 +302,12 @@ class ExtractionWater(models.Model):
         help_text="Number of individual wells at this station"
     )
     # --- Pump ---
-    pumpflow_m3_s = models.FloatField(help_text="Pump flow in cubic meters per second")
-    pumpMaxFlow_m3_s = models.FloatField(help_text="Maximum pump flow in cubic meters per second")
-    OperationTime_h_day = models.FloatField(help_text="Operation time in hours per day")
-    depth_m = models.FloatField(help_text="Depth in meters")
-    pumpEfficiency = models.FloatField(help_text="Pump efficiency in percent")
-    pumpEnergyRate_kWh_h = models.FloatField(help_text="Pump energy rate in kilowatt-hours per hour")
+    pumpflow_m3_s = models.FloatField(help_text="Pump flow in cubic meters per second", null=True, blank=True)
+    pumpMaxFlow_m3_s = models.FloatField(help_text="Maximum pump flow in cubic meters per second", null=True, blank=True)
+    OperationTime_h_day = models.FloatField(help_text="Operation time in hours per day", null=True, blank=True)
+    depth_m = models.FloatField(help_text="Depth in meters", null=True, blank=True)
+    pumpEfficiency = models.FloatField(help_text="Pump efficiency in percent", null=True, blank=True)
+    pumpEnergyRate_kWh_h = models.FloatField(help_text="Pump energy rate in kilowatt-hours per hour", null=True, blank=True) 
     pumpEmissionRate_kg_CO2_h = models.FloatField(null=True, help_text="Pump emission rate in kilograms of CO2 per hour") # calculated in save() from the energy rate and emission factor
     pumpEmmissionFactor_kg_CO2_kWh = models.FloatField(null=True, help_text="Pump emission factor in kilograms of CO2 per kilowatt-hour")
     pumpEmission_day_kg_CO2 = models.FloatField(null=True, help_text="Pump emissions in kilograms of CO2 per day")
@@ -313,7 +349,24 @@ class ExtractionWater(models.Model):
     
     def __str__(self):
         return f"{self.source} - {self.stationName}"
-    
+
+    @staticmethod
+    def volume_m3_d():
+        """
+        Database expression for a well's extracted volume in m3/day, the one
+        definition used by the extraction indicator and TotalWaterProduction:
+          1. the measured yearly extraction (current_extraction_Mm3_yr * 1e6 / 365),
+          2. else pump flow x operation time (m3/s * h/day * 3600 s/h),
+          3. else pump flow running all day (m3/s * 86400).
+        NULL when none is known, so such a well adds nothing to a Sum.
+        """
+        return Coalesce(
+            ExpressionWrapper(F('current_extraction_Mm3_yr') * 1e6 / 365.0, output_field=FloatField()),
+            ExpressionWrapper(F('pumpflow_m3_s') * F('OperationTime_h_day') * 3600.0, output_field=FloatField()),
+            ExpressionWrapper(F('pumpflow_m3_s') * 86400.0, output_field=FloatField()),
+            output_field=FloatField(),
+        )
+
     def save(self, *args, **kwargs):
         """
         DAG edges: Available_FW -> Total_Extraction
@@ -336,8 +389,11 @@ class ExtractionWater(models.Model):
         # Emissions (kg CO2) from pump energy rate x emission factor
         if self.pumpEnergyRate_kWh_h is not None and self.pumpEmmissionFactor_kg_CO2_kWh is not None:
             self.pumpEmissionRate_kg_CO2_h = self.pumpEnergyRate_kWh_h * self.pumpEmmissionFactor_kg_CO2_kWh
-            self.pumpEmission_day_kg_CO2 = self.pumpEmissionRate_kg_CO2_h * self.OperationTime_h_day
-            self.pumpEmission_year_kg_CO2 = self.pumpEmission_day_kg_CO2 * 365
+            if self.OperationTime_h_day is not None:
+                self.pumpEmission_day_kg_CO2 = self.pumpEmissionRate_kg_CO2_h * self.OperationTime_h_day
+                self.pumpEmission_year_kg_CO2 = self.pumpEmission_day_kg_CO2 * 365
+            else:
+                self.pumpEmission_day_kg_CO2 = self.pumpEmission_year_kg_CO2 = None
         else:
             self.pumpEmissionRate_kg_CO2_h = None
             self.pumpEmission_day_kg_CO2 = None
@@ -352,10 +408,10 @@ class ExtractionWater(models.Model):
 
         # Environmental costs come from the latest EnvironmentalCosts record
         costs = EnvironmentalCosts.current()
-        volume_m3_day = self.pumpflow_m3_s * self.OperationTime_h_day * 3600
+        volume_m3_day = self.pumpflow_m3_s * self.OperationTime_h_day * 3600 if self.pumpflow_m3_s is not None and self.OperationTime_h_day is not None else None
 
         # CO2 cost per m3 = (kg CO2 per day / m3 per day) * EUR per kg CO2
-        if self.co2_cost_EUR_m3 is None and costs and self.pumpEmission_day_kg_CO2 is not None and volume_m3_day > 0:
+        if self.co2_cost_EUR_m3 is None and costs and self.pumpEmission_day_kg_CO2 is not None and volume_m3_day:
             self.co2_cost_EUR_m3 = self.pumpEmission_day_kg_CO2 / volume_m3_day * costs.price_EUR_kg_CO2
 
         # Drought damage is already priced per m3
@@ -415,7 +471,7 @@ class PipeNetwork(models.Model):
     last_updated = models.DateTimeField(default=timezone.now)
     
     def __str__(self):
-        return f"{self.length_km} km"   
+        return f"Pipe {self.id}: {self.length_km or 0:.2f} km"
     
     def save(self, *args, **kwargs):
         self.length_km = self.geom.length / 1000
@@ -545,6 +601,10 @@ class NonRevenueWater(models.Model):
     loss_Quantity_m3 = models.FloatField(help_text="Loss quantity in cubic meters per day")
     WaterCost_EUR_day = models.FloatField(help_text="Water cost in EUR per day")
     UnavoidableLossses_PCT = models.FloatField(help_text="Unavoidable losses in percentage")
+    # DAG edge: Network -> Real_Losses. Nullable only for records created before the link.
+    pipe = models.ForeignKey(PipeNetwork, on_delete=models.DO_NOTHING, null=True, blank=True,
+                             related_name='losses',
+                             help_text="Pipe where the real loss (leakage) is presumed to occur")
     ILI = models.FloatField(null=True, blank=True, help_text="Infrastructure Leakage Index")
     last_updated = models.DateTimeField(default=timezone.now)
 
@@ -584,6 +644,13 @@ class NonRevenueWater(models.Model):
         if self.type in valid_types and self.specificLoss not in valid_types[self.type]:
             raise ValidationError("Invalid loss specification for this loss type.")
 
+        # save() derives type from specificLoss, so judge the pipe by specificLoss too
+        is_real = self.specificLoss in self.REAL_CHOICES
+        if is_real and self.pipe_id is None:
+            raise ValidationError({'pipe': "Real losses must be linked to the pipe where the leakage is presumed."})
+        if not is_real and self.pipe_id is not None:
+            raise ValidationError({'pipe': "Apparent losses are not physical leakage and cannot be linked to a pipe."})
+
     def __str__(self):
         return f"{self.year}: Losses: {self.type} - {self.specificLoss} - {self.loss_Quantity_m3} m3"
 
@@ -596,7 +663,8 @@ class NonRevenueWater(models.Model):
         """
         Create a random NonRevenueWater loss event.
         Picks a random LossesChoices, assigns a plausible quantity
-        and unavoidable percentage, then saves.
+        and unavoidable percentage, then saves. Real losses are placed on a
+        random pipe (none if the network is empty).
         """
         import random
 
@@ -621,6 +689,7 @@ class NonRevenueWater(models.Model):
             loss_Quantity_m3=quantity,
             WaterCost_EUR_day=round(quantity * water_cost_m3, 2),
             UnavoidableLossses_PCT=unavoidable_pct,
+            pipe=PipeNetwork.objects.order_by('?').first() if choice in NonRevenueWater.REAL_CHOICES else None,
         )
         event.save()
         return event
@@ -707,6 +776,7 @@ class AreaAffectedDrought(models.Model):
     geom = models.MultiPolygonField(srid=COORDINATE_SYSTEM)
     Province = models.ForeignKey(Province, on_delete=models.DO_NOTHING)
     areaName = models.CharField(max_length=100)
+    sourceID = models.CharField(max_length=100, unique=True, null=True, blank=True, help_text="Feature id in the source dataset (e.g. the Klimaateffectatlas WFS), the upsert key of re-imports")
     SensibilityLevel = models.IntegerField(
         choices=SensibilityChoices.choices,
         default=SensibilityChoices.NotAffected,
@@ -775,9 +845,7 @@ class TotalWaterProduction(models.Model):
         sources = self.source.all()
         wells = ExtractionWater.objects.filter(is_active=True, source__in=sources)
         extraction = wells.aggregate(
-            m3_day=Sum(ExpressionWrapper(
-                F('pumpflow_m3_s') * F('OperationTime_h_day') * 3600.0,  # m3/s * h/day * s/h
-                output_field=FloatField())),
+            m3_day=Sum(ExtractionWater.volume_m3_d()),
             kwh_day=Sum(ExpressionWrapper(
                 F('pumpEnergyRate_kWh_h') * F('OperationTime_h_day'),
                 output_field=FloatField())),

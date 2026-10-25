@@ -194,3 +194,34 @@ class NatureBasedSolutionPoint(models.Model):
     class Meta:
         verbose_name = "Nature-Based Solution Point"
         verbose_name_plural = "Nature-Based Solution Points"
+
+class NeighborhoodHeat(models.Model):
+    """
+    Heat and shade indicators per neighborhood, from the Klimaateffectatlas
+    WFS (importer catalog kea_*, docs/KEA_WFS_MAPPING.md). One row per
+    neighborhood; each KEA layer fills its own columns. The PET means are a
+    vector summary of the PET node of core/DAG.dot (the PET raster model
+    holds the full field); canopy cover informs Vegetation_Coverage. Stored
+    inputs only, no DAG edge implemented.
+    """
+    id = models.BigAutoField(primary_key=True)
+    neighborhood = models.OneToOneField(Neighborhood, verbose_name="Neighborhood", on_delete=models.DO_NOTHING, related_name="heat")
+    petMean_2012_C = models.FloatField(null=True, blank=True, help_text="Mean perceived temperature (PET) on a hot day, 2012 surface model, °C (KEA GevoelstemperatuurBuurt_2012)")
+    petMean_2022_C = models.FloatField(null=True, blank=True, help_text="Mean perceived temperature (PET) on a hot day, 2022 surface model, °C (KEA GevoelstemperatuurBuurt_2022)")
+    heatClass_2022 = models.IntegerField(null=True, blank=True, help_text="RIVM PET class of the 2022 mean (KEA GevoelstemperatuurBuurt_2022.RIVMClass)")
+    coolingIndoor_pct = models.FloatField(null=True, blank=True, help_text="Residents who can find cooling indoors, % (KEA SchaduwOpGebouwen_VerkoelingBinnen)")
+    coolingOutdoor_pct = models.FloatField(null=True, blank=True, help_text="Residents who can find cooling outdoors, % (KEA SchaduwOpGebouwen_VerkoelingBinnen)")
+    canopyCover_pct = models.FloatField(null=True, blank=True, help_text="Tree canopy cover of the land area, AHN4, % (KEA RMK_BuurtAggregaties)")
+    shadeTotal_pct = models.FloatField(null=True, blank=True, help_text="Shaded land area, AHN4, % (KEA RMK_BuurtAggregaties)")
+    shadeGreen_pct = models.FloatField(null=True, blank=True, help_text="Land area shaded by trees, AHN4, % (KEA RMK_BuurtAggregaties)")
+    shadeGrey_pct = models.FloatField(null=True, blank=True, help_text="Land area shaded by buildings, AHN4, % (KEA RMK_BuurtAggregaties)")
+    source = models.CharField(max_length=100, default="Klimaateffectatlas", help_text="Data provider")
+    geom = models.MultiPolygonField(srid=settings.COORDINATE_SYSTEM)
+    last_updated = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return f"Heat {self.neighborhood_id}"
+
+    class Meta:
+        verbose_name = "Neighborhood Heat"
+        verbose_name_plural = "Neighborhood Heat"

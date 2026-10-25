@@ -1,6 +1,41 @@
+from datetime import date
+
 from django.conf import settings
 
 coordinate_system = settings.COORDINATE_SYSTEM
+
+
+# Klimaateffectatlas (KEA) helpers, see the kea_* entries below and
+# docs/KEA_WFS_MAPPING.md.
+KEA_WFS_URL = "https://cas.cloud.sogelink.com/public/data/org/gws/YWFMLMWERURF/kea_public/wfs"
+KEA_NODATA = [-99995, -99996, -99997, -99998, -99999]   # RIVM health monitor "no value" codes
+
+
+def _kea_neighborhood(code_prop, fields, **directives):
+    """Mapping for a per-buurt KEA layer: one row per stored neighborhood, keyed on its CBS code."""
+    return {
+        "__geometry__": "geom",
+        "__unique__": code_prop,
+        "__unique_field__": "neighborhood_id",
+        "__require_existing__": {"property": code_prop, "model": "administrative.Neighborhood"},
+        code_prop: "neighborhood_id",
+        **fields,
+        **directives,
+    }
+
+
+def _kea_building(id_prop, fields, **directives):
+    """Mapping for a per-pand KEA layer: attributes written onto existing BAG buildings only."""
+    return {
+        "__geometry__": "geom",
+        "__unique__": id_prop,
+        "__unique_field__": "id",
+        "__enrich__": True,
+        "__require_existing__": {"property": id_prop, "model": "builtup.Building"},
+        **fields,
+        **directives,
+    }
+
 
 
 # ---------------------------------------------------------------------------
@@ -92,10 +127,9 @@ FIELD_MAPPINGS = {
         "__unique__": "identificatie",
         "__unique_field__": "id",
         "oppervlakte": "grossArea",
-        "gebruiksdoel": "usageFunction",
         "openbare_ruimte": "name",
         "huisnummer": "houseNumber",
-        "postcode": "PostalCode",
+        "postcode": "postalCode",
     },
         
     
@@ -108,18 +142,26 @@ FIELD_MAPPINGS = {
     "pdok_landcover_kadaster": {
         "__geometry__": "geom",
         "__spatial_fk__": {"field": "neighborhood", "model": "administrative.Neighborhood", "required": True},
-        # Keys here are synthesized properties built in
-        # PDOKImporter._import_atom_gml_features (officialTitle, plan-type
-        # codelist value, validFrom), not raw GML element names.
-        # plu:SpatialPlan (INSPIRE Planned Land Use) is a legal spatial plan,
-        # not a classified zoning function -- there's no source field for
-        # zone_type (that would need the separate plu:ZoningElement feature
-        # type, absent from this feed), so it's deliberately left unmapped
-        # and stays null. plan_type/valid_from carry what the feed actually
-        # has instead of forcing a fake zone_type.
+        # Keys here are properties synthesized by _import_atom_gml_features
+        # for each plu:ZoningElement, not raw GML element names:
+        # hilucslanduseHref is the element's plu:hilucsLandUse xlink:href;
+        # title (officialTitle), plan_type (planTypeName codelist value) and
+        # valid_from come from the plu:SpatialPlan it belongs to.
         "title": "description",
         "plan_type": "plan_type",
         "valid_from": "valid_from",
+        # e.g. .../HILUCSValue/6_3_2_WaterAreasNotInOtherEconomicUse ->
+        # physicalEnv.HILUCSLandUse(code="6.3.2"). The table holds the whole
+        # INSPIRE codelist; a code missing from it is added with the label
+        # spelled out from the URI.
+        "__fk_lookup__": [{
+            "field": "zone_type",
+            "model": "physicalEnv.HILUCSLandUse",
+            "source_property": "hilucslanduseHref",
+            "lookup_field": "code",
+            "parser": "hilucs_href",
+            "required": False,
+        }],
     },
     "pdok_landcover_brt": {
         "__geometry__": "geom",
@@ -149,8 +191,24 @@ FIELD_MAPPINGS = {
         # is nullable for exactly this reason.
     },
 
+    "bodemdata_soil_map": {
+        "__geometry__": "geom",
+        "__unique__": "maparea_id",
+        "__unique_field__": "mapAreaID",
+        # Each polygon points to a SoilType keyed on code + name (soilcode
+        # zVp has two names in the 2025 map); SoilType.save() derives the
+        # hydrologic soil group and infiltration rate from the name. The main
+        # legend unit (first_soilcode/name) colours the map.
+        "__fk_lookup__": [{
+            "field": "soil_type",
+            "model": "physicalEnv.SoilType",
+            "lookup": {"code": "soilcode", "name": "normal_soilprofile_name"},
+            "defaults_from": {"unitCode": "first_soilcode", "unitName": "first_soilname"},
+        }],
+    },
+
     # -------------------------------- Nature & Environment -------------------------------
-    
+
     "pdok_natura2000": {
         "__geometry__": "geom",
         "__unique__": "gmlID",
@@ -194,7 +252,7 @@ FIELD_MAPPINGS = {
         # (grasland, struiken, groenvoorziening, ...) before import.
         "__client_filter__": {"property": "fysiek_voorkomen", "in": ["loofbos", "naaldbos", "gemengd bos"]},
         # begroeidterreindeel has no name/title property at all.
-        "__name_template__": "{fysiek_voorkomen} ({lokaal_id})",
+        "__name_template__": "{fysiek_voorkomen}",
         "fysiek_voorkomen": "type",
     },
     "bgt_greenspace_park": {
@@ -205,10 +263,58 @@ FIELD_MAPPINGS = {
         # recreatie: speeltuin, ...) are the closest available proxy -- broader
         # than parks alone (also covers sports fields/playgrounds).
         "__client_filter__": {"property": "plus_type", "startswith": "recreatie"},
-        "__name_template__": "{plus_type} ({lokaal_id})",
+        "__name_template__": "{plus_type}",
         "plus_type": "type",
     },
 
+
+    # -------------------------------- OpenStreetMap (Overpass) -------------------------------
+    # Keys starting with "osm_" are properties synthesized by
+    # OSMImporter.to_geojson_features, not raw OSM tags:
+    #   osm_id      "osm:<node|way|relation>/<id>", stable across re-imports
+    #   osm_name    the name tag, or "<feature_label> <osm_id>" when untagged
+    #   osm_class   category from the catalog entry's "osm_classes"
+    #   osm_subtype first present tag of the catalog entry's "osm_subtype_tags"
+    # Any other key is a raw OSM tag; numeric model fields take the leading
+    # number of the tag ("12 m" -> 12.0).
+
+    "osm_parks": {
+        "__geometry__": "geom",
+        "__unique__": "osm_id",
+        "__unique_field__": "sourceID",
+        "__spatial_fk__": {"field": "neighborhood", "model": "administrative.Neighborhood", "required": False},
+        "osm_name": "name",
+        # area comes from Park.save(); OSM has no vegetation type for a park
+    },
+    "osm_water_bodies": {
+        "__geometry__": "geom",
+        "__unique__": "osm_id",
+        "__unique_field__": "localId",
+        "osm_name": "name",
+        "osm_subtype": "type",
+    },
+    "osm_amenities": {
+        "__geometry__": "geom",
+        "__unique__": "osm_id",
+        "__unique_field__": "sourceID",
+        "__spatial_fk__": {"field": "neighborhood", "model": "administrative.Neighborhood", "required": False},
+        "osm_name": "name",
+        "osm_class": "type",
+        "osm_subtype": "subtype",
+    },
+    "osm_trees": {
+        "__geometry__": "geom",
+        "__unique__": "osm_id",
+        "__unique_field__": "sourceID",
+        "__spatial_fk__": {"field": "neighborhood", "model": "administrative.Neighborhood", "required": False},
+        "species": "species",
+        "genus": "genus",
+        "leaf_type": "leafType",
+        "leaf_cycle": "leafCycle",
+        "height": "height_m",
+        "circumference": "circumference_m",
+        "diameter_crown": "crownDiameter_m",
+    },
 
     "rivm_energy_labels": {
         "__geometry__": "geom",
@@ -218,6 +324,87 @@ FIELD_MAPPINGS = {
         "hoogste_label": "energyLabelHighest",
         "laagste_label": "energyLabelLowest",
         "aant_labels": "energyLabelCount",
+    },
+
+    # -------------------------------- Klimaateffectatlas (KEA) WFS -------------------------------
+    # docs/KEA_WFS_MAPPING.md. Neighborhood layers write one row per buurt
+    # (keyed on neighborhood_id, unknown buurtcodes skipped); building layers
+    # are __enrich__ imports onto existing BAG buildings (no new rows, the
+    # stored geometry is kept).
+    "kea_risicopaalrot_huidig": _kea_neighborhood(
+        "buurtcode", {"no_cc_risi": "pileRotRisk_current_pct"},
+        __value_scales__={"no_cc_risi": 100}),            # fraction -> %
+    "kea_risicopaalrot_2050laag": _kea_neighborhood(
+        "buurtcode", {"mild_cc__1": "pileRotRisk_2050low_pct"},
+        __value_scales__={"mild_cc__1": 100}),
+    "kea_risicopaalrot_2050hoog": _kea_neighborhood(
+        "buurtcode", {"sterke_c_2": "pileRotRisk_2050high_pct"},
+        __value_scales__={"sterke_c_2": 100}),
+    "kea_risicoverschilzetting_2050laag": _kea_neighborhood(
+        "buurtcode", {"mild_cc_ri": "settlementRisk_2050low_pct"}),   # already %
+    "kea_risicoverschilzetting_2050hoog": _kea_neighborhood(
+        "buurtcode", {"sterke_c_1": "settlementRisk_2050high_pct"}),
+    "kea_droge_verdiepingen": _kea_neighborhood(
+        "BU_CODE", {"VALUE": "dryFloors_pct"}),
+    "kea_gevoelstemperatuur_buurt_2012": _kea_neighborhood(
+        "bu_code", {"_mean": "petMean_2012_C"}),
+    "kea_gevoelstemperatuur_buurt_2022": _kea_neighborhood(
+        "buurtcode", {"_mean": "petMean_2022_C", "RIVMClass": "heatClass_2022"}),
+    "kea_verkoeling": _kea_neighborhood(
+        "bu_code", {"KanGoedVerkoelingVindenBinnen_59": "coolingIndoor_pct",
+                    "KanGoedVerkoelingVindenBuiten_60": "coolingOutdoor_pct"}),
+    "kea_boomkroon_buurt": _kea_neighborhood(
+        "Buurtcode", {"BKBgraad_Tot_percLand_AHN4": "canopyCover_pct",
+                      "SHDTot_percLand_AHN4": "shadeTotal_pct",
+                      "SHDGroen_percLand_AHN4": "shadeGreen_pct",
+                      "SHDGrijs_percLand_AHN4": "shadeGrey_pct"}),
+    "kea_huurwoningen": _kea_neighborhood(
+        "buurtcode", {"percentage_huurwoningen": "rentalHousing_pct"}, __nodata__=KEA_NODATA),
+    "kea_sociaal_economische_status": _kea_neighborhood(
+        "buurtcode", {"ses_woa": "socioEconomicStatus"}, __nodata__=KEA_NODATA),
+    "kea_broze_gezondheid": _kea_neighborhood(
+        "buurtcode", {"broze_gezondheid": "frailHealth_pct"}, __nodata__=KEA_NODATA),
+    "kea_sterk_eenzaam": _kea_neighborhood(
+        "buurtcode", {"sterk_eenzaam": "severeLoneliness_pct"}, __nodata__=KEA_NODATA),
+    "kea_wijktypen": _kea_neighborhood(
+        "BU_CODE", {"Wijktype1": "neighborhoodType"}),
+
+    "kea_boomkroon_panden": _kea_building(
+        "identificatie", {"perc_bkb": "canopyCover_pct", "bkb_30perc_gehaald": "meetsCanopy30Rule"}),
+    # One feature per building block; BAG.Id lists its panden without the
+    # leading zero of the 16-digit BAG id.
+    "kea_schaduw_op_gebouwen": _kea_building(
+        "BAG.Id", {"SOG.Score": "facadeShadeScore"},
+        __split__={"property": "BAG.Id", "sep": ",", "zfill": 16}),
+    "kea_wateroverlast_panden": _kea_building(
+        "identificatie_bag", {"waterdiepte_p99": "floodDepth_p99_m", "waterdiepte_klasse": "floodDepthClass"}),
+
+    "kea_waterschappen": {
+        "__geometry__": "geom",
+        "__unique__": "WATERSCHAP",
+        "__unique_field__": "name",
+        "WATERSCHAP": "name",
+    },
+    "kea_droogtegevoelige_natuur": {
+        "__geometry__": "geom",
+        "__unique__": "@id",
+        "__unique_field__": "sourceID",
+        "@id": "sourceID",
+        "blad1__naa": "areaName",
+        "blad1__gev": "SensibilityLevel",
+        # Legend: W = weinig gevoelig, G = gevoelig, Z = zeer gevoelig; no
+        # value = not groundwater-dependent (the model default, NotAffected).
+        "__value_maps__": {"blad1__gev": {"W": 2, "G": 3, "Z": 4}},   # Low / Medium / High
+        # The layer carries no reference year: store the year it was imported.
+        "__static__": {"year": date.today().year},
+    },
+    "kea_klimaatbuffers": {
+        "__geometry__": "geom",
+        "__unique__": "@id",
+        "__unique_field__": "inspireID",
+        "@id": "inspireID",
+        "Type": "name",
+        "__static__": {"protection_type": "OTH"},
     },
 }
 
@@ -586,6 +773,59 @@ EXTERNAL_DATA_CATALOG = [
         "enabled": True,
     },
 
+    # ── Soil (WFS - vector) ──────────────────────────────────────────────────
+    {
+        "key": "bodemdata_soil_map",
+        "source": "bodemdata",
+        "category": "Elevation & Terrain",
+        "name": "Soil Map 1:50 000 (Bodemkaart, BIS Nederland)",
+        "description": "Soil polygons of the Dutch soil map (2025 edition) with soil code and name; each soil type gets an SCS hydrologic soil group (A-D) and infiltration rate. Feeds the infiltration indicator of the water dashboard together with land cover.",
+        "target_model": "physicalEnv.SoilArea",
+        "url": "https://maps.bodemdata.nl/geoserver/bodem/ows",
+        "layer": "bodem:Bodemkaart50000_v2025",
+        "format": "wfs",
+        "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
+        "requires_bbox": True,
+        "enabled": True,
+    },
+    # Groundwater depth maps of the same GeoServer (WCS only; its WFS has
+    # just the point observations behind them). 50 m, EPSG:28992, uint8 in
+    # cm below ground level, capped at 254 (= 254 cm or deeper), 255 nodata.
+    {
+        "key": "bodemdata_ghg",
+        "source": "bodemdata",
+        "category": "Elevation & Terrain",
+        "name": "Groundwater Depth, wet season (GHG, BIS Nederland)",
+        "description": "Mean highest groundwater level (GHG) in cm below ground, 50 m grid. Where it is under 60 cm the infiltration indicator treats the soil as SCS group D.",
+        "target_model": "physicalEnv.GroundwaterDepth",
+        "url": "https://maps.bodemdata.nl/geoserver/ows",
+        "layer": "bodem__ghg-mediaan",
+        "format": "wcs",
+        "statistic": "GHG",
+        "wcs_axis_labels": ["X", "Y"],
+        "params": {"srsName": "EPSG:28992"},
+        "requires_bbox": True,
+        "resolution_m": 50.0,
+        "enabled": True,
+    },
+    {
+        "key": "bodemdata_glg",
+        "source": "bodemdata",
+        "category": "Elevation & Terrain",
+        "name": "Groundwater Depth, dry season (GLG, BIS Nederland)",
+        "description": "Mean lowest groundwater level (GLG) in cm below ground, 50 m grid.",
+        "target_model": "physicalEnv.GroundwaterDepth",
+        "url": "https://maps.bodemdata.nl/geoserver/ows",
+        "layer": "bodem__glg-mediaan",
+        "format": "wcs",
+        "statistic": "GLG",
+        "wcs_axis_labels": ["X", "Y"],
+        "params": {"srsName": "EPSG:28992"},
+        "requires_bbox": True,
+        "resolution_m": 50.0,
+        "enabled": True,
+    },
+
     # ══════════════════════════════════════════════════════════════════════════
     # Sentinel-2 - Copernicus Earth Observation
     # ══════════════════════════════════════════════════════════════════════════
@@ -596,12 +836,12 @@ EXTERNAL_DATA_CATALOG = [
         "source": "pdok",
         "category": "Built environment",
         "name": "Planned Land Use / Zoning Plans (INSPIRE harmonised) ATOM Feed",
-        # This is an INSPIRE Planned Land Use (plu:SpatialPlan) feed of Dutch
-        # zoning plans (bestemmingsplannen) from Kadaster's ruimtelijkeplannen.nl,
-        # not a classified land-cover raster/vector — it has no land-cover-type
-        # or surface-material attribute, so it targets builtup.ZoningArea rather
-        # than physicalEnv.LandCoverVector.
-        "description": "Dutch zoning plans (bestemmingsplannen) from Kadaster's Ruimtelijkeplannen register.",
+        # This is an INSPIRE Planned Land Use feed of Dutch zoning plans
+        # (bestemmingsplannen) from Kadaster's ruimtelijkeplannen.nl. Its
+        # plu:ZoningElement features (one zoning function each, classified by
+        # HILUCS) become builtup.ZoningArea rows; it has no land-cover or
+        # surface-material attribute, so it isn't physicalEnv.LandCoverVector.
+        "description": "Zoning elements of Dutch zoning plans (bestemmingsplannen) from Kadaster's Ruimtelijkeplannen register, classified by INSPIRE HILUCS land use.",
         "target_model": "builtup.ZoningArea",
         "url": "https://service.pdok.nl/kadaster/ruimtelijke-plannen-gepland-landgebruik/atom/index.xml",
         "format": "atom",
@@ -955,6 +1195,224 @@ EXTERNAL_DATA_CATALOG = [
         # supplies nothing and no bbox is needed: the whole grid is stored.
         "enabled": True,
     },
+    {
+        "key": "knmi_radar_forecast",
+        "source": "knmi",
+        "category": "Climate",
+        "name": "KNMI Radar Forecast",
+        "description": "Precipitation radar with a two-hour nowcast from KNMI, animated on the map and refreshed every 5 minutes. Registers a WMS layer only; tiles are fetched live through the server, which sends KNMI_API_KEY.",
+        "target_model": "weather.WMSLayer",
+        "url": "https://api.dataplatform.knmi.nl/wms/adaguc-server?DATASET=radar_forecast_2.0",
+        "layer": "precipitation_nowcast",
+        "format": "wms",
+        # The row's name is the tile proxy's URL segment (/wms/<name>/);
+        # keep it equal to rows created earlier through the admin.
+        "wms_name": "radar_forecast_2.0",
+        # KNMI answers GetCapabilities/GetLegendGraphic only with the API
+        # key, which the browser never sees, so no legend is looked up.
+        "legend_url": "",
+        "wms_options": {
+            "has_time_dimension": True,
+            "time_frame_count": 12,
+            "time_refresh_minutes": 5,
+            "api_key_setting": "KNMI_API_KEY",
+        },
+        "enabled": True,
+    },
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # OpenStreetMap - via the Overpass API
+    # ══════════════════════════════════════════════════════════════════════════
+    # "osm_query" holds Overpass QL statements without bbox or output: the
+    # importer adds a global [bbox:...] and picks `out center` for point
+    # models and `out geom` for the rest. "feature_label" names untagged
+    # features. The public Overpass instance is shared and rate limited, so
+    # keep areas city-sized; OVERPASS_URL in .env points at another instance.
+    {
+        "key": "osm_parks",
+        "source": "osm",
+        "category": "Nature & Environment",
+        "name": "Parks (OpenStreetMap)",
+        "description": "Park polygons tagged leisure=park in OpenStreetMap. Feeds the park area per inhabitant of the built-up dashboard; import neighborhoods first so parks are attributed to them.",
+        "target_model": "builtup.Park",
+        "url": "https://overpass-api.de/api/interpreter",
+        "format": "overpass",
+        "osm_query": ['way["leisure"="park"]', 'relation["leisure"="park"]'],
+        "feature_label": "Park",
+        "params": {"srsName": "EPSG:4326"},
+        "requires_bbox": True,
+        "enabled": True,
+    },
+    {
+        "key": "osm_water_bodies",
+        "source": "osm",
+        "category": "Nature & Environment",
+        "name": "Water Bodies (OpenStreetMap)",
+        "description": "Lakes, ponds, canals, reservoirs and basins mapped as water areas (natural=water, landuse=reservoir/basin) in OpenStreetMap.",
+        "target_model": "nature.WaterBodies",
+        "url": "https://overpass-api.de/api/interpreter",
+        "format": "overpass",
+        "osm_query": [
+            'way["natural"="water"]', 'relation["natural"="water"]',
+            'way["landuse"~"^(reservoir|basin)$"]', 'relation["landuse"~"^(reservoir|basin)$"]',
+        ],
+        # water=lake/pond/canal/... is the finer type; fall back to the landuse
+        # or natural value when it is missing
+        "osm_subtype_tags": ["water", "landuse", "natural"],
+        "feature_label": "Water body",
+        "params": {"srsName": "EPSG:4326"},
+        "requires_bbox": True,
+        "enabled": True,
+    },
+    {
+        "key": "osm_amenities",
+        "source": "osm",
+        "category": "Built environment",
+        "name": "Amenities (OpenStreetMap)",
+        "description": "Schools, hospitals and clinics, fire and police stations, marketplaces and transport stations mapped as points (OSM nodes) in OpenStreetMap. Feeds the facilities per inhabitant of the built-up dashboard.",
+        "target_model": "builtup.Facility",
+        "url": "https://overpass-api.de/api/interpreter",
+        "format": "overpass",
+        # Nodes only: an amenity drawn as a way or relation (e.g. a school's
+        # grounds) is not imported, even when the same facility has no node.
+        "osm_query": [
+            'node["amenity"~"^(school|kindergarten|college|university|hospital|clinic|fire_station|police|marketplace|bus_station|ferry_terminal)$"]',
+            'node["railway"="station"]',
+        ],
+        # tag -> {OSM value: Facility.type}; the first matching tag wins
+        "osm_classes": {
+            "amenity": {
+                "school": "school", "kindergarten": "school", "college": "school", "university": "school",
+                "hospital": "hospital", "clinic": "hospital",
+                "fire_station": "fire_station",
+                "police": "police_station",
+                "marketplace": "market",
+                "bus_station": "transportNode", "ferry_terminal": "transportNode",
+            },
+            "railway": {"station": "transportNode"},
+        },
+        "osm_subtype_tags": ["amenity", "railway"],
+        "feature_label": "Facility",
+        "params": {"srsName": "EPSG:4326"},
+        "requires_bbox": True,
+        "enabled": True,
+    },
+    {
+        "key": "osm_trees",
+        "source": "osm",
+        "category": "Nature & Environment",
+        "name": "Trees (OpenStreetMap)",
+        "description": "Individual trees (natural=tree) with species, genus, leaf type, height and crown diameter where mapped. Coverage varies a lot between cities.",
+        "target_model": "nature.Tree",
+        "url": "https://overpass-api.de/api/interpreter",
+        "format": "overpass",
+        "osm_query": ['node["natural"="tree"]'],
+        "feature_label": "Tree",
+        "params": {"srsName": "EPSG:4326"},
+        "requires_bbox": True,
+        "slow": True,
+        "slow_reason": "Well-mapped cities have tens of thousands of trees; a whole city can take a minute or two on the public Overpass server.",
+        "enabled": True,
+    },
+]
+
+# ══════════════════════════════════════════════════════════════════════════
+# Klimaateffectatlas (KEA) - public WFS of the climate-effect atlas
+# ══════════════════════════════════════════════════════════════════════════
+# docs/KEA_WFS_MAPPING.md lists every KEA WFS layer, what is imported and
+# why the rest is not. Layer names with a date stamp (_v20260722,
+# _20251120) are the publisher's versions: update them when KEA republishes.
+_NEIGHBORHOODS_FIRST = "Import neighborhoods first; buurten that are not stored are skipped."
+_BUILDINGS_FIRST = "Writes onto existing BAG buildings only (import Buildings (BAG Panden) first); no buildings are created and their geometry is kept."
+
+
+def _kea_entry(key, layer, name, description, category, target_model, requires_model):
+    return {
+        "key": key,
+        "source": "kea",
+        "category": category,
+        "name": name,
+        "description": description,
+        "target_model": target_model,
+        "url": KEA_WFS_URL,
+        "layer": f"kea_public:{layer}",
+        "format": "wfs",
+        "params": {"srsName": f"EPSG:{coordinate_system}"},
+        "requires_bbox": True,
+        "requires_model": requires_model,
+        "enabled": True,
+    }
+
+
+_N, _B = "administrative.Neighborhood", "builtup.Building"
+EXTERNAL_DATA_CATALOG += [
+    # ── Built environment: foundations and flooding ──────────────────────────
+    _kea_entry("kea_risicopaalrot_huidig", "risicopaalrot_huidig", "Pile Rot Risk, current (KEA)",
+               f"Share of buildings per neighborhood at risk of wooden pile rot in the current climate. {_NEIGHBORHOODS_FIRST}",
+               "Built environment", "builtup.NeighborhoodClimateRisk", _N),
+    _kea_entry("kea_risicopaalrot_2050laag", "risicopaalrot_2050laag", "Pile Rot Risk, 2050 low (KEA)",
+               f"Share of buildings at risk of pile rot in 2050, low climate scenario. {_NEIGHBORHOODS_FIRST}",
+               "Built environment", "builtup.NeighborhoodClimateRisk", _N),
+    _kea_entry("kea_risicopaalrot_2050hoog", "risicopaalrot_2050hoog", "Pile Rot Risk, 2050 high (KEA)",
+               f"Share of buildings at risk of pile rot in 2050, high climate scenario. {_NEIGHBORHOODS_FIRST}",
+               "Built environment", "builtup.NeighborhoodClimateRisk", _N),
+    _kea_entry("kea_risicoverschilzetting_2050laag", "risicoverschilzetting_2050laag", "Differential Settlement Risk, 2050 low (KEA)",
+               f"Share of buildings at risk of differential settlement in 2050, low scenario. {_NEIGHBORHOODS_FIRST}",
+               "Built environment", "builtup.NeighborhoodClimateRisk", _N),
+    _kea_entry("kea_risicoverschilzetting_2050hoog", "risicoverschilzetting_2050hoog", "Differential Settlement Risk, 2050 high (KEA)",
+               f"Share of buildings at risk of differential settlement in 2050, high scenario. {_NEIGHBORHOODS_FIRST}",
+               "Built environment", "builtup.NeighborhoodClimateRisk", _N),
+    _kea_entry("kea_droge_verdiepingen", "droge_verdiepingen_extreem_kleine_kans_20251120", "Dry Floors in an Extreme Flood (KEA)",
+               f"Share of floors per neighborhood that stay dry in an extremely unlikely flood. {_NEIGHBORHOODS_FIRST}",
+               "Built environment", "builtup.NeighborhoodClimateRisk", _N),
+    _kea_entry("kea_wateroverlast_panden", "nl_fcab_omgevingsscore_wateroverlast_v20260806", "Cloudburst Water Depth per Building (KEA)",
+               f"99th percentile water depth around each building in a 70 mm/h cloudburst, with its depth class. {_BUILDINGS_FIRST}",
+               "Built environment", _B, _B),
+    _kea_entry("kea_boomkroon_panden", "RMK_30percBKB_AHN4", "Tree Canopy around Buildings, 3-30-300 (KEA)",
+               f"Canopy cover around each building (AHN4) and whether the 30% canopy rule is met. {_BUILDINGS_FIRST}",
+               "Built environment", _B, _B),
+    _kea_entry("kea_schaduw_op_gebouwen", "Schaduw op gebouwen", "Facade Shade Score (KEA)",
+               f"Shade on the facades per building block, copied to every building of the block. {_BUILDINGS_FIRST}",
+               "Built environment", _B, _B),
+    # ── Climate: heat and shade ──────────────────────────────────────────────
+    _kea_entry("kea_gevoelstemperatuur_buurt_2012", "GevoelstemperatuurBuurt_2012", "Perceived Temperature per Neighborhood, 2012 (KEA)",
+               f"Mean PET on a hot summer day per neighborhood, 2012 surface model. Buurt codes of 2012 that no longer exist are skipped. {_NEIGHBORHOODS_FIRST}",
+               "Climate", "urban_heat.NeighborhoodHeat", _N),
+    _kea_entry("kea_gevoelstemperatuur_buurt_2022", "GevoelstemperatuurBuurt_2022", "Perceived Temperature per Neighborhood, 2022 (KEA)",
+               f"Mean PET on a hot summer day per neighborhood and its RIVM class, 2022 surface model. {_NEIGHBORHOODS_FIRST}",
+               "Climate", "urban_heat.NeighborhoodHeat", _N),
+    _kea_entry("kea_verkoeling", "SchaduwOpGebouwen_VerkoelingBinnen", "Cooling Indoors and Outdoors (KEA)",
+               f"Share of residents who can find cooling indoors and outdoors on hot days, per neighborhood. {_NEIGHBORHOODS_FIRST}",
+               "Climate", "urban_heat.NeighborhoodHeat", _N),
+    _kea_entry("kea_boomkroon_buurt", "RMK_BuurtAggregaties", "Canopy Cover and Shade per Neighborhood (KEA)",
+               f"Tree canopy cover and shade (total, from trees, from buildings) as % of the land area, AHN4. {_NEIGHBORHOODS_FIRST}",
+               "Climate", "urban_heat.NeighborhoodHeat", _N),
+    # ── Housing / demographics: social vulnerability ─────────────────────────
+    _kea_entry("kea_huurwoningen", "nl_percentage_huurwoningen_buurt_v20260722", "Rental Dwellings per Neighborhood (KEA)",
+               f"Percentage of rental dwellings per neighborhood. {_NEIGHBORHOODS_FIRST}",
+               "Housing", "housing.NeighborhoodSocialProfile", _N),
+    _kea_entry("kea_sociaal_economische_status", "nl_sociaal_economische_status_buurt_v20260722", "Socio-economic Status per Neighborhood (KEA)",
+               f"CBS socio-economic status score (prosperity, education, labour) per neighborhood. {_NEIGHBORHOODS_FIRST}",
+               "Demographics", "housing.NeighborhoodSocialProfile", _N),
+    _kea_entry("kea_broze_gezondheid", "nl_broze_gezondheid_buurt_v20260722", "Frail Health per Neighborhood (KEA)",
+               f"Share of adults with frail health (RIVM health monitor). {_NEIGHBORHOODS_FIRST}",
+               "Demographics", "housing.NeighborhoodSocialProfile", _N),
+    _kea_entry("kea_sterk_eenzaam", "nl_sterk_eenzaam_buurt_v20260722", "Severe Loneliness per Neighborhood (KEA)",
+               f"Share of adults who are severely lonely (RIVM health monitor). {_NEIGHBORHOODS_FIRST}",
+               "Demographics", "housing.NeighborhoodSocialProfile", _N),
+    _kea_entry("kea_wijktypen", "wijktypen_buurten", "Neighborhood Types (KEA)",
+               f"Neighborhood type (e.g. pre-war, post-war, cauliflower, VINEX) per buurt, 2023. {_NEIGHBORHOODS_FIRST}",
+               "Demographics", "housing.NeighborhoodSocialProfile", _N),
+    # ── Water and nature ─────────────────────────────────────────────────────
+    _kea_entry("kea_waterschappen", "Waterschapsgrenzen", "Water Board Boundaries (KEA)",
+               "Boundaries of the Dutch water boards (waterschappen), stored as watersheds.",
+               "Nature & Environment", "watersupply.Watershed", None),
+    _kea_entry("kea_droogtegevoelige_natuur", "droogtegevoeligheidgrondwaterafhankelijkenatuur", "Drought-sensitive Groundwater-dependent Nature (KEA)",
+               "Groundwater-dependent nature areas with their drought sensitivity (slightly / sensitive / very sensitive).",
+               "Nature & Environment", "watersupply.AreaAffectedDrought", "administrative.Province"),
+    _kea_entry("kea_klimaatbuffers", "totaalkaartklimaatbuffers", "Climate Buffers (KEA)",
+               "Areas of the national climate-buffer map, stored as protected areas of type Other.",
+               "Nature & Environment", "nature.ProtectedArea", None),
 ]
 
 # Build a quick-lookup dict
@@ -1006,6 +1464,32 @@ SOURCE_INFO = {
         "auth_required": False,
     },
 
+    "bodemdata": {
+        "name": "BIS Nederland",
+        "full_name": "Bodemkundig Informatiesysteem (WUR, bodemdata.nl)",
+        "description": "Dutch soil data maintained by Wageningen Environmental Research. Open WFS data, no authentication required.",
+        "icon": "globe",
+        "color": "amber",
+        "auth_required": False,
+    },
+
+    "osm": {
+        "name": "OpenStreetMap",
+        "full_name": "OpenStreetMap (Overpass API)",
+        "description": "Crowd-sourced open map data, fetched through the Overpass API. No authentication required. Data © OpenStreetMap contributors, ODbL.",
+        "icon": "globe",
+        "color": "emerald",
+        "auth_required": False,
+    },
+
+    "kea": {
+        "name": "Klimaateffectatlas",
+        "full_name": "Klimaateffectatlas (climate-effect atlas, Climate Adaptation Services)",
+        "description": "Climate-effect maps of the Netherlands (heat, flooding, drought, foundations, social vulnerability) served as an open WFS. No authentication required.",
+        "icon": "globe",
+        "color": "emerald",
+        "auth_required": False,
+    },
     "rivm": {
         "name": "RIVM",
         "full_name": "Rijksinstituut voor Volksgezondheid en Milieu",

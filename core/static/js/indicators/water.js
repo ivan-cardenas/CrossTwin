@@ -1,5 +1,5 @@
 // ============================================================
-// water.js — Water Supply indicators: consumption-slider zone styling
+// water.js — Water Supply indicators: consumption- and rain-slider zone styling
 // and gauge/pip animation. Shared by water_indicators.html (standalone
 // page) and watersupply/partials/indicators_panel.html (htmx side-panel
 // partial) — both render the same slider/gauge ids. Wrapped in an IIFE
@@ -30,26 +30,41 @@
     slider.addEventListener('input', e => applyZone(parseInt(e.target.value, 10)));
   }
 
+  // Rain-event slider of the infiltration what-if (KNMI daily classes:
+  // heavy from 25 mm, extreme from 50 mm).
+  function rainStyle(mm) {
+    if (mm < 25)      return { col: '#22c55e', label: 'Moderate', cls: 'ok'   };
+    else if (mm < 50) return { col: '#f59e0b', label: 'Heavy',    cls: 'warn' };
+    else              return { col: '#ef4444', label: 'Extreme',  cls: 'bad'  };
+  }
+
+  function applyRain(mm) {
+    const z    = rainStyle(mm);
+    const sl   = document.getElementById('rain-slider');
+    const tag  = document.getElementById('rain-tag');
+    const disp = document.getElementById('rain-display');
+    if (disp) disp.textContent = mm;
+    if (sl)   sl.style.setProperty('--thumb-col', z.col);
+    if (tag)  { tag.textContent = z.label; tag.className = 'threshold-tag ' + z.cls; }
+  }
+
+  const rainSlider = document.getElementById('rain-slider');
+  if (rainSlider) {
+    applyRain(parseInt(rainSlider.value, 10));
+    rainSlider.addEventListener('input', e => applyRain(parseInt(e.target.value, 10)));
+  }
+
   // initGauges needs to be global so htmx:afterSwap (and the grid
   // partial's own trailing script) can call it after every recalculation.
   window.initGauges = function () {
     document.querySelectorAll('[data-gauge-id]').forEach(card => {
       const val     = parseFloat(card.dataset.gaugeVal) || 0;
       const id      = card.dataset.gaugeId;
-      const display = card.dataset.gaugeDisplay || '';
       const path    = document.getElementById(id);
       const txt     = document.getElementById(id + '-txt');
       if (!path) return;
 
-      if (id === 'gauge-supply' || id === 'gauge-demand') {
-        const total  = 157.08;
-        const capped = Math.min(val, 100);
-        requestAnimationFrame(() => {
-          path.style.strokeDashoffset = total - (total * capped / 100);
-        });
-        if (txt) txt.textContent = display;
-
-      } else if (id === 'gauge-sec') {
+      if (id === 'gauge-sec') {
         const circ   = 238.76;
         const MAX    = 200;
         const capped = Math.min(val, MAX);

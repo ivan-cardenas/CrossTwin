@@ -1,7 +1,7 @@
 from unittest import mock
 
 from django.conf import settings
-from django.contrib.gis.geos import MultiPoint, Point
+from django.contrib.gis.geos import LineString, MultiLineString, MultiPoint, Point
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.test import TestCase
@@ -13,12 +13,14 @@ from housing.models import Rentals
 from physicalEnv.models import EnvironmentalCosts
 from watersupply.models import (
     AreaAffectedDrought, AvailableFreshWater, ConsumptionCapita, ExtractionWater,
-    ImportedWater, NonRevenueWater, OPEX, SupplySecurity, TotalWaterDemand,
+    ImportedWater, NonRevenueWater, OPEX, PipeNetwork, SupplySecurity, TotalWaterDemand,
     TotalWaterProduction,
 )
+from watersupply.calculations import calculate_nrw
 
 from .factories import (
-    make_city, make_consumption_capita, make_neighborhood, make_polygon, make_province,
+    make_city, make_consumption_capita, make_district, make_neighborhood, make_polygon,
+    make_province, make_users_location,
 )
 
 RD = settings.COORDINATE_SYSTEM
@@ -37,7 +39,7 @@ def make_source(**kwargs):
 
 def make_well(**kwargs):
     defaults = dict(
-        geom=MultiPoint(Point(X, Y), srid=RD), stationName="Well 1",
+        geom=Point(X, Y, srid=RD), stationName="Well 1",
         pumpflow_m3_s=0.1, pumpMaxFlow_m3_s=0.2, OperationTime_h_day=10.0,
         depth_m=50.0, pumpEfficiency=70.0, pumpEnergyRate_kWh_h=50.0,
         pumpEmmissionFactor_kg_CO2_kWh=0.4,
@@ -154,10 +156,10 @@ class ExtractionAndProductionTests(TestCase):
 
     def test_extraction_outside_any_source_is_a_validation_error(self):
         with self.assertRaises(ValidationError):
-            make_well(geom=MultiPoint(Point(1000.0, 1000.0), srid=RD))
+            make_well(geom=Point(1000.0, 1000.0, srid=RD))
 
     def test_production_uses_3600_seconds_per_hour_and_default_price(self):
-        make_well()
+        make_well(current_extraction_Mm3_yr=None)  # flow x hours path
         production = TotalWaterProduction.objects.create(year=2024, productionDay=0)
         production.source.add(self.source)  # m2m signal recalculates
 
@@ -181,7 +183,7 @@ class ExtractionAndProductionTests(TestCase):
         production.refresh_from_db()
         self.assertEqual(production.productionDay, 0)
 
-        make_well()
+        make_well(current_extraction_Mm3_yr=None)  # flow x hours path
         production.refresh_from_db()
         self.assertAlmostEqual(production.productionDay, 0.0036)
 
@@ -239,11 +241,21 @@ class OpexTests(TestCase):
         self.assertAlmostEqual(new.totalOPEX_EUR, 0.04 * 1e6)
 
 
+def make_pipe(length_m=2000.0, x0=X, **kwargs):
+    line = LineString((x0, Y), (x0 + length_m, Y), srid=RD)
+    return PipeNetwork.objects.create(geom=MultiLineString(line, srid=RD), length_km=0, **kwargs)
+
+
 class NonRevenueWaterTests(TestCase):
-    def _loss(self, code, quantity, unavoidable_pct):
+    def setUp(self):
+        self.pipe = make_pipe()
+
+    def _loss(self, code, quantity, unavoidable_pct, pipe=None):
+        if pipe is None and code in NonRevenueWater.REAL_CHOICES:
+            pipe = self.pipe
         return NonRevenueWater.objects.create(
             year=2024, specificLoss=code, loss_Quantity_m3=quantity,
-            WaterCost_EUR_day=quantity * 0.5, UnavoidableLossses_PCT=unavoidable_pct)
+            WaterCost_EUR_day=quantity * 0.5, UnavoidableLossses_PCT=unavoidable_pct, pipe=pipe)
 
     def test_ili_of_sibling_records_follows_new_losses(self):
         first = self._loss('LP', 100, 25)   # CARL 100 / UARL 25 = 4.0
@@ -254,6 +266,86 @@ class NonRevenueWaterTests(TestCase):
 
     def test_apparent_losses_have_no_ili(self):
         self.assertIsNone(self._loss('CM', 100, 25).ILI)
+
+    def test_real_loss_requires_a_pipe(self):
+        loss = NonRevenueWater(year=2024, type=NonRevenueWater.LossesTypes.Real, specificLoss='LP',
+                               loss_Quantity_m3=100, WaterCost_EUR_day=50, UnavoidableLossses_PCT=25)
+        with self.assertRaises(ValidationError) as ctx:
+            loss.full_clean()
+        self.assertIn('pipe', ctx.exception.message_dict)
+        loss.pipe = self.pipe
+        loss.full_clean()
+
+    def test_apparent_loss_cannot_have_a_pipe(self):
+        loss = NonRevenueWater(year=2024, specificLoss='CM', loss_Quantity_m3=100,
+                               WaterCost_EUR_day=50, UnavoidableLossses_PCT=25, pipe=self.pipe)
+        with self.assertRaises(ValidationError) as ctx:
+            loss.full_clean()
+        self.assertIn('pipe', ctx.exception.message_dict)
+
+    def test_nrw_breaks_real_losses_down_by_pipe(self):
+        short = make_pipe(length_m=500.0)
+        self._loss('LP', 100, 25)                # 100 m³/d on the 2 km pipe
+        self._loss('LM', 60, 25)                 # +60 on the same pipe
+        self._loss('LS', 200, 25, pipe=short)    # 200 m³/d on the 0.5 km pipe
+        self._loss('CM', 999, 25)                # apparent: not on any pipe
+        by_pipe = calculate_nrw(2024)['real_losses_by_pipe']
+        self.assertEqual([row['pipe_id'] for row in by_pipe], [short.pk, self.pipe.pk])
+        self.assertAlmostEqual(by_pipe[0]['loss_m3_km_d'], 400.0)
+        self.assertAlmostEqual(by_pipe[1]['loss_m3_d'], 160.0)
+        self.assertAlmostEqual(by_pipe[1]['loss_m3_km_d'], 80.0)
+
+    def test_nrw_is_filtered_by_admin_unit(self):
+        far_x = X + 10000
+        city = make_city()
+        far_city = make_city(province=city.province, cityName="Far", geom=make_polygon(x=far_x))
+        make_users_location(make_neighborhood(city=city), usersTotal=300)
+        far_district = make_district(city=far_city, geom=make_polygon(x=far_x))
+        make_users_location(make_neighborhood(district=far_district, geom=make_polygon(x=far_x)),
+                            usersTotal=700)
+        far_pipe = make_pipe(x0=far_x)
+
+        self._loss('LP', 100, 25)                   # self.pipe: 500 of its 2000 m inside `city`
+        self._loss('LP', 300, 50, pipe=far_pipe)    # inside `far_city`
+        self._loss('CM', 1000, 25)                  # apparent, split by users
+
+        nrw = calculate_nrw(2024, city)
+        self.assertAlmostEqual(nrw['real_losses_m3_d'], 25)   # 100 x 0.25
+        self.assertEqual(nrw['ili'], 4.0)           # CARL 25 / UARL 6.25
+        self.assertAlmostEqual(nrw['apparent_share'], 0.3)
+        self.assertAlmostEqual(nrw['apparent_losses_m3_d'], 300)
+        [row] = nrw['real_losses_by_pipe']
+        self.assertEqual(row['pipe_id'], self.pipe.pk)
+        self.assertAlmostEqual(row['share'], 0.25)
+        self.assertAlmostEqual(row['loss_m3_km_d'], 50)       # 100 m³/d over the whole 2 km
+
+        network = calculate_nrw(2024)
+        self.assertEqual(network['real_losses_m3_d'], 400)
+        self.assertEqual(network['apparent_losses_m3_d'], 1000)
+        self.assertEqual(network['ili'], round(400 / 175, 2))
+
+    def test_leak_on_a_pipe_crossing_units_is_split_not_duplicated(self):
+        # Two adjacent 1 km squares: west [X-500, X+500], east [X+500, X+1500]
+        west = make_city()
+        east = make_city(province=west.province, cityName="East", geom=make_polygon(x=X + 1000))
+        crossing = make_pipe(length_m=1000.0, x0=X)    # 500 m in each city
+        self._loss('LP', 120, 25, pipe=crossing)
+        west_loss = calculate_nrw(2024, west)['real_losses_m3_d']
+        east_loss = calculate_nrw(2024, east)['real_losses_m3_d']
+        self.assertAlmostEqual(west_loss, 60)
+        self.assertAlmostEqual(east_loss, 60)
+        self.assertAlmostEqual(west_loss + east_loss, calculate_nrw(2024)['real_losses_m3_d'])
+
+    def test_apparent_losses_unallocated_without_user_counts(self):
+        self._loss('CM', 1000, 25)
+        nrw = calculate_nrw(2024, make_city())
+        self.assertIsNone(nrw['apparent_share'])
+        self.assertEqual(nrw['apparent_losses_m3_d'], 0)
+
+    def test_random_real_event_is_placed_on_a_pipe(self):
+        with mock.patch('random.choice', return_value='LP'):
+            event = NonRevenueWater.generate_random_event(2024)
+        self.assertEqual(event.pipe, self.pipe)
 
 
 class AreaAffectedDroughtTests(TestCase):

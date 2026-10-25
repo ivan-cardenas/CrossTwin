@@ -26,7 +26,7 @@
 \maketitle
 
 \begin{abstract}
-This document catalogs every quantitative computation currently implemented in the CrossTwin platform's domain apps (\code{administrative}, \code{watersupply}, \code{housing}, \code{urban\_heat}), records the exact equation each function evaluates, the variables and their units, the source data model(s), and the corresponding edge(s) in the project's Driver--Pressure--State--Impact--Response (DPSIR) causal graph (\code{core/DAG.dot}). It is intended as a working reference while preparing a manuscript describing CrossTwin's indicator methodology, and as a running record of which causal relationships are backed by executable derivation logic versus flat, manually entered fields. Status tags (\statusdone{} / \statuspartial{} / \statusgap{}) follow the coverage audit in \code{TODO.md}.
+This document catalogs every quantitative computation currently implemented in the CrossTwin platform's domain apps (\code{administrative}, \code{physicalEnv}, \code{watersupply}, \code{housing}, \code{urban\_heat}), plus the map-editing and what-if backup functions of \code{mainMap}, records the exact equation each function evaluates, the variables and their units, the source data model(s), and the corresponding edge(s) in the project's Driver--Pressure--State--Impact--Response (DPSIR) causal graph (\code{core/DAG.dot}). It is intended as a working reference while preparing a manuscript describing CrossTwin's indicator methodology, and as a running record of which causal relationships are backed by executable derivation logic versus flat, manually entered fields. Status tags (\statusdone{} / \statuspartial{} / \statusgap{}) follow the coverage audit in \code{TODO.md}.
 \end{abstract}
 
 \tableofcontents
@@ -150,6 +150,146 @@ A \code{physicalEnv.LandCoverVector} polygon qualifies if its \code{land\_cover\
 
 \textbf{DAG edge:} \code{LandCover -> Urbanization} is the closest existing edge in \code{core/DAG.dot}, but it runs in the opposite direction of what this computes (LandCover only feeds a not-yet-modelled \code{Urbanization} node, per \code{TODO.md}), and no Neighbourhood/District/City/Province/LandCoverVector nodes exist in the DAG at all --- \statuspartial{} (cascade and source computation fully implemented; no \code{Urbanization} model backs a DAG edge for it)
 
+\subsection{Urban-fabric buffer around new buildings --- \code{urbanize\_around()}, \code{release\_ring()}}
+\label{sec:urban-fabric-buffer}
+Source: \code{physicalEnv/landcover.py}, receiver in \code{physicalEnv/signals.py}. When a building is drawn in the map editor (negative id), the land cover of its city's latest year is rewritten around it:
+\begin{align}
+  B &= \mathrm{buffer}(\mathrm{geom}_{\text{building}},\ 10\ \si{m}) \cap \mathrm{geom}_{\text{city}} \\
+  \mathcal{L}' &= \{\, P \setminus B : P \in \mathcal{L},\ P \setminus B \neq \emptyset \,\} \cup \{ B \text{ as urban fabric} \} \\
+  \mathrm{percentage}_P &= |P| / 10^6 \,/\, A_{\text{city}} \times 100
+\end{align}
+where $\mathcal{L}$ is the set of \code{LandCoverVector} polygons of the city's latest \code{year}. The buffer is cut out of every polygon it touches (\code{ST\_Difference}; polygons left empty are deleted) and inserted as one new polygon $R_b$ of class \emph{urban fabric}, tagged with the building id (\code{source\_building}), so the layer stays free of overlaps and the urban-area cascade above counts each square metre once. Each piece $c_P = P \cap B$ is stored as an \code{UrbanFabricCut} with $P$'s id and attributes.
+
+\textbf{Release (move or delete).} Deleting the building (\code{building\_deleted}) or moving it (\code{building\_created} on a changed footprint, followed by a new buffer around the new footprint) runs \code{release\_ring(b)}:
+\begin{align}
+  P' &= P \cup (c_P \cap R_b) \quad \text{for every cut } c_P \text{ of } b \\
+  c'_{b',T} &= c_{b',R_b} \cap c_{b,T} \quad \text{for every cut a later ring } b' \text{ took from } R_b
+\end{align}
+Only the area $R_b$ still holds is given back, so what a later ring $b'$ took from it stays urban; $P$ is recreated with its original id and attributes when it was swallowed whole. The second line re-targets $b'$'s cuts onto the polygons that lay under $R_b$, so releasing $b'$ later returns its land to them rather than to the deleted ring. Then $R_b$ and its cuts are deleted and \code{percentage} is recomputed for the rows given land back. Rings, cuts and recreated rows are journalled like the buffer itself; during a backup restore (\code{core.editing.is\_restoring()}) the delete receiver is skipped, since the restore puts the rows back itself. Imported (BAG, positive id) buildings never trigger either step; rings created before \code{source\_building} existed cannot be released.
+
+\textbf{DAG edge:} \dagedge{New\_Units $\rightarrow$ LandCover} --- \statusdone{} (stored for map-editor buildings; the housing pipeline's land take is a dashboard statistic, \S\ref{sec:pipeline-land-take})
+
+\section{Physical environment app --- soil hydrology and infiltration}
+\label{sec:physicalenv}
+
+Source: \code{physicalEnv/soil.py}, \code{physicalEnv/hilucs.py}, \code{physicalEnv/models.py}. Soil polygons come from the Dutch soil map 1:50\,000 (\textit{Bodemkaart}, 2025 edition) and groundwater depths from the groundwater-level grids of BIS Nederland \cite{BISNederland}; land cover is the CORINE-classified BRT \textit{Bodemgebruik} layer \cite{CORINE}. Together they implement the \texttt{LandCover}$\to$\texttt{Infiltration} and \texttt{Soil\_Type}$\to$\texttt{Infiltration} edges with the SCS Curve Number method \cite{TR55,NEH630ch7,NEH630ch10}. Everything except the spatial composition query (\S\ref{sec:soil-composition}) is pure Python, so the dashboard re-evaluates the equations for any rain depth without querying the database.
+
+\subsection{Hydrologic soil group --- \code{classify\_soil\_group()}, \code{SoilType.save()}}
+\textbf{Location:} \code{physicalEnv/soil.py:82}, \code{physicalEnv/models.py:61}
+
+The soil map names each unit in Dutch with the texture of its layers (e.g.\ \textit{Koopveengronden op zand}: peat on sand). Each texture word $w$ found in the name $n$ maps to a hydrologic soil group $g(w)$, and the most restrictive layer sets the group, since the least transmissive layer limits infiltration \cite{NEH630ch7}:
+\begin{equation}
+  G(n) = \max_{\prec} \{\, g(w) : w \in \operatorname{words}(n) \,\}, \qquad \mathrm{A} \prec \mathrm{B} \prec \mathrm{C} \prec \mathrm{D}
+\end{equation}
+with $G(n)$ undefined when the name contains no texture word. The phrase \textit{geen zand} (``no sand'') is removed before matching.
+
+\begin{center}
+\begin{tabular}{l p{6.2cm} p{4.4cm}}
+\toprule
+Group & Dutch texture words (soil map) & Texture \\
+\midrule
+A & \textit{zand}, \textit{grind} (incl.\ loamy and clayey sand) & sand, gravel \\
+B & \textit{zavel} (8--25\,\% lutum), \textit{leem} (not \textit{leemarm}, \textit{lemig}, \textit{keileem}) & loam, silt loam \\
+C & \textit{lichte klei}; \textit{knip} (dense knip-clay horizon) & clay loam \\
+D & \textit{klei}, \textit{zware klei}, \textit{veen}, \textit{moerig}, \textit{slik}, \textit{drecht}/\textit{lied} (clay on peat), \textit{keileem}, \textit{potklei}, \textit{kleefaarde} & clay, peat \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+All 171 distinct soil names of the 2025 map receive a group (A: 46 names, B: 33, C: 16, D: 76). \code{SoilType.save()} stores $G(n)$ and the final infiltration rate range $[f_{\min}, f_{\max}]$ of the group \cite{NEH630ch7}:
+
+\begin{center}
+\begin{tabular}{l c l}
+\toprule
+Group & Final infiltration rate $f$ (\si{mm/h}) & Runoff potential \\
+\midrule
+A & $> 7.6$ & low \\
+B & $3.8$--$7.6$ & moderate \\
+C & $1.3$--$3.8$ & moderately high \\
+D & $0$--$1.3$ & high \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{DAG edge:} \dagedge{Soil\_Type $\rightarrow$ Infiltration} --- \statusdone{} (together with \S\ref{sec:soil-composition}--\ref{sec:scs-summary})
+
+\subsection{Curve number --- \code{curve\_number()}}
+\textbf{Location:} \code{physicalEnv/soil.py:138}
+
+The curve number $\mathrm{CN}(c, G)$ of a land-cover class $c$ on soil group $G$ is read from the TR-55 tables for antecedent moisture condition II \cite{TR55}. CORINE class names are matched by keyword at a word start (so \textit{road} does not match \textit{broad-leaved forest}); the first matching cover type wins:
+
+\begin{center}
+\begin{tabular}{p{5.0cm} p{5.6cm} cccc}
+\toprule
+CORINE class (keyword) & TR-55 cover type & A & B & C & D \\
+\midrule
+water courses/bodies, sea, lagoons, estuaries & open water & 100 & 100 & 100 & 100 \\
+marshes, peat bogs, salines, intertidal flats & saturated wetland (impervious) & 98 & 98 & 98 & 98 \\
+green urban areas, sport and leisure & open space, good condition & 39 & 61 & 74 & 80 \\
+discontinuous urban fabric; urban fabric & residential, $\le$ 1/8 acre (65\,\% imperv.) & 77 & 85 & 90 & 92 \\
+continuous urban fabric & commercial and business (85\,\% imperv.) & 89 & 92 & 94 & 95 \\
+industrial/commercial units, ports, airports & industrial (72\,\% imperv.) & 81 & 88 & 91 & 93 \\
+road and rail networks & paved roads, open ditches, incl.\ right-of-way & 83 & 89 & 92 & 93 \\
+mineral extraction, dumps, construction & newly graded areas & 77 & 86 & 91 & 94 \\
+arable land, irrigated land, rice & row crops, straight row, good & 67 & 78 & 85 & 89 \\
+vineyards, fruit trees, olive groves & woods--grass combination (orchard), good & 32 & 58 & 72 & 79 \\
+natural grasslands & meadow & 30 & 58 & 71 & 78 \\
+pastures & pasture, good & 39 & 61 & 74 & 80 \\
+complex cultivation, agro-forestry & small grain, straight row, good & 63 & 75 & 83 & 87 \\
+forests (broad-leaved, coniferous, mixed) & woods, good & 30 & 55 & 70 & 77 \\
+moors and heathland & brush, good & 30 & 48 & 65 & 73 \\
+sclerophyllous vegetation, transitional woodland & brush, fair & 35 & 56 & 70 & 77 \\
+beaches, dunes, bare rock, sparse vegetation, burnt & fallow, bare soil & 77 & 86 & 91 & 94 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Imperviousness of built-up land enters through these curve numbers; a class without a match (e.g.\ glaciers) or a piece without a soil group is left out and reported as unclassified.
+
+\subsection{Shallow groundwater and drained land --- \code{soil\_landcover\_composition()}}
+\label{sec:soil-composition}
+\textbf{Location:} \code{physicalEnv/soil.py:206}; constants \code{SHALLOW\_GROUNDWATER\_CM} (\code{:30}), \code{SEASONS} (\code{:34}), \code{DRAINED\_LAND\_COVER} (\code{:48})
+
+A soil whose water table lies within $h^\ast = \SI{60}{cm}$ of the surface belongs to group D whatever its texture; NEH~630 gives such soils a dual group (A/D, B/D, C/D), the texture letter applying where the land is drained \cite{NEH630ch7}. The query intersects the unit $u$ with the soil map and the most recent land-cover year, and splits every piece $p$ by the area where the season's groundwater depth $h_s$ is shallower than $h^\ast$:
+\begin{align}
+  S_s &= \bigcup \{\, \text{cells } x \subset u : h_s(x) < h^\ast \,\} \\
+  G'(p) &= \begin{cases}
+      \mathrm{D} & \text{on } p \cap S_s \text{ if } c(p) \notin \mathcal{D} \\
+      G(p) & \text{otherwise}
+  \end{cases}
+\end{align}
+where $s \in \{\text{wet}, \text{dry}\}$ selects $h_\text{wet} = \text{GHG}$ (mean highest groundwater level) or $h_\text{dry} = \text{GLG}$ (mean lowest), and $\mathcal{D}$ is the set of drained land covers (urban fabric, industrial/commercial units, road and rail networks, port areas, airports). GHG and GLG are 50\,m grids in \si{cm} below ground level, capped at 254 (``254\,cm or deeper''); cells without a value (255) are not shallow. BIS Nederland leaves most built-up cells (85\,\% in Enschede) and water bodies without a value, consistent with drained, impervious land; water and wetlands need no rule since their curve number is independent of the soil group. The cells are reclassified to shallow/deep and dissolved into polygons (\code{ST\_Reclass}, \code{ST\_DumpAsPolygons}, \code{ST\_Union}) before the intersection, so each piece is split once rather than per cell. The function returns the area of every $(G', c)$ combination, the texture-only group areas, $|S_s \cap \bigcup_{c \notin \mathcal{D}} p|$ (moved to D) and $|S_s \cap \bigcup_{c \in \mathcal{D}} p|$ (kept as drained).
+
+\subsection{SCS runoff and infiltration coefficient --- \code{scs\_runoff\_mm()}, \code{infiltration\_coefficient()}}
+\textbf{Location:} \code{physicalEnv/soil.py:149, 165}
+\begin{align}
+  S &= \frac{25400}{\mathrm{CN}} - 254, \qquad I_a = 0.2\,S \\
+  Q &= \begin{cases} \dfrac{(P - I_a)^2}{P - I_a + S} & P > I_a \\[4pt] 0 & P \le I_a \end{cases} \\
+  C_{\text{inf}} &= \frac{P - Q}{P}
+\end{align}
+where $P$ is the rain depth of one event (\si{mm}), $S$ the potential maximum retention (\si{mm}), $I_a$ the initial abstraction (\si{mm}), $Q$ the direct runoff (\si{mm}) and $C_{\text{inf}}$ the infiltration coefficient, the share of the rain that does not run off \cite{NEH630ch10}. $\mathrm{CN} = 100$ gives $Q = P$.
+
+\subsection{Area-weighted unit summary --- \code{summarize\_infiltration()}}
+\label{sec:scs-summary}
+\textbf{Location:} \code{physicalEnv/soil.py:172}
+
+For the pieces $i$ of a unit, with area $A_i$ and curve number $\mathrm{CN}_i = \mathrm{CN}(c_i, G'_i)$:
+\begin{align}
+  V_{\text{inf}} &= \sum_i A_i \,\frac{P - Q(P, \mathrm{CN}_i)}{1000}, \qquad
+  V_{\text{run}} = \sum_i A_i \,\frac{Q(P, \mathrm{CN}_i)}{1000} \quad [\si{m^3}] \\
+  C_{\text{inf},u} &= \frac{V_{\text{inf}}}{V_{\text{inf}} + V_{\text{run}}}, \qquad
+  \overline{\mathrm{CN}} = \frac{\sum_i A_i\, \mathrm{CN}_i}{\sum_i A_i}
+\end{align}
+Runoff is computed per piece before weighting: since $Q$ is convex in CN, evaluating $Q(P, \overline{\mathrm{CN}})$ would overstate infiltration. $\overline{\mathrm{CN}}$ is reported for reference only.
+
+\subsection{HILUCS land-use codes --- \code{parse\_hilucs\_href()}, \code{hilucs\_q()}}
+\textbf{Location:} \code{physicalEnv/hilucs.py:18, 48}
+
+Zoning elements of the INSPIRE Planned Land Use feed reference their land use as a URI of the HILUCS codelist \cite{HILUCS}, e.g.\ \texttt{.../HILUCSValue/6\_3\_2\_WaterAreasNotInOtherEconomicUse}. The code is read from the URI's leading digits ($\texttt{6\_3\_2} \mapsto 6.3.2$) and matched against \code{HILUCSLandUse.code} (98 registry values, loaded by migration); the full URI is never used, since the PDOK file misspells some (\texttt{5\_2\_\ldots Comptible\ldots}). A code $k$ selects itself and every code below it in the hierarchy:
+\begin{equation}
+  \operatorname{sel}(k) = \{\, k' : k' = k \ \lor\ k' \text{ starts with } k. \,\}
+\end{equation}
+
 \section{Water supply app}
 \label{sec:watersupply}
 
@@ -179,12 +319,27 @@ where $P$ is \code{city.currentPopulation}. Note the two representations differ 
 \end{equation}
 \textbf{DAG edges:} \dagedge{Total\_Population $\rightarrow$ Total\_Consumption}, \dagedge{ConsumptionCapita $\rightarrow$ Total\_Consumption} --- \statusdone{}
 
-\subsection{Total extraction --- \code{calculate\_total\_extraction()}}
-\textbf{Location:} \code{watersupply/calculations.py:38}
+\subsection{Source recharge --- \code{AvailableFreshWater.save()}}
+\textbf{Location:} \code{watersupply/chain.py::recharge\_Mm3\_yr}, called by \code{AvailableFreshWater.save()} (\code{watersupply/models.py})
 \begin{equation}
-  E = \left(\sum_{w\,\in\,\text{active wells} \,\cap\, \text{geom}(u)} q_w\right) \times 86400, \qquad [q_w] = \si{m^3/s},\ [E] = \si{m^3/day}
+  Y = \frac{d_{\text{inf}}}{100} \times \frac{A}{10^6}, \qquad [d_{\text{inf}}] = \si{cm/yr}\ (\texttt{infiltrationDepth\_cm}),\ [A] = \si{m^2},\ [Y] = \si{Mm^3/yr}\ (\texttt{yield\_Mm3\_year})
 \end{equation}
-\textbf{DAG edge:} \dagedge{Available\_FW $\rightarrow$ Total\_Extraction} --- \statusdone{}
+$A$ is the source polygon's area in the storage CRS. Recalculated on every save when $d_{\text{inf}}$ is known; otherwise a supplied yield is kept. \texttt{infiltrationRate\_cm\_h} is a capacity during rain, not a yearly amount, and is not used.
+
+\textbf{DAG edge:} \dagedge{Infiltration $\rightarrow$ Available\_FW} --- \statuspartial{} ($d_{\text{inf}}$ is still a flat input; linking it to the SCS event infiltration and precipitation is open)
+
+\subsection{Total extraction --- \code{calculate\_total\_extraction()}}
+\textbf{Location:} \code{watersupply/calculations.py} (\code{calculate\_total\_extraction}, \code{watershed\_share})
+
+A well's water belongs to its watershed $h(w)$ (the \code{watershed} of its \code{AvailableFreshWater} source, else the watershed containing the well) and is shared by the population of that watershed, wherever the well lies. Neighborhoods are assigned to one watershed by their point on surface:
+\begin{align}
+  E_u &= \sum_{h} s_{u,h} \sum_{w:\,h(w)=h} V_w \;+\; \sum_{w:\,h(w)=\varnothing,\ w \,\cap\, \text{geom}(u)} V_w \\
+  s_{u,h} &= \frac{\sum_{n \,\in\, u,\ \text{pos}(n) \in h} P_n}{\sum_{\text{pos}(n) \in h} P_n}
+  \quad\text{(area share } |u \cap h| / |h| \text{ when the watershed has no neighborhood population)}
+\end{align}
+$V_w$ (\code{ExtractionWater.volume\_m3\_d()}, also used by \code{TotalWaterProduction}) is the first known of \texttt{current\_extraction\_Mm3\_yr} $\times 10^6 / 365$, $q_w \times t_w \times 3600$ ($t_w$ = \texttt{OperationTime\_h\_day}) and $q_w \times 86400$, with $[q_w] = \si{m^3/s}$; $[V_w] = [E_u] = \si{m^3/day}$; $\sum_u s_{u,h} = 1$ over the neighborhoods of a watershed. Wells without a watershed keep the location rule.
+
+\textbf{DAG edge:} \dagedge{Available\_FW $\rightarrow$ Total\_Extraction} --- \statusdone{}; the share also makes \dagedge{Total\_Population} of every city in the watershed an input of its neighbours' supply security (receivers \code{city\_population\_cascaded}, \code{city\_saved}, \code{watershed\_changed}, \code{extraction\_changed} in \code{watersupply/signals.py}).
 
 \subsection{Total production --- \code{calculate\_total\_production\_day()}}
 \textbf{Location:} \code{watersupply/calculations.py:51}
@@ -304,7 +459,15 @@ The Infrastructure Leakage Index formulation follows the IWA Water Loss Task For
   \text{AFW} &= \sum_{\,\text{intersecting } u} \texttt{totalQuantity\_Mm3} \\
   A_{\text{drought}} &= \sum_{\,\text{intersecting } u,\ \text{year}} \texttt{areaAffected\_km2}
 \end{align}
-\textbf{DAG edges:} \dagedge{Infiltration $\rightarrow$ Available\_FW}, \dagedge{Meteorology $\rightarrow$ Available\_FW}, \dagedge{Total\_Extraction $\rightarrow$ Area\_Drought} --- \statusgap{} for the Infiltration side (\code{AvailableFreshWater.infiltrationRate\_cm\_h} is a flat, manually entered field --- see \code{TODO.md})
+\textbf{DAG edges:} \dagedge{Infiltration $\rightarrow$ Available\_FW}, \dagedge{Meteorology $\rightarrow$ Available\_FW}, \dagedge{Total\_Extraction $\rightarrow$ Area\_Drought} --- \statusgap{} for the Infiltration side: infiltration is now computed per event (\S\ref{sec:infiltration-indicator}), but \code{AvailableFreshWater.infiltrationRate\_cm\_h} is still a flat, manually entered field --- turning the event coefficient into a recharge volume is open
+
+\subsection{Infiltration indicator (dashboard) --- \code{calculate\_infiltration()}, \code{\_infiltration\_indicators()}}
+\label{sec:infiltration-indicator}
+\textbf{Location:} \code{watersupply/calculations.py:383}, \code{watersupply/views.py:177}
+
+The water dashboard's Infiltration card evaluates \S\ref{sec:physicalenv} for the administrative unit $u$ with two what-if controls: the \textit{Rain Event} slider sets $P \in [1, 100]$\,\si{mm} (default 25; KNMI's daily classes mark \emph{heavy} from 25\,mm and \emph{extreme} from 50\,mm), and the \textit{Groundwater} switch sets the season $s$ (wet = GHG, default; dry = GLG). $P$ enters only the pure functions and the spatial composition depends on $s$ alone, so the composition could be cached per season; the current implementation recomputes it on every request, together with the rest of \code{\_get\_adminUnit\_data()}. Displayed: $C_{\text{inf},u}$ (\%), $\overline{\mathrm{CN}}$, $V_{\text{inf}}$ and $V_{\text{run}}$ (\si{m^3}), the classified and unclassified areas, the share of the classified area moved to D by shallow groundwater and the share kept as drained, and the texture-only soil-group shares with their rate ranges $[f_{\min}, f_{\max}]$.
+
+\textbf{DAG edges:} \dagedge{LandCover $\rightarrow$ Infiltration}, \dagedge{Soil\_Type $\rightarrow$ Infiltration} --- \statusdone{}
 
 \subsection{Pipe geometry --- \code{PipeNetwork.save()}}
 \textbf{Location:} \code{watersupply/models.py:420}
@@ -331,7 +494,16 @@ where $S = \texttt{supply\_units}$, $D = \texttt{demand\_units}$ (stored, not de
   U_{\text{completed}} &= \sum_{\,\texttt{year\_expected\_completion} \le y} \texttt{project\_units} \\
   U_{\text{pipeline}} &= \sum_{\,\texttt{year\_expected\_completion} > y} \texttt{project\_units}
 \end{align}
-\textbf{DAG edges:} \dagedge{Zoning\_Status $\rightarrow$ New\_Units}, \dagedge{Network $\rightarrow$ New\_Units}, \dagedge{New\_Units $\rightarrow$ Housing\_Supply}, \dagedge{New\_Units $\rightarrow$ LandCover} --- \statuspartial{} (counts completions/pipeline; never writes back to \code{LandCover} or reads \code{Zoning\_Status}/\code{Network} as inputs)
+\textbf{DAG edges:} \dagedge{Zoning\_Status $\rightarrow$ New\_Units}, \dagedge{Network $\rightarrow$ New\_Units}, \dagedge{New\_Units $\rightarrow$ Housing\_Supply} --- \statuspartial{} (counts completions/pipeline; never reads \code{Zoning\_Status}/\code{Network} as inputs). The land-cover side is \code{calculate\_pipeline\_land\_take()} below.
+
+\subsubsection{Pipeline land take --- \code{calculate\_pipeline\_land\_take()}}
+\label{sec:pipeline-land-take}
+\textbf{Location:} \code{housing/calculations.py}. With $F_c = \bigcup$ footprints of the pipeline projects ($\texttt{year\_expected\_completion} > y$) of city $c$, overlapping projects counted once, and $\mathcal{L}_c$ the city's latest land-cover year:
+\begin{align}
+  A_k &= \sum_c \sum_{P \in \mathcal{L}_c,\ \text{class}(P) = k} |P \cap F_c| \\
+  A_{\text{greenfield}} &= \sum_{k \notin \mathcal{U}} A_k, \qquad A_{\text{infill}} = \sum_{k \in \mathcal{U}} A_k, \qquad A_{\text{uncovered}} = \textstyle\sum_c |F_c| - \sum_k A_k
+\end{align}
+where $\mathcal{U}$ are the classes that already count as urban area (\emph{urban fabric, road, rail, transport}). Greenfield is the land the new units would turn into urban fabric. Dashboard only (housing \emph{New Housing Units} card), nothing is written: observed land cover is not overwritten by plans. \textbf{DAG edge:} \dagedge{New\_Units $\rightarrow$ LandCover} --- \statusdone{}
 
 \subsection{Mortgage indicators --- \code{calculate\_mortgage\_indicators()}}
 \textbf{Location:} \code{housing/calculations.py:123}
@@ -358,10 +530,11 @@ plus province-level policy fields (\code{interest\_rate}, \code{LTV\_limit}, \co
 The house-price-to-income ratio formulation is the standard affordability metric used in comparative housing-affordability studies (e.g.\ Demographia's Median Multiple) \cite{Demographia}. \textbf{DAG edges:} \dagedge{Property $\rightarrow$ Affordability\_Stress}, \dagedge{Income\_Expenses $\rightarrow$ Affordability\_Stress}, \dagedge{Mortgage $\rightarrow$ Affordability\_Stress}, \dagedge{Water\_Tariff\_Afford $\rightarrow$ Income\_Expenses}, \dagedge{Rent $\rightarrow$ Income\_Expenses}, \dagedge{Mortgage $\rightarrow$ Income\_Expenses} --- \statusgap{} (computed only from this model's own stored fields; never reads \code{Mortgage}, \code{Rentals}, or watersupply tariff data --- an open TODO in \code{housing/models.py} also questions whether disposable income should replace median income in the numerator's denominator)
 
 \subsection{Zoning composition --- \code{calculate\_zoning()}}
-\textbf{Location:} \code{housing/calculations.py:285}
+\textbf{Location:} \code{housing/calculations.py:297}; groups \code{ZONING\_GROUPS} (\code{:289})
 \begin{equation}
-  \text{Area\%}_{\text{type}} = \frac{\sum_{\,\text{zone\_type}} \texttt{area}}{\sum_{\text{all zones}} \texttt{area}} \times 100
+  \text{Area\%}_{t} = \frac{\sum_{\,z \,:\, \texttt{zone\_type}(z) \in K_t} \texttt{area}(z)}{\sum_{\text{all zones}} \texttt{area}(z)} \times 100
 \end{equation}
+\code{ZoningArea.zone\_type} is a foreign key to the HILUCS codelist (\S\ref{sec:physicalenv}), filled from each INSPIRE zoning element's \texttt{hilucsLandUse} reference. The four dashboard groups are code sets with all their sub-codes (\code{hilucs\_q()}): $K_{\text{residential}} = \operatorname{sel}(5) \setminus \operatorname{sel}(5.2)$, $K_{\text{commercial}} = \operatorname{sel}(3.1) \cup \operatorname{sel}(3.2)$, $K_{\text{industrial}} = \operatorname{sel}(2)$, $K_{\text{mixed}} = \operatorname{sel}(5.2)$. Other land uses (e.g.\ water, agriculture) count in the denominator only.
 \textbf{DAG edges:} \dagedge{Housing\_Demand $\rightarrow$ Zoning\_Status}, \dagedge{Zoning\_Status $\rightarrow$ Property}, \dagedge{Zoning\_Status $\rightarrow$ New\_Units} --- \statusgap{} (descriptive aggregation only; no model consumes \code{Zoning\_Status} as an input)
 
 \subsection{Property market and vacancy --- \code{calculate\_property\_indicators()}}
@@ -376,7 +549,7 @@ The house-price-to-income ratio formulation is the standard affordability metric
 \section{Urban heat app}
 \label{sec:urbanheat}
 
-Source: \code{urban\_heat/calculations.py}. Thermal-comfort rasters (SVF, $T_{mrt}$, PET, UTCI) are expected to arrive pre-computed from an external SOLWEIG run \cite{Lindberg2008SOLWEIG}; CrossTwin currently only reads and classifies them, it does not derive one raster from another.
+Source: \code{urban\_heat/calculations.py}. Thermal-comfort rasters (SVF, $T_{mrt}$, PET, UTCI) are expected to arrive pre-computed from an external SOLWEIG run \cite{Lindberg2008SOLWEIG}; CrossTwin currently only reads and classifies them, it does not derive one raster from another. The exception is LST, computed from Landsat and CrossTwin's NDVI layer (Section~\ref{sec:lst-smw}).
 
 \subsection{Green area and vegetation coverage}
 \textbf{Location:} \code{calculate\_green\_area()} (\code{urban\_heat/calculations.py:18}), \code{calculate\_vegetation\_coverage()} (\code{:55})
@@ -431,12 +604,122 @@ UTCI thresholds follow the 10-class scheme defined by the COST Action 730 UTCI f
 \end{equation}
 WBGT bands (\si{\celsius}: 25/28/30/33 thresholds) are marked \textbf{provisional} in the source (\code{urban\_heat/calculations.py:251--253}) pending confirmation against a named standard.
 
+\subsection{Land surface temperature, Statistical Mono-Window --- \code{urban\_heat/lst/}}
+\label{sec:lst-smw}
+\textbf{Location:} \code{urban\_heat/lst/smw.py} (equations), \code{gee.py} (inputs), \code{pipeline.py::calculate\_lst()}; run from the map's LST tool (Actions menu, over the area in view: the view clipped to the NDVI layers' coverage, overlapping NDVI layers merged newest first, scenes ranked by the clear share of the view) or with \code{manage.py calculate\_lst}. Recalculating a scene replaces its earlier rows inside the new extent.
+
+Python port of the Earth Engine modules of Ermida et al.\ \cite{Ermida2020SMW} (\texttt{users/sofiaermida/landsat\_smw\_lst}), with the Landsat NDVI replaced by CrossTwin's NDVI layer (\code{physicalEnv.LandCoverRaster}, \code{index = NDVI}, Sentinel-2, averaged onto a 30\,m grid in EPSG:28992 snapped to the layer's extent). Earth Engine supplies the Landsat~9 TIRS band-10 TOA brightness temperature $T_b$ (\si{K}), the Level-2 \texttt{QA\_PIXEL}, ASTER GED emissivities $\varepsilon_{13}, \varepsilon_{14}$ and NDVI, and NCEP precipitable water.
+\begin{align}
+  \mathrm{FVC} &= \operatorname{clip}_{[0,1]}\!\left(\left(\frac{\mathrm{NDVI} - 0.2}{0.86 - 0.2}\right)^{2}\right) \\
+  \varepsilon_{k,\text{bare}} &= \frac{\varepsilon_{k} - 0.99\,\mathrm{FVC}_{\text{ASTER}}}{1 - \mathrm{FVC}_{\text{ASTER}}}, \qquad k \in \{13, 14\} \\
+  \varepsilon &= 0.99\,\mathrm{FVC} + (1 - \mathrm{FVC})\,\big(0.6820\,\varepsilon_{13,\text{bare}} + 0.2578\,\varepsilon_{14,\text{bare}} + 0.0584\big) \\
+  \mathrm{TPW} &= \mathrm{TPW}_1\,\frac{\Delta t_2}{6\,\mathrm{h}} + \mathrm{TPW}_2\,\frac{\Delta t_1}{6\,\mathrm{h}}, \qquad i = \min\!\big(9, \max(0, \lceil \mathrm{TPW}/6 \rceil - 1)\big) \\
+  \mathrm{LST} &= A_i \frac{T_b}{\varepsilon} + \frac{B_i}{\varepsilon} + C_i
+\end{align}
+$\mathrm{TPW}_{1,2}$ are the two water-vapour fields of the acquisition day closest in time ($\Delta t_{1,2}$ their distances, in units of the source's field spacing: \SI{6}{h} for NCEP, \SI{1}{h} for ERA5). NCEP reanalysis (\texttt{NCEP\_RE/surface\_wv}), which the original code uses, ended on 2026-03-18; later scenes use ERA5 hourly \texttt{total\_column\_water\_vapour}, which over Enschede differs from NCEP by about 1--4\,mm, mostly within one \SI{6}{mm} coefficient bin. The source used is stored in \code{measurement\_method}. $(A_i, B_i, C_i)$ is the Landsat~9 row of the SMW table for TPW bin $i$ (\code{coefficients.py}). Water pixels (QA bit~7) get $\varepsilon = 0.99$, snow/ice (bit~5) $0.989$; cloud and cloud shadow (bits 3, 4), TPW $<0$ (masked water-vapour cell) and cells outside the NDVI layer are nodata. The clip in FVC is applied after squaring, as in the published code, so NDVI $<0.2$ gives a small positive FVC. With \code{--aster-emissivity} the vegetation correction is skipped: $\varepsilon = 0.6820\,\varepsilon_{13} + 0.2578\,\varepsilon_{14} + 0.0584$. Output: one \code{LandSurfaceTemperature} raster in \si{\celsius}, nodata $-9999$, COG via \code{core/signals.py}. Computed on demand, not by a receiver (it downloads from Earth Engine). \textbf{DAG edges:} \dagedge{RS\_Imagery $\rightarrow$ LST}, \dagedge{LandCover $\rightarrow$ LST} --- \statusdone{}
+
 \subsection{Nature-Based Solutions coverage --- \code{calculate\_nbs\_coverage()}}
 \textbf{Location:} \code{urban\_heat/calculations.py:283}
 \begin{equation}
   A_{\text{NBS}} = \sum_{\,\text{NBS polygons} \,\cap\, \texttt{geom}(u)} \texttt{area}
 \end{equation}
 \textbf{DAG edges:} \dagedge{UTCI $\rightarrow$ NBS}, \dagedge{PET $\rightarrow$ NBS} --- \statusgap{} (counts NBS geometries only; never reads PET or UTCI values to relate NBS placement to thermal stress)
+
+\section{Map editing and what-if backup (mainMap app)}
+\label{sec:mapediting}
+
+Source: \code{core/editing.py}, \code{core/editable\_layers.toml}, \code{mainMap/models.py}, \code{core/static/js/Editing.js}; design in \code{docs/MAP\_EDITING.md}. Staff users edit built-up objects (\code{Building}, \code{Street}, \code{Park}, \code{Facility}, \code{ZoningArea}) directly on the map, and can set one restore point so what-if edits can be undone. These functions implement no DPSIR edge themselves; they are \emph{Response}-side tooling that changes the State variables (buildings, streets, zoning) from which the indicator functions above are computed. Every write goes through the model's \code{save()}, so the derivations documented elsewhere in this registry (e.g.\ \code{Building.save()}, the cache invalidation in \code{core/signals.py}) apply unchanged.
+
+\subsection{Editable-layer allowlist --- \code{EDITABLE\_LAYERS}, \code{is\_editable()}}
+\textbf{Location:} \code{core/editable\_layers.toml}, \code{core/editing.py:42}, \code{:79}
+
+For a layer $\ell$ and user $u$,
+\begin{equation}
+  \mathrm{editable}(\ell, u) = [\,\ell \in \mathcal{E}\,] \wedge [\,u.\texttt{is\_staff}\,],
+\end{equation}
+where $\mathcal{E}$ is the allowlist. Each entry lists the fields the model derives itself (\code{exclude}, kept out of the form) and the fields the form must not require (\code{optional}). For \code{Building}: $\texttt{exclude} = \{\texttt{area\_sqm}, \texttt{neighborhood}, \texttt{last\_updated}, \texttt{connectivity}\}$, $\texttt{optional} = \{\texttt{buildingType}\}$; for \code{ZoningArea}: $\texttt{exclude} = \{\texttt{area}\}$. The layer catalog (\code{available\_layers}) adds \code{editable} and \code{edit\_geom\_type} to an entry only when $\mathrm{editable}(\ell, u)$ holds.
+
+\subsection{Attribute and geometry form --- \code{\_build\_form()}, \code{feature\_form()}}
+\textbf{Location:} \code{core/editing.py:95}, \code{:158}
+
+The browser sends the edited shape as WGS84 GeoJSON in a hidden form field. Django's GIS form field parses it, rejects a geometry whose type differs from the model field's (e.g.\ a \code{Polygon} for a \code{MultiPolygonField}), and reprojects it to the storage CRS:
+\begin{equation}
+  g_{\text{stored}} = T_{4326 \rightarrow 28992}\!\left(g_{\text{GeoJSON}}\right)
+\end{equation}
+The editor (\code{Editing.js::\_writeGeometry()}) wraps single geometries before sending them when the field is a Multi* type: $\texttt{Polygon}(c) \mapsto \texttt{MultiPolygon}([c])$. A form posted without a new shape sends back the stored EWKT, which already carries $\mathrm{SRID}=28992$, so no transformation (and no coordinate drift) occurs. For display, the stored geometry is sent at full resolution as $T_{28992 \rightarrow 4326}(g_{\text{stored}})$, not the map's copy, which is simplified below zoom 14 (\code{\_geojson\_sql()}).
+
+Saving calls \code{obj.save()}, so for a \code{Building} the existing derivations run: $\texttt{area\_sqm} = \operatorname{area}(g_{\text{stored}})$ in \si{m^2}, \code{neighborhood} by point-in-polygon of the centroid, and \code{buildingType} from \code{usageFunction} (\code{builtup/models.py}).
+
+\subsection{Identifiers for new objects --- \code{\_next\_negative\_pk()}}
+\textbf{Location:} \code{core/editing.py:108}
+
+\code{Building.id} is the BAG identifier, not generated by the database. A user-created building gets
+\begin{equation}
+  \mathrm{id}_{\text{new}} = \min\!\left(0,\ \min_{b \in \texttt{Building}} \mathrm{id}_b\right) - 1,
+\end{equation}
+so new objects count down from $-1$, never collide with (positive) BAG ids, and are recognisable as user-made. Models with a database-generated key (\code{AutoField}) keep it.
+
+\subsection{Deferred-constraint check --- \code{\_check\_constraints()}}
+\textbf{Location:} \code{core/editing.py:118}
+
+Django creates foreign keys as \code{DEFERRABLE INITIALLY DEFERRED}, and the project's spatial FKs use \code{on\_delete=DO\_NOTHING}, so a deletion that leaves a dangling reference (a \code{Property} pointing at a deleted \code{Building}) would only fail at \code{COMMIT}. \code{SET CONSTRAINTS ALL IMMEDIATE} checks all pending references inside the atomic block; a violation raises \code{IntegrityError}, rolls back just that operation and is reported as a message. Used by \code{feature\_delete()} (\code{:176}) and \code{restore\_backup()}.
+
+\subsection{Change journal --- \code{journal()}}
+\textbf{Location:} \code{core/editing.py:240}; models \code{EditBackup}, \code{EditBackupRow} (\code{mainMap/models.py})
+
+A backup $B$ is created empty at time $t_0$; nothing is copied. Let $s_t(o)$ be the stored row of object $o$ at time $t$, with $s_t(o) = \varnothing$ if $o$ does not exist. Before the first editor change to $o$ after $t_0$, the journal records
+\begin{equation}
+  J_B(o) = \begin{cases}
+    s_{t_0}(o) & \text{if $o$ is edited or deleted} \\
+    \varnothing & \text{if $o$ is created}
+  \end{cases}
+  \qquad \text{only if } o \notin \operatorname{dom}(J_B),
+\end{equation}
+i.e.\ the first pre-image wins: an object edited $n$ times is still restored to its state at $t_0$. Rows are serialized with Django's serializer, which keeps the geometry in its stored CRS. The bar in the Layers panel reports $|\operatorname{dom}(J_B)|$ as ``objects changed''. Without an active backup, $J$ is not written and edits are permanent. At most one backup exists at a time.
+
+\subsection{Restore --- \code{restore\_backup()}}
+\textbf{Location:} \code{core/editing.py:293}
+
+In one transaction (wrapped in \code{importer/batching.py::deferred\_cascades()}), for every $o \in \operatorname{dom}(J_B)$:
+\begin{equation}
+  s_{\text{after}}(o) = J_B(o) =
+  \begin{cases}
+    s_{t_0}(o) & \text{(raw save: update, or re-insert with the original id)} \\
+    \varnothing & \text{(delete the object created after $t_0$)}
+  \end{cases}
+\end{equation}
+Re-insertions and updates run before deletions so that reference targets exist again first. The raw save writes the stored values back exactly, derived fields included, without re-running \code{save()}, and still fires \code{post\_save}, which bumps the layer's GeoJSON cache version. If \code{\_check\_constraints()} fails, the whole restore is rolled back (never partial); otherwise $B$ and $J_B$ are deleted and the affected layer keys are returned for the map to reload. Objects changed only outside the editor (importer, admin, QGIS, psql) are not in $\operatorname{dom}(J_B)$ and are left as they are.
+
+\textbf{Caveat:} receivers that skip raw saves (\code{watersupply/signals.py}: \code{if raw: return}) would not fire on restore. Built-up models have none; adding such a layer to $\mathcal{E}$ requires triggering its cascades explicitly.
+
+\textbf{Side effects of an edit.} Rows that another app changes because of an edit are journalled too, through custom signals that \code{mainMap/signals.py} subscribes to. Creating a building runs \code{urbanize\_around()} (\S\ref{sec:urban-fabric-buffer}), which sends \code{landcover\_rewriting} with the land-cover rows $\mathcal{A}$ it is about to clip or delete and \code{landcover\_created} with the new urban-fabric row $u$; the receivers add $J_B(p) = s_{t_0}(p)$ for $p \in \mathcal{A}$ and $J_B(u) = \varnothing$ under the key of the signal's sender (\code{physicalEnv.LandCoverVector}, or \code{physicalEnv.UrbanFabricCut} for the stored cuts). Moving or deleting a drawn building runs \code{release\_ring()}, which journals the same way. Restore therefore re-inserts the clipped and deleted polygons and cuts with their original geometry and deletes $u$, and the land-cover receiver recomputes the neighbourhoods' urban area inside the same deferred block. Only keys in the vector registry are returned as layers to reload.
+
+\subsection{Map-side editor --- \code{Editing.js}}
+\textbf{Location:} \code{core/static/js/Editing.js}; hooks in \code{Layers.js} (\code{reloadLayer()}, \code{\_popupEditButton()}), \code{MapUI.js::renderLayerList()}, \code{mainMap.js::refreshActivePanel()}, \code{Map\_init.js}
+
+No equations; behaviour relevant to reproducing results:
+\begin{itemize}[nosep]
+  \item \code{startEdit()} / \code{startCreate()} load the form into the side panel; a \code{MutationObserver} on \code{\#panel-body} attaches Mapbox GL Draw when the form appears and detaches it when the panel content is replaced.
+  \item While editing, the original object is hidden with the filter $\texttt{id} \neq \mathrm{pk}$, feature popups, admin-unit clicks and panel refreshes are suspended, and the camera pitch is set to $0$.
+  \item The \code{feature-saved} and \code{backup-restored} HTMX events reload the affected layers (\code{reloadLayer()}), so the map always shows the stored state.
+\end{itemize}
+
+\section{Imported climate-effect indicators (importer app, Klimaateffectatlas)}
+\label{sec:kea}
+
+Source: \code{importer/external\_catalog.py} (\code{kea\_*} entries, \code{\_kea\_neighborhood()}, \code{\_kea\_building()}), \code{importer/external\_data.py} (\code{\_prepare\_features()}, \code{\_keep\_existing()}, \code{\_enrich\_rows()}); target models \code{builtup.NeighborhoodClimateRisk}, \code{urban\_heat.NeighborhoodHeat}, \code{housing.NeighborhoodSocialProfile} and new \code{builtup.Building} fields. The layer-by-layer mapping, and the 47 of 68 WFS layers that are not imported, are listed in \code{docs/KEA\_WFS\_MAPPING.md}. No equation of CrossTwin produces these values: they are stored inputs, transformed only on import.
+
+\subsection{Value transforms --- \code{\_prepare\_features()}}
+For a source attribute $x$ of feature $f$:
+\begin{align}
+  x' &= \begin{cases} \varnothing & x \in \mathcal{N} \\ m(x) & x \in \operatorname{dom}(m) \\ k\,x & \text{for a scaled attribute} \\ x & \text{otherwise} \end{cases}
+\end{align}
+with $\mathcal{N} = \{-99995, \dots, -99999\}$, the RIVM health monitor's no-value codes (frail health, loneliness, rental share, socio-economic status); $k = 100$ for the pile-rot risks, which KEA delivers as fractions (0--0.054 in Enschede), while settlement risk is already a percentage (0.9--17.7) and is stored as delivered; and $m$ the drought-sensitivity legend, $m(\mathrm{W}) = 2$ (weinig gevoelig, Low), $m(\mathrm{G}) = 3$ (gevoelig, Medium), $m(\mathrm{Z}) = 4$ (zeer gevoelig, High), with a missing value left to the model default $0$ (not groundwater-dependent). A building-block feature whose \code{BAG.Id} lists $n$ panden is split into $n$ features, each id left-padded to the 16 digits of a BAG identifier, so that every pand of the block receives the block's facade-shade score.
+
+\subsection{Join and write rules --- \code{\_keep\_existing()}, \code{\_enrich\_rows()}}
+Let $K$ be the set of stored keys of the join model (\code{Neighborhood.id} or \code{Building.id}) and $k(f)$ the feature's key (\code{buurtcode}, \code{identificatie}, \ldots). Only features with $k(f) \in K$ are written; the others are counted in the import message. Neighbourhood layers upsert one row per neighbourhood on \code{neighborhood\_id}, each layer writing only its own columns. Building layers update the existing row only, $s'(b) = s(b) \oplus \{\text{mapped attributes of } f\}$, never insert and never write the geometry; they use \code{update()} and bump the map cache of every registry model on the building table (including the \code{Energy.BuildingEnergyLabel} proxy).
+
+\textbf{DAG edges:} none computed. The values inform \texttt{PET}, \texttt{Vegetation\_Coverage} (heat and canopy), and the context of \texttt{Income\_Expenses}/\texttt{Affordability\_Stress} (social profile) --- stored inputs.
 
 \section{Summary table}
 
@@ -449,6 +732,7 @@ administrative & \code{extrapolate()} & Population\_Growth$\to$Total\_Pop & \sta
 administrative & \code{\_city\_growth\_factor()} & Population\_Growth$\to$Total\_Pop & \statusdone{} \\
 administrative & \code{annual\_growth\_rate()} & Population\_Growth$\to$Total\_Pop & \statusdone{} \\
 administrative & \code{City.save()} / \code{Province.save()} & (population cascade) & \statusdone{} \\
+physicalEnv & \code{urbanize\_around()} / \code{release\_ring()} & New\_Units$\to$LandCover (editor buildings) & \statusdone{} \\
 watersupply & \code{calculate\_total\_demand()} / \code{TotalWaterDemand.save()} & Total\_Pop$\to$Total\_Water\_Demand & \statusdone{} \\
 watersupply & \code{ConsumptionCapita.save()} & Total\_Pop$\to$Total\_Consumption & \statusdone{} \\
 watersupply & \code{calculate\_total\_extraction()} & Available\_FW$\to$Total\_Extraction & \statusdone{} \\
@@ -464,8 +748,13 @@ watersupply & \code{calculate\_coverage()} / \code{CoverageWaterSupply.save()} &
 watersupply & \code{calculate\_nrw()} / \code{NonRevenueWater.save()} & Real/Apparent\_Losses$\to$NRW, ILI & \statuspartial{} \\
 watersupply & \code{calculate\_water\_quality()} & Samples\_WQ$\to$User\_Acceptance\_WS & \statusgap{} \\
 watersupply & \code{calculate\_available\_freshwater()} & Infiltration/Meteorology$\to$Available\_FW & \statusgap{} \\
+physicalEnv & \code{classify\_soil\_group()} / \code{SoilType.save()} & Soil\_Type$\to$Infiltration & \statusdone{} \\
+physicalEnv & \code{soil\_landcover\_composition()} & LandCover/Soil\_Type (+ groundwater)$\to$Infiltration & \statusdone{} \\
+physicalEnv & \code{scs\_runoff\_mm()} / \code{summarize\_infiltration()} & LandCover/Soil\_Type$\to$Infiltration & \statusdone{} \\
+watersupply & \code{calculate\_infiltration()} (dashboard) & LandCover/Soil\_Type$\to$Infiltration & \statusdone{} \\
 housing & \code{calculate\_supply\_demand()} & Urbanization$\to$Housing\_Demand & \statusgap{} \\
-housing & \code{calculate\_new\_units()} & New\_Units$\to$Housing\_Supply/LandCover & \statuspartial{} \\
+housing & \code{calculate\_new\_units()} & New\_Units$\to$Housing\_Supply & \statuspartial{} \\
+housing & \code{calculate\_pipeline\_land\_take()} (dashboard) & New\_Units$\to$LandCover & \statusdone{} \\
 housing & \code{calculate\_mortgage\_indicators()} & Central\_Bank/Credit\_Supply$\to$Mortgage & \statuspartial{} \\
 housing & \code{calculate\_house\_price\_index()} & Housing\_Demand/Property$\to$HPI & \statusgap{} \\
 housing & \code{HousingAffordability.save()} & Rent/Mortgage/Water\_Tariff$\to$Income\_Expenses$\to$Affordability\_Stress & \statusgap{} \\
@@ -474,17 +763,21 @@ housing & \code{calculate\_property\_indicators()} & Housing\_Supply/Accessibili
 urban\_heat & \code{calculate\_green\_area()} / \code{calculate\_vegetation\_coverage()} & LandCover$\to$Green\_Area$\to$Vegetation\_Coverage & \statuspartial{} \\
 urban\_heat & \code{calculate\_urban\_morphology()} & Buildings/Streets$\to$Canyon\_Aspect & \statuspartial{} \\
 urban\_heat & \code{get\_thermal\_indices()} & DSM$\to$SVF$\to$Tmrt/PET$\to$UTCI & \statusgap{} \\
+urban\_heat & \code{lst.pipeline.calculate\_lst()} / \code{lst.smw} & RS\_Imagery/LandCover$\to$LST & \statusdone{} \\
 urban\_heat & \code{calculate\_nbs\_coverage()} & UTCI/PET$\to$NBS & \statusgap{} \\
+mainMap & \code{feature\_form()} / \code{feature\_delete()} & (tooling: edits State objects via \code{save()}) & \statusdone{} \\
+mainMap & \code{journal()} / \code{restore\_backup()} & (tooling: what-if restore point) & \statusdone{} \\
+importer & \code{\_prepare\_features()} / \code{\_enrich\_rows()} (KEA) & (stored inputs; no edge) & \statusdone{} \\
 \bottomrule
 \end{longtable}
 
 \section*{Notes on use}
 
-This document is generated from a manual audit of the codebase at the commit referenced in the accompanying \code{TODO.md}. Line numbers will drift as the code evolves; re-verify against \code{grep -n "def save"} in the relevant module before citing a location in a manuscript. The status tags mirror the coverage figures reported in the project's DPSIR gap analysis: of 102 edges in \code{core/DAG.dot}, 28 are backed by real derivation logic as of this audit.
+This document is generated from a manual audit of the codebase at the commit referenced in the accompanying \code{TODO.md}. Line numbers will drift as the code evolves; re-verify against \code{grep -n "def save"} in the relevant module before citing a location in a manuscript. The status tags mirror the coverage figures reported in the project's DPSIR gap analysis: of 103 edges in \code{core/DAG.dot} (one, \texttt{Total\_Water\_Prod}$\to$\texttt{OPEX}, is listed twice), 31 are backed by real derivation logic as of this audit; the three added since the original audit are \texttt{LandCover}$\to$\texttt{Infiltration}, the new \texttt{Soil\_Type}$\to$\texttt{Infiltration}, and \texttt{New\_Units}$\to$\texttt{LandCover} for buildings drawn in the map editor.
 
 Beyond the CBS 85173NED forecasts used for the \texttt{Population\_Growth}$\to$\texttt{Total\_Population} projection, the external data catalog also offers a finer-grained, Google Earth Engine-hosted population source, the High Resolution Settlement Layer (HRSL) \cite{HRSL2016}, for direct raster ingestion where a sub-neighbourhood estimate is preferable to the CBS city-level forecast.
 
-\begin{thebibliography}{9}
+\begin{thebibliography}{99}
 
 \bibitem{CBS85173NED} Centraal Bureau voor de Statistiek (CBS). \textit{Regionale prognose 2023--2050} (Table 85173NED). \url{https://opendata.cbs.nl/}.
 
@@ -496,11 +789,25 @@ Beyond the CBS 85173NED forecasts used for the \texttt{Population\_Growth}$\to$\
 
 \bibitem{Lindberg2008SOLWEIG} Lindberg, F., Holmer, B., \& Thorsson, S. (2008). SOLWEIG 1.0 -- Modelling spatial variations of 3D radiant fluxes and mean radiant temperature in complex urban settings. \textit{International Journal of Biometeorology}, 52(7), 697--713.
 
+\bibitem{Ermida2020SMW} Ermida, S. L., Soares, P., Mantas, V., Göttsche, F.-M., \& Trigo, I. F. (2020). Google Earth Engine open-source code for Land Surface Temperature estimation from the Landsat series. \textit{Remote Sensing}, 12(9), 1471. \url{https://doi.org/10.3390/rs12091471}.
+
 \bibitem{Oke1987} Oke, T. R. (1987). \textit{Boundary Layer Climates} (2nd ed.). Routledge. (Urban canyon height-to-width aspect ratio.)
 
 \bibitem{Matzarakis1996} Matzarakis, A., \& Mayer, H. (1996). Another kind of environmental stress: thermal stress. \textit{WHO Newsletter}, 18, 7--10. (Physiological Equivalent Temperature classification.)
 
 \bibitem{Blazejczyk2013UTCI} Bröde, P., Fiala, D., Błażejczyk, K., et al. (2012). Deriving the operational procedure for the Universal Thermal Climate Index (UTCI). \textit{International Journal of Biometeorology}, 56(3), 481--494.
+
+\bibitem{TR55} USDA Natural Resources Conservation Service (1986). \textit{Urban Hydrology for Small Watersheds}. Technical Release 55 (TR-55), 2nd ed. (Curve number tables for antecedent moisture condition II.)
+
+\bibitem{NEH630ch7} USDA Natural Resources Conservation Service (2009). \textit{National Engineering Handbook, Part 630 Hydrology, Chapter 7: Hydrologic Soil Groups}. (Group definitions, final infiltration rates, dual groups for a water table within 60\,cm.)
+
+\bibitem{NEH630ch10} USDA Natural Resources Conservation Service (2004). \textit{National Engineering Handbook, Part 630 Hydrology, Chapter 10: Estimation of Direct Runoff from Storm Rainfall}. (Runoff equation, $I_a = 0.2S$.)
+
+\bibitem{BISNederland} Wageningen Environmental Research. \textit{Bodemkundig Informatie Systeem (BIS Nederland)}: Bodemkaart 1:50\,000 (2025) and groundwater-level grids (GHG, GLG, GVG). \url{https://bodemdata.nl/}.
+
+\bibitem{CORINE} European Environment Agency. \textit{CORINE Land Cover nomenclature}. \url{https://land.copernicus.eu/}.
+
+\bibitem{HILUCS} European Commission. \textit{INSPIRE Data Specification on Land Use (D2.8.III.4)}, Hierarchical INSPIRE Land Use Classification System (HILUCS). \url{http://inspire.ec.europa.eu/codelist/HILUCSValue}.
 
 \end{thebibliography}
 

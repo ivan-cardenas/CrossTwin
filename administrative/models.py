@@ -48,8 +48,6 @@ class Province(models.Model):
         verbose_name = "Province"
         verbose_name_plural = "Provinces"
 
-
-
 class City(models.Model):
     id = models.AutoField(primary_key=True)
     province = models.ForeignKey(Province, on_delete=models.CASCADE, help_text="Province code from administrative.Province")
@@ -152,7 +150,6 @@ class Neighborhood(models.Model):
     class Meta:
         verbose_name = "Neighborhood"
         verbose_name_plural = "Neighborhoods"
-
 
 class PopulationProjection(models.Model):
     """

@@ -1,65 +1,39 @@
 {% comment %} Indicators_grid.html {% endcomment %}
+{% load humanize %}
 <div class="grid">
 
-  <div class="card gauge"
-       data-gauge-val="{{ indicators.total_supply_percent }}"
-       data-gauge-id="gauge-supply"
-       data-gauge-display="{{ indicators.total_supply_Mm3 }}">
+  <div class="card wide balance-card">
     <div class="gauge-header">
       <div class="card-icon">💧</div>
-      <div class="card-label">Total Supply</div>
-      {% include 'partials/_info_btn.html' with title="Total Supply" text="Water produced across the area each year: extraction from active wells (pump flow × operating time) plus any imported water, converted to million m³/year. The ring shows this volume as a % of the area's total available fresh water." %}
+      <div class="card-label">Supply vs Demand</div>
+      {% include 'partials/_info_btn.html' with title="Supply vs Demand" text="Supply: water available to this area's population each year: its population share of the active wells' extraction in each watershed (measured yearly extraction, else pump flow × operating time) plus imported water. Demand: population × per-capita consumption (the slider above). Both bars share one scale, the larger of the two, so their lengths compare directly. The headline is the yearly surplus or shortfall." %}
     </div>
-    <div class="gauge-body bottom">
-      <svg viewBox="0 0 120 70" width="160" height="95" aria-hidden="true">
-        <path d="M 10,65 A 50,50 0 0 1 110,65"
-              fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10"
-              stroke-linecap="round"/>
-        <path id="gauge-supply"
-              d="M 10,65 A 50,50 0 0 1 110,65"
-              fill="none" stroke="#2E6478" stroke-width="10"
-              stroke-linecap="round"
-              stroke-dasharray="157.08"
-              stroke-dashoffset="157.08"
-              style="transition: stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)"/>
-        <text x="60" y="55" text-anchor="middle"
-              font-family="var(--font-base)" font-size="15" font-weight="700"
-              fill="#e8f4ff" id="gauge-supply-txt">–</text>
-        <text x="60" y="67" text-anchor="middle"
-              font-family="var(--font-mono)" font-size="7"
-              fill="rgba(232,244,255,0.45)">Mm³ / year</text>
-      </svg>
+    <div class="balance-headline">
+      <span class="card-value">{% if indicators.balance_Mm3 > 0 %}+{% elif indicators.balance_Mm3 < 0 %}−{% endif %}{{ indicators.balance_abs_Mm3 }}</span>
+      <span class="card-unit">Mm³ / year</span>
+      {% if indicators.balance_Mm3 > 0 %}<span class="threshold-tag ok balance-tag">▲ Surplus</span>
+      {% elif indicators.balance_Mm3 < 0 %}<span class="threshold-tag bad balance-tag">▼ Shortfall</span>
+      {% else %}<span class="threshold-tag balance-tag">= Balanced</span>{% endif %}
     </div>
-  </div>
-
-  <div class="card gauge"
-       data-gauge-val="{{ indicators.total_demand_percent }}"
-       data-gauge-id="gauge-demand"
-       data-gauge-display="{{ indicators.total_demand_Mm3 }}">
-    <div class="gauge-header">
-      <div class="card-icon">💧</div>
-      <div class="card-label">Total Demand</div>
-      {% include 'partials/_info_btn.html' with title="Total Demand" text="Population × per-capita consumption (the slider above), converted to million m³/year. Moving the slider recalculates this instantly. The ring shows it as a % of the area's total available fresh water." %}
-    </div>
-    <div class="gauge-body bottom">
-      <svg viewBox="0 0 120 70" width="160" height="95" aria-hidden="true">
-        <path d="M 10,65 A 50,50 0 0 1 110,65"
-              fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10"
-              stroke-linecap="round"/>
-        <path id="gauge-demand"
-              d="M 10,65 A 50,50 0 0 1 110,65"
-              fill="none" stroke="#2E6478" stroke-width="10"
-              stroke-linecap="round"
-              stroke-dasharray="157.08"
-              stroke-dashoffset="157.08"
-              style="transition: stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)"/>
-        <text x="60" y="55" text-anchor="middle"
-              font-family="var(--font-base)" font-size="15" font-weight="700"
-              fill="#e8f4ff" id="gauge-demand-txt">–</text>
-        <text x="60" y="67" text-anchor="middle"
-              font-family="var(--font-mono)" font-size="7"
-              fill="rgba(232,244,255,0.45)">Mm³ / year</text>
-      </svg>
+    <div class="balance-bars" role="table" aria-label="Yearly water supply and demand">
+      <div class="balance-row supply" role="row"
+           title="Supply: {{ indicators.total_supply_Mm3 }} Mm³/year ({{ indicators.supply_m3_d|intcomma }} m³/day)">
+        <div class="balance-meta">
+          <span class="balance-key" aria-hidden="true"></span>
+          <span class="balance-label" role="rowheader">Supply</span>
+          <span class="balance-value" role="cell">{{ indicators.total_supply_Mm3 }}<span class="balance-unit">Mm³/yr</span><span class="balance-sub">{{ indicators.supply_m3_d|intcomma }} m³/d</span></span>
+        </div>
+        <div class="balance-track"><div class="balance-fill" style="width: {{ indicators.supply_bar_pct }}%;"></div></div>
+      </div>
+      <div class="balance-row demand" role="row"
+           title="Demand: {{ indicators.total_demand_Mm3 }} Mm³/year ({{ indicators.demand_m3_d|intcomma }} m³/day)">
+        <div class="balance-meta">
+          <span class="balance-key" aria-hidden="true"></span>
+          <span class="balance-label" role="rowheader">Demand</span>
+          <span class="balance-value" role="cell">{{ indicators.total_demand_Mm3 }}<span class="balance-unit">Mm³/yr</span><span class="balance-sub">{{ indicators.demand_m3_d|intcomma }} m³/d</span></span>
+        </div>
+        <div class="balance-track"><div class="balance-fill" style="width: {{ indicators.demand_bar_pct }}%;"></div></div>
+      </div>
     </div>
   </div>
 
@@ -196,6 +170,53 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- Infiltration (SCS Curve Number) -->
+  <div class="card c3 wide">
+    <div class="gauge-header">
+      <div class="card-icon">🌱</div>
+      <div class="card-label">Infiltration</div>
+      {% include 'partials/_info_btn.html' with title="Infiltration (SCS Curve Number)" text="Share of a rain event that infiltrates instead of running off, by the SCS Curve Number method (USDA TR-55). Each piece of soil map x land cover gets a curve number from its hydrologic soil group (A sand ... D clay/peat; D also on undrained land where the season's groundwater level, GHG wet or GLG dry, is under 60 cm) and land-cover class; runoff Q = (P − 0.2S)² / (P + 0.8S) with S = 25400/CN − 254 mm, computed per piece and weighted by area. Set the rain depth P with the Rain Event slider." %}
+    </div>
+    {% if indicators.infiltration_pct != None %}
+    <div style="display:flex; align-items:baseline; gap:8px;">
+      <div class="card-value">{{ indicators.infiltration_pct }}%</div>
+      <div class="card-unit">of {{ indicators.rain_mm|floatformat:0 }} mm infiltrates · CN {{ indicators.curve_number }}</div>
+    </div>
+    <div class="bar-track" style="height:8px;">
+      <div class="bar-fill" style="width:{{ indicators.infiltration_pct }}%; background:#38bdf8;"></div>
+    </div>
+    <div style="display:flex; gap:16px; margin-top:10px;">
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Infiltrated</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.infiltrated_m3|floatformat:"0g" }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">m³</span></div>
+      </div>
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Runoff</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.runoff_m3|floatformat:"0g" }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">m³</span></div>
+      </div>
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Area</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.infiltration_classified_km2 }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">km²{% if indicators.infiltration_unclassified_km2 %} (+{{ indicators.infiltration_unclassified_km2 }} unclassified){% endif %}</span></div>
+      </div>
+      {% if indicators.shallow_groundwater_pct or indicators.drained_shallow_pct %}
+      <div title="Groundwater ({{ indicators.groundwater_statistic }}) within 60 cm of the surface: undrained land counts as soil group D (NEH 630); drained built-up and paved land keeps its texture group">
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Shallow GW · {{ indicators.groundwater_statistic }}</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.shallow_groundwater_pct }}% <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">→ D{% if indicators.drained_shallow_pct %} · {{ indicators.drained_shallow_pct }}% drained{% endif %}</span></div>
+      </div>
+      {% endif %}
+    </div>
+    {% else %}
+    <div class="card-unit" style="margin-top:6px;">No soil map x land cover here yet — import the Soil Map (BIS Nederland) and Land Cover (BRT Bodemgebruik).</div>
+    {% endif %}
+    {% if indicators.soil_groups %}
+    <div style="display:flex; flex-wrap:wrap; gap:6px 14px; margin-top:10px; font-size:0.72rem; color:rgba(232,244,255,0.6);">
+      {% for sg in indicators.soil_groups %}
+      <span title="{{ sg.texture }}"><b style="color:rgba(232,244,255,0.9);">{{ sg.group }}</b> {{ sg.pct }}% · {% if sg.max_mm_h != None %}{{ sg.min_mm_h }}–{{ sg.max_mm_h }}{% else %}&gt; {{ sg.min_mm_h }}{% endif %} mm/h</span>
+      {% endfor %}
+    </div>
+    {% endif %}
   </div>
 
 </div>

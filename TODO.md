@@ -1,6 +1,6 @@
 # TODO — Unimplemented DAG Edges
 
-The DPSIR causal graph in [`core/DAG.dot`](core/DAG.dot) defines 102 edges. **Only 28 are backed by real derivation logic** — a `save()` method or a `calculations.py` function that actually reads the source field, not just a docstring claiming the edge. The rest are either flat stored fields with no computation, or `calculations.py` functions whose docstring claims an edge the code doesn't implement.
+The DPSIR causal graph in [`core/DAG.dot`](core/DAG.dot) defines 103 edges (one, `Total_Water_Prod -> OPEX`, is listed twice). **Only 31 are backed by real derivation logic** — a `save()` method or a `calculations.py` function that actually reads the source field, not just a docstring claiming the edge. The rest are either flat stored fields with no computation, or `calculations.py` functions whose docstring claims an edge the code doesn't implement.
 
 This file tracks the gaps, grouped by app. When one is closed, move it to the "Done" note at the bottom (or delete the line) and add the `# DAG edges:` comment to the implementing function per the convention in `CLAUDE.md`.
 
@@ -12,7 +12,7 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 
 - [x] `City.popGrowthRate` — now derived in `City.save()` from `population.annual_growth_rate()` (CBS compound annual growth rate over the city's imported projection years)
 - [x] Population curve moves with change, it should be a static curve for bounds and the change can move, the bounds work as comparative 
-- [ ] `urbanizationRate` — still a flat field, never consumed by the population projection in `administrative/population.py`
+- [ ] `urbanizationRate` — still a flat field, never consumed by function. This should be calculated from historical remote sensing imagery. This would be time consuming and memory intensive, so it should be a `calculations.py` function that reads a raster and averages over a time period.
 - [ ] Housing supply/demand does not depend on the projected population — `HousingSupplyDemand` demand still comes from stored rows, not `get_population()`
 - [ ] Urban heat does not depend on the projected population
 - [x] `urban_area` — now cascades Neighborhood → District → City → Province via `administrative/signals.py::_recompute_population()` (generalized to also sum `urban_area`), sourced at the Neighborhood level from `physicalEnv.LandCoverVector` spatial intersection area (`physicalEnv/signals.py`)
@@ -24,7 +24,7 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 
 - [ ] `RS_Imagery -> LandCover/LST` — raster models are plain imports, no ingestion/derivation code
 - [ ] `LandCover -> Infiltration` — `AvailableFreshWater.infiltrationRate_cm_h` is a flat field (see existing inline TODO)
-- [ ] `New_Units -> LandCover` — `calculate_new_units()` never touches `LandCover`
+- [x] `New_Units -> LandCover` — a building drawn in the map editor turns a 10 m buffer into urban fabric (`physicalEnv/landcover.py::urbanize_around`); moving or deleting it gives the land back (`release_ring`, cut pieces kept in `UrbanFabricCut`). The housing pipeline's land take (greenfield vs infill) is a dashboard statistic (`housing/calculations.py::calculate_pipeline_land_take`)
 
 ## urban_heat
 
@@ -43,10 +43,11 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 - [ ] `Rent/Mortgage/Water_Tariff_Afford -> Income_Expenses -> Affordability_Stress` — `HousingAffordability.save()` computes `affordabilityIndex` only from its own stored fields, never pulls from `Mortgage`, `Rentals`, or watersupply tariffs
 - [ ] `Credit_Supply -> Mortgage` — unimplemented
 - [ ] No `NumberUsers` model — `NumberUsers -> Water_Tariff_Afford` unimplemented (`MeteredResidential.userAffordability_PCT` is a flat input)
+ - [ ] `Buildings` can get height value from DSM. This needs to be incorporated in the model save() function if  the DSM exists.
 
 ## watersupply
 
-- [ ] `Network -> Real_Losses` — `NonRevenueWater` records are entered directly, not linked to `PipeNetwork`
+- [x] `Network -> Real_Losses` — `NonRevenueWater.pipe` FK links each real loss to the `PipeNetwork` where the leakage is presumed (required for real, forbidden for apparent losses in `clean()`); `calculate_nrw()` returns `real_losses_by_pipe` (m³/day and m³/km/day)
 - [ ] `calculate_collection_ratio()` ignores `userAffordability_PCT` and acceptance rate despite its docstring
 - [ ] `calculate_opex_recovery()` computes directly from stored totals rather than calling `calculate_collection_ratio()` or referencing NRW
 - [ ] `Samples_WQ -> User_Acceptance_WS` — `calculate_water_quality()`'s `acceptance_rate` is `Avg('acceptanceRate')`, unrelated to computed compliance
@@ -85,7 +86,6 @@ Collected from `#TODO` comments across the codebase:
 
 ## Product / feature backlog
 
-Moved from `docs/Questions and bugs.md`'s "TODOS" section, with descriptions clarified. Two items marked `[x]` were already struck through there (treat as done, confirm before deleting); a few duplicate gaps already tracked above and are cross-referenced instead of repeated.
 
 **Data sources & indices**
 - [ ] Review current spectral indices (e.g. NDVI, NDWI) against recent remote-sensing research and evaluate whether better-performing alternatives exist for CrossTwin's Dutch/urban context.
@@ -120,10 +120,18 @@ Moved from `docs/Questions and bugs.md`'s "TODOS" section, with descriptions cla
 - [ ] Investigate whether an infiltration-capacity table or map exists for the Netherlands that could back `AvailableFreshWater.infiltrationRate_cm_h` (see inline TODO above) instead of computing it from land cover alone.
 - [ ] Decide how to define "degree of urbanisation" for CrossTwin — CBS defines it via address density per km² (5-band classification: <500 to 2,500+ addresses/km²), but the project's actual interest is urban-sprawl *growth over time*, which needs a different metric/approach.
 - [ ] Decide which domain app should own the Population Density raster layer (e.g. `administrative` vs `physicalEnv`).
+- [ ] From point data like amenities, a interpolated raster should be created using euclidean distance. Each raster should be a separate layer in the map, and the UI should show the map layer as a heat map.
+- [ ]  The zoning plans that carry these land-use codes come as one 28.7 GB national file, so every import reads the whole file, however small the area you pick.
+  >
+  > Every zoning import reads all 28.7 GB
+  > * PDOK publishes the Dutch planned land-use data (where the HILUCS land-use links come from) as a single 28.7 GB GML file (a large XML map file). There are no regional pieces.
+  > * The current importer goes through that file from top to bottom and keeps only the plans inside your chosen area. Picking a small area does not cut the download.
+
+- [ ] Add 3D models for trees and ammenities. threes can get height from DSM. 
 
 **HTMX indicator dashboards**
-Existing three-layer pattern (`calculations.py` + `views.py` + templates, see CLAUDE.md) is only built for `watersupply`, `housing`, and `urban_heat` so far.
-- [ ] Build the HTMX indicator dashboard for `builtup`.
+Existing three-layer pattern (`calculations.py` + `views.py` + templates, see CLAUDE.md) is built for `watersupply`, `housing`, `urban_heat` and `builtup` so far.
+- [x] Build the HTMX indicator dashboard for `builtup` (`/builtup/indicators/<level>/<location>/<year>/`; what-if: additional park area).
 - [ ] Build the HTMX indicator dashboard for `Energy`.
 - [ ] Build the HTMX indicator dashboard for `nature`.
 - [x] Housing indicator dashboard 
@@ -133,3 +141,7 @@ Existing three-layer pattern (`calculations.py` + `views.py` + templates, see CL
 
 **urban_heat (duplicate of gaps already tracked above)**
 - The "create LST/PET/SVF/SUHII calculation functions, see SOLWEIG" item is the same gap as the `## urban_heat` section above (`DSM -> SVF -> Tmrt/PET`, `LST -> PET`, `Tmrt -> UTCI` chain) — not repeated here, see that section instead.
+
+## OTHERS
+
+- [ ] Add "Various Forest Assets Pack" (https://skfb.ly/pCEzX) by Dari is licensed under Creative Commons Attribution (http://creativecommons.org/licenses/by/4.0/). to reference in the map for 3D model

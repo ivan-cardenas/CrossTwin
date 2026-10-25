@@ -10,6 +10,9 @@ def build_model_registry():
         try:
             app_models = apps.get_app_config(app_label).get_models()
             for model in app_models:
+                # Bookkeeping tables (e.g. physicalEnv.UrbanFabricCut) are not layers
+                if getattr(model, "registry_hidden", False):
+                    continue
                 label = f"{app_label}.{model.__name__}"
                 registry[label] = model
         except LookupError:

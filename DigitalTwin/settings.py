@@ -76,6 +76,10 @@ SENTINEL_CLIENT_SECRET = os.environ.get("SENTINEL_CLIENT_SECRET")
 # Authorization header — see weather/views.py::_wms_auth_headers.
 KNMI_API_KEY = os.environ.get("KNMI_API_KEY")
 
+# Overpass API instance for the OpenStreetMap importer (osm_* catalog
+# entries). Unset = the URL in each catalog entry (the public overpass-api.de).
+OVERPASS_URL = os.environ.get("OVERPASS_URL")
+
 # Google Earth Engine project used for `ee.Initialize(project=...)`.
 # Authentication itself is a one-time `ee.Authenticate()` run per machine
 # (opens a browser, caches an OAuth token under the OS user profile) — see
@@ -129,6 +133,35 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
+
+# Measurement (docs/PERFORMANCE.md §0) ───────────────────────────────────────
+# QUERY_STATS: per-request query count + DB time, as a Server-Timing header
+#   and a log line (core/middleware.py). Default: on when DEBUG.
+# SQL_LOG: print every SQL statement with its duration. Django only emits
+#   these when DEBUG is also true.
+def _env_flag(name, default):
+    return os.environ.get(name, str(default)).lower() == "true"
+
+
+QUERY_STATS = _env_flag("QUERY_STATS", DEBUG)
+QUERY_STATS_SLOW_MS = int(os.environ.get("QUERY_STATS_SLOW_MS", 500))
+SQL_LOG = _env_flag("SQL_LOG", False)
+
+if QUERY_STATS:
+    # Outermost, so its timing covers the whole request
+    MIDDLEWARE.insert(0, "core.middleware.QueryStatsMiddleware")
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "loggers": {
+        "crosstwin.querystats": {"level": "INFO", "handlers": ["console"], "propagate": False},
+        **({"django.db.backends": {"level": "DEBUG", "handlers": ["console"], "propagate": False}}
+           if SQL_LOG else {}),
+    },
+}
+
 ROOT_URLCONF = "DigitalTwin.urls"
 
 TEMPLATES = [
@@ -165,6 +198,32 @@ DATABASES = {
         "HOST": os.environ.get("DATABASE_HOST"),
         "PORT": os.environ.get("DATABASE_PORT"),
     }
+}
+
+# Caches ─────────────────────────────────────────────────────────────────────
+# Local memory is per process; fine for runserver. With several worker
+# processes, point both at a shared backend (Redis) so a write invalidates
+# every worker's copy (docs/PERFORMANCE.md §9).
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "crosstwin-default",
+    },
+    # Map GeoJSON responses (mainMap/views.py::model_geojson). Entries can be
+    # several MB, so this cache is kept small.
+    "geojson": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "crosstwin-geojson",
+        "OPTIONS": {"MAX_ENTRIES": 64},
+    },
+    # Proxied WMS tiles (weather/views.py::wms_tile_proxy): small PNGs, many
+    # of them. Kept apart so a screen of radar frames never evicts the
+    # default cache (capabilities documents, layer versions, ...).
+    "wms_tiles": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "crosstwin-wms-tiles",
+        "OPTIONS": {"MAX_ENTRIES": 2000},
+    },
 }
 
 

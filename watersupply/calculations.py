@@ -1,11 +1,15 @@
-from django.db.models import Sum, Avg, F, FloatField, ExpressionWrapper
+from django.db.models import (
+    Sum, Avg, F, FloatField, IntegerField, ExpressionWrapper, OuterRef, Subquery,
+)
+from django.db.models.functions import Coalesce
 from django.contrib.gis.db import models as gis_models
+from django.contrib.gis.db.models.functions import Intersection, Length, PointOnSurface
 
 from .models import (
     ConsumptionCapita, TotalWaterDemand, ExtractionWater, ImportedWater,
     AvailableFreshWater, PipeNetwork, CoverageWaterSupply, NonRevenueWater,
     WaterTreatment, MeteredResidential, UsersLocation, OPEX,
-    TotalWaterProduction,
+    TotalWaterProduction, Watershed,
 )
 from administrative.models import City, Province, Neighborhood
 from administrative.admin_units import cities_within, neighborhoods_within
@@ -13,15 +17,28 @@ from administrative.admin_units import cities_within, neighborhoods_within
 
 # ── Consumption & Demand ─────────────────────────────────────────────
 
+def _get_consumption_record_years(adminBund, year):
+    """Per city of the unit, the ConsumptionCapita record used for `year` (ConsumptionCapita.for_year)."""
+    records = (ConsumptionCapita.for_year(city, year) for city in cities_within(adminBund))
+    return [r for r in records if r is not None]
+
+
 def _get_consumption_capita(adminBund, year):
-    """Return per-capita consumption (L/person/day) for an admin unit and year."""
-    cities = cities_within(adminBund)
-    record = (
-        ConsumptionCapita.objects
-        .filter(city__in=cities, year=year)
-        .aggregate(avg=Avg('consumption_capita_L_d'))
-    )
-    return record['avg'] or 0
+    """Per-capita consumption (L/person/day) for an admin unit and year.
+
+    Mean over the unit's cities of each city's record for `year`, or of its
+    latest earlier year when there is none (ConsumptionCapita.for_year), so an
+    old survey is the default until newer data exists.
+    """
+    records = _get_consumption_record_years(adminBund, year)
+    if not records:
+        return 0
+    return sum(r.consumption_capita_L_d for r in records) / len(records)
+
+
+def consumption_data_years(adminBund, year):
+    """The years the consumption of `year` actually comes from (sorted, may be empty)."""
+    return sorted({r.year for r in _get_consumption_record_years(adminBund, year)})
 
 
 def calculate_total_demand(adminBund, year):
@@ -35,17 +52,81 @@ def calculate_total_demand(adminBund, year):
 
 # ── Extraction & Production ──────────────────────────────────────────
 
+def active_wells_with_watershed():
+    """Active wells annotated with `ws`, the id of the watershed their water belongs to.
+
+    The watershed of the well's AvailableFreshWater source when set, otherwise
+    the watershed containing the well; None when neither exists.
+    """
+    containing = Watershed.objects.filter(geom__contains=OuterRef('geom')).values('pk')[:1]
+    return ExtractionWater.objects.filter(is_active=True).annotate(
+        ws=Coalesce('source__watershed', Subquery(containing), output_field=IntegerField()),
+    )
+
+
+def _watershed_neighborhoods(watershed):
+    """Neighborhoods served by a watershed: those whose point on surface lies in it.
+
+    One point per neighborhood, so a neighborhood crossing a watershed border
+    counts in exactly one watershed and the shares of a watershed sum to 1.
+    """
+    return (
+        Neighborhood.objects
+        .annotate(pos=PointOnSurface('geom'))
+        .filter(pos__within=watershed.geom)
+    )
+
+
+def watershed_share(adminBund, watershed):
+    """Share (0-1) of a watershed's water that goes to the population of adminBund.
+
+    share = population of the unit's neighborhoods in the watershed
+            / population of all neighborhoods in the watershed
+    Falls back to the unit's share of the watershed area when no neighborhood
+    population is stored there (e.g. only cities were imported).
+    """
+    served = _watershed_neighborhoods(watershed)
+    total_pop = served.aggregate(p=Sum('currentPopulation'))['p'] or 0
+    if total_pop > 0:
+        unit_pop = (
+            served.filter(pk__in=neighborhoods_within(adminBund).values('pk'))
+            .aggregate(p=Sum('currentPopulation'))['p'] or 0
+        )
+        return unit_pop / total_pop
+    if not watershed.geom.area:
+        return 0.0
+    return adminBund.geom.intersection(watershed.geom).area / watershed.geom.area
+
+
 def calculate_total_extraction(adminBund):
-    """Total active extraction in m³/day from wells within the adminBund.
+    """Active extraction in m³/day available to the population of adminBund.
+
+    Wells may lie outside the unit: the water they pump belongs to their
+    watershed (the watershed of the well's AvailableFreshWater source, or the
+    watershed containing the well) and is distributed over the population of
+    that watershed. Per watershed:
+        E_u = Σ_w V_w × share(u, watershed)
+    with V_w the well's volume in m³/day (ExtractionWater.volume_m3_d: measured
+    yearly extraction, else pump flow x operation time, else flow x 24 h).
+    Wells with no watershed keep the location rule (counted in full for the
+    units they lie in).
 
     DAG edges:  Available_FW → Total_Extraction
     """
-    wells = ExtractionWater.objects.filter(
-        is_active=True,
-        geom__intersects=adminBund.geom,
-    )
-    total_m3_s = wells.aggregate(total=Sum('pumpflow_m3_s'))['total'] or 0
-    return total_m3_s * 86400  # m³/day
+    wells = active_wells_with_watershed()
+    volume = ExtractionWater.volume_m3_d()
+    flows = wells.values('ws').annotate(m3_d=Sum(volume))
+    m3_d_by_ws = {row['ws']: row['m3_d'] or 0 for row in flows}
+
+    total_m3_d = 0.0
+    if None in m3_d_by_ws:
+        total_m3_d += (
+            wells.filter(ws__isnull=True, geom__intersects=adminBund.geom)
+            .aggregate(total=Sum(volume))['total'] or 0
+        )
+    for watershed in Watershed.objects.filter(pk__in=[ws for ws in m3_d_by_ws if ws is not None]):
+        total_m3_d += m3_d_by_ws[watershed.pk] * watershed_share(adminBund, watershed)
+    return total_m3_d
 
 
 def calculate_total_production_day(adminBund=None):
@@ -57,11 +138,10 @@ def calculate_total_production_day(adminBund=None):
     if adminBund:
         extraction_m3_d = calculate_total_extraction(adminBund)
     else:
-        total_m3_s = (
+        extraction_m3_d = (
             ExtractionWater.objects.filter(is_active=True)
-            .aggregate(total=Sum('pumpflow_m3_s'))['total'] or 0
+            .aggregate(total=Sum(ExtractionWater.volume_m3_d()))['total'] or 0
         )
-        extraction_m3_d = total_m3_s * 86400
 
     imported_m3_d = (
         ImportedWater.objects.filter(is_active=True)
@@ -272,11 +352,27 @@ def calculate_coverage(adminBund):
 
 # ── Non-Revenue Water ────────────────────────────────────────────────
 
-def calculate_nrw(year):
-    """Non-Revenue Water breakdown.
+def calculate_nrw(year, adminBund=None):
+    """Non-Revenue Water breakdown, network-wide or for one admin unit.
 
-    DAG edges:  Real_Losses     → NRW, ILI
+    DAG edges:  Network         → Real_Losses (each real loss sits on a PipeNetwork)
+                Real_Losses     → NRW, ILI
                 Apparent_Losses → NRW, ILI
+
+    With ``adminBund``:
+    - a real loss counts in proportion to the share of its pipe's length inside
+      the unit (pipes run from a well to a users location, so one pipe can
+      cross many units; the shares of a leak over all units add up to the
+      whole leak). Real losses without a pipe cannot be placed and only
+      appear network-wide;
+    - apparent losses (meter error, theft, data errors) have no location, so the
+      unit gets its share of them by water users (``UsersLocation.usersTotal``);
+      ``apparent_share`` is None when no user counts are stored.
+    ILI = CARL / UARL over the real losses counted, so it is the unit's own ILI.
+
+    ``real_losses_by_pipe`` lists, per pipe, the presumed leakage counted
+    here (``loss_m3_d``, after the length share), that share, and the
+    leakage per km of the whole pipe (m³/km/day), worst first.
     """
     nrw_qs = NonRevenueWater.objects.filter(year=year)
 
@@ -284,22 +380,65 @@ def calculate_nrw(year):
         nrw_qs.filter(type='A')
         .aggregate(total=Sum('loss_Quantity_m3'))['total'] or 0
     )
-    real = (
-        nrw_qs.filter(type='R')
-        .aggregate(total=Sum('loss_Quantity_m3'))['total'] or 0
-    )
+    apparent_share = 1.0
+    if adminBund is not None:
+        all_users = UsersLocation.objects.aggregate(total=Sum('usersTotal'))['total'] or 0
+        unit_users = (
+            UsersLocation.objects
+            .filter(neighborhood__in=neighborhoods_within(adminBund))
+            .aggregate(total=Sum('usersTotal'))['total'] or 0
+        )
+        apparent_share = unit_users / all_users if all_users else None
+        apparent *= apparent_share or 0
 
-    latest_ili = (
-        nrw_qs.filter(type='R', ILI__isnull=False)
-        .order_by('-last_updated')
-        .first()
+    # CARL and UARL per pipe (pipe_id None = legacy rows without a pipe)
+    per_pipe = (
+        nrw_qs.filter(type='R')
+        .values('pipe_id', 'pipe__length_km')
+        .annotate(
+            carl=Sum('loss_Quantity_m3'),
+            uarl=Sum(ExpressionWrapper(
+                F('loss_Quantity_m3') * F('UnavoidableLossses_PCT') / 100, output_field=FloatField())),
+        )
     )
+    if adminBund is None:
+        shares = None
+    else:
+        shares = {
+            p.pk: p.inside.m / p.full.m if p.full.m else 0
+            for p in (
+                PipeNetwork.objects
+                .filter(pk__in=[r['pipe_id'] for r in per_pipe if r['pipe_id']],
+                        geom__intersects=adminBund.geom)
+                .annotate(inside=Length(Intersection('geom', adminBund.geom)), full=Length('geom'))
+            )
+        }
+
+    real = uarl = 0
+    by_pipe = []
+    for row in per_pipe:
+        share = 1.0 if shares is None else shares.get(row['pipe_id'], 0)
+        if not share:
+            continue
+        real += row['carl'] * share
+        uarl += row['uarl'] * share
+        if row['pipe_id']:
+            length_km = row['pipe__length_km']
+            by_pipe.append({
+                'pipe_id': row['pipe_id'],
+                'share': share,
+                'loss_m3_d': row['carl'] * share,
+                'loss_m3_km_d': row['carl'] / length_km if length_km else None,
+            })
+    by_pipe.sort(key=lambda r: r['loss_m3_d'], reverse=True)
 
     return {
         'apparent_losses_m3_d': apparent,
+        'apparent_share': apparent_share,
         'real_losses_m3_d': real,
         'total_nrw_m3_d': apparent + real,
-        'ili': latest_ili.ILI if latest_ili else None,
+        'ili': round(real / uarl, 2) if uarl else None,
+        'real_losses_by_pipe': by_pipe,
     }
 
 
@@ -316,6 +455,34 @@ def calculate_available_freshwater(adminBund):
         .filter(geom__intersects=adminBund.geom)
         .aggregate(total=Sum('totalQuantity_Mm3'))['total'] or 0
     )
+
+
+# ── Infiltration (SCS Curve Number) ──────────────────────────────────
+
+def calculate_infiltration(adminBund, season='wet'):
+    """Soil group x land cover composition of the adminBund, for the SCS method.
+
+    The rain depth is a dashboard what-if, so this returns only the areas;
+    physicalEnv.soil.summarize_infiltration turns them into curve number,
+    infiltration coefficient and volumes for a given rain depth.
+
+    `season` ('wet' or 'dry') picks the groundwater level (GHG or GLG):
+    where it is under 60 cm on undrained land the soil counts as group D;
+    drained (built-up, paved) land keeps its texture group.
+
+    DAG edges:  LandCover  → Infiltration
+                Soil_Type  → Infiltration
+    """
+    from physicalEnv.soil import SEASONS, soil_landcover_composition
+
+    composition, by_group, shallow_m2, drained_m2 = soil_landcover_composition(
+        adminBund.geom, SEASONS[season]['statistic'])
+    return {
+        'composition': composition,
+        'soil_groups_m2': by_group,
+        'shallow_groundwater_m2': shallow_m2,
+        'drained_shallow_m2': drained_m2,
+    }
 
 
 # ── Drought ──────────────────────────────────────────────────────────

@@ -9,15 +9,24 @@
 />
 <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.1.0/mapbox-gl-geocoder.min.js"></script>
 <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.1.0/mapbox-gl-geocoder.css" type="text/css">
+<link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.5.0/mapbox-gl-draw.css" type="text/css">
+<script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.5.0/mapbox-gl-draw.js"></script>
 <link rel="stylesheet" href="{% static 'css/mainMap.css' %}" />
 <link rel="stylesheet" href="{% static 'css/indicators.css' %}" />
 {% endblock %} {% block extra_js %}
-<script src="https://api.mapbox.com/mapbox-gl-js/v3.18.0/mapbox-gl.js"></script>
+<!-- Includes the Mapbox GL JS CSS stylesheet -->
+{% comment %} <link href="https://api.mapbox.com/mapbox-gl-js/v3.32.0/mapbox-gl.css" rel="stylesheet"> {% endcomment %}
+<!-- Imports the Mapbox GL JS bundle -->
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.32.0/mapbox-gl.js"></script>
 <script src="{% static 'js/Config.js' %}"></script>
 <script src="{% static 'js/CityName.js' %}"></script>
+<script src="{% static 'js/Draggable.js' %}"></script>
 <script src="{% static 'js/MapUI.js' %}"></script>
 <script src="{% static 'js/Panels.js' %}"></script>
 <script src="{% static 'js/Layers.js' %}"></script>
+<script src="{% static 'js/Editing.js' %}"></script>
+<script src="{% static 'js/LstTool.js' %}"></script>
+<script src="{% static 'js/SvfTool.js' %}"></script>
 <script src="{% static 'js/Events.js' %}"></script>
 <script src="{% static 'js/Map_init.js' %}"></script>
 {% endblock %} {% block content_section_class %}{% endblock %}
@@ -29,6 +38,7 @@
 
     <!-- LEFT TOOLBAR -->
     <div class="toolbar" id="toolbar">
+      <div class="toolbar-grip" title="Drag to move">⠿</div>
       <button class="tool-button active" data-tool="overview">
         <span>👁️</span>
         <div class="tool-tooltip">Overview</div>
@@ -38,7 +48,12 @@
         <div class="tool-tooltip">Administrative Data</div>
       </button>
 
-      <button class="tool-button" data-tool="builtup">
+      <button class="tool-button" data-tool="builtup"
+        data-panel-title="BUILT-UP"
+        hx-get="{% url 'builtup:builtup_indicators' level='province' location='Demo' year=2025 %}"
+        hx-target="#panel-body"
+        hx-indicator="#map-loader"
+        hx-swap="innerHTML">
         <span>🏗️</span>
         <div class="tool-tooltip">Built-up</div>
       </button>
@@ -204,14 +219,86 @@
       <div class="population-panel-body" id="population-panel-body"></div>
     </div>
 
-    <!-- GROUNDWATER LEGEND -->
-    <div id="legend-groundwater" class="map-legend" style="display: none">
-      <div class="legend-title">Average Groundwater table depth - GHG (m)</div>
-      <img
-        id="legend-img"
-        src="https://service.pdok.nl/bzk/bro-grondwaterspiegeldiepte/wms/v2_0/legend/bro-grondwaterspiegeldieptemetingen-GHG/mediaan.png"
-        alt="GHG legend"
-      />
+    <!-- LST TOOL — Land Surface Temperature for the area in view
+         (core/static/js/LstTool.js, urban_heat/lst/views.py). -->
+    <div class="lst-card" id="lst-card"
+         data-scenes-url="{% url 'urban_heat:lst_scenes' %}"
+         data-calculate-url="{% url 'urban_heat:lst_calculate' %}"
+         data-can-calculate="{{ user.is_staff|yesno:'1,0' }}">
+      {% csrf_token %}
+      <div class="lst-card-header">
+        <div class="lst-card-title">LAND SURFACE TEMPERATURE</div>
+        <button class="lst-card-close" id="lst-card-close" aria-label="Close LST tool">✕</button>
+      </div>
+      <p class="lst-card-hint">Landsat 9 thermal band and the NDVI layer (Statistical Mono-Window), for the area in view.</p>
+      <div class="lst-card-fields">
+        <label>From <input type="date" id="lst-from"></label>
+        <label>To <input type="date" id="lst-to"></label>
+        <label>Cell
+          <select id="lst-resolution">
+            <option value="30" selected>30 m</option>
+            <option value="60">60 m</option>
+            <option value="100">100 m</option>
+          </select>
+        </label>
+      </div>
+      <label class="lst-check"><input type="checkbox" id="lst-use-ndvi" checked> Emissivity from the NDVI layer</label>
+      <button class="lst-btn" id="lst-find">Find scenes for this view</button>
+      <div class="lst-view-info" id="lst-view-info"></div>
+      <div class="lst-scenes" id="lst-scenes" role="radiogroup" aria-label="Landsat scenes"></div>
+      <button class="lst-btn lst-btn-primary" id="lst-calculate" disabled>Calculate LST for this view</button>
+      <div class="lst-status" id="lst-status" role="status"></div>
+    </div>
+
+    <!-- SVF TOOL — Sky-view factor from the DSM for the area in view
+         (core/static/js/SvfTool.js, physicalEnv/views.py). Same look as the
+         LST card, so it reuses its lst-* classes. -->
+    <div class="lst-card" id="svf-card"
+         data-info-url="{% url 'physicalEnv:svf_info' %}"
+         data-calculate-url="{% url 'physicalEnv:svf_calculate' %}"
+         data-can-calculate="{{ user.is_staff|yesno:'1,0' }}">
+      {% csrf_token %}
+      <div class="lst-card-header">
+        <div class="lst-card-title">SKY VIEW FACTOR</div>
+        <button class="lst-card-close" id="svf-card-close" aria-label="Close SVF tool">✕</button>
+      </div>
+      <p class="lst-card-hint">Horizon search over the Digital Surface Model, for the area in view only (plus one search radius around it).</p>
+      <div class="lst-card-fields">
+        <label>Radius
+          <select id="svf-radius">
+            <option value="25">25 m</option>
+            <option value="50" selected>50 m</option>
+            <option value="100">100 m</option>
+            <option value="200">200 m</option>
+          </select>
+        </label>
+        <label>Cell
+          <select id="svf-resolution">
+            <option value="" selected>DSM</option>
+            <option value="1">1 m</option>
+            <option value="2">2 m</option>
+            <option value="5">5 m</option>
+          </select>
+        </label>
+      </div>
+      <div class="lst-view-info" id="svf-view-info"></div>
+      <button class="lst-btn lst-btn-primary" id="svf-calculate" disabled>Calculate SVF for this view</button>
+      <div class="lst-status" id="svf-status" role="status"></div>
+    </div>
+
+    <!-- LEGEND STACK — holds the static groundwater legend plus every
+         dynamic raster/WMS/categorical legend added by Layers.js. Kept as
+         a single draggable, repositionable unit so multiple legends never
+         overlap each other or the side panel / population dock. -->
+    <div class="legend-stack" id="legend-stack">
+      <div id="legend-groundwater" class="map-legend" style="display: none">
+        <div class="legend-title">Average Groundwater table depth - GHG (m)</div>
+        <img
+          id="legend-img"
+          src="https://service.pdok.nl/bzk/bro-grondwaterspiegeldiepte/wms/v2_0/legend/bro-grondwaterspiegeldieptemetingen-GHG/mediaan.png"
+          alt="GHG legend"
+        />
+      </div>
     </div>
 
     <!-- MAP LOADER -->
@@ -266,6 +353,13 @@
             <span class="indicator-value" id="population-count">0</span>
           </div>
         </div>
+
+        <button class="mode-btn" id="actions-menu-btn"
+                aria-haspopup="true" aria-expanded="false" aria-controls="actions-menu">
+          <span class="bi bi-sliders"></span> Actions ·
+          <span id="actions-menu-year">2025</span>
+          <span class="actions-menu-caret">▴</span>
+        </button>
       </div>
 
       <div class="city-name">{{ city_name|default:"Enschede" }}</div>
@@ -278,57 +372,58 @@
           <span>🧩</span> Scenarios
         </button>
       </div>
-    </div>  
-  </div>
-
-  <!-- RIGHT ACTIONS PANEL -->
-  <div class="right-actions-panel">
-    <div class="actions-header">
-      <span class="actions-title">ACTIONS</span>
     </div>
-    
-    <button class="action-panel-btn" id="importDataBtn">
-      <span class="bi bi-cloud-upload"></span>
-      <span class="action-btn-text">Upload Data</span>
-    </button>
 
-    <button class="action-panel-btn" id="getDataBtn">
-      <span class="bi bi-cloud-download"></span>
-      <span class="action-btn-text">Retrive Data from APIs</span>
-    </button>
-  <!-- Year selector -->
-  <div class="actions-divider"></div>
-  <div class="actions-header">
-    <span class="actions-title">SELECT YEAR</span>
+    <!-- ACTIONS MENU — drop-up opened from the bottom bar's Actions button.
+         A sibling of .bottom-bar (not a child) so it can stack above the
+         side panel and population dock; mainMap.js anchors it to the button. -->
+    <div class="actions-menu" id="actions-menu">
+      <div class="actions-header">
+        <span class="actions-title">ACTIONS</span>
+      </div>
+      <div class="actions-menu-row">
+        <button class="action-panel-btn" id="importDataBtn">
+          <span class="bi bi-cloud-upload"></span>
+          <span class="action-btn-text">Upload Data</span>
+        </button>
+        <button class="action-panel-btn" id="getDataBtn">
+          <span class="bi bi-cloud-download"></span>
+          <span class="action-btn-text">Retrieve Data from APIs</span>
+        </button>
+      </div>
+
+      <!-- Calculations run over the area in view -->
+      <div class="actions-divider"></div>
+      <div class="actions-header">
+        <span class="actions-title">CALCULATE FOR THIS VIEW</span>
+      </div>
+      <div class="actions-menu-row">
+        <button class="action-panel-btn" id="lstToolBtn">
+          <span class="bi bi-thermometer-sun"></span>
+          <span class="action-btn-text">Land Surface Temperature</span>
+        </button>
+      </div>
+      <div class="actions-menu-row">
+        <button class="action-panel-btn" id="svfToolBtn">
+          <span class="bi bi-brightness-high"></span>
+          <span class="action-btn-text">Sky View Factor</span>
+        </button>
+      </div>
+
+      <!-- Year selector -->
+      <div class="actions-divider"></div>
+      <div class="actions-header">
+        <span class="actions-title">SELECT YEAR</span>
+      </div>
+      <div class="year-btn-group" id="year-btn-group">
+        <button class="year-btn active" data-year="2025">2025</button>
+        <button class="year-btn" data-year="2026">2026</button>
+        <button class="year-btn" data-year="2027">2027</button>
+        <button class="year-btn" data-year="2030">2030</button>
+        <button class="year-btn" data-year="2050">2050</button>
+      </div>
+    </div>
   </div>
-  <div class="year-btn-group" id="year-btn-group">
-    <button class="year-btn active" data-year="2025">2025</button>
-    <button class="year-btn" data-year="2026">2026</button>
-    <button class="year-btn" data-year="2027">2027</button>
-    <button class="year-btn" data-year="2030">2030</button>
-    <button class="year-btn" data-year="2050">2050</button>
-  </div>
-
-</div>
-    
-    {% comment %} <button class="action-panel-btn" id="scenario1Btn">
-      <span class="bi bi-diagram-3"></span>
-      <span class="action-btn-text">Scenario 1</span>
-    </button>
-    
-    <button class="action-panel-btn" id="calculateBtn">
-      <span class="bi bi-calculator"></span>
-      <span class="action-btn-text">Calculate Results</span>
-    </button>
-
-    <div class="actions-divider"></div>
-
-    <button class="action-panel-btn secondary" id="settingsBtn">
-      <span class="bi bi-gear"></span>
-      <span class="action-btn-text">Settings</span> {% endcomment %}
-    </button>
-  </div>
-
 </div>
 
 <script>

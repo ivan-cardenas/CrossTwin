@@ -127,5 +127,40 @@ function initializeUI() {
       if (type === 'population') togglePopulationPanel();
     });
   });
+
+  // ---- Legend stack repositioning ---------------------------------------
+  // The legend stack (bottom-right) must dodge the side panel and the
+  // population dock whenever either opens/closes, resizes, or the window
+  // resizes — not just when a legend itself is added/removed (Layers.js
+  // already calls repositionDynamicLegends() for that).
+  if (typeof repositionDynamicLegends === 'function') {
+    const populationPanel = document.getElementById('population-panel');
+    [sidePanel, populationPanel].filter(Boolean).forEach(panel => {
+      new MutationObserver(repositionDynamicLegends)
+        .observe(panel, { attributes: true, attributeFilter: ['class'] });
+      if (typeof ResizeObserver !== 'undefined') {
+        new ResizeObserver(repositionDynamicLegends).observe(panel);
+      }
+    });
+    window.addEventListener('resize', repositionDynamicLegends);
+  }
+
+  // ---- Draggable overlays ------------------------------------------------
+  // Skip on the mobile breakpoint, where panels already reflow into a fixed
+  // stacked layout (see mainMap.css's max-width: 768px rules).
+  if (typeof makeDraggable === 'function' && window.matchMedia('(min-width: 769px)').matches) {
+    const populationPanel = document.getElementById('population-panel');
+    const demoTour = document.getElementById('demo-tour');
+    const legendStack = document.getElementById('legend-stack');
+
+    makeDraggable(layersPanel, '.layers-panel-header');
+    makeDraggable(sidePanel, '.side-panel-header');
+    makeDraggable(populationPanel, '.population-panel-header');
+    makeDraggable(toolbar, '.toolbar-grip');
+    makeDraggable(demoTour, '.tour-step-badge');
+    makeDraggable(legendStack, '.legend-title', {
+      onReset: () => { if (typeof repositionDynamicLegends === 'function') repositionDynamicLegends(); },
+    });
+  }
 }
 

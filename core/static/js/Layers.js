@@ -97,12 +97,13 @@ async function addLayer(layerConfig) {
   if (layer_type === 'raster') { await addRasterLayerFromConfig(layerConfig); return; }
 
   // Vector layer
-  console.log(`Loading layer "${key}"...`);
+  const viewport = usesViewportLoading(layerConfig);
+  console.log(`Loading layer "${key}"${viewport ? ' (viewport only)' : ''}...`);
 
   try {
     showLoader(true);
 
-    const response = await fetch(url);
+    const response = await fetch(viewport ? `${url}?${viewportQuery()}` : url);
     if (!response.ok) throw new Error(`Failed to load ${key}`);
 
     const geojson = await response.json();
@@ -115,12 +116,22 @@ async function addLayer(layerConfig) {
       // Use explicit Mapbox layer definitions from the API
       style_layers.forEach((def, i) => {
         const layerId = `${key}-custom-${i}`;
+        // A model layer only renders a model registered with addModel(); a
+        // URL in model-id is never fetched for a layer added at runtime. The
+        // URL doubles as the model id, so one model is loaded once.
+        const modelUrl = def.type === 'model' && def.layout && def.layout['model-id'];
+        if (modelUrl && !map.hasModel(modelUrl)) {
+          map.addModel(modelUrl, new URL(modelUrl, window.location.href).href);
+        }
         map.addLayer({
           id: layerId,
           type: def.type,
           source: key,
           paint: def.paint || {},
           layout: def.layout || {},
+          // e.g. the 3D tree models (mainMap/styles/treeStyles.py) only from zoom 15
+          ...(def.minzoom != null && { minzoom: def.minzoom }),
+          ...(def.maxzoom != null && { maxzoom: def.maxzoom }),
         });
         layerIds.push(layerId);
       });
@@ -155,7 +166,8 @@ async function addLayer(layerConfig) {
       layerIds.push(`${key}-fill`, `${key}-outline`);
     }
 
-    loadedLayers[key] = { layerIds, geojson, config: layerConfig };
+    loadedLayers[key] = { layerIds, geojson, config: layerConfig, viewport };
+    if (viewport) bindViewportReload();
 
     if (layerConfig.legend && layerConfig.legend.length) {
       addCategoricalLegend(key, display_name, layerConfig.legend);
@@ -171,6 +183,7 @@ async function addLayer(layerConfig) {
     map.on('mouseleave', clickLayerId, () => { map.getCanvas().style.cursor = ''; });
 
     console.log(`Layer "${key}" loaded with ${geojson.features.length} features`);
+    sync3DBuildings();
     updateIndicators();
 
   } catch (error) {
@@ -178,6 +191,122 @@ async function addLayer(layerConfig) {
   } finally {
     showLoader(false);
   }
+}
+
+// ---- Viewport-loaded vector layers --------------------------------------
+//
+// A layer with many features (buildings, streets, land cover) would
+// otherwise be fetched whole, however little of it is on screen. These
+// layers ask the GeoJSON endpoint for the current viewport only (it filters
+// on the spatial index and simplifies geometry below zoom 14) and re-fetch
+// after each pan/zoom. Superseded requests are aborted so a fast pan never
+// paints an older viewport over a newer one.
+
+let viewportReloadBound = false;
+let viewportReloadTimer = null;
+
+function usesViewportLoading(layerConfig) {
+  return layerConfig.app_label !== 'administrative'
+    && Number(layerConfig.count) >= VIEWPORT_LOAD_MIN_FEATURES;
+}
+
+function viewportQuery() {
+  const b = map.getBounds();
+  const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+  // Rounded *outward* to COORD_DECIMALS, so the box never shrinks and drops
+  // features at the edge of the screen.
+  const step = 10 ** COORD_DECIMALS;
+  const down = v => (Math.floor(v * step) / step).toFixed(COORD_DECIMALS);
+  const up = v => (Math.ceil(v * step) / step).toFixed(COORD_DECIMALS);
+  const bbox = [
+    down(clamp(b.getWest(), -180, 180)), down(clamp(b.getSouth(), -90, 90)),
+    up(clamp(b.getEast(), -180, 180)), up(clamp(b.getNorth(), -90, 90)),
+  ].join(',');
+  return `bbox=${bbox}&zoom=${Math.floor(map.getZoom())}`;
+}
+
+function bindViewportReload() {
+  if (viewportReloadBound) return;
+  viewportReloadBound = true;
+  map.on('moveend', () => {
+    clearTimeout(viewportReloadTimer);
+    viewportReloadTimer = setTimeout(() => {
+      for (const [key, entry] of Object.entries(loadedLayers)) {
+        if (entry.viewport) reloadViewportLayer(key);
+      }
+    }, VIEWPORT_RELOAD_DELAY_MS);
+  });
+}
+
+async function reloadViewportLayer(key) {
+  const entry = loadedLayers[key];
+  if (!entry || !entry.viewport || layerVisibility[key] === false) return;
+
+  entry.abortController?.abort();
+  const controller = new AbortController();
+  entry.abortController = controller;
+
+  try {
+    const response = await fetch(`${entry.config.url}?${viewportQuery()}`, { signal: controller.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const geojson = await response.json();
+    // The layer may have been removed (basemap switch) while this was in flight
+    if (loadedLayers[key] !== entry) return;
+    map.getSource(key)?.setData(geojson);
+    entry.geojson = geojson;
+    updateIndicators();
+  } catch (error) {
+    if (error.name !== 'AbortError') console.error(`Error reloading layer "${key}":`, error);
+  }
+}
+
+/**
+ * Re-fetch a loaded vector layer after its rows changed (map editing,
+ * backup restore). Viewport layers re-fetch the current viewport; the rest
+ * load whole again. The server's cached GeoJSON was already invalidated by
+ * the write (core/signals.py).
+ */
+async function reloadLayer(key) {
+  const entry = loadedLayers[key];
+  if (!entry) return;
+  if (entry.viewport) return reloadViewportLayer(key);
+  try {
+    const response = await fetch(entry.config.url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const geojson = await response.json();
+    if (loadedLayers[key] !== entry) return;   // removed meanwhile (basemap switch)
+    map.getSource(key)?.setData(geojson);
+    entry.geojson = geojson;
+    updateIndicators();
+  } catch (error) {
+    console.error(`Error reloading layer "${key}":`, error);
+  }
+}
+
+/**
+ * Drop a layer whose row no longer exists (e.g. an LST raster replaced by a
+ * recalculation): its map layers and sources, legend and catalog entry.
+ */
+function removeLayer(key) {
+  const entry = loadedLayers[key];
+  if (entry) {
+    entry.layerIds.forEach(id => {
+      const layer = map.getLayer(id);
+      if (!layer) return;
+      const sourceId = layer.source;
+      map.removeLayer(id);
+      const stillUsed = map.getStyle().layers.some(l => l.source === sourceId);
+      if (!stillUsed && map.getSource(sourceId)) map.removeSource(sourceId);
+    });
+    delete loadedLayers[key];
+  }
+  document.getElementById(`legend-${key}`)?.remove();
+  const index = availableLayers.findIndex(l => l.key === key);
+  if (index >= 0) availableLayers.splice(index, 1);
+  delete layerVisibility[key];
+  repositionDynamicLegends();
+  renderLayerList();
+  updateIndicators();
 }
 
 // ---- WMS layers -------------------------------------------------------
@@ -189,9 +318,9 @@ function addWmsLayer(layerConfig) {
   const tileUrl = wms_url +
     '?service=WMS&request=GetMap&version=1.3.0' +
     `&layers=${wms_layers}&styles=&format=image/png&transparent=true` +
-    '&width=256&height=256&crs=EPSG:3857&bbox={bbox-epsg-3857}';
+    `&width=${WMS_TILE_SIZE}&height=${WMS_TILE_SIZE}&crs=EPSG:3857&bbox={bbox-epsg-3857}`;
 
-  map.addSource(key, { type: 'raster', tiles: [tileUrl], tileSize: 256 });
+  map.addSource(key, { type: 'raster', tiles: [tileUrl], tileSize: WMS_TILE_SIZE });
   map.addLayer({
     id: key, type: 'raster', source: key,
     layout: { visibility: 'visible' },
@@ -220,7 +349,7 @@ function addWmsLegend(key, title, legendUrl) {
     <div class="legend-title">${title}</div>
     <img src="${legendUrl}" alt="${title} legend" />
   `;
-  document.querySelector('.map-wrapper').appendChild(legend);
+  document.getElementById('legend-stack')?.appendChild(legend);
   legend.querySelector('img').addEventListener('load', repositionDynamicLegends);
   repositionDynamicLegends();
 }
@@ -245,7 +374,7 @@ function wmsTileUrlForTime(wms_url, wms_layers, time) {
   return wms_url + separator +
     'service=WMS&request=GetMap&version=1.3.0' +
     `&layers=${wms_layers}&styles=&format=image/png&transparent=true` +
-    `&width=256&height=256&crs=EPSG:3857&bbox={bbox-epsg-3857}&TIME=${time}`;
+    `&width=${WMS_TILE_SIZE}&height=${WMS_TILE_SIZE}&crs=EPSG:3857&bbox={bbox-epsg-3857}&TIME=${time}`;
 }
 
 async function addAnimatedWmsLayer(layerConfig) {
@@ -264,7 +393,7 @@ async function addAnimatedWmsLayer(layerConfig) {
   map.addSource(key, {
     type: 'raster',
     tiles: [wmsTileUrlForTime(wms_url, wms_layers, times[startIndex])],
-    tileSize: 256,
+    tileSize: WMS_TILE_SIZE,
   });
   map.addLayer({
     id: key, type: 'raster', source: key,
@@ -376,6 +505,10 @@ function renderWmsScrubberDock(key, layerConfig) {
   const existing = document.getElementById(`scrubber-${key}`);
   if (existing) existing.remove();
   dock.appendChild(scrubber);
+
+  if (typeof makeDraggable === 'function') {
+    makeDraggable(scrubber, '.wms-time-name');
+  }
 }
 
 // ---- Raster (TiTiler) layers -----------------------------------------
@@ -451,7 +584,7 @@ async function addRasterLayer(map, appLabel, modelName, rasterID, opacity = 0.7)
 /**
  * Render a color-range legend for an active raster layer: a gradient bar
  * sampled server-side from the exact colormap TiTiler used to paint the
- * tiles (core/rasterStyles.py::colormap_legend_stops), plus min/max labels.
+ * tiles (mainMap/styles/rasterStyles.py::colormap_legend_stops), plus min/max labels.
  * Categorical products (land cover classes) still get a gradient over their
  * value range rather than a per-class key, which is a reasonable stand-in
  * given there's no class-label metadata to draw from yet.
@@ -477,7 +610,7 @@ function addRasterLegend(key, title, legend) {
       <span>${Number(legend.max).toFixed(2)}</span>
     </div>
   `;
-  document.querySelector('.map-wrapper').appendChild(legendEl);
+  document.getElementById('legend-stack')?.appendChild(legendEl);
   repositionDynamicLegends();
 }
 
@@ -486,7 +619,7 @@ function addRasterLegend(key, title, legend) {
 /**
  * Render a swatch-per-category legend for a vector layer colored by a
  * `match` expression on some property (e.g. LandCoverVector.land_cover_type
- * — see core/landCoverStyles.py::build_landcover_style_and_legend), as
+ * — see mainMap/styles/landCoverStyles.py::build_landcover_style_and_legend), as
  * opposed to addRasterLegend's continuous gradient bar.
  * @param {string} key - layer key, used to id/find/remove the legend element.
  * @param {string} title - legend heading.
@@ -510,30 +643,64 @@ function addCategoricalLegend(key, title, categories) {
     <div class="legend-title">${title}</div>
     <div class="legend-list">${items}</div>
   `;
-  document.querySelector('.map-wrapper').appendChild(legendEl);
+  document.getElementById('legend-stack')?.appendChild(legendEl);
   repositionDynamicLegends();
 }
 
 /**
- * All legends (dynamic raster/WMS ones, plus the static #legend-groundwater
- * block) share the same fixed corner via .map-legend's CSS, so with more than
- * one visible at once they'd render stacked exactly on top of each other.
- * Stack them vertically by their actual rendered height instead of a guessed
- * fixed height — WMS legend images vary a lot in size, so a fixed offset
- * either leaves gaps or overlaps depending on which legend is involved.
+ * Legends (dynamic raster/WMS/categorical ones, plus the static
+ * #legend-groundwater block) all live inside #legend-stack, which lays them
+ * out vertically itself (flex + gap) — this function only has to place the
+ * *stack* so it never overlaps the side panel or the population dock, both
+ * of which can independently open in the same bottom-right corner of the
+ * map. If the stack has been dragged by the user (Draggable.js sets
+ * data-dragged), leave its position alone.
  */
 function repositionDynamicLegends() {
-  const legends = Array.from(document.querySelectorAll('.map-legend'))
-    .filter(el => el.style.display !== 'none');
-  const gap = 10;
+  const stack = document.getElementById('legend-stack');
+  if (!stack) return;
+
+  const hasVisibleLegend = Array.from(stack.querySelectorAll('.map-legend'))
+    .some(el => el.style.display !== 'none');
+  stack.style.display = hasVisibleLegend ? 'flex' : 'none';
+  if (!hasVisibleLegend || stack.dataset.dragged) return;
+
+  const wrapper = document.querySelector('.map-wrapper');
+  const sidePanel = document.getElementById('side-panel');
+  const populationPanel = document.getElementById('population-panel');
+  if (!wrapper) return;
+
+  const wrapperRect = wrapper.getBoundingClientRect();
+  let right = 10;
   let bottom = 66;
-  legends.forEach(el => {
-    el.style.bottom = `${bottom}px`;
-    bottom += el.offsetHeight + gap;
-  });
+
+  if (sidePanel && sidePanel.classList.contains('visible')) {
+    const panelRect = sidePanel.getBoundingClientRect();
+    right = Math.max(right, wrapperRect.right - panelRect.left + 12);
+  }
+  if (populationPanel && populationPanel.classList.contains('visible')) {
+    const dockRect = populationPanel.getBoundingClientRect();
+    bottom = Math.max(bottom, wrapperRect.bottom - dockRect.top + 10);
+  }
+
+  stack.style.right = `${right}px`;
+  stack.style.bottom = `${bottom}px`;
 }
 
 // ---- Visibility & zoom ------------------------------------------------
+
+/**
+ * Hide Mapbox's own extruded buildings ('3d-buildings', Map_init.js) while
+ * any builtup layer is shown, so they don't cover the database's buildings,
+ * streets and parks. Only builtup layers do this; every other app's layers
+ * leave the 3D buildings on.
+ */
+function sync3DBuildings() {
+  if (!map || !map.getLayer('3d-buildings')) return;
+  const builtupShown = Object.entries(loadedLayers).some(([key, entry]) =>
+    entry.config.app_label === 'builtup' && layerVisibility[key] !== false);
+  map.setLayoutProperty('3d-buildings', 'visibility', builtupShown ? 'none' : 'visible');
+}
 
 function toggleLayerVisibility(key, visible) {
   layerVisibility[key] = visible;
@@ -553,18 +720,34 @@ function toggleLayerVisibility(key, visible) {
     }
   } else if (visible && loadedLayers[key]) {
     loadedLayers[key].layerIds.forEach(id => map.setLayoutProperty(id, 'visibility', 'visible'));
+    // The map may have moved while the layer was hidden
+    if (loadedLayers[key].viewport) reloadViewportLayer(key);
     if (wmsAnimations[key]) {
       const scrubber = document.getElementById(`scrubber-${key}`);
       if (scrubber) scrubber.style.display = 'flex';
     }
   }
 
+  sync3DBuildings();
   updateIndicators();
 }
 
-function zoomToLayer(key) {
+async function zoomToLayer(key) {
   if (!loadedLayers[key]) return;
-  const { geojson } = loadedLayers[key];
+  const { geojson, viewport, config } = loadedLayers[key];
+
+  // A viewport-loaded layer only holds what is on screen; ask the server
+  // for the extent of the whole layer instead.
+  if (viewport) {
+    try {
+      const response = await fetch(`/api/layers/${config.app_label}/${config.model_name}/bounds/`);
+      const data = await response.json();
+      if (data.bounds) safeFitBounds(data.bounds, { padding: 50, duration: 800 });
+    } catch (error) {
+      console.error(`Error fetching bounds of "${key}":`, error);
+    }
+    return;
+  }
   const bounds = new mapboxgl.LngLatBounds();
 
   geojson.features.forEach(f => {
@@ -710,10 +893,10 @@ function _formatValue(value, fieldMeta, key = '') {
   return String(value);
 }
 
-function createPopupContent(properties, layerName, fields = {}, color = null) {
+function createPopupContent(properties, layerName, fields = {}, color = null, layerKey = null) {
   const titleKey = _featureTitleKey(properties);
   return `<div class="popup-feature" style="--layer-color:${color || 'var(--text-dim)'}">
-    ${_popupHead(properties, layerName, titleKey)}
+    ${_popupHead(properties, layerName, titleKey, layerKey)}
     ${_popupTable(properties, fields, titleKey)}
   </div>`;
 }
@@ -735,6 +918,8 @@ let featurePopup = null;
  */
 function initFeaturePopup() {
   map.on('click', (e) => {
+    // Clicks belong to the drawing tools while an object is being edited
+    if (typeof isEditing === 'function' && isEditing()) return;
     const layers = [...popupLayers.keys()].filter(id => map.getLayer(id));
     if (!layers.length) return;
 
@@ -765,7 +950,7 @@ function _uniquePopupEntries(features) {
     const id = `${layer.key}|${f.id ?? JSON.stringify(f.properties)}`;
     if (seen.has(id)) continue;
     seen.add(id);
-    entries.push({ name: layer.name, fields: layer.fields, color: layer.color, properties: f.properties });
+    entries.push({ key: layer.key, name: layer.name, fields: layer.fields, color: layer.color, properties: f.properties });
   }
   return entries;
 }
@@ -780,12 +965,23 @@ function _featureTitleKey(properties) {
 }
 
 /** Feature name as the title, its layer underneath; just the layer when the feature has no name. */
-function _popupHead(properties, layerName, titleKey) {
-  if (!titleKey) return `<div class="popup-head"><div class="popup-title">${layerName}</div></div>`;
+function _popupHead(properties, layerName, titleKey, layerKey = null) {
+  const edit = _popupEditButton(properties, layerKey);
+  if (!titleKey) return `<div class="popup-head"><div class="popup-title">${layerName}</div>${edit}</div>`;
   return `<div class="popup-head">
     <div class="popup-title">${properties[titleKey]}</div>
     <div class="popup-layer">${layerName}</div>
+    ${edit}
   </div>`;
+}
+
+/** "Edit" button for staff on editable layers (the catalog marks them, see core/editing.py). */
+function _popupEditButton(properties, layerKey) {
+  if (!layerKey || properties.id === null || properties.id === undefined) return '';
+  if (typeof startEdit !== 'function' || !availableLayers.find(l => l.key === layerKey)?.editable) return '';
+  // preventDefault: inside a multi-feature popup the head sits in a <summary>
+  return `<button class="popup-edit-btn" type="button"
+    onclick="event.preventDefault(); startEdit('${layerKey}', ${Number(properties.id)})">✎ Edit</button>`;
 }
 
 /**
@@ -795,14 +991,14 @@ function _popupHead(properties, layerName, titleKey) {
  */
 function createMultiFeaturePopupContent(entries) {
   if (entries.length === 1) {
-    const { properties, name, fields, color } = entries[0];
-    return createPopupContent(properties, name, fields, color);
+    const { key, properties, name, fields, color } = entries[0];
+    return createPopupContent(properties, name, fields, color, key);
   }
 
-  const sections = entries.map(({ properties, name, fields, color }, i) => {
+  const sections = entries.map(({ key, properties, name, fields, color }, i) => {
     const titleKey = _featureTitleKey(properties);
     return `<details class="popup-feature popup-section" style="--layer-color:${color || 'var(--text-dim)'}"${i === 0 ? ' open' : ''}>
-      <summary>${_popupHead(properties, name, titleKey)}</summary>
+      <summary>${_popupHead(properties, name, titleKey, key)}</summary>
       ${_popupTable(properties, fields, titleKey)}
     </details>`;
   }).join('');
@@ -847,3 +1043,5 @@ function _popupTable(properties, fields = {}, skipKey = null) {
 // Expose to global scope
 window.toggleLayerVisibility = toggleLayerVisibility;
 window.zoomToLayer = zoomToLayer;
+window.reloadLayer = reloadLayer;
+window.removeLayer = removeLayer;

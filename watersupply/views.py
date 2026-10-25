@@ -7,10 +7,12 @@ from django.db.models import Sum, Avg
 from django.apps import apps
 
 from .models import *
+from . import chain
 from administrative.admin_units import resolve_admin_unit
 from administrative.population import DEFAULT_SCENARIO, get_population, population_params
 from .calculations import (
     _get_consumption_capita,
+    consumption_data_years,
     calculate_supply_security,
     calculate_total_extraction,
     calculate_total_production_day,
@@ -23,17 +25,19 @@ from .calculations import (
     calculate_nrw,
     calculate_available_freshwater,
     calculate_drought_area,
+    calculate_infiltration,
 )
+from physicalEnv.soil import DEFAULT_SEASON, SEASONS, SOIL_GROUP_ORDER, SOIL_GROUPS, summarize_infiltration
 from django.contrib.gis.db.models.functions import Intersection, Length
 from django.contrib.gis.measure import D
 
 # ── constants ─────────────────────────────────────────────────────────
-SERVICE_HOURS_MAX = 24
 MAX_OPEX_EUR      = 10_000_000
 MAX_CONSUMPTION   = 300
+RAIN_MM_DEFAULT   = 25     # design rain event of the infiltration what-if, mm
 
 # ── shared helper ─────────────────────────────────────────────────────
-def _get_province_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, pop_growth=0.0):
+def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, pop_growth=0.0, season=DEFAULT_SEASON):
     """
     Fetch all fixed DB values for an administrative unit/year. Returns a dict.
 
@@ -72,7 +76,7 @@ def _get_province_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, pop
     opex_total = supply_m3_yr * avg_opex_m3
 
     # NRW breakdown
-    nrw = calculate_nrw(year)
+    nrw = calculate_nrw(year, adminUnit)
 
     # Energy & emissions (DAG: Total_Extraction → Energy_Consumption, CO2_Emission)
     energy_kwh_day = calculate_energy_consumption(adminUnit)
@@ -96,10 +100,15 @@ def _get_province_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, pop
     # Total extraction (DAG: Available_FW → Total_Extraction)
     extraction_m3_d = calculate_total_extraction(adminUnit)
 
+    # Infiltration (DAG: LandCover, Soil_Type → Infiltration)
+    infiltration = {**calculate_infiltration(adminUnit, season), 'season': season}
+
     return {
         'province':             adminUnit,
         'population':           get_population(adminUnit, year, pop_scenario, pop_growth),
         'consumption_capita':   _get_consumption_capita(adminUnit, year),
+        # years the consumption comes from, when not `year` itself (closest earlier survey)
+        'consumption_years':    [y for y in consumption_data_years(adminUnit, year) if y != year],
         'demand_m3_d':          demand_m3_d,
         'supply_m3_d':          supply_m3_d,
         'supply_security':      supply_security,
@@ -120,6 +129,7 @@ def _get_province_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, pop
         'opex_recovery':        opex_recovery,
         'coverage':             coverage,
         'drought':              drought,
+        'infiltration':         infiltration,
     }
 
 _MOCK_OPEX_M3 = 0.07  # EUR/m3
@@ -156,24 +166,70 @@ MOCK_DATA = {
         'households_total': 5_000, 'coverage_pct': 84.0,
     },
     'drought':              {'total_area_km2': 12.3, 'max_sensibility': 2},
+    'infiltration':         {
+        'composition': [
+            ('A', 'urban fabric', 6e6), ('A', 'pastures', 4e6), ('A', 'broad-leaved forest', 3e6),
+            ('B', 'arable land', 2e6), ('D', 'pastures', 3e6), ('D', 'urban fabric', 1e6),
+        ],
+        'soil_groups_m2': {'A': 13e6, 'B': 2e6, 'D': 4e6},
+        'shallow_groundwater_m2': 1e6,
+    },
 }
 
 # ── shared calculation ────────────────────────────────────────────────
-def _build_indicators(data, consumption_override=None):
+def _infiltration_indicators(infiltration, rain_mm):
+    """SCS infiltration of a rain event of `rain_mm` over the unit's soil x land cover."""
+    scs = summarize_infiltration(infiltration.get('composition', []), rain_mm)
+    groups = infiltration.get('soil_groups_m2', {})
+    soil_total = sum(a for g, a in groups.items() if g) or 0
+    coefficient = scs['infiltration_coefficient']
+    shallow_m2 = infiltration.get('shallow_groundwater_m2', 0)
+    drained_m2 = infiltration.get('drained_shallow_m2', 0)
+    season = infiltration.get('season', DEFAULT_SEASON)
+    return {
+        'rain_mm':                   rain_mm,
+        'season':                    season,
+        'groundwater_statistic':     SEASONS[season]['statistic'],
+        'curve_number':              scs['curve_number'],
+        'infiltration_pct':          round(coefficient * 100, 1) if coefficient is not None else None,
+        'infiltrated_m3':            round(scs['infiltrated_m3']),
+        'runoff_m3':                 round(scs['runoff_m3']),
+        'infiltration_classified_km2': round(scs['classified_m2'] / 1e6, 2),
+        'infiltration_unclassified_km2': round(scs['unclassified_m2'] / 1e6, 2),
+        # share of the soil x land cover area moved to group D by the season's
+        # groundwater < 60 cm (undrained land), and the share over shallow
+        # groundwater that kept its texture group because it is drained
+        'shallow_groundwater_pct': round(shallow_m2 / scs['classified_m2'] * 100, 1) if scs['classified_m2'] else 0,
+        'drained_shallow_pct':     round(drained_m2 / scs['classified_m2'] * 100, 1) if scs['classified_m2'] else 0,
+        # soil groups present in the unit, with their final infiltration rate range
+        'soil_groups': [
+            {
+                'group': g,
+                'pct': round(groups.get(g, 0) / soil_total * 100, 1),
+                'min_mm_h': SOIL_GROUPS[g]['min_mm_h'],
+                'max_mm_h': SOIL_GROUPS[g]['max_mm_h'],
+                'texture': SOIL_GROUPS[g]['texture'],
+            }
+            for g in SOIL_GROUP_ORDER if soil_total and groups.get(g)
+        ],
+    }
+
+
+def _build_indicators(data, consumption_override=None, rain_mm=RAIN_MM_DEFAULT):
     """Pure function: takes DB data dict, returns indicators dict."""
     consumption  = (consumption_override or data['consumption_capita'])
-    demand_m3_d  = consumption / 1000 * data['population']
+    # Same chain as the stored records (watersupply/chain.py), fed with the
+    # request's population what-if instead of the baseline projection.
+    demand_m3_d  = chain.demand_m3_d(consumption, data['population'])
     supply_m3_d  = data['supply_m3_d']
-    available    = data['available_water_Mm3']
     opex_total   = data['opex_total']
 
     demand_Mm3_yr  = demand_m3_d  * 365 / 1_000_000
     supply_Mm3_yr  = supply_m3_d  * 365 / 1_000_000
+    # Supply and demand share one scale (the larger of the two) so their bars compare
+    balance_scale  = max(supply_Mm3_yr, demand_Mm3_yr)
 
-    service_time = (
-        SERVICE_HOURS_MAX if supply_m3_d > demand_m3_d
-        else round(SERVICE_HOURS_MAX * supply_m3_d / demand_m3_d, 1) if demand_m3_d else 0
-    )
+    service_time = chain.service_time_hours(supply_m3_d, demand_m3_d)
 
     # NRW as percentage of supply
     nrw_m3_d = data.get('nrw_m3_d', 0)
@@ -192,14 +248,20 @@ def _build_indicators(data, consumption_override=None):
         # ── Existing indicators ──
         'population':            data['population'],
         'consumption_capita':    consumption,
+        # shown next to the slider while it still holds the stored value
+        'consumption_years':     [] if consumption_override else data.get('consumption_years', []),
         'consumption_percent':   min(consumption / MAX_CONSUMPTION * 100, 100),
         'total_supply_Mm3':      round(supply_Mm3_yr, 2),
         'total_demand_Mm3':      round(demand_Mm3_yr, 2),
-        'total_supply_percent':  round(min(supply_Mm3_yr / available * 100, 100), 1) if available else 0,
-        'total_demand_percent':  round(min(demand_Mm3_yr / available * 100, 100), 1) if available else 0,
-        'supply_security':       supply_Mm3_yr / demand_Mm3_yr * 100 if demand_Mm3_yr else 0,
+        'supply_m3_d':           round(supply_m3_d),
+        'demand_m3_d':           round(demand_m3_d),
+        'supply_bar_pct':        round(supply_Mm3_yr / balance_scale * 100, 1) if balance_scale else 0,
+        'demand_bar_pct':        round(demand_Mm3_yr / balance_scale * 100, 1) if balance_scale else 0,
+        'balance_Mm3':           round(supply_Mm3_yr - demand_Mm3_yr, 2),
+        'balance_abs_Mm3':       round(abs(supply_Mm3_yr - demand_Mm3_yr), 2),
+        'supply_security':       chain.supply_security_pct(supply_m3_d, demand_m3_d),
         'service_time':          service_time,
-        'service_time_percent':  round(service_time / SERVICE_HOURS_MAX * 100, 1),
+        'service_time_percent':  round(service_time / chain.SERVICE_HOURS_MAX * 100, 1),
         'network_length':        data['network_length'],
         'opex':                  f"{opex_total:,.0f}",
         'opex_percent':          min(opex_total / MAX_OPEX_EUR * 100, 100),
@@ -231,6 +293,8 @@ def _build_indicators(data, consumption_override=None):
         # Drought
         'drought_area_km2':      drought.get('total_area_km2', 0),
         'drought_sensibility':   drought.get('max_sensibility', 0),
+        # Infiltration (SCS Curve Number, rain-event what-if)
+        **_infiltration_indicators(data.get('infiltration', {}), rain_mm),
     }
 
 
@@ -240,9 +304,15 @@ def _population_context(pop_scenario, pop_growth):
     return {'pop_scenario': pop_scenario, 'pop_growth': pop_growth}
 
 
+def _season_param(params):
+    """Season of the infiltration what-if ('wet' = GHG, 'dry' = GLG); the default when absent or invalid."""
+    season = params.get('season')
+    return season if season in SEASONS else DEFAULT_SEASON
+
+
 def water_indicators(request, level, location, year):
     pop_scenario, pop_growth = population_params(request.GET)
-    data = _get_province_data(level, location, year, pop_scenario, pop_growth)
+    data = _get_adminUnit_data(level, location, year, pop_scenario, pop_growth, _season_param(request.GET))
     if data is None:
         data = MOCK_DATA
 
@@ -260,13 +330,22 @@ def water_indicators(request, level, location, year):
     return render(request, 'watersupply/water_indicators.html', context)
 
 
+def _rain_param(params):
+    """Rain depth (mm) of the infiltration what-if; the default when absent or invalid."""
+    try:
+        return min(max(float(params.get('rain_mm', RAIN_MM_DEFAULT)), 1.0), 200.0)
+    except (TypeError, ValueError):
+        return RAIN_MM_DEFAULT
+
+
 def recalculate_indicators(request, level, location, year):
     consumption = float(request.GET.get('consumption', 120))
+    rain_mm = _rain_param(request.GET)
     pop_scenario, pop_growth = population_params(request.GET)
-    data = _get_province_data(level, location, year, pop_scenario, pop_growth)
+    data = _get_adminUnit_data(level, location, year, pop_scenario, pop_growth, _season_param(request.GET))
     if data is None:
         data = MOCK_DATA
 
-    indicators = _build_indicators(data, consumption_override=consumption)
+    indicators = _build_indicators(data, consumption_override=consumption, rain_mm=rain_mm)
 
     return render(request, 'watersupply/partials/indicators_grid.html', {'indicators': indicators})

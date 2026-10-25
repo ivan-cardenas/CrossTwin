@@ -7,6 +7,7 @@ from .models import (
 )
 from administrative.admin_units import cities_within, neighborhoods_within, province_of
 from builtup.models import Property, ZoningArea, Building
+from physicalEnv.hilucs import hilucs_q
 
 
 # -- Supply & Demand ---------------------------------------------------------
@@ -116,6 +117,83 @@ def calculate_new_units_for_unit(adminBund, year):
         'pipeline_units': pipeline_agg['units'] or 0,
         'pipeline_projects': pipeline_agg['count'] or 0,
     }
+
+
+def calculate_pipeline_land_take(adminBund, year):
+    """Land cover the housing pipeline would build on (dashboard only, writes nothing).
+
+    The footprints of the unit's projects still to be completed after `year`
+    (overlapping footprints counted once per city) are intersected with each
+    city's latest land-cover year:
+
+        A_k = area( (∪ project footprints) ∩ polygons of class k )
+
+    Classes that already count as urban (physicalEnv URBAN_AREA_KEYWORDS:
+    urban fabric, road, rail, transport) are infill; every other class is
+    greenfield, i.e. land the New_Units would turn into urban fabric.
+    `uncovered_ha` is footprint area outside any land-cover polygon.
+
+    DAG edges:  New_Units -> LandCover
+    """
+    from django.db import connection
+    from administrative.models import District, Neighborhood
+    from physicalEnv.models import LandCoverClasses, LandCoverVector
+    from physicalEnv.signals import URBAN_AREA_KEYWORDS, _area_sql
+
+    project_ids = list(
+        HousingProject.objects.filter(
+            neighborhood__in=neighborhoods_within(adminBund),
+            year_expected_completion__gt=year,
+        ).values_list('pk', flat=True)
+    )
+    result = {'by_class': [], 'footprint_ha': 0.0, 'greenfield_ha': 0.0,
+              'infill_ha': 0.0, 'uncovered_ha': 0.0}
+    if not project_ids:
+        return result
+
+    sql = f"""
+        WITH p AS (
+            SELECT d.city_id, ST_Union(hp.geom) AS geom
+            FROM "{HousingProject._meta.db_table}" hp
+            JOIN "{Neighborhood._meta.db_table}" n ON n.id = hp.neighborhood_id
+            JOIN "{District._meta.db_table}" d ON d.id = n.district_id
+            WHERE hp.id = ANY(%(ids)s)
+            GROUP BY d.city_id
+        ), latest AS (
+            SELECT city_id, MAX(year) AS year
+            FROM "{LandCoverVector._meta.db_table}"
+            WHERE city_id IN (SELECT city_id FROM p)
+            GROUP BY city_id
+        )
+        SELECT c.class_name, SUM({_area_sql("ST_Intersection(l.geom, p.geom)")}) AS area_m2
+        FROM p
+        JOIN latest ON latest.city_id = p.city_id
+        JOIN "{LandCoverVector._meta.db_table}" l
+             ON l.city_id = p.city_id AND l.year = latest.year
+             AND l.geom && p.geom AND ST_Intersects(l.geom, p.geom)
+        JOIN "{LandCoverClasses._meta.db_table}" c ON c.id = l.land_cover_type_id
+        GROUP BY c.class_name
+        UNION ALL
+        SELECT NULL, SUM({_area_sql("p.geom")}) FROM p
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(sql, {'ids': project_ids})
+        rows = cursor.fetchall()
+
+    footprint_m2 = next((area for name, area in rows if name is None), 0) or 0
+    covered_m2 = 0.0
+    for name, area_m2 in sorted((r for r in rows if r[0] is not None), key=lambda r: -(r[1] or 0)):
+        area_m2 = area_m2 or 0.0
+        covered_m2 += area_m2
+        urban = any(kw in name.lower() for kw in URBAN_AREA_KEYWORDS)
+        result['infill_ha' if urban else 'greenfield_ha'] += area_m2 / 1e4
+        result['by_class'].append({'class_name': name, 'area_ha': round(area_m2 / 1e4, 2), 'urban': urban})
+
+    result['footprint_ha'] = round(footprint_m2 / 1e4, 2)
+    result['uncovered_ha'] = round(max(footprint_m2 - covered_m2, 0.0) / 1e4, 2)
+    result['greenfield_ha'] = round(result['greenfield_ha'], 2)
+    result['infill_ha'] = round(result['infill_ha'], 2)
+    return result
 
 
 # -- Mortgage -----------------------------------------------------------------
@@ -282,6 +360,17 @@ def calculate_property_indicators(adminBund):
 
 # -- Zoning -------------------------------------------------------------------
 
+# Dashboard zoning groups -> (HILUCS codes, codes carved out of them); a code
+# includes everything below it in the hierarchy (see hilucs_q). 5.2
+# "residential use with other compatible uses" is the mixed group.
+ZONING_GROUPS = {
+    'residential': (['5'], ['5.2']),
+    'commercial': (['3.1', '3.2'], []),   # commercial; financial, professional and information services
+    'industrial': (['2'], []),            # secondary production
+    'mixed': (['5.2'], []),
+}
+
+
 def calculate_zoning(adminBund):
     """Zoning area breakdown.
 
@@ -295,8 +384,11 @@ def calculate_zoning(adminBund):
     total_area = zones.aggregate(total=Sum('area'))['total'] or 0
 
     by_type = {}
-    for zone_type in ['residential', 'commercial', 'industrial', 'mixed']:
-        type_agg = zones.filter(zone_type=zone_type).aggregate(
+    for zone_type, (codes, carved_out) in ZONING_GROUPS.items():
+        group = zones.filter(hilucs_q('zone_type', codes))
+        if carved_out:
+            group = group.exclude(hilucs_q('zone_type', carved_out))
+        type_agg = group.aggregate(
             area=Sum('area'),
             count=Count('id'),
             avg_benchmark=Avg('benchmarkPrice_per_sqm'),

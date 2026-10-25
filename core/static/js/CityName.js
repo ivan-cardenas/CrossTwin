@@ -9,7 +9,7 @@ async function updateCityName() {
   try {
     const response = await fetch(
       `https://nominatim.openstreetmap.org/reverse?` +
-      `lat=${center.lat}&lon=${center.lng}&format=json&accept-language=en`,
+      `lat=${roundCoord(center.lat)}&lon=${roundCoord(center.lng)}&format=json&accept-language=en`,
       { headers: { 'User-Agent': 'UTwente-DigitalTwin/1.0 (i.l.cardenasleon@utwente.nl)' } }
     );
     const data = await response.json();
