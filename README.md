@@ -52,7 +52,9 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-**Database:**
+**Database + `.env` (Windows, recommended):** double-click `setup_db.bat` (or run it from a terminal in the project folder). It asks for your PostgreSQL admin password, the new database name, user name, password and privilege level (full / read-write / read-only), then creates the role and database, installs the PostGIS extensions, writes `.env` from `.env_template` (with a generated `SECRET_KEY`), and offers to run `migrate`. It needs PostgreSQL with PostGIS installed; `psql.exe` is found on `PATH` or under `C:\Program Files\PostgreSQL\<version>\bin`. An existing `.env` is backed up as `.env.backup-<timestamp>`.
+
+**Database (manual alternative):**
 
 ```sql
 CREATE DATABASE crosstwin;

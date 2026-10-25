@@ -12,6 +12,11 @@ The project focuses on **Dutch geospatial data** — the default CRS is EPSG:289
 ## Common Commands
 
 ```bash
+# First-time setup (Windows): create the PostGIS database + user and write .env
+# from .env_template interactively (setup_db.bat is a cmd launcher with the
+# PowerShell script embedded after its ##PS-START marker)
+setup_db.bat
+
 # Activate virtual environment (Windows)
 .venv\Scripts\Activate
 
