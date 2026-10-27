@@ -13,8 +13,11 @@ creating one copies nothing; each change made here first records the
 object's original row, once per object, and Restore reverts only those rows.
 Changes made through the importer, the admin, QGIS or psql are not recorded.
 
-Which layers are editable, and how their forms look, is configured in
-core/editable_layers.toml (read once at startup).
+Which layers are editable is switched in the map's settings panel
+(mainMap.models.EditableLayer, mainMap/settings_views.py). How their forms
+look (fields left out or not required) is configured in
+core/editable_layers.toml (FIELD_RULES, read once at startup), because it
+follows from each model's save().
 """
 import json
 import threading
@@ -27,7 +30,7 @@ from django.contrib.gis.db import models as gis_models
 from django.core import serializers
 from django.core.exceptions import ImproperlyConfigured
 from django.db import IntegrityError, connection, transaction
-from django.db.models import AutoField, Min
+from django.db.models import AutoField, Min, Model
 from django.forms import modelform_factory
 from django.http import Http404, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, render
@@ -35,7 +38,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_http_methods, require_POST
 
 from core.utils import VECTOR_REGISTRY
-from mainMap.models import EditBackup, EditBackupRow
+from mainMap.models import EditableLayer, EditBackup, EditBackupRow
 
 EDITABLE_LAYERS_FILE = Path(__file__).with_name('editable_layers.toml')
 _LAYER_SETTINGS = ('exclude', 'optional')
@@ -43,7 +46,8 @@ _LAYER_SETTINGS = ('exclude', 'optional')
 
 def load_editable_layers(path=EDITABLE_LAYERS_FILE):
     """
-    Registry key -> {'exclude': [...], 'optional': [...]} from the TOML file.
+    Registry key -> {'exclude': [...], 'optional': [...]} from the TOML file:
+    the form rules of each layer, not whether it is editable (EditableLayer).
     Only the file's shape is checked here; that every key is a vector layer
     and every field exists is checked by mainMap/test_editing.py.
     """
@@ -68,7 +72,13 @@ def load_editable_layers(path=EDITABLE_LAYERS_FILE):
     return layers
 
 
-EDITABLE_LAYERS = load_editable_layers()
+FIELD_RULES = load_editable_layers()
+NO_RULES = {'exclude': [], 'optional': []}
+
+# Apps with receivers that skip raw=True saves, so restore_backup would leave
+# their cascades stale (docs/MAP_EDITING.md). Their layers need field rules
+# and a restore hook before they can be switched on.
+RAW_SKIPPING_APPS = {'watersupply'}
 
 FORM_TEMPLATE = 'mainMap/partials/feature_form.html'
 BACKUP_TEMPLATE = 'mainMap/partials/backup_bar.html'
@@ -78,14 +88,44 @@ def geometry_field(model):
     return next((f for f in model._meta.get_fields() if isinstance(f, gis_models.GeometryField)), None)
 
 
-def is_editable(key, user):
-    """True when `user` may edit the layer `key` (used by the layer catalog too)."""
-    return key in EDITABLE_LAYERS and getattr(user, 'is_staff', False)
+def editable_keys():
+    """Registry keys of the layers switched on in the settings panel (one query)."""
+    return set(EditableLayer.objects.filter(key__in=VECTOR_REGISTRY).values_list('key', flat=True))
+
+
+def is_editable(key, user, keys=None):
+    """
+    True when `user` may edit the layer `key`. The layer catalog passes
+    `keys` (editable_keys()) so it asks the database once, not per layer.
+    """
+    if not getattr(user, 'is_staff', False):
+        return False
+    return key in (editable_keys() if keys is None else keys)
+
+
+def enable_blocker(key):
+    """
+    Why the layer `key` may not be switched on, or None when it may. A model
+    whose save() derives fields needs field rules in editable_layers.toml,
+    otherwise the form shows fields whose typed values save() overwrites.
+    """
+    model = VECTOR_REGISTRY.get(key)
+    if model is None:
+        return 'Not a vector layer.'
+    if key in FIELD_RULES:
+        return None
+    if model._meta.app_label in RAW_SKIPPING_APPS:
+        return ('Its cascades skip raw saves, so Restore would leave them stale. '
+                'Add it to core/editable_layers.toml with a restore hook first.')
+    if model.save is not Model.save:
+        return ('Its save() derives fields. Add it to core/editable_layers.toml with the '
+                'fields save() sets as exclude, then restart the server.')
+    return None
 
 
 def _editable_model(app_label, model_name):
     key = f'{app_label}.{model_name}'
-    if key not in EDITABLE_LAYERS or key not in VECTOR_REGISTRY:
+    if key not in VECTOR_REGISTRY or not EditableLayer.objects.filter(key=key).exists():
         raise Http404(f'Layer {key} is not editable')
     return key, VECTOR_REGISTRY[key]
 
@@ -95,7 +135,7 @@ def _forbidden():
 
 
 def _build_form(key, model, data=None, instance=None):
-    cfg = EDITABLE_LAYERS[key]
+    cfg = FIELD_RULES.get(key, NO_RULES)
     geom = geometry_field(model)
     # The primary key is never editable (Building.id is a BAG id, not auto)
     exclude = [model._meta.pk.name, *cfg.get('exclude', [])]
@@ -165,7 +205,7 @@ def feature_form(request, app_label, model_name, pk=None):
     URL: /api/layers/<app>/<model>/features/new/ | /features/<pk>/
     """
     key, model = _editable_model(app_label, model_name)
-    if not is_editable(key, request.user):
+    if not is_editable(key, request.user, keys={key}):
         return _forbidden()
     instance = get_object_or_404(model, pk=pk) if pk is not None else None
 
@@ -178,18 +218,27 @@ def feature_form(request, app_label, model_name, pk=None):
         return render(request, FORM_TEMPLATE, _form_context(key, model, form, instance))
 
     creating = instance is None
-    with transaction.atomic():
+    try:
+        with transaction.atomic():
+            if not creating:
+                # Before the save: the journal reads the row as it is in the DB
+                # (the form has already copied the new values onto `instance`).
+                journal(key, model, instance.pk)
+            obj = form.save(commit=False)
+            if creating and not isinstance(model._meta.pk, AutoField):
+                obj.pk = _next_negative_pk(model)
+            # force_insert: two editors creating at once can get the same id, and a
+            # plain save() would then UPDATE (overwrite) the other's new object.
+            obj.save(force_insert=creating)
+            form.save_m2m()
+            if creating:
+                journal(key, model, obj.pk, created=True)
+    except IntegrityError as exc:
         if not creating:
-            # Before the save: the journal reads the row as it is in the DB
-            # (the form has already copied the new values onto `instance`).
-            journal(key, model, instance.pk)
-        obj = form.save(commit=False)
-        if creating and not isinstance(model._meta.pk, AutoField):
-            obj.pk = _next_negative_pk(model)
-        obj.save()
-        form.save_m2m()
-        if creating:
-            journal(key, model, obj.pk, created=True)
+            raise
+        # Most likely the id race above: saving again picks a fresh id
+        form.add_error(None, f"Could not save, please try again ({exc}).")
+        return render(request, FORM_TEMPLATE, _form_context(key, model, form, instance))
 
     obj.refresh_from_db()
     form = _build_form(key, model, instance=obj)
@@ -207,7 +256,7 @@ def feature_delete(request, app_label, model_name, pk):
     URL: /api/layers/<app>/<model>/features/<pk>/delete/
     """
     key, model = _editable_model(app_label, model_name)
-    if not is_editable(key, request.user):
+    if not is_editable(key, request.user, keys={key}):
         return _forbidden()
     obj = get_object_or_404(model, pk=pk)
     label = f'{model._meta.verbose_name} {obj.pk}'

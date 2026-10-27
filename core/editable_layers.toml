@@ -1,4 +1,7 @@
-# Layers that staff users can edit on the map (core/editing.py, docs/MAP_EDITING.md).
+# Edit-form rules of the layers staff users can edit on the map (core/editing.py,
+# docs/MAP_EDITING.md). Whether a layer is editable is switched in the map's
+# settings panel (Map settings -> Editable layers, stored as mainMap.EditableLayer);
+# a layer whose model overrides save() can only be switched on once it is listed here.
 #
 # One table per layer, named by its registry key "app_label.ClassName" (as in
 # the layer catalog). Only vector layers (models with a geometry) can be edited.

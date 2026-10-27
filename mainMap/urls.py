@@ -1,6 +1,7 @@
 from django.urls import path, register_converter
 from .views import model_geojson, map_view, available_layers, layer_bounds, admin_unit_at_point, dashboard_summary, population_panel
 from core import editing
+from . import settings_views
 from core import views
 
 
@@ -38,4 +39,9 @@ urlpatterns = [
     path('api/editing/backup/', editing.backup, name='edit_backup'),
     path('api/editing/backup/restore/', editing.backup_restore, name='edit_backup_restore'),
     path('api/editing/backup/discard/', editing.backup_discard, name='edit_backup_discard'),
+
+    # Map settings panel: editable layers and styles (staff only, mainMap/settings_views.py)
+    path('api/settings/', settings_views.map_settings, name='map_settings'),
+    path('api/settings/editable/', settings_views.settings_editable, name='settings_editable'),
+    path('api/settings/style/', settings_views.settings_style, name='settings_style'),
 ]

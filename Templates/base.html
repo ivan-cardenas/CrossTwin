@@ -130,6 +130,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     <span class="version-badge" title="{{ git.branch }} · {{ git.short_hash }}">
                         <span class="version-badge__tag">{{ git.version_tag }}</span>
                     </span>
+                    {% block header_actions %}{% endblock header_actions %}
+                    <!-- Account: log in / out (django.contrib.auth.urls) -->
+                    {% if user.is_authenticated %}
+                        <span class="header-user hidden md:inline" title="{% if user.is_staff %}Staff: can edit layers and map settings{% endif %}">
+                            <i class="bi bi-person-circle"></i> {{ user.get_username }}
+                        </span>
+                        <form method="post" action="{% url 'logout' %}" class="inline">
+                            {% csrf_token %}
+                            <button type="submit" class="header-btn">Log out</button>
+                        </form>
+                    {% else %}
+                        <a class="header-btn" href="{% url 'login' %}?next={{ request.get_full_path|urlencode }}">
+                            <i class="bi bi-box-arrow-in-right"></i> Log in
+                        </a>
+                    {% endif %}
                 </div>
             </div>
         </header>

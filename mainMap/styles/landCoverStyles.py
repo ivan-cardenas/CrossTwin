@@ -92,7 +92,8 @@ def build_landcover_style_and_legend():
 
     Returns (style_layers, legend) where style_layers is the LAYER_STYLES
     'layers' list for physicalEnv.LandCoverVector and legend is a list of
-    {label, color} dicts sorted alphabetically for display.
+    {label, color, value} dicts sorted alphabetically for display (value =
+    the matched class name, used by colour overrides in overrides.py).
     """
     from physicalEnv.models import LandCoverVector
 
@@ -119,7 +120,7 @@ def build_landcover_style_and_legend():
     for name in class_names:
         color = get_landcover_color(name)
         match_expr.extend([name, color])
-        legend.append({"label": name, "color": color})
+        legend.append({"label": name, "color": color, "value": name})
     match_expr.append("#9e9e9e")  # fallback for any value not in the list
 
     style_layers = [

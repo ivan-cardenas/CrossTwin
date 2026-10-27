@@ -1251,6 +1251,25 @@ class GroundwaterDepthImportTests(TestCase):
         self.assertEqual(rows["GLG"].depth_raster.bands[0].data()[0][0], 120)
         self.assertEqual(rows["GHG"].source, "BIS Nederland (WUR)")
 
+    def test_reimport_refreshes_the_cog(self):
+        """update_or_create keeps cog_path set; the COG must still be rebuilt from the new raster."""
+        from .external_data import PDOKImporter
+
+        def export(instance):
+            # Like the real export: set the path and save only that field
+            instance.cog_path = f"/nonexistent/ghg_{instance.pk}.tif"
+            instance.save(update_fields=["cog_path"])
+
+        with mock.patch("core.rasterOperations.export_raster_to_cog", side_effect=export) as cog:
+            for value in (40, 45):
+                response = _FakeResponse(content=_ghg_tiff_bytes(value))
+                response.content = response._content
+                with mock.patch("importer.external_data.requests.get", return_value=response):
+                    result = PDOKImporter.fetch_wcs(CATALOG_BY_KEY["bodemdata_ghg"], [6.89, 52.21, 6.90, 52.22])
+                self.assertEqual(result.status, "success", result.message)
+
+        self.assertEqual(cog.call_count, 2)
+
     def test_pdok_wcs_keeps_lowercase_axes(self):
         self.assertNotIn("wcs_axis_labels", CATALOG_BY_KEY["pdok_dem_ahn_raster"])
 

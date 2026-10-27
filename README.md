@@ -48,9 +48,9 @@ cd CrossTwin
 
 # Recommended: uv (https://docs.astral.sh/uv/)
 uv sync                       # creates .venv and installs pyproject.toml + uv.lock
-.venv\Scripts\Activate        # Windows
-# source .venv/bin/activate   # Linux / macOS
 ```
+
+Run every command below through `uv run` (e.g. `uv run python manage.py migrate`): it uses the project's `.venv` without activating it, from any folder of the project, and first syncs it with `uv.lock`, so after a `git pull` that changed dependencies you never run against a stale environment. Activating `.venv` (`.venv\Scripts\Activate`, `source .venv/bin/activate`) and typing plain `python` still works, as long as you run `uv sync` after pulling.
 
 Dependencies are declared in `pyproject.toml` and pinned in `uv.lock`. `uv sync` uses the Python version uv finds; pick another with `uv sync --python 3.13`. Add `--no-dev` to skip the Jupyter kernel (`ipykernel`).
 
@@ -65,7 +65,7 @@ Dependencies are declared in `pyproject.toml` and pinned in `uv.lock`. `uv sync`
 
   On macOS and Linux the `gdal` Python package is not installed: Django loads the system library, and rasterio, pyogrio and pyproj bundle their own GDAL/PROJ in their wheels.
 
-**Without uv.** Without uv, `python -m venv .venv` and `pip install -r requirements.txt` still work, but `requirements.txt` is a frozen Windows + Python 3.11 environment (its GDAL wheel is `cp311-win_amd64`).
+**Without uv.** Without uv, `python -m venv .venv` and `pip install -r requirements.txt` still work (activate `.venv` and drop the `uv run` prefix from the commands), but `requirements.txt` is a frozen Windows + Python 3.11 environment (its GDAL wheel is `cp311-win_amd64`).
 
 </details>
 
@@ -201,12 +201,12 @@ KNMI_API_KEY=your-knmi-api-key
 
 | Variable | Required | How to get it |
 |---|---|---|
-| `SECRET_KEY` | yes | Any long random string. Generate one (with the venv active): `python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"` |
+| `SECRET_KEY` | yes | Any long random string. Generate one: `uv run python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"` |
 | `DEBUG` | yes | `True` for local development, `False` in production |
 | `DATABASE_NAME`, `DATABASE_USER`, `DATABASE_PASSWORD` | yes | The database, user and password you created in step 2 |
 | `DATABASE_HOST`, `DATABASE_PORT` | yes | `localhost` / `5432` for a local install (the port you chose in the PostgreSQL installer) |
 | `MAPBOX_ACCESS_TOKEN` | yes | Sign up at [mapbox.com](https://account.mapbox.com/auth/signup/), then **Account → Tokens**. The *Default public token* (`pk.…`) works; the free tier is enough for development |
-| `TITILER_BASE_URL` | yes | `http://localhost:8001` — the port you start `uvicorn tiler:app` on |
+| `TITILER_BASE_URL` | yes | `http://localhost:8001` — the port you start `uv run uvicorn tiler:app` on |
 | `COORDINATE_SYSTEM` | yes | `28992` (Amersfoort / RD New) for Dutch data. Set it **before** the first `migrate`: geometry columns are created in this CRS |
 | `GEE_PROJECT_ID` | for Earth Engine imports and the LST tool | Create a Google Cloud project and register it for Earth Engine at [code.earthengine.google.com/register](https://code.earthengine.google.com/register) (free for non-commercial/research use); use the project's ID. The first Earth Engine call opens a browser for Google sign-in and caches the token per machine (or run `earthengine authenticate` once) |
 | `SENTINEL_CLIENT_ID`, `SENTINEL_CLIENT_SECRET` | for Sentinel-2 imports | Register at [dataspace.copernicus.eu](https://dataspace.copernicus.eu/), open the [Sentinel Hub dashboard](https://shapps.dataspace.copernicus.eu/dashboard/) → **User settings → OAuth clients → Create**. The secret is shown only once |
@@ -219,7 +219,7 @@ KNMI_API_KEY=your-knmi-api-key
 ### 4. Check the database connection
 
 ```bash
-python tools/check_postgres.py
+uv run python tools/check_postgres.py
 ```
 
 It connects with the `DATABASE_*` values from `.env`, checks that PostGIS is installed and enabled, and tells you what to fix if not (the common cases are listed under **Running the Project** below).
@@ -229,14 +229,14 @@ It connects with the `DATABASE_*` values from `.env`, checks that PostGIS is ins
 **Option A: empty database.** Create the tables, then import your own data through the importer (`/importer/`):
 
 ```bash
-python manage.py migrate
+uv run python manage.py migrate
 ```
 
 **Option B: example data.** The repository ships an example database in `example/crosstwin_example_data.zip`. Load it into the empty database of step 2 (instead of Option A's `migrate`):
 
 ```bash
-python tools/example_db.py load   # = example/crosstwin_example_data.zip
-python manage.py migrate          # applies migrations newer than the package, if any
+uv run python tools/example_db.py load   # = example/crosstwin_example_data.zip
+uv run python manage.py migrate          # applies migrations newer than the package, if any
 ```
 
 It restores the tables and data, copies the raster COG files into `cogs/` and points each raster row at them. The database must be empty and already have the `postgis`/`postgis_raster` extensions. If a load fails halfway, drop and re-create the database before trying again.
@@ -244,7 +244,7 @@ It restores the tables and data, copies the raster COG files into `cogs/` and po
 **Then create a superuser** (users are not part of the example data). The superuser can log in at `/admin/` and is staff, so it can also edit layers on the map and run the LST/SVF tools.
 
 ```bash
-python manage.py createsuperuser
+uv run python manage.py createsuperuser
 ```
 
 ## ▶️ Running the Project
@@ -252,13 +252,13 @@ python manage.py createsuperuser
 CrossTwin runs as **two servers**, in separate terminals:
 
 ```bash
-python manage.py runserver 8000
-uvicorn tiler:app --port 8001 --reload
+uv run python manage.py runserver 8000
+uv run uvicorn tiler:app --port 8001 --reload
 ```
 
 Or run `start.bat` on Windows, which starts both. Visit `http://localhost:8000`.
 
-`start.bat` first runs `python tools/check_postgres.py` (you can run it on any OS). It connects with the `DATABASE_*` settings of `.env` and checks for the `postgis` and `postgis_raster` extensions. If something is missing it says what and how to fix it, and `start.bat` stops:
+`start.bat` first runs `uv run python tools/check_postgres.py` (you can run it on any OS). It connects with the `DATABASE_*` settings of `.env` and checks for the `postgis` and `postgis_raster` extensions. If something is missing it says what and how to fix it, and `start.bat` stops:
 
 - **PostgreSQL not installed**: `winget install --id PostgreSQL.PostgreSQL.17 -e` on Windows (Homebrew / apt on macOS / Linux).
 - **PostgreSQL installed but not running**: the `net start postgresql-x64-<version>` command for the service it finds.
@@ -276,7 +276,7 @@ Or run `start.bat` on Windows, which starts both. Visit `http://localhost:8000`.
 |---|---|---|
 | `DigitalTwin/` | `settings.py`, `urls.py`, `test_runner.py` | Django project config, env loading, caches, custom PostGIS test runner |
 | `core/` | `utils.py`, `signals.py`, `cache.py`, `middleware.py`, `rasterOperations.py`, `DAG.dot`, `static/js/` | Model registry, layer-cache versions, query-stats middleware, raster→COG export pipeline, DPSIR causal graph, shared frontend JS |
-| `mainMap/` | `views.py`, `urls.py`, `charts.py`, `styles/` | Interactive map view, layer catalog + GeoJSON API, map editing (code in `core/editing.py`, editable layers in `core/editable_layers.toml`), population dock charts; `styles/` holds every map style: vector layer styles (`layerStyles.py`), soil map colours (`soilStyles.py`), land-cover legend (`landCoverStyles.py`), raster colormaps (`rasterStyles.py`) |
+| `mainMap/` | `views.py`, `urls.py`, `charts.py`, `styles/` | Interactive map view, layer catalog + GeoJSON API, map editing (code in `core/editing.py`, layers switched on in the Map settings panel, form rules in `core/editable_layers.toml`), Map settings panel (`settings_views.py`: editable layers, style overrides on top of `styles/`, `styles/overrides.py`), population dock charts; `styles/` holds every map style: vector layer styles (`layerStyles.py`), soil map colours (`soilStyles.py`), land-cover legend (`landCoverStyles.py`), raster colormaps (`rasterStyles.py`) |
 | `importer/` | `views.py`, `views_external.py`, `external_catalog.py`, `external_data.py`, `batching.py` | File-upload import + external catalog import (PDOK, CBS, BIS Nederland, OpenStreetMap, Sentinel-2, GEE, KNMI, RIVM, Klimaateffectatlas); bulk writes and deferred cascades |
 | `docs/` | `PERFORMANCE.md`, … | Performance review and implementation status |
 | `administrative/` | `models.py`, `population.py`, `signals.py` | Province > City > District > Neighborhood hierarchy, population projection |
@@ -408,7 +408,7 @@ Every `RASTER_REGISTRY` model auto-exports to a tile-servable COG on save:
 Raster models need a `cog_path` field to participate. Bulk-export with:
 
 ```bash
-python manage.py export_cogs
+uv run python manage.py export_cogs
 ```
 
 </details>
@@ -439,8 +439,8 @@ python manage.py export_cogs
 Tests use `PostGISTestRunner` (`DigitalTwin/test_runner.py`), which creates the test DB, installs PostGIS extensions, and patches Django's `prepare_database` to skip the superuser requirement.
 
 ```bash
-python manage.py test --settings=DigitalTwin.settings_test --keepdb --noinput
-python manage.py test importer --settings=DigitalTwin.settings_test --keepdb --noinput   # single app
+uv run python manage.py test --settings=DigitalTwin.settings_test --keepdb --noinput
+uv run python manage.py test importer --settings=DigitalTwin.settings_test --keepdb --noinput   # single app
 ```
 
 Always pass `--keepdb`: without it Django drops the test database the runner prepared and recreates it without PostGIS, and migrations fail with `type "geometry" does not exist`.
@@ -453,7 +453,7 @@ Always pass `--keepdb`: without it Django drops the test database the runner pre
 [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md) is the performance review and tracks what is done: §0–§3 (measurement, the GeoJSON endpoint, the land-cover signal, importer batching) are implemented; the rest are proposals.
 
 - With `QUERY_STATS=True`, every response carries a `Server-Timing` header — open DevTools → Network → Timing to see DB time and query count per API call.
-- `python manage.py db_stats` lists the slowest statements from `pg_stat_statements` (it explains how to enable the extension if it's missing).
+- `uv run python manage.py db_stats` lists the slowest statements from `pg_stat_statements` (it explains how to enable the extension if it's missing).
 - The caches are in local process memory. With several worker processes, switch `CACHES` in `settings.py` to Redis so a data change invalidates every worker's copy.
 
 </details> -->
@@ -479,7 +479,7 @@ Always pass `--keepdb`: without it Django drops the test database the runner pre
 | `setup_db.bat`: *PostGIS is not installed on this server* | Install **Spatial Extensions → PostGIS 3.x Bundle** with Stack Builder (Start menu → PostgreSQL), then run the script again |
 | `setup_db.bat`: *Could not connect* | PostgreSQL service running (`net start postgresql-x64-17`)? Correct admin password and port? |
 | Django: `password authentication failed` | `DATABASE_*` in `.env` match the database user; re-run `setup_db.bat` and choose to set a new password |
-| PROJ version mismatch on import | `python -c "import pyproj; print(pyproj.proj_version_str)"` vs `psql -c "SELECT PostGIS_PROJ_Version();"` — prefer `ST_AsGeoJSON` over GDAL reprojection if they diverge |
+| PROJ version mismatch on import | `uv run python -c "import pyproj; print(pyproj.proj_version_str)"` vs `psql -c "SELECT PostGIS_PROJ_Version();"` — prefer `ST_AsGeoJSON` over GDAL reprojection if they diverge |
 | Import fails despite a valid file | File encoding (UTF-8), geometry validity (`ST_IsValid`), SRID, required field mappings |
 | Mapbox map is blank | `MAPBOX_ACCESS_TOKEN` set/valid; browser console + network tab for failed requests |
 | Imported layer missing from map | Model's app is in `allowed_apps` (`core/utils.py`) and `INSTALLED_APPS`; `/api/layers/<app>/<model>/geojson/` returns valid GeoJSON |

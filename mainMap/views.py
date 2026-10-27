@@ -13,11 +13,9 @@ from django.urls import reverse
 
 from core.utils import VECTOR_REGISTRY, WMS_REGISTRY, RASTER_REGISTRY, MODEL_REGISTRY
 from .styles.rasterStyles import raster_display_name
-from .styles.landCoverStyles import build_landcover_style_and_legend
-from core.editing import is_editable
-from .styles.layerStyles import FALLBACK_COLORS, LAYER_STYLES
-from .styles.soilStyles import build_soil_style_and_legend
-from .styles.treeStyles import build_tree_style
+from core.editing import editable_keys, is_editable
+from .styles.layerStyles import FALLBACK_COLORS
+from .styles.overrides import vector_overrides, vector_style
 
 
 # Ordered from most specific to least — first match wins
@@ -306,6 +304,19 @@ def _simplify_tolerance(zoom, lat, geodetic):
     return metres / _METRES_PER_DEGREE if geodetic else metres
 
 
+def _manager_filter(model):
+    """
+    (sql, params) restricting `t` to the rows of the model's default manager,
+    or None when the manager does not filter. Lets a proxy with a filtering
+    manager (e.g. housing.ResidentialProperty) be a layer on its parent's table.
+    """
+    qs = model._default_manager.all()
+    if not qs.query.where:
+        return None
+    sql, params = qs.values('pk').query.sql_with_params()
+    return f't."{model._meta.pk.column}" IN ({sql})', list(params)
+
+
 def _geojson_sql(model, geom_field, bbox=None, zoom=None):
     """
     (sql, params) returning the layer as one FeatureCollection JSON text.
@@ -350,13 +361,18 @@ def _geojson_sql(model, geom_field, bbox=None, zoom=None):
         geom_expr = f"ST_SimplifyPreserveTopology({geom_expr}, %s)"
         params.append(_simplify_tolerance(zoom, lat, geom_field.geodetic(connection)))
 
-    where = ""
+    conditions = []
     if bbox:
-        where = (
-            f'WHERE t."{geom_field.column}" && '
+        conditions.append(
+            f't."{geom_field.column}" && '
             f'ST_Transform(ST_MakeEnvelope(%s, %s, %s, %s, 4326), {geom_field.srid})'
         )
         params.extend(bbox)
+    manager_filter = _manager_filter(model)
+    if manager_filter:
+        conditions.append(manager_filter[0])
+        params.extend(manager_filter[1])
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
     sql = f"""
         SELECT json_build_object(
@@ -446,6 +462,9 @@ def available_layers(request):
     layers = []
 
     color_index = 0
+    # One query each for the whole catalog, not one per layer
+    style_overrides = vector_overrides()
+    editable = editable_keys() if request.user.is_staff else set()
 
     app_labels_param = request.GET.get('app_labels')
     allowed_app_labels = set(app_labels_param.split(',')) if app_labels_param else None
@@ -480,24 +499,9 @@ def available_layers(request):
             except Exception:
                 count = 0
 
-            style_layers = LAYER_STYLES.get(key, {}).get('layers')
-            legend = LAYER_STYLES.get(key, {}).get('legend')
-
-            if key == 'physicalEnv.LandCoverVector':
-                # Categorical color-per-class_name — computed per-request
-                # (not baked into LAYER_STYLES) since LandCoverClasses rows
-                # are get_or_create'd from source data and grow over time.
-                try:
-                    style_layers, legend = build_landcover_style_and_legend()
-                except Exception:
-                    legend = None
-            elif key == 'physicalEnv.SoilArea':
-                # Same idea: colours of the BRO soil map legend, for the
-                # soil units actually imported.
-                style_layers, legend = build_soil_style_and_legend()
-            elif key == 'nature.Tree':
-                # 3D tree model, whose URL static() resolves per request.
-                style_layers = build_tree_style()
+            # Default style + the staff's override (mainMap/styles/overrides.py)
+            color, style_layers, legend = vector_style(
+                key, FALLBACK_COLORS[color_index % len(FALLBACK_COLORS)], style_overrides)
 
             layer_entry = {
                 'key': key,
@@ -507,14 +511,14 @@ def available_layers(request):
                 'url': f'/api/layers/{app_label}/{model_name}/geojson/',
                 'geometry_type': geom_type,
                 'geometry_field': geom_field,
-                'color': LAYER_STYLES.get(key, {}).get('color', FALLBACK_COLORS[color_index % len(FALLBACK_COLORS)]),
+                'color': color,
                 'style_layers': style_layers,
                 'fields': _field_metadata(model),
                 'count': count,
             }
             if legend:
                 layer_entry['legend'] = legend
-            if is_editable(key, request.user):
+            if is_editable(key, request.user, editable):
                 # Makes the popup's Edit button and the Layers panel's ＋ appear;
                 # edit_geom_type tells the editor whether to wrap drawn shapes in Multi*.
                 layer_entry['editable'] = True
@@ -666,7 +670,9 @@ def layer_bounds(request, app_label, model_name):
             except Exception:
                 extent = None
         if extent is None:
-            cursor.execute(f'SELECT ST_Extent("{geom_field.column}")::text FROM "{table}"')
+            manager_filter = _manager_filter(model)
+            where, params = (f"WHERE {manager_filter[0]}", manager_filter[1]) if manager_filter else ("", [])
+            cursor.execute(f'SELECT ST_Extent(t."{geom_field.column}")::text FROM "{table}" t {where}', params)
             extent = cursor.fetchone()[0]
         if extent is None:
             return JsonResponse({'bounds': None})

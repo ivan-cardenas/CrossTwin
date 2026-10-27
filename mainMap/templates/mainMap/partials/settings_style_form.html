@@ -1,0 +1,60 @@
+{# Style form of one layer (settings_views.settings_style). Values equal to the default are not stored. #}
+<form class="settings-style" hx-post="{% url 'map:settings_style' %}" hx-target="#settings-style-form"
+      hx-swap="innerHTML" data-kind="{{ kind }}" data-key="{{ key }}">
+  {% csrf_token %}
+  <input type="hidden" name="target" value="{{ target }}">
+
+  {% if kind == 'vector' %}
+    {% for f in fields %}
+      <label class="settings-field settings-field-inline">
+        <span>{{ f.label }}</span>
+        {% if f.kind == 'color' %}
+          <input type="color" name="{{ f.name }}" value="{{ f.value }}" data-default="{{ f.default }}"
+                 {% if f.prop %}data-layer-index="{{ f.layer_index }}" data-prop="{{ f.prop }}"{% endif %}>
+        {% else %}
+          <input type="number" name="{{ f.name }}" value="{{ f.value }}" min="0" step="{{ f.step }}"
+                 {% if f.max is not None %}max="{{ f.max }}"{% endif %} data-default="{{ f.default }}"
+                 data-layer-index="{{ f.layer_index }}" data-prop="{{ f.prop }}">
+        {% endif %}
+      </label>
+    {% endfor %}
+    {% if category_fields %}
+      <div class="settings-group">Categories</div>
+      <div class="settings-categories">
+        {% for f in category_fields %}
+          <label class="settings-field settings-field-inline">
+            <span>{{ f.label }}</span>
+            <input type="color" name="{{ f.name }}" value="{{ f.value }}" data-default="{{ f.default }}">
+          </label>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% else %}
+    <p class="lst-card-hint">{{ raster.label }}{% if raster.unit %} ({{ raster.unit }}){% endif %}. Applies to every raster with this style.</p>
+    {% if raster.colormaps %}
+      <label class="settings-field">Colormap
+        <select name="colormap">
+          {% for name in raster.colormaps %}
+            <option value="{{ name }}"{% if name == raster.colormap %} selected{% endif %}>{{ name }}{% if name == raster.default_colormap %} (default){% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+    {% else %}
+      <p class="lst-card-hint">RGB composite: drawn from its bands, no colormap.</p>
+    {% endif %}
+    <div class="lst-card-fields settings-range">
+      <label>Min <input type="number" name="min" step="any" value="{{ raster.min }}"></label>
+      <label>Max <input type="number" name="max" step="any" value="{{ raster.max }}"></label>
+    </div>
+    <p class="lst-card-hint">Leave min and max empty to stretch each raster to its own values.
+      Default: {% if raster.default_rescale %}{{ raster.default_rescale.0 }} – {{ raster.default_rescale.1 }}{% else %}from the data{% endif %}.</p>
+  {% endif %}
+
+  {% for e in errors %}<div class="settings-error">{{ e }}</div>{% endfor %}
+  {% if message %}<div class="settings-message" role="status">{{ message }}</div>{% endif %}
+
+  <div class="settings-actions">
+    <button type="submit" class="lst-btn lst-btn-primary">Save</button>
+    <button type="submit" class="lst-btn" name="action" value="reset"{% if not has_override %} disabled{% endif %}>Reset to default</button>
+  </div>
+</form>

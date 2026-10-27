@@ -21,6 +21,7 @@
 
 7. Should Energy labels be imported automatically when importing buildings? or separately?
 
+7. BAG usage functions are stored as text, DB size can be reduced if stored as integer with a pivot table.
 
 8. How to add the raster source data in database (date of acquisition, clouds, etc)?
 
@@ -77,5 +78,7 @@
 14. For ammenities I include Schools, hospitals and clinics, fire and police stations, marketplaces and transport stations. Should I add more?
 
 14. Green Spaces is loading parks, but there is a model that is Parks in builtup. Should I merge them? or how to differentiate them?
+
+14. should I keep prints of what the application is doing so I and others can see what is going on?
 
 20. LIMITATION --  THE SYSTEM USE RELATIONAL DATABASES AND MULTIPLE TABLES. SO SPEED OF JOINS CAN BE AN ISSUE. MAYBE USING NODE4J OR GRAPHDB IS A BETTER OPTION

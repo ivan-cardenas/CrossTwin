@@ -268,9 +268,8 @@ const ADMIN_PANEL_TOOLS = {
   // Urban heat has no year and does not depend on population.
   temperature: (level, location) =>
     `/urban_heat/indicators/${level}/${location}/`,
-  // Same URL shape as water: housing/urls.py is indicators/<level>/<location>/<year>/
-  // (this entry used to omit <level>, so it matched nothing after a selection).
-  Housing: (level, location) =>
+  // Same URL shape as water: housing/urls.py is indicators/<level>/<location>/<year>/.
+  housing: (level, location) =>
     `/housing/indicators/${level}/${location}/${window.ACTIVE_YEAR}/${populationQuery()}`,
   // The building stock has no year; year + population only drive the per-capita cards.
   builtup: (level, location) =>

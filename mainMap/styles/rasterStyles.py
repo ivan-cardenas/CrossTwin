@@ -99,6 +99,28 @@ def _lookup_style(instance, registry_key):
     return style, categorical
 
 
+def raster_style_key(instance, registry_key):
+    """
+    The key a raster's style default lives under, and so its staff override
+    (mainMap.LayerStyleOverride, kind 'raster'): the INDEX_STYLES key when
+    its `index` has one, else the MODEL_STYLES key (lowercase registry key).
+    """
+    index_value = (getattr(instance, "index", None) or "").strip().upper()
+    return index_value if index_value in INDEX_STYLES else registry_key.lower()
+
+
+def raster_style_choices():
+    """[(style key, label)] of every raster style default, for the settings panel."""
+    choices = [(key, f"{style[2]} (index {key})") for key, style in INDEX_STYLES.items()]
+    choices += [(key, f"{style[2]} ({key})") for key, style in MODEL_STYLES.items()]
+    return choices
+
+
+def default_raster_style(style_key):
+    """(colormap, rescale, label, unit) default of a style key."""
+    return INDEX_STYLES.get(style_key) or MODEL_STYLES.get(style_key, DEFAULT_STYLE)
+
+
 def raster_display_name(instance, registry_key, fallback=None):
     """
     Build a display name matching the legend label plus the acquisition
@@ -166,7 +188,10 @@ def resolve_raster_style(instance, registry_key):
     (e.g. true-color imagery), where TiTiler renders the bands directly and
     a colormap would be meaningless.
     """
+    from .overrides import apply_raster_override, raster_override
+
     style, categorical = _lookup_style(instance, registry_key)
+    style = apply_raster_override(style, raster_override(raster_style_key(instance, registry_key)))
     colormap, rescale, label, unit = style
 
     if colormap is not None and rescale is None:

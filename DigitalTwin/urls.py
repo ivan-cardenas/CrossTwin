@@ -22,6 +22,8 @@ from django.urls import path
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    # Log in / log out from the header (Templates/registration/login.html)
+    path("accounts/", include("django.contrib.auth.urls")),
     path("watersupply/", include("watersupply.urls")),
     path("housing/", include("housing.urls")),
     path("builtup/", include("builtup.urls")),

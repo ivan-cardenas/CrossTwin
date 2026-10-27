@@ -27,9 +27,18 @@
 <script src="{% static 'js/Editing.js' %}"></script>
 <script src="{% static 'js/LstTool.js' %}"></script>
 <script src="{% static 'js/SvfTool.js' %}"></script>
+<script src="{% static 'js/MapSettings.js' %}"></script>
 <script src="{% static 'js/Events.js' %}"></script>
 <script src="{% static 'js/Map_init.js' %}"></script>
-{% endblock %} {% block content_section_class %}{% endblock %}
+{% endblock %} {% block header_actions %}
+{% if user.is_staff %}
+<button type="button" class="header-btn" id="map-settings-btn"
+        aria-controls="settings-card" aria-expanded="false">
+  <i class="bi bi-gear"></i> Map settings
+</button>
+{% endif %}
+{% endblock %}
+{% block content_section_class %}{% endblock %}
 {% block content_wrapper_class %}{% endblock %}
 {% block content %}
 <div class="app-shell">
@@ -57,7 +66,7 @@
         <span>🏗️</span>
         <div class="tool-tooltip">Built-up</div>
       </button>
-      <button class="tool-button" data-tool="Housing"
+      <button class="tool-button" data-tool="housing"
         data-panel-title="HOUSING"
         hx-get="{% url 'housing:housing_indicators' level='province' location='Demo' year=2025 %}"
         hx-target="#panel-body"
@@ -285,6 +294,19 @@
       <button class="lst-btn lst-btn-primary" id="svf-calculate" disabled>Calculate SVF for this view</button>
       <div class="lst-status" id="svf-status" role="status"></div>
     </div>
+
+    {% if user.is_staff %}
+    <!-- MAP SETTINGS — editable layers and styles (staff; core/static/js/MapSettings.js,
+         mainMap/settings_views.py). Opened from the header's Map settings button;
+         reuses the LST card's lst-* look. -->
+    <div class="lst-card settings-card" id="settings-card" data-url="{% url 'map:map_settings' %}">
+      <div class="lst-card-header">
+        <div class="lst-card-title">MAP SETTINGS</div>
+        <button class="lst-card-close" id="settings-card-close" aria-label="Close map settings">✕</button>
+      </div>
+      <div id="settings-card-body"></div>
+    </div>
+    {% endif %}
 
     <!-- LEGEND STACK — holds the static groundwater legend plus every
          dynamic raster/WMS/categorical legend added by Layers.js. Kept as

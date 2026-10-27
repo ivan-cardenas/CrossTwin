@@ -1,0 +1,32 @@
+{# Map settings panel (mainMap/settings_views.py::map_settings), swapped into #settings-card-body. #}
+<div class="settings-tabs" role="tablist">
+  <button type="button" class="settings-tab active" data-settings-tab="editable" role="tab">Editable layers</button>
+  <button type="button" class="settings-tab" data-settings-tab="styles" role="tab">Styles</button>
+</div>
+
+<section class="settings-pane" data-settings-pane="editable">
+  <p class="lst-card-hint">Layers staff can edit on the map. A layer whose model derives fields in
+    <code>save()</code> needs its field rules in <code>core/editable_layers.toml</code> first.</p>
+  <div class="settings-list">
+    {% for row in rows %}
+      {% ifchanged row.app_label %}<div class="settings-group">{{ row.app_label }}</div>{% endifchanged %}
+      {% include 'mainMap/partials/settings_editable_row.html' %}
+    {% endfor %}
+  </div>
+</section>
+
+<section class="settings-pane" data-settings-pane="styles" hidden>
+  <label class="settings-field">Layer
+    <select name="target" hx-get="{% url 'map:settings_style' %}" hx-target="#settings-style-form"
+            hx-trigger="change" hx-swap="innerHTML">
+      <option value="">Choose a layer…</option>
+      <optgroup label="Vector layers">
+        {% for value, label in vector_targets %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+      </optgroup>
+      <optgroup label="Rasters">
+        {% for value, label in raster_targets %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+      </optgroup>
+    </select>
+  </label>
+  <div id="settings-style-form"></div>
+</section>

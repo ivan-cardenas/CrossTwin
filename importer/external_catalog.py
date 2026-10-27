@@ -127,6 +127,7 @@ FIELD_MAPPINGS = {
         "__unique__": "identificatie",
         "__unique_field__": "id",
         "oppervlakte": "grossArea",
+        "gebruiksdoel": "usageFunction",
         "openbare_ruimte": "name",
         "huisnummer": "houseNumber",
         "postcode": "postalCode",

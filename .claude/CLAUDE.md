@@ -22,50 +22,50 @@ uv lock --upgrade-package <pkg>
 # A cmd launcher with the PowerShell script embedded after its ##PS-START marker.
 setup_db.bat
 
-# Activate virtual environment
-.venv\Scripts\Activate       # Windows; source .venv/bin/activate on Linux/macOS
+# Run everything through `uv run`: it uses .venv without activation and syncs it
+# with uv.lock first (activating .venv + plain `python` also works after `uv sync`)
 
 # Check PostgreSQL + PostGIS (start.bat runs this first and stops on failure)
-python tools/check_postgres.py
+uv run python tools/check_postgres.py
 
 # Start both Django and TiTiler (or use start.bat)
-python manage.py runserver 8000
-uvicorn tiler:app --port 8001 --reload
+uv run python manage.py runserver 8000
+uv run uvicorn tiler:app --port 8001 --reload
 
 # Database migrations
-python manage.py makemigrations
-python manage.py migrate
+uv run python manage.py makemigrations
+uv run python manage.py migrate
 
 # Run all tests (uses custom PostGIS test runner). Always pass --keepdb: without it
 # Django drops the test DB the runner prepared and recreates it without PostGIS
 # ("type geometry does not exist"). --noinput avoids the interactive prompt.
-python manage.py test --settings=DigitalTwin.settings_test --keepdb --noinput
+uv run python manage.py test --settings=DigitalTwin.settings_test --keepdb --noinput
 
 # Run tests for a single app
-python manage.py test importer --settings=DigitalTwin.settings_test --keepdb --noinput
+uv run python manage.py test importer --settings=DigitalTwin.settings_test --keepdb --noinput
 
 # Export COGs for raster models
-python manage.py export_cogs
+uv run python manage.py export_cogs
 
 # LST from Landsat 9 + the NDVI layer (Earth Engine, GEE_PROJECT_ID); --list-scenes, --scene, --dry-run
-python manage.py calculate_lst --city Enschede
+uv run python manage.py calculate_lst --city Enschede
 
 # Package the DB of .env + its COG files as example data, or load such a package into an empty DB
 # (both default to example/crosstwin_example_data.zip, which is committed)
-python tools/example_db.py dump
-python tools/example_db.py load
+uv run python tools/example_db.py dump
+uv run python tools/example_db.py load
 
 # Slowest SQL statements from pg_stat_statements (--order mean|calls|rows, --reset)
-python manage.py db_stats
+uv run python manage.py db_stats
 
 # Profile GET requests (run 1 = cold process, run 2 = warm); --save x.prof for snakeviz
-python tools/profile_requests.py "/api/admin-unit/?lng=6.895&lat=52.219" --runs 2
+uv run python tools/profile_requests.py "/api/admin-unit/?lng=6.895&lat=52.219" --runs 2
 
 # Architecture diagrams: check the palette (contrast + colour-blind separation), build SVGs, export PNG/PDF
-python tools/palette_check.py && python tools/arch_diagrams.py && python tools/arch_export.py
+uv run python tools/palette_check.py && uv run python tools/arch_diagrams.py && uv run python tools/arch_export.py
 
 # Which modules are slow to import
-python -X importtime -c "import django; django.setup(); import DigitalTwin.urls" 2> imports.log
+uv run python -X importtime -c "import django; django.setup(); import DigitalTwin.urls" 2> imports.log
 ```
 
 Measurement flags in `.env` (see `docs/PERFORMANCE.md` §0): `QUERY_STATS=true` (default = `DEBUG`) adds a `Server-Timing` header (DB time + query count, visible in DevTools → Network → Timing) and `X-DB-Queries` to every response and logs each request on `crosstwin.querystats` (WARNING above `QUERY_STATS_SLOW_MS`, default 500). `SQL_LOG=true` prints every SQL statement (only when `DEBUG=true`).
@@ -236,15 +236,16 @@ Two import paths:
 - Mapbox's own extruded buildings (the `3d-buildings` layer from `Map_init.js::add3DBuildings`) are hidden while any `builtup` layer is shown (loaded and checked), and only then: `Layers.js::sync3DBuildings()` runs after every vector layer load, every `toggleLayerVisibility()` and every `add3DBuildings()` (a basemap switch re-creates the layer).
 - All legends live in `#legend-stack`; `Layers.js::repositionDynamicLegends()` moves the stack so it clears the side panel and the population dock (re-run by observers in `Events.js`), unless the user has dragged it. Append new legends to `#legend-stack`, not `.map-wrapper`.
 - Templates live in `Templates/` (capital T, configured in settings)
+- **Map settings** (`#settings-card`, staff only, header's *Map settings* button; `core/static/js/MapSettings.js`, `mainMap/settings_views.py`, partials `map_settings.html`/`settings_editable_row.html`/`settings_style_form.html`): tab *Editable layers* (above) and tab *Styles*. Styles are `mainMap.LayerStyleOverride` rows on top of the code defaults in `mainMap/styles/`, storing only what differs (Reset deletes the row). `styles/overrides.py::vector_style(key)` resolves a vector layer's catalog colour, style layers and legend (default + override; `available_layers` uses it with one `vector_overrides()` query per request): scalar paint properties per style-layer index, and the colours of a colour `match` expression by category (legend entries carry `value`; `'__other__'` = the match fallback). Raster overrides are keyed by `rasterStyles.raster_style_key()` (the `INDEX_STYLES` key, else the `MODEL_STYLES` key) and applied in `resolve_raster_style` (colormap, rescale; `null` = from the data). Saves answer with `HX-Trigger` `style-changed` / `editable-changed`; `MapSettings.js` re-adds the layer (`addLayer(config, {fit: false})`) or updates the catalog entry's `editable` flag, and paint inputs preview live with `setPaintProperty`. Overrides are global (all visitors) and read per request, so several workers stay consistent.
 - **LST tool** (`#lst-card`, `core/static/js/LstTool.js`, opened from the Actions menu's *Calculate for this view* section): lists the Landsat scenes over the current view and computes LST for it (`urban_heat/lst/views.py` → `pipeline.calculate_lst(bbox_wgs84=...)`). The grid is the view clipped to the NDVI layers' coverage; overlapping NDVI layers are merged newest first; areas over ~48 MB of Earth Engine download (~40×40 km at 30 m) are refused. A recalculation with the same scene replaces the LST rows whose extent it covers (with their COG files); the frontend drops them with `Layers.js::removeLayer()` and adds the new row's catalog entry (`mainMap.views.raster_layer_entry`). Synchronous request, ~10–60 s. Calculating is staff only; listing scenes is open.
 - **SVF tool** (`#svf-card`, `core/static/js/SvfTool.js`, Actions menu → *Calculate for this view* → Sky View Factor; reuses the LST card's `lst-*` classes and closes it on open, and vice versa): on open and after each map move it asks `/physicalEnv/svf/info/` which DSM covers the view and how big the grid is, and labels the button *Recalculate* when a stored SVF of that DSM already covers the view. Radius (25–200 m) and cell (DSM's own, 1/2/5 m) selects. Calculate POSTs `physicalEnv/views.py::svf_calculate` → `svf.calculate_svf(bbox_wgs84=...)`; the frontend removes the replaced layers and adds the new one. Staff only to calculate.
 - `core/static/js/mainMap.js` holds `mainMap.html`'s page-level wiring (map init, the Actions menu, guided tour, the admin-unit-driven panel registry). It depends on `Config.js`/`map_init.js` and on `window.MAPBOX_ACCESS_TOKEN` being set inline by `mainMap.html` before it loads. As with the indicator dashboards, keep new map-page behavior in this file rather than adding inline `<script>` blocks to `mainMap.html`.
 
 ### Map Editing (`core/editing.py`, `core/static/js/Editing.js`)
 
-Staff users (`is_staff`; log in at `/admin/`) can create, reshape, edit and delete objects of the layers listed in `core/editable_layers.toml` (currently the built-up layers; loaded into `core.editing.EDITABLE_LAYERS` at startup) on the map. Design and decisions: `docs/MAP_EDITING.md`; equations: `docs/functions_and_equations.tex`.
+Staff users (`is_staff`; **Log in** at the top right of every page, `django.contrib.auth.urls` under `/accounts/`, template `Templates/registration/login.html`) can create, reshape, edit and delete objects of the layers switched on in the map's **Map settings** panel (stored as `mainMap.EditableLayer`, one row per editable layer; migration 0002 seeded the five built-up layers). The form rules per layer (`exclude`/`optional`) stay in `core/editable_layers.toml` (`core.editing.FIELD_RULES`, read at startup), since they follow from each model's `save()`. Design and decisions: `docs/MAP_EDITING.md`; equations: `docs/functions_and_equations.tex`.
 - The form is a `modelform_factory` ModelForm swapped into `#panel-body`; the geometry travels as WGS84 GeoJSON in a hidden field and the GIS form field checks its type and reprojects it. Saving goes through `obj.save()`, so derived fields, signals and cache invalidation apply. User-created objects of a model with a non-auto pk (`Building`, BAG ids) get negative ids (`_next_negative_pk`).
-- **To make a layer editable:** add a `["app_label.ClassName"]` table to `core/editable_layers.toml` with `exclude` (fields its `save()` derives) and `optional` (fields `save()` fills in), then restart the server. `load_editable_layers()` rejects a malformed file at startup; `mainMap/test_editing.py` checks every key is a vector layer and every field exists. If its app has receivers that skip `raw=True` saves (e.g. `watersupply/signals.py`), backup restore must trigger those cascades itself.
+- **To make a layer editable:** switch it on in Map settings → Editable layers. `core.editing.enable_blocker()` refuses layers whose model overrides `save()` and has no table in `core/editable_layers.toml`, and `watersupply` layers (`RAW_SKIPPING_APPS`, receivers skip raw saves so Restore would leave cascades stale). For those, first add a `["app_label.ClassName"]` table with `exclude` (fields its `save()` derives) and `optional` (fields `save()` fills in) and restart the server. `load_editable_layers()` rejects a malformed file at startup; `mainMap/test_editing.py` checks every key is a vector layer and every field exists. If its app has receivers that skip `raw=True` saves (e.g. `watersupply/signals.py`), backup restore must trigger those cascades itself.
 - **Backup / restore:** one restore point at a time (`EditBackup`). After it is created, `journal()` stores each object's original row (first pre-image wins) before the editor changes it. `restore_backup()` reverts only those rows in one transaction (raw saves, then deletes of objects created since), rolling everything back if a reference blocks it. Changes made outside the editor (importer, admin, psql) are not journalled. A side effect another app makes for an edit can be journalled through a custom signal that `mainMap/signals.py` subscribes to: the urban-fabric buffer of a new building (`physicalEnv.landcover.landcover_rewriting`/`landcover_created`, layer key `physicalEnv.LandCoverVector`) is undone by Restore this way.
 - FK constraints are `DEFERRABLE INITIALLY DEFERRED`; `_check_constraints()` forces the check inside the atomic block so delete/restore conflicts surface as messages instead of failing at commit.
 - While editing (`isEditing()`), feature popups, admin-unit clicks and `refreshActivePanel()` are suspended; a `MutationObserver` on `#panel-body` attaches/detaches Mapbox GL Draw. The `feature-saved` / `backup-restored` HTMX events reload layers via `Layers.js::reloadLayer()`.
@@ -257,7 +258,9 @@ Staff users (`is_staff`; log in at `/admin/`) can create, reshape, edit and dele
 | `/api/layers/` | Layer catalog JSON |
 | `/api/layers/<app>/<model>/geojson/` | GeoJSON for vector model (`?bbox=` WGS84, `?zoom=`; cached) |
 | `/api/layers/<app>/<model>/bounds/` | Bounding box extent in WGS84 |
-| `/api/layers/<app>/<model>/features/new/`, `.../features/<pk>/`, `.../features/<pk>/delete/` | Map editing form / delete (staff, layers in `core/editable_layers.toml` only) |
+| `/api/layers/<app>/<model>/features/new/`, `.../features/<pk>/`, `.../features/<pk>/delete/` | Map editing form / delete (staff, layers switched on in Map settings only) |
+| `/api/settings/`, `/api/settings/editable/`, `/api/settings/style/` | Map settings panel: editable layers on/off, style form (`?target=vector:<key>|raster:<style key>`; POST saves, `action=reset` deletes) (staff) |
+| `/accounts/login/`, `/accounts/logout/` | Header login / logout (POST) |
 | `/api/editing/backup/` (+ `restore/`, `discard/`) | What-if backup bar: status, create, restore, discard (staff) |
 | `/api/raster/<app>/<model>/tiles/` | TiTiler tile URL for raster |
 | `/api/raster/<app>/<model>/info/` | Raster metadata |

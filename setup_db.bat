@@ -377,7 +377,7 @@ $example = Join-Path $Root 'example\crosstwin_example_data.zip'
 $filled = $false
 if ($Level -eq 1 -and $writeEnv -and (Test-Path -LiteralPath $python)) {
     Write-Step 'Fill the database'
-    Write-Host '  1) Empty   - create the tables (python manage.py migrate); import your own data later'
+    Write-Host '  1) Empty   - create the tables (uv run python manage.py migrate); import your own data later'
     if (Test-Path -LiteralPath $example) {
         Write-Host '  2) Example - load example\crosstwin_example_data.zip, then migrate'
     }
@@ -398,7 +398,7 @@ if ($Level -eq 1 -and $writeEnv -and (Test-Path -LiteralPath $python)) {
     } elseif ($choice -eq '1') {
         & $python manage.py migrate
         $filled = ($LASTEXITCODE -eq 0)
-        if (-not $filled) { Write-Host 'Migrations failed; fix the error above and run "python manage.py migrate" again.' -ForegroundColor Yellow }
+        if (-not $filled) { Write-Host 'Migrations failed; fix the error above and run "uv run python manage.py migrate" again.' -ForegroundColor Yellow }
     }
     $ErrorActionPreference = 'Stop'
     if ($filled) { Write-Host 'Database ready.' -ForegroundColor Green }
@@ -419,13 +419,13 @@ if (-not (Test-Path -LiteralPath $python)) {
 }
 if ($Level -eq 1) {
     if (-not $filled) {
-        Write-Host '  python manage.py migrate          (empty database)'
-        Write-Host '    or: python tools\example_db.py load, then python manage.py migrate  (example data)'
+        Write-Host '  uv run python manage.py migrate   (empty database)'
+        Write-Host '    or: uv run python tools\example_db.py load, then uv run python manage.py migrate  (example data)'
     }
 } else {
     Write-Host "  Migrations must be run by a user with schema rights (e.g. '$SuUser')."
 }
-Write-Host '  python manage.py createsuperuser'
+Write-Host '  uv run python manage.py createsuperuser'
 if (-not $MapboxToken) { Write-Host '  Add your MAPBOX_ACCESS_TOKEN to .env' }
 Write-Host '  start.bat'
 exit 0

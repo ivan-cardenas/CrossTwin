@@ -3,6 +3,8 @@ from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.conf import settings
 
+from builtup.models import Property
+
 COORDINATE_SYSTEM = settings.COORDINATE_SYSTEM
 AFFORDABILITY_STRESS_LEVELS = [('low', 'Low'), ('moderate', 'Moderate'), ('high', 'High')] #TODO: check if these are the right thresholds for the affordability stress levels, 
                                                                             #  or if we should use different thresholds based on the literature
@@ -183,3 +185,24 @@ class NeighborhoodSocialProfile(models.Model):
     class Meta:
         verbose_name = "Neighborhood Social Profile"
         verbose_name_plural = "Neighborhood Social Profiles"
+
+
+class ResidentialPropertyManager(models.Manager):
+    def get_queryset(self):
+        # The property's own BAG function, not its building's: a shop under
+        # flats sits in a 'mixed' building but is not a dwelling.
+        return super().get_queryset().filter(usageFunction__contains=["Residential function"])
+
+
+class ResidentialProperty(Property):
+    """
+    Proxy onto builtup.Property limited to dwellings (BAG woonfunctie), its
+    own map layer in the housing catalog. Same table and save() as Property;
+    the map's GeoJSON applies this manager's filter (mainMap/views.py::_manager_filter).
+    """
+    objects = ResidentialPropertyManager()
+
+    class Meta:
+        proxy = True
+        verbose_name = "Residential Property"
+        verbose_name_plural = "Residential Properties"

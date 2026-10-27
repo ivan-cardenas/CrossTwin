@@ -109,6 +109,23 @@ body {
     border-radius: 3px;
 }
 
+/* Header buttons: log in / out, map settings */
+.header-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.6rem;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    text-decoration: none;
+}
+.header-btn:hover { color: var(--text-primary); border-color: var(--text-tertiary); }
+.header-user { font-size: 0.72rem; color: var(--text-tertiary); }
+
 .app-footer {
     border-top: 1px solid var(--border);
 }

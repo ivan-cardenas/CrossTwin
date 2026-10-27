@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% load tailwind_filters %}
+{% block title %}Log in · CrossTwin{% endblock %}
+{% block content %}
+<div class="max-w-sm mx-auto py-10">
+  <h1 class="text-lg font-semibold ct-text-primary mb-1">Log in</h1>
+  <p class="text-xs ct-text-tertiary mb-5">Staff accounts can edit map layers and change the map settings.</p>
+  <form method="post" action="{% url 'login' %}">
+    {% csrf_token %}
+    {{ form|crispy }}
+    <input type="hidden" name="next" value="{{ next|default:'/' }}">
+    <button type="submit" class="header-btn mt-2">Log in</button>
+  </form>
+</div>
+{% endblock %}

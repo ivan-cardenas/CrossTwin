@@ -96,7 +96,7 @@
       card.classList.add('visible');
       if (typeof setActionsMenuOpen === 'function') setActionsMenuOpen(false);
       if (!canCalculate) {
-        setStatus('Viewing scenes works for everyone; calculating needs a staff login (/admin/).', 'warn');
+        setStatus('Viewing scenes works for everyone; calculating needs a staff login (Log in, top right).', 'warn');
       }
       if (!searchedBbox) findScenes();
     }

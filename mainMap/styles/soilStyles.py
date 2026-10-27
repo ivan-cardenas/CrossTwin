@@ -350,7 +350,8 @@ def build_soil_style_and_legend():
         {'type': 'fill', 'paint': {'fill-color': fill, 'fill-opacity': 0.6}},
         {'type': 'line', 'paint': {'line-color': fill, 'line-width': 0.3}},
     ]
-    legend = [{'label': f'{code} {units[code]}', 'color': SOIL_UNIT_COLORS[code]} for code in present]
+    # value: the matched unit code ('__other__' = the match fallback), for colour overrides (overrides.py)
+    legend = [{'label': f'{code} {units[code]}', 'color': SOIL_UNIT_COLORS[code], 'value': code} for code in present]
     if set(units) - set(present):
-        legend.append({'label': 'Other soil units', 'color': SOIL_UNKNOWN_COLOR})
+        legend.append({'label': 'Other soil units', 'color': SOIL_UNKNOWN_COLOR, 'value': '__other__'})
     return style_layers, legend

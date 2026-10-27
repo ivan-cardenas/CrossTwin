@@ -172,34 +172,17 @@ class Building(models.Model):
     geom = models.MultiPolygonField(srid=CoordinateSystem)
     
     def save(self, *args, **kwargs):
-        if self.usageFunction == "":
-            # BAG reports some Pand records with no gebruiksdoel at all (empty
-            # string, not missing). An empty string can't be stored in the
-            # ArrayField as-is, so treat it the same as "no data" but keep it
-            # visible rather than silently dropping the building's function.
-            self.usageFunction = "Undefined"
-        if self.usageFunction:
-            # WFS delivers a comma-separated string for multi-function buildings
-            # (e.g. "winkelfunctie,woonfunctie"); a re-save of an already-converted
-            # instance instead hands back a list of labels. Normalize both to a
-            # list of raw BAG codes before deriving buildingType / labels from them.
-            
-            if isinstance(self.usageFunction, str):
-                raw_functions = [f.strip() for f in self.usageFunction.split(",") if f.strip()]
-            else:
-                raw_functions = list(self.usageFunction)
-
-            code_to_label = dict(self.BAG_USAGE_FUNCTIONS)
+        if self.usageFunction or self.usageFunction == "":
+            self.usageFunction = bag_usage_labels(self.usageFunction)
             label_to_code = {label: code for code, label in self.BAG_USAGE_FUNCTIONS}
-            codes = [label_to_code.get(f, f) for f in raw_functions]
-
-            building_types = {self.BAG_TO_BUILDING_TYPE[c] for c in codes if c in self.BAG_TO_BUILDING_TYPE}
+            building_types = {
+                self.BAG_TO_BUILDING_TYPE[label_to_code[label]]
+                for label in self.usageFunction if label in label_to_code
+            }
             if len(building_types) > 1:
                 self.buildingType = "mixed"
             elif building_types:
                 self.buildingType = building_types.pop()
-
-            self.usageFunction = [code_to_label.get(c, c) for c in codes]
         if self.geom:
             self.area_sqm = self.geom.area
             self.neighborhood = Neighborhood.objects.filter(geom__contains=self.geom.centroid).first()
@@ -217,6 +200,23 @@ class Building(models.Model):
     class Meta:
         verbose_name = "Building"
         verbose_name_plural = "Buildings"
+
+
+def bag_usage_labels(value):
+    """
+    BAG gebruiksdoel as a list of labels (Building.BAG_USAGE_FUNCTIONS).
+
+    WFS delivers raw codes as one comma-separated string for multi-function
+    objects (e.g. "winkelfunctie,woonfunctie"); a re-save hands back the stored
+    list of labels. BAG reports some objects with an empty gebruiksdoel (empty
+    string, not missing); it is kept visible as 'Undefined'.
+    """
+    if value == "":
+        return ["Undefined"]
+    if isinstance(value, str):
+        value = [f.strip() for f in value.split(",") if f.strip()]
+    code_to_label = dict(Building.BAG_USAGE_FUNCTIONS)
+    return [code_to_label.get(f, f) for f in value]
 
 
 class BuildingEnergyLabel(Building):
@@ -247,6 +247,11 @@ class Property(models.Model):
     name = models.CharField(max_length=100, help_text="Name of the property")
     houseNumber = models.CharField(max_length=5, null=True, blank=True, help_text="House number of the property")
     building = models.ForeignKey(Building, verbose_name="Building", on_delete=models.DO_NOTHING)
+    usageFunction = ArrayField(
+        models.CharField(max_length=100, choices=[(label, label) for _, label in Building.BAG_USAGE_FUNCTIONS] + [("Undefined", "Undefined")]),
+        null=True, blank=True, default=list,
+        help_text="BAG gebruiksdoel (usage function(s)) of the property, where known, stored as human-readable labels",
+    )
     grossArea = models.FloatField(help_text="Area of the property in square meters")
     livingArea = models.FloatField(help_text="Living area of the property in square meters", null=True, blank=True)
     greenVisibility = models.FloatField(help_text="Green visibility index of the property", null=True, blank=True)  #TODO: Define green visibility index and calculation method
@@ -265,6 +270,8 @@ class Property(models.Model):
     def save(self, *args, **kwargs):
         self.last_updated = timezone.now()
         self.building = Building.objects.filter(geom__contains=self.geom).first()
+        if self.usageFunction or self.usageFunction == "":
+            self.usageFunction = bag_usage_labels(self.usageFunction)
         # Calculate unitary price
         if self.grossArea and self.listingPrice_EUR:
             self.unitaryPrice_EUR_per_sqm = self.listingPrice_EUR / self.grossArea
@@ -273,7 +280,8 @@ class Property(models.Model):
     class Meta:
         verbose_name = "Property"
         verbose_name_plural = "Properties"
-    
+
+
 
 
 class NeighborhoodClimateRisk(models.Model):

@@ -422,11 +422,48 @@
     padding: 6px 8px;
 }
 
-.layers-panel-body::-webkit-scrollbar { width: 3px; }
-.layers-panel-body::-webkit-scrollbar-track { background: transparent; }
-.layers-panel-body::-webkit-scrollbar-thumb {
+/* Thin overlay scrollbar, shared by the layers panel, side panel (indicator
+   partials in #panel-body), population dock and the tool/settings cards. */
+.layers-panel-body::-webkit-scrollbar,
+.side-panel-body::-webkit-scrollbar,
+.population-panel-body::-webkit-scrollbar,
+.lst-card::-webkit-scrollbar,
+.lst-scenes::-webkit-scrollbar,
+.settings-categories::-webkit-scrollbar { width: 3px; height: 3px; }
+.layers-panel-body::-webkit-scrollbar-track,
+.side-panel-body::-webkit-scrollbar-track,
+.population-panel-body::-webkit-scrollbar-track,
+.lst-card::-webkit-scrollbar-track,
+.lst-scenes::-webkit-scrollbar-track,
+.settings-categories::-webkit-scrollbar-track { background: transparent; }
+.layers-panel-body::-webkit-scrollbar-thumb,
+.side-panel-body::-webkit-scrollbar-thumb,
+.population-panel-body::-webkit-scrollbar-thumb,
+.lst-card::-webkit-scrollbar-thumb,
+.lst-scenes::-webkit-scrollbar-thumb,
+.settings-categories::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.1);
     border-radius: 2px;
+}
+.layers-panel-body::-webkit-scrollbar-thumb:hover,
+.side-panel-body::-webkit-scrollbar-thumb:hover,
+.population-panel-body::-webkit-scrollbar-thumb:hover,
+.lst-card::-webkit-scrollbar-thumb:hover,
+.lst-scenes::-webkit-scrollbar-thumb:hover,
+.settings-categories::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.22); }
+
+/* Firefox has no ::-webkit-scrollbar. Kept behind @supports because Chrome
+   121+ ignores the pseudo-elements above once scrollbar-width/-color is set. */
+@supports not selector(::-webkit-scrollbar) {
+    .layers-panel-body,
+    .side-panel-body,
+    .population-panel-body,
+    .lst-card,
+    .lst-scenes,
+    .settings-categories {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+    }
 }
 
 .app-group { margin-bottom: 8px; }
@@ -2154,3 +2191,80 @@
 @media (max-width: 768px) {
     .lst-card { left: 8px; right: 8px; width: auto; max-width: none; }
 }
+
+/* ==========================================================================
+   Map settings card (staff): editable layers + styles. Reuses .lst-card;
+   core/static/js/MapSettings.js, mainMap/templates/mainMap/partials/map_settings.html
+   ========================================================================== */
+.settings-card {
+    left: auto;
+    right: 12px;
+    top: 12px;
+    bottom: auto;
+    width: 380px;
+    max-height: min(680px, calc(100% - 80px));
+    z-index: 14;
+}
+.settings-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border-ui); }
+.settings-tab {
+    flex: 1;
+    padding: 6px 8px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-tertiary);
+    font-size: 11px;
+    cursor: pointer;
+}
+.settings-tab.active { color: var(--text-main); border-bottom-color: var(--accent); }
+.settings-pane { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; }
+.settings-pane[hidden] { display: none; }
+.settings-pane code { font-size: 10px; }
+.settings-list { display: flex; flex-direction: column; }
+.settings-group {
+    margin-top: 6px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-tertiary);
+}
+.settings-row { padding: 3px 0; }
+.settings-row.locked { opacity: 0.6; }
+.settings-row-label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.settings-row.locked .settings-row-label { cursor: default; }
+.settings-badge {
+    padding: 0 4px;
+    font-size: 9px;
+    color: var(--text-tertiary);
+    border: 1px solid var(--border-ui);
+    border-radius: 3px;
+}
+.settings-note { margin-left: 20px; font-size: 10px; color: var(--text-tertiary); line-height: 1.35; }
+.settings-error { font-size: 11px; color: #ef9a9a; }
+.settings-message { font-size: 11px; color: #a5d6a7; }
+.settings-style { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; }
+.settings-field { display: flex; flex-direction: column; gap: 3px; font-size: 10px; color: var(--text-secondary); }
+.settings-field-inline { flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; }
+.settings-field-inline span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-field select,
+.settings-field input[type="number"] {
+    background: #151515;
+    color: var(--text-main);
+    border: 1px solid var(--border-ui);
+    border-radius: 4px;
+    padding: 3px 5px;
+    font-size: 11px;
+}
+.settings-field input[type="number"] { width: 80px; }
+.settings-field input[type="color"] {
+    width: 36px;
+    height: 20px;
+    padding: 0;
+    border: 1px solid var(--border-ui);
+    background: transparent;
+    flex-shrink: 0;
+}
+.settings-categories { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.settings-range { grid-template-columns: 1fr 1fr; }
+.settings-actions { display: flex; gap: 6px; }
+.settings-actions .lst-btn { flex: 1; }

@@ -155,8 +155,8 @@ class OtherEditableLayersTests(EditingTestCase):
     """Every allowlisted layer gets a working form, not just Building."""
 
     def test_every_editable_layer_renders_a_new_object_form(self):
-        from core.editing import EDITABLE_LAYERS
-        for key in EDITABLE_LAYERS:
+        from core.editing import editable_keys
+        for key in editable_keys():
             with self.subTest(key=key):
                 response = self.client.get(reverse('map:feature_new', args=key.split('.')))
                 self.assertEqual(response.status_code, 200)
@@ -369,7 +369,7 @@ class LandCoverBufferRestoreTests(EditingTestCase):
 
 
 class EditableLayersConfigTests(SimpleTestCase):
-    """core/editable_layers.toml: what it lists must exist, and a malformed file fails at startup."""
+    """core/editable_layers.toml (field rules): what it lists must exist, and a malformed file fails at startup."""
 
     def _load(self, text):
         import tempfile
@@ -381,10 +381,10 @@ class EditableLayersConfigTests(SimpleTestCase):
             return load_editable_layers(path)
 
     def test_every_listed_layer_and_field_exists(self):
-        from core.editing import EDITABLE_LAYERS, geometry_field
+        from core.editing import FIELD_RULES, geometry_field
         from core.utils import VECTOR_REGISTRY
-        self.assertIn('builtup.Building', EDITABLE_LAYERS)
-        for key, cfg in EDITABLE_LAYERS.items():
+        self.assertIn('builtup.Building', FIELD_RULES)
+        for key, cfg in FIELD_RULES.items():
             with self.subTest(layer=key):
                 self.assertIn(key, VECTOR_REGISTRY, 'not a vector layer (registry key is app_label.ClassName)')
                 model = VECTOR_REGISTRY[key]

@@ -87,14 +87,14 @@ async function loadLayerCatalog(appLabels) {
 /**
  * Add a layer to the map (vector, raster, or WMS)
  */
-async function addLayer(layerConfig) {
+async function addLayer(layerConfig, { fit = true } = {}) {
   const { key, url, color, geometry_type, display_name, layer_type, app_label, model_name, raster_id, style_layers } = layerConfig;
 
   if (loadedLayers[key]) return;
 
   if (layer_type === 'wms' && layerConfig.has_time_dimension) { addAnimatedWmsLayer(layerConfig); return; }
   if (layer_type === 'wms')    { addWmsLayer(layerConfig); return; }
-  if (layer_type === 'raster') { await addRasterLayerFromConfig(layerConfig); return; }
+  if (layer_type === 'raster') { await addRasterLayerFromConfig(layerConfig, { fit }); return; }
 
   // Vector layer
   const viewport = usesViewportLoading(layerConfig);
@@ -513,10 +513,10 @@ function renderWmsScrubberDock(key, layerConfig) {
 
 // ---- Raster (TiTiler) layers -----------------------------------------
 
-async function addRasterLayerFromConfig(layerConfig) {
+async function addRasterLayerFromConfig(layerConfig, { fit = true } = {}) {
   const { key, app_label, model_name, raster_id, opacity, display_name } = layerConfig;
   try {
-    const legend = await addRasterLayer(map, app_label, model_name, raster_id, opacity);
+    const legend = await addRasterLayer(map, app_label, model_name, raster_id, opacity, { fit });
     loadedLayers[key] = {
       layerIds: [`raster-layer-${model_name}-${raster_id}`],
       geojson: { features: [] },
@@ -530,7 +530,7 @@ async function addRasterLayerFromConfig(layerConfig) {
   }
 }
 
-async function addRasterLayer(map, appLabel, modelName, rasterID, opacity = 0.7) {
+async function addRasterLayer(map, appLabel, modelName, rasterID, opacity = 0.7, { fit = true } = {}) {
   const tilesURL = rasterID
     ? `/api/raster/${appLabel}/${modelName}/tiles/?id=${rasterID}`
     : `/api/raster/${appLabel}/${modelName}/tiles/`;
@@ -566,8 +566,10 @@ async function addRasterLayer(map, appLabel, modelName, rasterID, opacity = 0.7)
       paint: { 'raster-opacity': opacity }
     });
 
-    const [minLng, minLat, maxLng, maxLat] = infoData.bounds;
-    map.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 50, duration: 1000 });
+    if (fit) {   // not when MapSettings.js re-adds a restyled raster
+      const [minLng, minLat, maxLng, maxLat] = infoData.bounds;
+      map.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 50, duration: 1000 });
+    }
 
     console.log(`✅ Raster layer "${tilesData.name}" loaded and zoomed to bounds`);
     return tilesData.legend || null;
@@ -1045,3 +1047,5 @@ window.toggleLayerVisibility = toggleLayerVisibility;
 window.zoomToLayer = zoomToLayer;
 window.reloadLayer = reloadLayer;
 window.removeLayer = removeLayer;
+window.addLayer = addLayer;
+window.loadLayerCatalog = loadLayerCatalog;

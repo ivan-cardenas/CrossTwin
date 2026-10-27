@@ -268,6 +268,11 @@ def wms_tile_proxy(request, wms_name):
     upstream_ms = (time.perf_counter() - start) * 1000
 
     content_type = response.headers.get('Content-Type', 'image/png')
+    if not content_type.startswith('image/'):
+        # WMS servers report errors (e.g. a TIME frame not published yet) as
+        # HTTP 200 + a ServiceException XML. Caching that would blank the tile
+        # for a day, in our cache and (immutable) in the browser.
+        return HttpResponse(status=502)
     tiles.set(cache_key, (response.content, content_type), timeout=ttl)
     return _tile_response(
         response.content, content_type, ttl,

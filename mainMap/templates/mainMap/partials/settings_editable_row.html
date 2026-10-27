@@ -1,0 +1,14 @@
+{# One layer of the Editable layers tab; the toggle swaps this row (settings_views.settings_editable). #}
+<form class="settings-row{% if row.blocker and not row.enabled %} locked{% endif %}"
+      hx-post="{% url 'map:settings_editable' %}" hx-trigger="change" hx-swap="outerHTML">
+  {% csrf_token %}
+  <input type="hidden" name="key" value="{{ row.key }}">
+  <label class="settings-row-label" title="{{ row.key }}">
+    <input type="checkbox" name="enabled"{% if row.enabled %} checked{% endif %}
+           {% if row.blocker and not row.enabled %}disabled{% endif %}>
+    {{ row.name }}
+    {% if row.has_rules %}<span class="settings-badge" title="Field rules in core/editable_layers.toml">rules</span>{% endif %}
+  </label>
+  {% if row.blocker and not row.enabled %}<div class="settings-note">{{ row.blocker }}</div>{% endif %}
+  {% if error %}<div class="settings-error">{{ error }}</div>{% endif %}
+</form>

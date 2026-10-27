@@ -393,6 +393,13 @@ class LayerStyleTests(SimpleTestCase):
 class RasterStyleTests(SimpleTestCase):
     """mainMap/styles/rasterStyles.py: style lookup and the data-driven value range."""
 
+    def setUp(self):
+        # Code defaults only: staff overrides are tested in test_settings.py (with a DB)
+        from unittest import mock
+        patcher = mock.patch('mainMap.styles.overrides.raster_override', return_value=None)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     @staticmethod
     def _raster(values, nodata=-9999):
         from types import SimpleNamespace

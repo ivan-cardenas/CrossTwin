@@ -80,6 +80,16 @@ class WmsTileProxyTests(TestCase):
             self.assertEqual(self._get(MAPBOX_BBOX).status_code, 200)
         fetch.assert_called_once()
 
+    def test_a_service_exception_with_status_200_is_not_cached(self):
+        error = mock.Mock(content=b"<ServiceExceptionReport/>",
+                          headers={"Content-Type": "application/vnd.ogc.se_xml"})
+        frame = "&TIME=2026-09-30T10:05:00Z"
+        with mock.patch("weather.views._fetch_with_retry", return_value=error):
+            self.assertEqual(self._get(MAPBOX_BBOX, frame).status_code, 502)
+        with mock.patch("weather.views._fetch_with_retry", return_value=self._upstream()) as fetch:
+            self.assertEqual(self._get(MAPBOX_BBOX, frame).status_code, 200)
+        fetch.assert_called_once()
+
     def test_query_stats_keep_the_views_timing_entries(self):
         from django.conf import settings
         from django.test import override_settings

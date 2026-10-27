@@ -98,7 +98,7 @@
         el.calculate.textContent = existing ? 'Recalculate SVF for this view' : 'Calculate SVF for this view';
         ready = true;
         if (!canCalculate) {
-          setStatus('Calculating needs a staff login (/admin/).', 'warn');
+          setStatus('Calculating needs a staff login (Log in, top right).', 'warn');
         } else if (existing) {
           setStatus(`SVF #${existing.id} already covers this view (${existing.method}).`);
         } else {

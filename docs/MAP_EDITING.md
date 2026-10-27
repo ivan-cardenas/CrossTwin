@@ -33,9 +33,9 @@ Decisions made:
 ## Server changes
 
 **New `core/editing.py`**
-- `EDITABLE_LAYERS`: allowlist keyed by registry key, read at startup from `core/editable_layers.toml` (one TOML table per layer) by `load_editable_layers()`, with per-model `exclude` (fields the model derives itself) and `optional` (fields the form must not require). Fill the lists by reading each model's `save()`. Known for Building: exclude `area_sqm`, `neighborhood`, `last_updated`, `connectivity`; `buildingType` optional (derived from `usageFunction`).
+- Editable layers are switched on in the map's Map settings panel (`mainMap.EditableLayer`, read per request by `editable_keys()`; `enable_blocker()` refuses a model that overrides `save()` without field rules, and `watersupply` layers). `FIELD_RULES`: form rules keyed by registry key, read at startup from `core/editable_layers.toml` (one TOML table per layer) by `load_editable_layers()`, with per-model `exclude` (fields the model derives itself) and `optional` (fields the form must not require). Fill the lists by reading each model's `save()`. Known for Building: exclude `area_sqm`, `neighborhood`, `last_updated`, `connectivity`; `buildingType` optional (derived from `usageFunction`).
 - `feature_form(request, app_label, model_name, pk=None)`:
-  - 404 if the key is not in `EDITABLE_LAYERS`; 403 unless `request.user.is_staff`.
+  - 404 if the layer is not switched on (`EditableLayer`); 403 unless `request.user.is_staff`.
   - GET: render the partial with the form and the object's **full-resolution** geometry as WGS84 GeoJSON (`geom.transform(4326, clone=True).geojson`). Must not reuse the map's copy: viewport-loaded layers are simplified below zoom 14.
   - POST: validate and `form.save()`. On success return the partial in a "saved" state with an `HX-Trigger: feature-saved` header carrying the layer key. On error re-render with messages.
   - Primary key is never editable. `Building.id` is a non-auto BigInteger (BAG id): new buildings get the next **negative** id (`min(0, lowest id) - 1`), so they never collide with BAG and are recognisable as user-created.
@@ -45,7 +45,7 @@ Decisions made:
 `api/layers/<app>/<model>/features/new/`, `.../features/<pk>/`, `.../features/<pk>/delete/`.
 Plus the backup routes (see [Backup and restore](#backup-and-restore)): `api/editing/backup/` (GET status, POST create), `.../backup/restore/`, `.../backup/discard/`.
 
-**`mainMap/views.py::available_layers`** — add `editable: true` and the Multi*/single geometry type to a layer entry when it is in `EDITABLE_LAYERS` and the user is staff. This is what makes the buttons appear.
+**`mainMap/views.py::available_layers`** — add `editable: true` and the Multi*/single geometry type to a layer entry when it is switched on (`editable_keys()`, one query per catalog request) and the user is staff. This is what makes the buttons appear.
 
 **New `mainMap/templates/mainMap/partials/feature_form.html`** — crispy-tailwind form (already installed), hidden geometry input, `{% csrf_token %}` (HTMX posts it with the form, no extra wiring), Save / Cancel / Delete-with-confirm.
 

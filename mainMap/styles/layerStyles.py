@@ -133,7 +133,9 @@ LAYER_STYLES = {
     },
     'builtup.Building': {
         'color': BUILDING_TYPE_COLORS['residential'],
-        'legend': [{'label': label, 'color': BUILDING_TYPE_COLORS[key]} for key, label in BUILDING_TYPE_LABELS],
+        # value: the matched buildingType ('__other__' = the fallback), for colour overrides (overrides.py)
+        'legend': [{'label': label, 'color': BUILDING_TYPE_COLORS[key],
+                    'value': key if key != 'unknown' else '__other__'} for key, label in BUILDING_TYPE_LABELS],
         'layers': [
             {'type': 'fill-extrusion', 'paint': {
                 'fill-extrusion-color': [
@@ -159,6 +161,12 @@ LAYER_STYLES = {
         'color': '#ef5350',
         'layers': [
             {'type': 'circle', 'paint': {'circle-radius': 5, 'circle-color': '#ef5350', 'circle-stroke-width': 1, 'circle-stroke-color': '#ffffff'}},
+        ],
+    },
+    'housing.ResidentialProperty': {
+        'color': '#ffa726',
+        'layers': [
+            {'type': 'circle', 'paint': {'circle-radius': 4, 'circle-color': '#ffa726', 'circle-stroke-width': 1, 'circle-stroke-color': '#ffffff'}},
         ],
     },
 
