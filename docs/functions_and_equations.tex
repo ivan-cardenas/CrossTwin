@@ -444,7 +444,7 @@ where $H_{\text{covered}}$ counts households in \code{UsersLocation} points spat
   \text{UARL} &= \sum_{\,\text{type}=R,\ \text{year}} \texttt{loss\_Quantity\_m3} \times \frac{\texttt{UnavoidableLossses\_PCT}}{100} \\
   \text{ILI} &= \frac{\text{CARL}}{\text{UARL}}
 \end{align}
-The Infrastructure Leakage Index formulation follows the IWA Water Loss Task Force methodology \cite{IWA_WLTF}. \textbf{DAG edges:} \dagedge{Real\_Losses $\rightarrow$ NRW, ILI}, \dagedge{Apparent\_Losses $\rightarrow$ NRW, ILI} --- \statuspartial{} (ILI is only defined for Real losses; \dagedge{Apparent\_Losses $\rightarrow$ ILI} is unimplemented; \code{NonRevenueWater} records are entered directly rather than linked to \code{PipeNetwork}, so \dagedge{Network $\rightarrow$ Real\_Losses} is a \statusgap{})
+The Infrastructure Leakage Index formulation follows the IWA Water Loss Task Force methodology \cite{IWA_WLTF}. \textbf{DAG edges:} \dagedge{Real\_Losses $\rightarrow$ NRW, ILI}, \dagedge{Apparent\_Losses $\rightarrow$ NRW, ILI} --- \statuspartial{} (ILI is only defined for Real losses; \dagedge{Apparent\_Losses $\rightarrow$ ILI} is unimplemented). \dagedge{Network $\rightarrow$ Real\_Losses} --- \statusdone{}: every real \code{NonRevenueWater} record must point (\code{pipe} FK, enforced in \code{clean()}) to the \code{PipeNetwork} where the leakage is presumed, apparent losses may not; \code{calculate\_nrw()} reports \code{real\_losses\_by\_pipe} (\si{m^3/day} and \si{m^3/km/day}) and, per admin unit, weights each real loss by the share of its pipe's length inside the unit, splits apparent losses by the unit's share of \code{UsersLocation.usersTotal}, and recomputes ILI over the unit's real losses.
 
 \subsection{Water quality --- \code{calculate\_water\_quality()}}
 \textbf{Location:} \code{watersupply/calculations.py:144}
@@ -746,6 +746,7 @@ watersupply & \code{MeteredResidential.save()} & Metered\_Res\_Water$\to$OPEX\_R
 watersupply & \code{calculate\_collection\_ratio()} & Metered\_Res\_Water/User\_Acceptance/Water\_Tariff$\to$CollectionRatio & \statuspartial{} \\
 watersupply & \code{calculate\_coverage()} / \code{CoverageWaterSupply.save()} & Network/CityArea$\to$Coverage\_WS\_Area & \statusdone{} \\
 watersupply & \code{calculate\_nrw()} / \code{NonRevenueWater.save()} & Real/Apparent\_Losses$\to$NRW, ILI & \statuspartial{} \\
+watersupply & \code{NonRevenueWater.pipe} / \code{calculate\_nrw()} & Network$\to$Real\_Losses & \statusdone{} \\
 watersupply & \code{calculate\_water\_quality()} & Samples\_WQ$\to$User\_Acceptance\_WS & \statusgap{} \\
 watersupply & \code{calculate\_available\_freshwater()} & Infiltration/Meteorology$\to$Available\_FW & \statusgap{} \\
 physicalEnv & \code{classify\_soil\_group()} / \code{SoilType.save()} & Soil\_Type$\to$Infiltration & \statusdone{} \\

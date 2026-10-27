@@ -11,21 +11,24 @@ from html import escape
 
 OUT = Path(__file__).resolve().parent.parent / "docs" / "architecture" / "latest"
 
-# name: (stroke, fill, text) -- saturated editorial hues kept dark enough that white
-# text on the stroke colour (tags, box headers) stays legible.
+# name: (stroke, fill, text) -- moderately saturated earthy hues on warm greys.
+# Every stroke keeps >= 4.2:1 contrast with the white text of tags and box headers,
+# and every pair stays >= dE 9 apart under simulated deutan/protan/tritan vision
+# (hue alone is not enough: green/teal and blue/violet pairs differ in lightness too).
+# Run tools/palette_check.py after changing a colour.
 PALETTE = {
-    "client":   ("#3b76c4", "#eeeefb", "#1e2070"),  # ultramarine
-    "django":   ("#115f46", "#e8f5ef", "#07402e"),  # pine
-    "data":     ("#07ece1", "#e6f6f5", "#08494a"),  # jade
-    "external": ("#d15198", "#fbecf4", "#5c1840"),  # plum magenta
-    "raster":   ("#946adf", "#f2edfb", "#3c2370"),  # orchid
-    "cache":    ("#f19f0f", "#fdf4e3", "#5e3d05"),  # ochre
-    "signal":   ("#e9722d", "#fdeceb", "#6b1f18"),  # coral
-    "neutral":  ("#3f4756", "#f4f5f7", "#1b2029"),  # ink slate
+    "client":   ("#3551BF", "#EBEDF4", "#202A50"),  # indigo
+    "django":   ("#27754C", "#EAEFEC", "#163424"),  # deep moss
+    "data":     ("#218C9D", "#E9F1F2", "#133F46"),  # petrol
+    "external": ("#D65B35", "#F9EFEC", "#6A3322"),  # terracotta
+    "raster":   ("#DA9DE8", "#F5EFF6", "#53365A"),  # orchid
+    "cache":    ("#E2A20E", "#F4F0E8", "#4D3A0D"),  # mustard
+    "signal":   ("#CD3485", "#F8EDF3", "#652949"),  # raspberry
+    "neutral":  ("#1E1D2C", "#F3F1EE", "#333333"),  # warm taupe
 }
 
-# Neutral inks (slightly cool, to sit with the jewel tones)
-INK, INK_2, INK_3, INK_4, INK_5 = "#1b2029", "#2f3542", "#454d5c", "#626b7a", "#9aa1ad"
+# Neutral inks (warm greys, to sit with the earthy hues)
+INK, INK_2, INK_3, INK_4, INK_5 = "#6E5A5A", "#45423F", "#5A5652", "#78726D", "#A39E99"
 
 FONT = "'Roboto','Helvetica Neue','Arial',sans-serif"
 MONO = "'JetBrains Mono','Consolas','Courier New',monospace"

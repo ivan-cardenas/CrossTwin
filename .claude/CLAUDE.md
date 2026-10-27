@@ -56,6 +56,9 @@ python manage.py db_stats
 # Profile GET requests (run 1 = cold process, run 2 = warm); --save x.prof for snakeviz
 python tools/profile_requests.py "/api/admin-unit/?lng=6.895&lat=52.219" --runs 2
 
+# Architecture diagrams: check the palette (contrast + colour-blind separation), build SVGs, export PNG/PDF
+python tools/palette_check.py && python tools/arch_diagrams.py && python tools/arch_export.py
+
 # Which modules are slow to import
 python -X importtime -c "import django; django.setup(); import DigitalTwin.urls" 2> imports.log
 ```
@@ -96,7 +99,7 @@ When adding new calculations, trace the relevant DAG edges and document them in 
 
 #### DAG Edge Coverage Gaps
 
-Of the 103 edges in `core/DAG.dot` (one, `Total_Water_Prod -> OPEX`, is listed twice), only 33 are backed by real derivation logic (a `save()` method or a `calculations.py` function that actually reads the source field, not just a docstring claiming the edge). The rest are either flat stored fields with no computation, or `calculations.py` functions whose docstring claims a DAG edge the code doesn't actually implement. Verified gaps, by app:
+`core/DAG.dot` has 102 distinct edges (103 edge lines: `Total_Water_Prod -> OPEX` is listed twice; the invisible legend chain `L_D -> … -> L_R` is not counted). 34 (33 %) are backed by real derivation logic (a `save()` method or a `calculations.py` function that actually reads the source field, not just a docstring claiming the edge), 6 are partial (`Infiltration -> Available_FW`, `Total_Water_Prod -> Energy_Consumption`, `Green_Area -> Vegetation_Coverage`, `Buildings/Streets -> Canyon_Aspect`, `New_Units -> Housing_Supply`) and 62 are gaps (recount 2026-10-22). Borderline counted as implemented: `CityArea -> Coverage_WS_Area` (city geometry only scopes pipes/households) and `Total_Extraction -> Energy_Consumption/CO2_Emission` (pump energy x hours, not extracted volume). The rest are either flat stored fields with no computation, or `calculations.py` functions whose docstring claims a DAG edge the code doesn't actually implement (e.g. `calculate_drought_area` for `Total_Extraction -> Area_Drought` only sums stored areas). Verified gaps, by app:
 
 **administrative** — `Population_Growth -> Total_Population` is implemented at city level: CBS 85173NED forecasts are imported into `PopulationProjection` (per City, year and variant `prognose|low|high`; catalog entry `CBS_PopulationForecast`), and `administrative/population.py::get_population()` derives any unit's projected population (District/Neighborhood = city projection x their share of the city, Province = sum of its cities, plus an optional `growth_adjust_pct` what-if). The water and housing dashboards use it via `?pop_scenario=&pop_growth=`. The what-if controls and a Photoshop-Curves-style forecast graph (smooth curve, square handles, shaded 67% interval band; geometry in `mainMap/charts.py`) live in the map's bottom **Population dock** (Population pill, `/api/population/panel/`), independent of the side panel so an indicator panel can stay open beside it. Still open: `City.popGrowthRate`/`urbanizationRate` remain flat fields never used for projection, housing supply/demand and urban heat do not depend on the projected population (housing shows it but its demand still comes from stored `HousingSupplyDemand` rows), and no `Urbanization` model exists, so `Urbanization -> CityArea/Buildings/Streets/LandCover` has nowhere to live.
 
