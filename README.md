@@ -27,27 +27,6 @@ The project follows the **DPSIR framework** (Driver → Pressure → State → I
 - **Default CRS**: EPSG:28992 (Amersfoort / RD New), set via `COORDINATE_SYSTEM` in `.env`
 - **Stack**: Django 5 · PostgreSQL/PostGIS · GDAL/GeoPandas · Mapbox GL JS · TiTiler (FastAPI) · HTMX + Tailwind
 
-## 📂 Project Structure
-
-| 📁 Folder | 📝 Contains | Description |
-|---|---|---|
-| `DigitalTwin/` | `settings.py`, `urls.py`, `test_runner.py` | Django project config, env loading, caches, custom PostGIS test runner |
-| `core/` | `utils.py`, `signals.py`, `cache.py`, `middleware.py`, `rasterOperations.py`, `DAG.dot`, `static/js/` | Model registry, layer-cache versions, query-stats middleware, raster→COG export pipeline, DPSIR causal graph, shared frontend JS |
-| `mainMap/` | `views.py`, `urls.py`, `charts.py`, `styles/` | Interactive map view, layer catalog + GeoJSON API, map editing (code in `core/editing.py`, editable layers in `core/editable_layers.toml`), population dock charts; `styles/` holds every map style: vector layer styles (`layerStyles.py`), soil map colours (`soilStyles.py`), land-cover legend (`landCoverStyles.py`), raster colormaps (`rasterStyles.py`) |
-| `importer/` | `views.py`, `views_external.py`, `external_catalog.py`, `external_data.py`, `batching.py` | File-upload import + external catalog import (PDOK, CBS, BIS Nederland, OpenStreetMap, Sentinel-2, GEE, KNMI, RIVM, Klimaateffectatlas); bulk writes and deferred cascades |
-| `docs/` | `PERFORMANCE.md`, … | Performance review and implementation status |
-| `administrative/` | `models.py`, `population.py`, `signals.py` | Province > City > District > Neighborhood hierarchy, population projection |
-| `watersupply/` | `models.py`, `calculations.py`, `views.py`, `signals.py` | Water infrastructure, indicator dashboard (incl. SCS infiltration with rain-event and groundwater-season what-ifs) |
-| `urban_heat/` | `models.py`, `calculations.py`, `views.py` | Thermal comfort rasters (UTCI, PET, MRT, LST, SVF), NBS |
-| `housing/` | `models.py`, `calculations.py`, `views.py` | Supply/demand, mortgages, rentals, affordability |
-| `builtup/` | `models.py`, `calculations.py`, `views.py` | Streets, parks, facilities, buildings, properties, zoning (HILUCS land use), indicator dashboard |
-| `physicalEnv/` | `models.py`, `soil.py`, `hilucs.py`, `signals.py` | Land cover, DEM/DSM, soil map + hydrologic soil groups, groundwater depth (GHG/GLG), SCS Curve Number method, HILUCS land-use codelist |
-| `nature/`, `weather/`, `Energy/` | `models.py` | Water bodies, forests, green space, trees; weather; energy domain data |
-| `Templates/` | `mainMap.html`, `indicators_base.html`, `<app>/partials/` | Shared HTML shells + HTMX partials |
-| `tiler.py` | — | Standalone FastAPI app serving COG tiles (run as its own process) |
-
-🚀 *Registries in `core/utils.py` auto-discover every model in the domain apps above — no manual layer wiring needed.*
-
 ## 🔧 Requirements
 
 - Python 3.11 or newer, on Windows, macOS or Linux
@@ -75,6 +54,9 @@ uv sync                       # creates .venv and installs pyproject.toml + uv.l
 
 Dependencies are declared in `pyproject.toml` and pinned in `uv.lock`. `uv sync` uses the Python version uv finds; pick another with `uv sync --python 3.13`. Add `--no-dev` to skip the Jupyter kernel (`ipykernel`).
 
+<details>
+<summary><b>🧰 GDAL, and installing without uv</b></summary>
+
 **GDAL.** GeoDjango needs the GDAL and GEOS C libraries:
 
 - **Windows**: nothing to install. `uv sync` installs [Christoph Gohlke's GDAL wheel](https://github.com/cgohlke/geospatial-wheels) for your Python version (3.11–3.15) and CPU (x64 or ARM64), which bundles the GDAL, GEOS and PROJ DLLs; `DigitalTwin/settings.py` finds them in the venv's `osgeo` folder. PyPI has no Windows wheel for GDAL, so `pyproject.toml` points uv straight at the GitHub release files (`[tool.uv.sources]`). 32-bit Python and Python 3.16+ have no wheel there and fall back to building GDAL from source.
@@ -83,14 +65,16 @@ Dependencies are declared in `pyproject.toml` and pinned in `uv.lock`. `uv sync`
 
   On macOS and Linux the `gdal` Python package is not installed: Django loads the system library, and rasterio, pyogrio and pyproj bundle their own GDAL/PROJ in their wheels.
 
-##### Without uv
-Without uv, `python -m venv .venv` and `pip install -r requirements.txt` still work, but `requirements.txt` is a frozen Windows + Python 3.11 environment (its GDAL wheel is `cp311-win_amd64`).
+**Without uv.** Without uv, `python -m venv .venv` and `pip install -r requirements.txt` still work, but `requirements.txt` is a frozen Windows + Python 3.11 environment (its GDAL wheel is `cp311-win_amd64`).
+
+</details>
 
 ### 1. Install PostgreSQL + PostGIS
 
 CrossTwin needs PostgreSQL (16 or 17) with the PostGIS extensions `postgis` and `postgis_raster`. Nothing in the code uses `postgis_topology`, `postgis_sfcgal` or pgRouting; `tools/check_postgres.py` only lists them as optional.
 
-**Windows**
+<details>
+<summary><b>🪟 Windows</b></summary>
 
 1. Install PostgreSQL with the EDB installer from [postgresql.org/download/windows](https://www.postgresql.org/download/windows/), or with winget:
    ```powershell
@@ -101,7 +85,10 @@ CrossTwin needs PostgreSQL (16 or 17) with the PostGIS extensions `postgis` and 
 3. Make sure the service is running: `net start postgresql-x64-17` (or Services → `postgresql-x64-17` → Start).
 4. `psql` lives in `C:\Program Files\PostgreSQL\17\bin`; add it to `PATH` or use **SQL Shell (psql)** / pgAdmin from the Start menu.
 
-**macOS**
+</details>
+
+<details>
+<summary><b>🍎 macOS</b></summary>
 
 - [Postgres.app](https://postgresapp.com/) (bundles PostGIS), or Homebrew:
   ```bash
@@ -109,7 +96,10 @@ CrossTwin needs PostgreSQL (16 or 17) with the PostGIS extensions `postgis` and 
   brew services start postgresql@17
   ```
 
-**Linux (Debian/Ubuntu)**
+</details>
+
+<details>
+<summary><b>🐧 Linux (Debian/Ubuntu)</b></summary>
 
 ```bash
 sudo apt install postgresql postgresql-17-postgis-3   # match your PostgreSQL major version
@@ -117,9 +107,41 @@ sudo systemctl enable --now postgresql
 sudo -u postgres psql        # opens psql as the superuser
 ```
 
-### 2. Create the database
+</details>
 
-Run this in `psql` (or pgAdmin's Query Tool) **as the `postgres` superuser** — `CREATE EXTENSION` for PostGIS needs superuser rights. Pick your own user name and password; they go into `.env` in the next step.
+### 2–3. Create the database and the `.env` file
+
+**Windows: double-click `setup_db.bat`** in the project folder. It does steps 2 and 3 for you (and optionally step 5), so you don't have to open psql or pgAdmin. It asks:
+
+| Prompt | Default | Notes |
+|---|---|---|
+| PostgreSQL host / port | `localhost` / `5432` | |
+| Admin (superuser) name + password | `postgres` | The password you set in the PostgreSQL installer; only used during setup, never saved |
+| Database name | `crosstwin` | Lowercase letters, digits, `_` |
+| Database user name + password | `crosstwin_user` | Password typed twice (hidden); goes into `.env` |
+| Privileges | `1` Full | `1` Full (owner, can migrate) · `2` Read/write · `3` Read-only |
+| Allow creating databases | Yes for Full | Needed to run the test suite |
+| Mapbox token | *(blank)* | Optional; add it to `.env` later if you don't have one yet |
+
+It then creates the user and database, creates the `postgis` and `postgis_raster` extensions, grants the privileges, and writes `.env` from `.env_template` with a generated `SECRET_KEY`. With Full privileges and an existing `.venv` (run `uv sync` first), it ends by offering step 5: an **empty** database (`migrate`) or the **example data** (`tools/example_db.py load`, then `migrate`).
+
+<details>
+<summary><b>⚙️ More about <code>setup_db.bat</code></b></summary>
+
+- **Where is psql?** The script looks on `PATH`, then under `C:\Program Files\PostgreSQL\<version>\bin` (newest version first), and asks for the path if neither works.
+- **Privilege levels:**
+  - **1 Full**: the user owns the database and the `public` schema, so it can run migrations, imports and `tools/example_db.py load`. Use this for local development.
+  - **2 Read/write**: can read and change data but not the schema; migrations must be run by an admin.
+  - **3 Read-only**: `SELECT` only, e.g. for a viewer or dashboard account.
+- **Running it again is safe:** an existing user or database is reused (you're asked first), and an existing `.env` is copied to `.env.backup-<timestamp>` before it is replaced.
+- **Special characters in passwords** (`& | ^ % ! ' " \ $`) are fine: the `.bat` file only launches the PowerShell script embedded in the same file.
+
+</details>
+
+<details>
+<summary><b>🐧 Manual: create the database and <code>.env</code> by hand (macOS / Linux, or without the script)</b></summary>
+
+**Database.** Run this in `psql` (or pgAdmin's Query Tool) **as the `postgres` superuser** — `CREATE EXTENSION` for PostGIS needs superuser rights. Pick your own user name and password; they go into `.env` in the next step.
 
 ```sql
 CREATE DATABASE crosstwin;
@@ -136,9 +158,7 @@ CREATE EXTENSION postgis;
 CREATE EXTENSION postgis_raster;
 ```
 
-### 3. Create the `.env` file
-
-Copy the template to `.env` in the project root (next to `manage.py`) and fill in your values. `.env` is git-ignored, so your keys never get committed.
+**`.env` file.** Copy the template to `.env` in the project root (next to `manage.py`) and fill in your values. `.env` is git-ignored, so your keys never get committed.
 
 ```bash
 cp .env_template .env        # Windows: copy .env_template .env
@@ -174,7 +194,10 @@ KNMI_API_KEY=your-knmi-api-key
 # SQL_LOG=False             # print every SQL statement (needs DEBUG=True)
 ```
 
-Where each value comes from:
+</details>
+
+<details>
+<summary><b>🔑 Where each <code>.env</code> value comes from (Mapbox token, API keys, …)</b></summary>
 
 | Variable | Required | How to get it |
 |---|---|---|
@@ -190,6 +213,8 @@ Where each value comes from:
 | `KNMI_API_KEY` | for KNMI weather/WBGT/radar imports | Register at the [KNMI Developer Portal](https://developer.dataplatform.knmi.nl/) and request an Open Data API key (KNMI also publishes a time-limited anonymous key there for testing) |
 | `OVERPASS_URL` | no | Only to use another Overpass instance for OpenStreetMap imports; leave out to use the public overpass-api.de |
 | `QUERY_STATS`, `QUERY_STATS_SLOW_MS`, `SQL_LOG` | no | Performance measurement flags, see `docs/PERFORMANCE.md` §0 |
+
+</details>
 
 ### 4. Check the database connection
 
@@ -222,8 +247,6 @@ It restores the tables and data, copies the raster COG files into `cogs/` and po
 python manage.py createsuperuser
 ```
 
-
-
 ## ▶️ Running the Project
 
 CrossTwin runs as **two servers**, in separate terminals:
@@ -242,7 +265,36 @@ Or run `start.bat` on Windows, which starts both. Visit `http://localhost:8000`.
 - **PostGIS not installed**: PostGIS is not on winget; install the PostGIS bundle with Stack Builder (included with the PostgreSQL installer) or the [OSGeo installer](https://download.osgeo.org/postgis/windows/).
 - **Extensions not created, wrong credentials, missing database**: the SQL or `.env` setting to fix.
 
-## 🏗️ Architecture
+## 📚 Reference
+
+*Click a topic to expand it.*
+
+<details>
+<summary><b>📂 Project Structure</b></summary>
+
+| 📁 Folder | 📝 Contains | Description |
+|---|---|---|
+| `DigitalTwin/` | `settings.py`, `urls.py`, `test_runner.py` | Django project config, env loading, caches, custom PostGIS test runner |
+| `core/` | `utils.py`, `signals.py`, `cache.py`, `middleware.py`, `rasterOperations.py`, `DAG.dot`, `static/js/` | Model registry, layer-cache versions, query-stats middleware, raster→COG export pipeline, DPSIR causal graph, shared frontend JS |
+| `mainMap/` | `views.py`, `urls.py`, `charts.py`, `styles/` | Interactive map view, layer catalog + GeoJSON API, map editing (code in `core/editing.py`, editable layers in `core/editable_layers.toml`), population dock charts; `styles/` holds every map style: vector layer styles (`layerStyles.py`), soil map colours (`soilStyles.py`), land-cover legend (`landCoverStyles.py`), raster colormaps (`rasterStyles.py`) |
+| `importer/` | `views.py`, `views_external.py`, `external_catalog.py`, `external_data.py`, `batching.py` | File-upload import + external catalog import (PDOK, CBS, BIS Nederland, OpenStreetMap, Sentinel-2, GEE, KNMI, RIVM, Klimaateffectatlas); bulk writes and deferred cascades |
+| `docs/` | `PERFORMANCE.md`, … | Performance review and implementation status |
+| `administrative/` | `models.py`, `population.py`, `signals.py` | Province > City > District > Neighborhood hierarchy, population projection |
+| `watersupply/` | `models.py`, `calculations.py`, `views.py`, `signals.py` | Water infrastructure, indicator dashboard (incl. SCS infiltration with rain-event and groundwater-season what-ifs) |
+| `urban_heat/` | `models.py`, `calculations.py`, `views.py` | Thermal comfort rasters (UTCI, PET, MRT, LST, SVF), NBS |
+| `housing/` | `models.py`, `calculations.py`, `views.py` | Supply/demand, mortgages, rentals, affordability |
+| `builtup/` | `models.py`, `calculations.py`, `views.py` | Streets, parks, facilities, buildings, properties, zoning (HILUCS land use), indicator dashboard |
+| `physicalEnv/` | `models.py`, `soil.py`, `hilucs.py`, `signals.py` | Land cover, DEM/DSM, soil map + hydrologic soil groups, groundwater depth (GHG/GLG), SCS Curve Number method, HILUCS land-use codelist |
+| `nature/`, `weather/`, `Energy/` | `models.py` | Water bodies, forests, green space, trees; weather; energy domain data |
+| `Templates/` | `mainMap.html`, `indicators_base.html`, `<app>/partials/` | Shared HTML shells + HTMX partials |
+| `tiler.py` | — | Standalone FastAPI app serving COG tiles (run as its own process) |
+
+🚀 *Registries in `core/utils.py` auto-discover every model in the domain apps above — no manual layer wiring needed.*
+
+</details>
+
+<details>
+<summary><b>🏗️ Architecture</b></summary>
 
 ### Model registry (`core/utils.py`)
 
@@ -259,7 +311,7 @@ These drive the generic layer API, the map's layer catalog, and the importer's f
 
 - `administrative/signals.py` — cascades population/density Neighborhood → District → City → Province via `_recompute_population()`, using `update()` (not `save()`) to avoid signal recursion.
 - `physicalEnv/signals.py` — when land cover changes, recomputes every neighborhood's `urban_area` in the city with one set-based SQL `UPDATE`, then cascades each parent once. A building drawn in the map editor (negative id) turns a 10 m buffer around it into urban fabric (`physicalEnv/landcover.py::urbanize_around`, DAG edge `New_Units -> LandCover`): the buffer is cut out of the overlapping land-cover polygons and inserted as one new polygon. The cut pieces are kept (`UrbanFabricCut`), so moving or deleting that building gives the land back (`release_ring`), and the editor's backup journals all those rows so Restore brings the original land cover back. The housing dashboard reports the pipeline's land take (greenfield vs infill hectares, `housing/calculations.py::calculate_pipeline_land_take`).
-- `core/signals.py` — `post_save` on every `RASTER_REGISTRY` model auto-exports it to a COG (see [Raster pipeline](#🛰️-raster-pipeline)); `post_save`/`post_delete` on every vector model invalidates that layer's cached GeoJSON.
+- `core/signals.py` — `post_save` on every `RASTER_REGISTRY` model auto-exports it to a COG (see *Raster Pipeline* below); `post_save`/`post_delete` on every vector model invalidates that layer's cached GeoJSON.
 - Bulk imports wrap their writes in `importer/batching.py::deferred_cascades()`, so the cascades run **once per affected parent** at the end instead of once per imported row.
 - `watersupply/signals.py` — cascades population → `ConsumptionCapita` → `TotalWaterDemand` → `SupplySecurity`, and re-derives `OPEX`/`CoverageWaterSupply`/NRW indicators from their upstream inputs.
 
@@ -283,7 +335,10 @@ Each follows the same three-layer pattern:
 
 `MOCK_DATA` dicts provide fallback values when a province has no DB data, so frontend work isn't blocked on a populated database.
 
-## 🧩 Domain Apps
+</details>
+
+<details>
+<summary><b>🧩 Domain Apps</b></summary>
 
 | App | Covers |
 |---|---|
@@ -298,7 +353,10 @@ Each follows the same three-layer pattern:
 | `mainMap` | Interactive map view and layer catalog API |
 | `core` | Model registry, generic layer API, raster export pipeline, signals |
 
-## 🔗 DPSIR Causal Network
+</details>
+
+<details>
+<summary><b>🔗 DPSIR Causal Network</b></summary>
 
 The full causal graph lives in [`core/DAG.dot`](core/DAG.dot) (Graphviz). Each domain's `calculations.py` documents which edges its functions implement:
 
@@ -308,7 +366,10 @@ The full causal graph lives in [`core/DAG.dot`](core/DAG.dot) (Graphviz). Each d
 
 **Of the 103 edges in the graph, only 31 are backed by real derivation logic** (a `save()` or `calculations.py` function that reads the source field — not just a docstring claiming the edge). See [`TODO.md`](TODO.md) for the full per-app gap analysis and checklist before extending any dashboard's calculations.
 
-## 📥 Importer System
+</details>
+
+<details>
+<summary><b>📥 Importer System</b></summary>
 
 Two paths, both under `/importer/`:
 
@@ -331,7 +392,10 @@ For districts/neighborhoods, the import map picks the area of interest from the 
 
 Large imports are batched (`importer/batching.py`): spatial parents (the city a polygon lies in, …) are found with prepared geometries, and models without their own `save()` logic — land cover, streets, facilities, soil polygons, the nature layers and trees — are written 500 rows at a time with `bulk_create` / `INSERT … ON CONFLICT`. Models with `save()` logic (buildings, the administrative hierarchy) are still saved row by row.
 
-## 🛰️ Raster Pipeline
+</details>
+
+<details>
+<summary><b>🛰️ Raster Pipeline</b></summary>
 
 Every `RASTER_REGISTRY` model auto-exports to a tile-servable COG on save:
 
@@ -347,7 +411,10 @@ Raster models need a `cog_path` field to participate. Bulk-export with:
 python manage.py export_cogs
 ```
 
-## 🔌 API Routes
+</details>
+
+<details>
+<summary><b>🔌 API Routes</b></summary>
 
 | Path | Purpose |
 |---|---|
@@ -364,7 +431,10 @@ python manage.py export_cogs
 | `/housing/` | Housing dashboard |
 | `/weather/` | Weather data views |
 
-## ✅ Testing
+</details>
+
+<details>
+<summary><b>✅ Testing</b></summary>
 
 Tests use `PostGISTestRunner` (`DigitalTwin/test_runner.py`), which creates the test DB, installs PostGIS extensions, and patches Django's `prepare_database` to skip the superuser requirement.
 
@@ -375,7 +445,10 @@ python manage.py test importer --settings=DigitalTwin.settings_test --keepdb --n
 
 Always pass `--keepdb`: without it Django drops the test database the runner prepared and recreates it without PostGIS, and migrations fail with `type "geometry" does not exist`.
 
-## 📊 Performance
+</details>
+
+<details>
+<summary><b>📊 Performance</b></summary>
 
 [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md) is the performance review and tracks what is done: §0–§3 (measurement, the GeoJSON endpoint, the land-cover signal, importer batching) are implemented; the rest are proposals.
 
@@ -383,7 +456,10 @@ Always pass `--keepdb`: without it Django drops the test database the runner pre
 - `python manage.py db_stats` lists the slowest statements from `pg_stat_statements` (it explains how to enable the extension if it's missing).
 - The caches are in local process memory. With several worker processes, switch `CACHES` in `settings.py` to Redis so a data change invalidates every worker's copy.
 
-## 📐 Key Conventions
+</details>
+
+<details>
+<summary><b>📐 Key Conventions</b></summary>
 
 - Spatial models always use `srid=settings.COORDINATE_SYSTEM`, never a hardcoded SRID.
 - Computed fields are derived in `save()` — check existing patterns (`administrative/models.py`, `watersupply/signals.py`) first.
@@ -392,10 +468,17 @@ Always pass `--keepdb`: without it Django drops the test database the runner pre
 - The GeoJSON API transforms to EPSG:4326 at query time — storage stays in RD New.
 - Frontend JS lives in `core/static/js/` — never inline `<script>` blocks in templates.
 
-## 🐛 Troubleshooting
+</details>
+
+<details>
+<summary><b>🐛 Troubleshooting</b></summary>
 
 | Symptom | Check |
 |---|---|
+| `setup_db.bat`: *psql.exe was not found* | PostgreSQL isn't installed, or is in a custom folder: enter the path to its `bin` folder when asked |
+| `setup_db.bat`: *PostGIS is not installed on this server* | Install **Spatial Extensions → PostGIS 3.x Bundle** with Stack Builder (Start menu → PostgreSQL), then run the script again |
+| `setup_db.bat`: *Could not connect* | PostgreSQL service running (`net start postgresql-x64-17`)? Correct admin password and port? |
+| Django: `password authentication failed` | `DATABASE_*` in `.env` match the database user; re-run `setup_db.bat` and choose to set a new password |
 | PROJ version mismatch on import | `python -c "import pyproj; print(pyproj.proj_version_str)"` vs `psql -c "SELECT PostGIS_PROJ_Version();"` — prefer `ST_AsGeoJSON` over GDAL reprojection if they diverge |
 | Import fails despite a valid file | File encoding (UTF-8), geometry validity (`ST_IsValid`), SRID, required field mappings |
 | Mapbox map is blank | `MAPBOX_ACCESS_TOKEN` set/valid; browser console + network tab for failed requests |
@@ -405,3 +488,5 @@ Always pass `--keepdb`: without it Django drops the test database the runner pre
 | Tests fail with `type "geometry" does not exist` | Rerun with `--keepdb` |
 | `Could not find the GDAL library` at startup | macOS/Linux: install the system GDAL (`brew install gdal`, `apt install gdal-bin libgdal-dev`). Windows: `uv sync` did not install `gdal` (check `.venv\Lib\site-packages\osgeo\gdal.dll`); usually a 32-bit or unsupported Python version |
 | Sentinel-2 (openEO) import fails / asks for credentials | `SENTINEL_CLIENT_ID`/`SECRET` set + server restarted; CDSE OAuth client still valid at [shapps.dataspace.copernicus.eu/dashboard](https://shapps.dataspace.copernicus.eu/dashboard); otherwise paste a personal client ID/secret into the UI panel (used once, not saved) |
+
+</details>

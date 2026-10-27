@@ -17,6 +17,11 @@ uv sync                      # --python 3.13 to pick a version, --no-dev to skip
 uv add <pkg>                 # add a dependency (updates pyproject.toml and uv.lock)
 uv lock --upgrade-package <pkg>
 
+# First-time database setup (Windows): creates the PostGIS database + user,
+# writes .env from .env_template and offers migrate or the example data.
+# A cmd launcher with the PowerShell script embedded after its ##PS-START marker.
+setup_db.bat
+
 # Activate virtual environment
 .venv\Scripts\Activate       # Windows; source .venv/bin/activate on Linux/macOS
 
