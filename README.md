@@ -447,7 +447,7 @@ Always pass `--keepdb`: without it Django drops the test database the runner pre
 
 </details>
 
-<details>
+<!-- <details>
 <summary><b>📊 Performance</b></summary>
 
 [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md) is the performance review and tracks what is done: §0–§3 (measurement, the GeoJSON endpoint, the land-cover signal, importer batching) are implemented; the rest are proposals.
@@ -456,7 +456,7 @@ Always pass `--keepdb`: without it Django drops the test database the runner pre
 - `python manage.py db_stats` lists the slowest statements from `pg_stat_statements` (it explains how to enable the extension if it's missing).
 - The caches are in local process memory. With several worker processes, switch `CACHES` in `settings.py` to Redis so a data change invalidates every worker's copy.
 
-</details>
+</details> -->
 
 <details>
 <summary><b>📐 Key Conventions</b></summary>
