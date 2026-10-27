@@ -16,6 +16,7 @@ from django.apps import apps
 # whichever page it was for (the URLconf imports this module).
 
 from .batching import deferred_cascades
+from .console import say
 from .forms import GeoUploadForm, MappingForm, get_target_model_choices
 from .utils import gpd_read_any
 from core.utils import MODEL_REGISTRY
@@ -29,24 +30,12 @@ COORDINATE_SYSTEM = settings.COORDINATE_SYSTEM
 logger = logging.getLogger(__name__)
 
 
-def _say(step, text):
-    """
-    One console line about what the upload wizard is doing, e.g.
-        [import] raster  | Reprojecting EPSG:4326 -> EPSG:28992
-    Forced to ASCII: a character the Windows cp1252 console can't encode (a
-    file or place name) would raise inside the request. Warnings and errors
-    also go to `logger`.
-    """
-    line = f"[import] {step:<7} | {text}"
-    print(line.encode("ascii", "replace").decode("ascii"), flush=True)
-
-
-def _say_report(report, dry_run):
+def say_report(report, dry_run):
     """The import's outcome on one line, plus its first errors."""
     counts = ", ".join(f"{report.get(k, 0)} {k}" for k in ('created', 'updated', 'skipped', 'errors'))
-    _say("done", f"{'Dry run' if dry_run else 'Saved'} - {report.get('target', '?')}: {counts}")
+    say("done", f"{'Dry run' if dry_run else 'Saved'} - {report.get('target', '?')}: {counts}")
     for err in report.get('sample_errors', [])[:5]:
-        _say("done", f"  error: {err}")
+        say("done", f"  error: {err}")
 
 
 # Optional, tiny per-model overrides (only what can't be inferred)
@@ -618,7 +607,7 @@ def _raster_import(raster_path, target_label, field_name, metadata_map, dry_run=
     import tempfile
     import shutil
 
-    _say("raster", f"Importing {os.path.basename(raster_path)} into {target_label}.{field_name}"
+    say("raster", f"Importing {os.path.basename(raster_path)} into {target_label}.{field_name}"
                    f"{' (dry run)' if dry_run else ''}")
     spec = _get_model_spec(target_label)
     model = spec['model']
@@ -641,7 +630,7 @@ def _raster_import(raster_path, target_label, field_name, metadata_map, dry_run=
         with rasterio.open(raster_path) as src:
             has_crs = src.crs is not None
             src_epsg = src.crs.to_epsg() if has_crs else None
-            _say("raster", f"Source: {src.width} x {src.height} px, {src.count} band(s), "
+            say("raster", f"Source: {src.width} x {src.height} px, {src.count} band(s), "
                            f"{f'EPSG:{src_epsg}' if src_epsg else ('custom CRS' if has_crs else 'no CRS')}")
         # Reproject whenever the raster has a CRS that isn't the storage CRS.
         # Test has_crs rather than src_epsg: a valid CRS with no EPSG match
@@ -649,7 +638,7 @@ def _raster_import(raster_path, target_label, field_name, metadata_map, dry_run=
         needs_reproject = has_crs and src_epsg != target_srid
 
         if needs_reproject:
-            _say("raster", f"Reprojecting {f'EPSG:{src_epsg}' if src_epsg else 'custom CRS'} "
+            say("raster", f"Reprojecting {f'EPSG:{src_epsg}' if src_epsg else 'custom CRS'} "
                            f"-> EPSG:{target_srid} (bilinear) ...")
             # Create temporary file for reprojected raster
             fd, temp_file = tempfile.mkstemp(suffix='.tif')
@@ -685,13 +674,13 @@ def _raster_import(raster_path, target_label, field_name, metadata_map, dry_run=
                         )
             
             raster_file_to_load = temp_file
-            _say("raster", f"Reprojected: {width} x {height} px")
+            say("raster", f"Reprojected: {width} x {height} px")
         else:
             # A raster with no CRS at all can only be assumed to already be in
             # the storage CRS; tag it so PostGIS/Django don't reject it.
             if not has_crs:
                 logger.warning("Source raster has no CRS; assuming it is already in EPSG:%s", target_srid)
-                _say("WARNING", f"The file has no CRS: assuming it is already in EPSG:{target_srid}")
+                say("WARNING", f"The file has no CRS: assuming it is already in EPSG:{target_srid}")
                 
                 fd, temp_file = tempfile.mkstemp(suffix='.tif')
                 os.close(fd)
@@ -715,7 +704,7 @@ def _raster_import(raster_path, target_label, field_name, metadata_map, dry_run=
         shutil.copy2(raster_file_to_load, writable_file)
         # Load with GDALRaster in WRITE mode
         gdal_raster = GDALRaster(writable_file, write=True)
-        _say("raster", f"Loaded for PostGIS: {gdal_raster.width} x {gdal_raster.height} px, SRID {gdal_raster.srid}")
+        say("raster", f"Loaded for PostGIS: {gdal_raster.width} x {gdal_raster.height} px, SRID {gdal_raster.srid}")
         # Build instance data
         instance_data = {}
         
@@ -755,9 +744,9 @@ def _raster_import(raster_path, target_label, field_name, metadata_map, dry_run=
             obj = model.objects.create(**instance_data)
             created = True
         match = f" (matched on {lookup})" if lookup else ""
-        _say("raster", f"{'Created' if created else 'Updated'} {model._meta.label} id={obj.pk}{match}")
+        say("raster", f"{'Created' if created else 'Updated'} {model._meta.label} id={obj.pk}{match}")
         if dry_run:
-            _say("raster", "Dry run: rolling the transaction back, nothing is saved")
+            say("raster", "Dry run: rolling the transaction back, nothing is saved")
             transaction.set_rollback(True)
         
         report = {
@@ -773,7 +762,7 @@ def _raster_import(raster_path, target_label, field_name, metadata_map, dry_run=
         
     except Exception as e:
         logger.exception("Raster import into %s failed", target_label)
-        _say("ERROR", f"Raster import into {target_label} failed: {e} (traceback above)")
+        say("ERROR", f"Raster import into {target_label} failed: {e} (traceback above)")
         
         report = {
             'target': model._meta.label,
@@ -802,7 +791,7 @@ def _raster_import(raster_path, target_label, field_name, metadata_map, dry_run=
                     os.unlink(tmp)
                 except Exception as e:
                     logger.warning("Could not delete temp file %s: %s", tmp, e)
-                    _say("WARNING", f"Could not delete temp file {tmp}: {e}")
+                    say("WARNING", f"Could not delete temp file {tmp}: {e}")
 
 
 UPLOAD_MAX_AGE_S = 24 * 3600
@@ -868,7 +857,7 @@ def upload_geodata(request):
         
         file_ext = os.path.splitext(request.FILES['file'].name)[1].lower()
         is_raster = file_ext in ['.tif', '.tiff', '.geotiff']
-        _say("upload", f"Step 1/2: {'raster' if is_raster else 'vector'} file "
+        say("upload", f"Step 1/2: {'raster' if is_raster else 'vector'} file "
                        f"'{request.FILES['file'].name}' ({request.FILES['file'].size / 1e6:.1f} MB) -> {target_model}")
 
         spec = _get_model_spec(target_model)
@@ -931,7 +920,7 @@ def upload_geodata(request):
                 request.session['uploader_storage_kind'] = 'raster'
                 request.session['uploader_target_model'] = target_model
                 request.session.modified = True
-                _say("upload", f"Raster read: {raster_info['width']} x {raster_info['height']} px, "
+                say("upload", f"Raster read: {raster_info['width']} x {raster_info['height']} px, "
                                f"CRS {raster_info['crs']}. Waiting for the metadata form ...")
 
                 # For rasters, create a simplified mapping form
@@ -948,7 +937,7 @@ def upload_geodata(request):
                 )
                 
             except Exception as e:
-                _say("ERROR", f"Could not read the raster: {e}")
+                say("ERROR", f"Could not read the raster: {e}")
                 form.add_error('file', f'Could not read raster file: {e}')
                 return render(request, 'importer/upload.html', {'form': form})
                 
@@ -959,7 +948,7 @@ def upload_geodata(request):
                 gdf = gpd_read_any(request.FILES['file'])
             
             except Exception as e:
-                _say("ERROR", f"GeoPandas could not read the file: {e}")
+                say("ERROR", f"GeoPandas could not read the file: {e}")
                 form.add_error('file', f'Could not read file with GeoPandas: {e}')
                 return render(request, 'importer/upload.html', {'form': form})
 
@@ -1009,7 +998,7 @@ def upload_geodata(request):
             request.session['uploader_source_crs'] = (gdf.crs.to_epsg() if gdf.crs else None)
             request.session['uploader_columns'] = list(gdf.columns)
             request.session.modified = True
-            _say("upload", f"Read {len(gdf)} feature(s), {source_geom_type or 'no geometry'}, "
+            say("upload", f"Read {len(gdf)} feature(s), {source_geom_type or 'no geometry'}, "
                            f"CRS {gdf.crs.to_string() if gdf.crs else 'unknown'}, "
                            f"{len(gdf.columns)} column(s). Waiting for the field mapping ...")
 
@@ -1039,11 +1028,11 @@ def upload_geodata(request):
         src_epsg = request.session.get('uploader_source_crs')
 
         if not all([target_model, tmp_path, storage_kind]):
-            _say("ERROR", "Step 2/2: the upload is no longer in the session; back to step 1")
+            say("ERROR", "Step 2/2: the upload is no longer in the session; back to step 1")
             django_messages.error(request, "Session expired or incomplete. Please upload again.")
             return redirect(reverse('importer:upload_geodata'))
 
-        _say("map", f"Step 2/2: {file_type} import into {target_model}")
+        say("map", f"Step 2/2: {file_type} import into {target_model}")
 
         if file_type == 'raster':
             # ========================================================
@@ -1067,7 +1056,7 @@ def upload_geodata(request):
                     metadata_map['date'] = date_obj  # Assuming your model has a 'date' field
                     metadata_map['name'] = raster_name
                 except ValueError:
-                    _say("ERROR", f"Date '{raster_date}' is not YYYY-MM-DD")
+                    say("ERROR", f"Date '{raster_date}' is not YYYY-MM-DD")
                     django_messages.error(request, f"Invalid date format: {raster_date}")
                     return redirect(reverse('importer:upload_geodata'))
             
@@ -1076,7 +1065,7 @@ def upload_geodata(request):
                     field_name = key.replace('meta__', '')
                     metadata_map[field_name] = value
             if metadata_map:
-                _say("map", "Metadata: " + ", ".join(f"{k}={v}" for k, v in metadata_map.items()))
+                say("map", "Metadata: " + ", ".join(f"{k}={v}" for k, v in metadata_map.items()))
 
             try:
                 report = _raster_import(
@@ -1088,10 +1077,10 @@ def upload_geodata(request):
                 )
             except Exception as e:
                 logger.exception("Raster import failed")
-                _say("ERROR", f"Raster import failed: {e} (traceback above)")
+                say("ERROR", f"Raster import failed: {e} (traceback above)")
                 django_messages.error(request, f"Raster import failed: {e}")
                 return redirect(reverse('importer:upload_geodata'))
-            _say_report(report, dry_run)
+            say_report(report, dry_run)
 
             # Display results
             if dry_run:
@@ -1131,7 +1120,7 @@ def upload_geodata(request):
                     # GeoJSON fallback
                     gdf = gpd.read_file(tmp_path)
             except Exception as e:
-                _say("ERROR", f"Could not reload the uploaded snapshot: {e}")
+                say("ERROR", f"Could not reload the uploaded snapshot: {e}")
                 django_messages.error(request, f"Could not reload the uploaded data: {e}")
                 return redirect(reverse('importer:upload_geodata'))
 
@@ -1139,7 +1128,7 @@ def upload_geodata(request):
             mapping_form, spec = _build_mapping_form(target_model, gdf.columns, gdf.crs, data=request.POST)
 
             if not mapping_form.is_valid():
-                _say("map", f"Form has errors, showing it again: {mapping_form.errors.as_text()}")
+                say("map", f"Form has errors, showing it again: {mapping_form.errors.as_text()}")
                 return render(
                     request,
                     'importer/FieldMapping.html',
@@ -1162,14 +1151,14 @@ def upload_geodata(request):
                     colmap[fld] = mapping_form.cleaned_data[key] or None
 
             mapped = {field: col for field, col in colmap.items() if col}
-            _say("map", f"Field mapping ({len(mapped)} field(s)): "
+            say("map", f"Field mapping ({len(mapped)} field(s)): "
                         + (", ".join(f"{col} -> {field}" for field, col in mapped.items()) or "none"))
 
             # Validate required mappings
             missing = [f for f in spec['required'] if not colmap.get(f) and f not in spec['geom_fields']]
 
             if missing:
-                _say("map", f"Required field(s) not mapped: {', '.join(missing)}")
+                say("map", f"Required field(s) not mapped: {', '.join(missing)}")
                 mapping_form.add_error(None, f"Missing mappings for required fields: {', '.join(missing)}")
                 return render(
                     request,
@@ -1197,10 +1186,10 @@ def upload_geodata(request):
                                 f"can be reprojected to EPSG:{COORDINATE_SYSTEM}."
                             )
                         gdf = gdf.set_crs(epsg=int(map_source_crs))
-                    _say("vector", f"Reprojecting {gdf.crs.to_string()} -> EPSG:{COORDINATE_SYSTEM}")
+                    say("vector", f"Reprojecting {gdf.crs.to_string()} -> EPSG:{COORDINATE_SYSTEM}")
                     gdf = gdf.to_crs(COORDINATE_SYSTEM)
                 except Exception as e:
-                    _say("ERROR", f"Reprojection failed: {e}")
+                    say("ERROR", f"Reprojection failed: {e}")
                     mapping_form.add_error('source_crs', f'CRS transform failed: {e}')
                     return render(
                         request,
@@ -1213,13 +1202,13 @@ def upload_geodata(request):
                         },
                     )
             # Import (or dry-run)
-            _say("vector", f"Writing {len(gdf)} feature(s) into {target_model}"
+            say("vector", f"Writing {len(gdf)} feature(s) into {target_model}"
                            f"{' (dry run: rolled back at the end)' if dry_run else ''} ...")
             try:
                 report = _generic_import(gdf, target_model, colmap, dry_run=dry_run)
             except Exception as e:
                 logger.exception("Import into %s failed", target_model)
-                _say("ERROR", f"Import failed: {e} (traceback above)")
+                say("ERROR", f"Import failed: {e} (traceback above)")
                 django_messages.error(request, f"Import failed: {e}")
                 return render(
                     request,
@@ -1232,7 +1221,7 @@ def upload_geodata(request):
                         'target_model': target_model,
                     },
                 )
-            _say_report(report, dry_run)
+            say_report(report, dry_run)
 
             if dry_run:
                 django_messages.info(request, "Dry-run completed. Nothing was saved.")

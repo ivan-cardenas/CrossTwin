@@ -39,6 +39,7 @@ from django.utils import timezone
 from .batching import BulkWriter, SpatialParentIndex, deferred_cascades
 from .external_catalog import FIELD_MAPPINGS, CATALOG_BY_KEY
 from .utils import to_storage_srid
+from .console import say
 
 coordinate_system = settings.COORDINATE_SYSTEM
 
@@ -350,6 +351,7 @@ def _legend_url_from_capabilities(base_url: str, layer: str) -> Optional[str]:
         root = ET.fromstring(resp.content)
     except Exception as e:
         logger.warning(f"Could not fetch/parse GetCapabilities for legend lookup ({base_url}): {e}")
+        say("WARNING", f"Could not fetch/parse GetCapabilities for legend lookup ({base_url}): {e}")
         return None
 
     def local(tag: str) -> str:
@@ -402,6 +404,7 @@ def default_wms_legend_url(base_url: str, layer: str) -> Optional[str]:
             return url
     except requests.RequestException as e:
         logger.warning(f"GetLegendGraphic check failed for layer={layer}: {e}")
+        say("WARNING", f"GetLegendGraphic check failed for layer={layer}: {e}")
     return None
 
 
@@ -445,6 +448,8 @@ def register_wms_layer(dataset: Dict) -> ImportResult:
         name=dataset.get("wms_name", dataset["key"]),
         defaults=defaults,
     )
+    say("wms", f"{'Registered' if created else 'Updated'} WMS layer '{obj.name}' ({layer}) on {url}; "
+               f"legend: {'yes' if legend_url else 'none'}. The map shows it after a reload")
 
     return ImportResult(
         "success",
@@ -510,9 +515,12 @@ def load_raster_into_target_model(
         if not skip_db_storage:
             with rasterio.open(filepath) as src:
                 src_epsg = src.crs.to_epsg() if src.crs else None
+                say("raster", f"Loading {os.path.basename(filepath)} into {model_path}: "
+                              f"{src.width} x {src.height} px, {src.count} band(s), EPSG:{src_epsg or '?'}")
 
             raster_to_load = filepath
             if src_epsg and src_epsg != model_srid:
+                say("raster", f"Reprojecting EPSG:{src_epsg} -> EPSG:{model_srid} (bilinear) ...")
                 fd, temp_reprojected = tempfile.mkstemp(suffix=".tif")
                 os.close(fd)
                 with rasterio.open(filepath) as src:
@@ -552,6 +560,7 @@ def load_raster_into_target_model(
             if city:
                 field_values["city"] = city
                 lookup_keys.append("city")
+                say("raster", f"The area's centre lies in {city}: the raster is stored for that city")
 
         if "year" in model_field_names:
             year_str = (date_to or "")[:4]
@@ -616,16 +625,20 @@ def load_raster_into_target_model(
             obj = Model.objects.create(**field_values)
             created = True
 
+        say("raster", f"{'Created' if created else 'Updated'} {model_path} id={obj.id}"
+                      f"{f' (matched on {lookup_keys})' if lookup_keys else ''}")
         if skip_db_storage:
             # The post_save signal (core/signals.py::auto_export_cog) is a
             # no-op for these models — cog_path is produced directly from
             # the source file here instead of read back out of Postgres.
+            say("raster", "Building the map image (COG) straight from the downloaded file ...")
             export_geotiff_to_cog(filepath, obj)
 
         return True, f"Loaded into {model_path} ({'created' if created else 'updated'} id={obj.id})."
 
     except Exception as e:
         logger.exception(f"Failed to load raster '{filepath}' into {model_path}")
+        say("ERROR", f"Failed to load raster '{filepath}' into {model_path} (traceback above)")
         return False, f"Downloaded, but failed to load into {model_path}: {e}"
 
     finally:
@@ -637,6 +650,7 @@ def load_raster_into_target_model(
                     os.unlink(tmp)
                 except Exception as e:
                     logger.warning(f"Could not delete temp file {tmp}: {e}")
+                    say("WARNING", f"Could not delete temp file {tmp}: {e}")
 
 
 class GEEAuthManager:
@@ -872,14 +886,19 @@ def _import_geojson_features(features: List[Dict], dataset: Dict, Model, mapping
                 f"[{dataset['key']}] dropped {duplicate_count} duplicate feature(s) "
                 f"sharing an existing '{unique_wfs_prop}' value before import."
             )
+            say("WARNING", f"Dropped {duplicate_count} duplicate feature(s) sharing a '{unique_wfs_prop}' value")
         features = deduped
 
     errors = []
     features = _keep_existing(features, mapping, notes)
+    target = Model._meta.label
     if mapping.get("__enrich__"):
         if not (unique_wfs_prop and unique_model_field):
             raise _ImportBlocked(f"[{dataset['key']}] __enrich__ needs __unique__ and __unique_field__")
-        return 0, _enrich_rows(features, Model, mapping, unique_wfs_prop, unique_model_field, errors), errors
+        say("write", f"Enriching existing {target} rows from {len(features)} feature(s) (update only) ...")
+        updated = _enrich_rows(features, Model, mapping, unique_wfs_prop, unique_model_field, errors)
+        say("write", f"{target}: {updated} row(s) enriched, {len(errors)} error(s)")
+        return 0, updated, errors
 
     fk_lookup_cache = {}  # {model_field: {source_value: model_instance}}, shared across all features in this batch
 
@@ -895,6 +914,7 @@ def _import_geojson_features(features: List[Dict], dataset: Dict, Model, mapping
             if pct_conf and pct_conf["parent_field"] == spatial_fk_conf["field"] else []
         )
         parent_index = SpatialParentIndex.for_model(ParentModel, extra)
+        say("write", f"Each feature gets its parent {spatial_fk_conf['model']} from its location")
         if not parent_index and spatial_fk_conf.get("required", True):
             raise _ImportBlocked(
                 f"No {spatial_fk_conf['model']} records found — cannot resolve '{spatial_fk_conf['field']}' FK. "
@@ -906,6 +926,10 @@ def _import_geojson_features(features: List[Dict], dataset: Dict, Model, mapping
     writer = BulkWriter.for_model(
         Model, unique_model_field if unique_wfs_prop and unique_model_field else None
     )
+    how = "in batches (bulk_create)" if writer is not None else "row by row (save() + signals)"
+    key = f", matched on {unique_model_field}" if unique_wfs_prop and unique_model_field else ""
+    say("write", f"Writing {len(features)} feature(s) into {target} {how}{key} ...")
+    started = time.perf_counter()
 
     with deferred_cascades():
         created_count, updated_count = _import_feature_rows(
@@ -917,6 +941,9 @@ def _import_geojson_features(features: List[Dict], dataset: Dict, Model, mapping
             created_count += bulk_created
             updated_count += bulk_updated
             errors.extend(bulk_errors)
+        # Leaving deferred_cascades() runs the postponed population/land-cover/water refresh
+        say("write", f"{target}: {created_count} created, {updated_count} updated, {len(errors)} error(s) "
+                     f"in {time.perf_counter() - started:.1f} s; refreshing dependent values ...")
 
     return created_count, updated_count, errors
 
@@ -1161,6 +1188,7 @@ class PDOKImporter:
             start_index = 0
             max_pages = 100  # safety cap against a server that ignores startIndex
             logger.info(f"Fetching WFS: {url} layer={layer}")
+            say("wfs", f"Fetching WFS: {url} layer={layer}")
             for page in range(max_pages):
                 params["count"] = page_size
                 params["startIndex"] = start_index
@@ -1175,9 +1203,11 @@ class PDOKImporter:
                 start_index += len(features)
             else:
                 logger.warning(f"[{dataset_key}] hit the {max_pages}-page safety cap while paginating")
+                say("WARNING", f"[{dataset_key}] hit the {max_pages}-page safety cap while paginating")
 
             all_features = all_features[:max_features]
             logger.info(f"Fetched {len(all_features)} feature(s) from {layer} across {page + 1} page(s)")
+            say("wfs", f"Fetched {len(all_features)} feature(s) from {layer} across {page + 1} page(s)")
             features = all_features
 
             if not features:
@@ -1202,6 +1232,7 @@ class PDOKImporter:
             if errors:
                 msg += f" ({len(errors)} errors)"
                 logger.warning(f"Import errors for {dataset_key}: {errors[:5]}")
+                say("WARNING", f"Import errors for {dataset_key}: {errors[:5]}")
 
             return ImportResult("success", msg, created_count, updated_count)
 
@@ -1209,6 +1240,7 @@ class PDOKImporter:
             return ImportResult("error", f"WFS request failed: {e}")
         except Exception as e:
             logger.exception(f"WFS import error for {dataset['key']}")
+            say("ERROR", f"WFS import error for {dataset['key']} (traceback above)")
             return ImportResult("error", f"Import failed: {e}")
 
     # PDOK's mapserver-backed WCS endpoints cap a single GetCoverage response at
@@ -1291,6 +1323,7 @@ class PDOKImporter:
             next_params = params
             max_pages = 100  # safety cap against a server that never stops linking "next"
             logger.info(f"Fetching OGC API Features: {items_url} collection={collection}")
+            say("ogc", f"Fetching OGC API Features: {items_url} collection={collection}")
             for page in range(max_pages):
                 response = requests.get(next_url, params=next_params, timeout=120)
                 response.raise_for_status()
@@ -1310,9 +1343,11 @@ class PDOKImporter:
                 next_params = None  # the "next" link already carries its own query string
             else:
                 logger.warning(f"[{dataset_key}] hit the {max_pages}-page safety cap while paginating")
+                say("WARNING", f"[{dataset_key}] hit the {max_pages}-page safety cap while paginating")
 
             features = all_features[:max_features]
             logger.info(f"Fetched {len(features)} feature(s) from {collection}")
+            say("ogc", f"Fetched {len(features)} feature(s) from {collection}")
 
             # __client_filter__: OGC API Features collections here have no
             # server-side attribute filter reliably usable across PDOK's
@@ -1351,6 +1386,7 @@ class PDOKImporter:
             if errors:
                 msg += f" ({len(errors)} errors)"
                 logger.warning(f"Import errors for {dataset_key}: {errors[:5]}")
+                say("WARNING", f"Import errors for {dataset_key}: {errors[:5]}")
 
             return ImportResult("success", msg, created_count, updated_count)
 
@@ -1358,6 +1394,7 @@ class PDOKImporter:
             return ImportResult("error", f"OGC API Features request failed: {e}")
         except Exception as e:
             logger.exception(f"OGC API Features import error for {dataset['key']}")
+            say("ERROR", f"OGC API Features import error for {dataset['key']} (traceback above)")
             return ImportResult("error", f"Import failed: {e}")
 
     @staticmethod
@@ -1413,6 +1450,9 @@ class PDOKImporter:
 
             tile_paths = []
             total_bytes = 0
+            n_tiles = (len(x_edges) - 1) * (len(y_edges) - 1)
+            say("wcs", f"{layer} from {url}: {total_width_px:.0f} x {total_height_px:.0f} px at {resolution_m} m"
+                       f" -> {n_tiles} tile(s) (the server caps one response at ~4000 px)")
             for i in range(len(x_edges) - 1):
                 for j in range(len(y_edges) - 1):
                     tile_bbox = [x_edges[i], y_edges[j], x_edges[i + 1], y_edges[j + 1]]
@@ -1430,6 +1470,7 @@ class PDOKImporter:
                     logger.info(f"Fetching WCS tile ({i},{j}) of {len(x_edges)-1}x{len(y_edges)-1}: {url} coverage={layer}")
                     response = requests.get(url, params=params, timeout=300)
                     response.raise_for_status()
+                    say("wcs", f"  tile {len(tile_paths) + 1}/{n_tiles} ({i},{j}): {len(response.content) / 1e6:.1f} MB")
 
                     tile_path = temp_dir / f"{dataset['key']}_{timestamp}_tile{i}_{j}.tif"
                     with open(tile_path, 'wb') as f:
@@ -1444,6 +1485,7 @@ class PDOKImporter:
                 import rasterio
                 from rasterio.merge import merge as rio_merge
 
+                say("wcs", f"Stitching {len(tile_paths)} tiles into one raster ...")
                 sources = [rasterio.open(p) for p in tile_paths]
                 try:
                     mosaic, out_transform = rio_merge(sources)
@@ -1476,6 +1518,7 @@ class PDOKImporter:
             return ImportResult("error", f"WCS request failed: {e}")
         except Exception as e:
             logger.exception(f"WCS import error for {dataset['key']}")
+            say("ERROR", f"WCS import error for {dataset['key']} (traceback above)")
             return ImportResult("error", f"Import failed: {e}")
 
     @staticmethod
@@ -1494,6 +1537,7 @@ class PDOKImporter:
 
         atom_url = dataset["url"]
         logger.info(f"Fetching ATOM feed: {atom_url}")
+        say("atom", f"Fetching ATOM feed: {atom_url}")
 
         try:
             root = fetch_feed(atom_url)
@@ -1549,11 +1593,14 @@ class PDOKImporter:
                 # the bbox — skip them rather than downloading blind.
                 if tile_polygon is None:
                     logger.warning(f"ATOM entry has no georss extent, skipping: {href}")
+                    say("WARNING", f"ATOM entry has no georss extent, skipping: {href}")
                     continue
 
                 if bbox_polygon.intersects(tile_polygon):
                     matching.append({'href': href, 'type': content_type})
 
+            say("atom", f"{len(data_entries)} downloadable entr(y/ies) in the feed, {len(matching)} overlap the area"
+                        f"{f'; only the first {max_tiles} are used' if len(matching) > max_tiles else ''}")
             if not matching:
                 return ImportResult("success", "No entries intersect the bounding box.", 0)
 
@@ -1573,7 +1620,9 @@ class PDOKImporter:
                     mapping = FIELD_MAPPINGS.get(dataset["key"])
                     if not mapping:
                         return ImportResult("error", f"No field mapping defined for {dataset['key']}")
+                    say("atom", f"Streaming GML {href} (can be many GB; only features in the area are kept) ...")
                     n, errs = _import_atom_gml_features(href, bbox_polygon, Model, mapping)
+                    say("atom", f"  {n} feature(s) imported, {len(errs)} error(s)")
                     loaded += n
                     errors.extend(errs)
                 elif content_type.startswith('image/') or content_type in ('application/octet-stream',):
@@ -1582,13 +1631,16 @@ class PDOKImporter:
                     temp_dir.mkdir(parents=True, exist_ok=True)
                     tile_path = temp_dir / href.split('/')[-1]
 
+                    say("atom", f"Downloading raster tile {href} ...")
                     with requests.get(href, stream=True, timeout=300) as r:
                         r.raise_for_status()
                         with open(tile_path, 'wb') as f:
                             for chunk in r.iter_content(chunk_size=1024 * 1024):
                                 f.write(chunk)
+                    say("atom", f"  saved {tile_path} ({tile_path.stat().st_size / 1e6:.1f} MB)")
                     loaded += 1
                 else:
+                    say("WARNING", f"Unsupported ATOM content type '{content_type}', skipped: {href}")
                     errors.append(f"Unsupported ATOM content type '{content_type}' for {href} — skipped.")
 
             message = f"Imported {loaded} feature(s)/tile(s) within the bounding box."
@@ -1608,6 +1660,7 @@ class PDOKImporter:
             return ImportResult("error", f"Failed to parse ATOM feed: {e}")
         except Exception as e:
             logger.exception(f"ATOM import error for {dataset['key']}")
+            say("ERROR", f"ATOM import error for {dataset['key']} (traceback above)")
             return ImportResult("error", f"Import failed: {e}")
 
     @staticmethod
@@ -1711,7 +1764,8 @@ class CBSImporter:
                 # original bbox can end up a hair outside it. A small buffer (meters, since
                 # we're in a projected CRS) absorbs that reprojection noise.
                 bbox_geom = bbox_geom.buffer(1)
-                print(f"Filtering CBS data to cities within bbox {bbox_geom.extent} (EPSG:{coordinate_system})")
+                say("cbs", "Keeping only cities within bbox "
+                           f"{', '.join(f'{v:.0f}' for v in bbox_geom.extent)} (EPSG:{coordinate_system})")
 
                 city_pks = list(
                     City.objects.filter(geom__intersects=bbox_geom).values_list("pk", flat=True)
@@ -1744,6 +1798,7 @@ class CBSImporter:
                 params["$select"] = ",".join(select_fields)
 
             logger.info(f"Fetching CBS OData: table={table_id} filter={params.get('$filter', 'none')}")
+            say("cbs", f"Fetching CBS OData: table={table_id} filter={params.get('$filter', 'none')}")
 
             all_rows = []
             skip = 0
@@ -1754,6 +1809,7 @@ class CBSImporter:
                 response.raise_for_status()
                 rows = response.json().get("value", [])
                 all_rows.extend(rows)
+                say("cbs", f"  received {len(rows)} row(s) (total {len(all_rows)})")
                 if len(rows) < CBS_PAGE_SIZE:
                     break
                 if not use_feed:
@@ -1762,6 +1818,7 @@ class CBSImporter:
                         "endpoint, which doesn't support paging -- results may be truncated. "
                         "Set params.use_feed=True on this catalog entry to page through more."
                     )
+                    say("WARNING", f"CBS {table_id}: hit the {CBS_PAGE_SIZE}-row cap, results may be truncated")
                     break
                 skip += CBS_PAGE_SIZE
 
@@ -1796,6 +1853,8 @@ class CBSImporter:
             created_count = updated_count = 0
             errors = []
 
+            say("write", f"Writing {len(all_rows)} CBS row(s) into {model_path}; dependent values "
+                         f"(population totals, water chain) refresh once at the end ...")
             # deferred_cascades: a forecast import saves ~84 rows per city, and
             # each median-forecast row would otherwise re-run the city's water chain.
             with transaction.atomic(), deferred_cascades():
@@ -1880,6 +1939,7 @@ class CBSImporter:
             if errors:
                 msg += f" ({len(errors)} errors)"
                 logger.warning(f"CBS import errors for {dataset_key}: {errors[:5]}")
+                say("WARNING", f"CBS import errors for {dataset_key}: {errors[:5]}")
             
             return ImportResult("success", msg, created_count, updated_count)
         
@@ -1887,6 +1947,7 @@ class CBSImporter:
             return ImportResult("error", f"CBS OData request failed: {e}")
         except Exception as e:
             logger.exception(f"CBS import error for {dataset['key']}")
+            say("ERROR", f"CBS import error for {dataset['key']} (traceback above)")
             return ImportResult("error", f"Import failed: {e}")
     
     @staticmethod
@@ -1957,6 +2018,7 @@ class Sentinel2Importer:
             return datetime.strptime(start[:19], "%Y-%m-%dT%H:%M:%S")
         except Exception as e:
             logger.warning(f"Could not look up Sentinel-2 acquisition date for bbox={bbox}: {e}")
+            say("WARNING", f"Could not look up Sentinel-2 acquisition date for bbox={bbox}: {e}")
             return None
 
     @staticmethod
@@ -1979,6 +2041,7 @@ class Sentinel2Importer:
             }
             
             logger.info(f"Fetching Sentinel-2 WCS: {url}")
+            say("s2", f"Fetching Sentinel-2 WCS: {url}")
             response = requests.get(url, params=params, timeout=300)
             response.raise_for_status()
             
@@ -1991,6 +2054,7 @@ class Sentinel2Importer:
             
             with open(filepath, 'wb') as f:
                 f.write(response.content)
+            say("s2", f"  saved {filepath} ({len(response.content) / 1e6:.1f} MB)")
 
             loaded, load_msg = load_raster_into_target_model(str(filepath), dataset, bbox)
 
@@ -2004,6 +2068,7 @@ class Sentinel2Importer:
 
         except Exception as e:
             logger.exception(f"Sentinel-2 WCS error for {dataset['key']}")
+            say("ERROR", f"Sentinel-2 WCS error for {dataset['key']} (traceback above)")
             return ImportResult("error", f"WCS request failed: {e}")
 
     @staticmethod
@@ -2061,6 +2126,7 @@ class Sentinel2Importer:
             connection.authenticate_oidc_client_credentials(client_id=client_id, client_secret=client_secret)
         except Exception as e:
             logger.warning(f"openEO authentication failed for {dataset['key']} (default_creds={used_default_credentials}): {e}")
+            say("WARNING", f"openEO authentication failed for {dataset['key']} (default_creds={used_default_credentials}): {e}")
             if used_default_credentials:
                 return ImportResult(
                     "error",
@@ -2105,6 +2171,8 @@ class Sentinel2Importer:
             filepath = temp_dir / filename
 
             logger.info(f"Fetching Sentinel-2 via openEO: {index_key}")
+            say("s2", f"Computing {index_key} on the Copernicus openEO backend (mean of the period); "
+                      f"this single request can take minutes ...")
 
             # The synchronous /result download is a single long-lived request
             # while CDSE computes the whole thing server-side, and its gateway
@@ -2127,9 +2195,12 @@ class Sentinel2Importer:
                             f"[{dataset['key']}] openEO download attempt {attempt}/{max_attempts} "
                             f"failed ({e}); retrying..."
                         )
+                        say("WARNING", f"openEO download attempt {attempt}/{max_attempts} failed ({e}); "
+                                       f"retrying in {5 * attempt} s ...")
                         time.sleep(5 * attempt)
             if last_error:
                 raise last_error
+            say("s2", f"  saved {filepath} ({filepath.stat().st_size / 1e6:.1f} MB)")
 
             acquisition_date = Sentinel2Importer._lookup_acquisition_date(bbox, date_from, date_to)
             loaded, load_msg = load_raster_into_target_model(
@@ -2146,6 +2217,7 @@ class Sentinel2Importer:
 
         except Exception as e:
             logger.exception(f"Sentinel-2 openEO error for {dataset['key']}")
+            say("ERROR", f"Sentinel-2 openEO error for {dataset['key']} (traceback above)")
             return ImportResult(
                 "error",
                 f"openEO request failed after retries: {e}. The CDSE backend may be under load — try again, "
@@ -2221,6 +2293,7 @@ class GEEImporter:
                         acquisition_date = datetime.utcfromtimestamp(millis / 1000)
                 except Exception as e:
                     logger.warning(f"Could not look up GEE acquisition date for {asset_id}: {e}")
+                    say("WARNING", f"Could not look up GEE acquisition date for {asset_id}: {e}")
 
                 # Select the band on each feature *before* compositing: the
                 # collection itself carries no bands (only its member Images
@@ -2252,8 +2325,10 @@ class GEEImporter:
             })
             
             logger.info(f"Downloading GEE raster from: {url[:100]}...")
+            say("gee", f"Earth Engine prepared {asset_id}{f' band {band}' if band else ''} at 30 m; downloading ...")
             response = requests.get(url, timeout=300)
             response.raise_for_status()
+            say("gee", f"  received {len(response.content) / 1e6:.1f} MB")
             
             # Save to file
             temp_dir = Path(settings.MEDIA_ROOT) / "imports" / "gee"
@@ -2282,6 +2357,7 @@ class GEEImporter:
             return ImportResult("error", "earthengine-api not installed.")
         except Exception as e:
             logger.exception(f"GEE export error for {dataset['key']}")
+            say("ERROR", f"GEE export error for {dataset['key']} (traceback above)")
             return ImportResult("error", f"GEE export failed: {e}")
 
 
@@ -2423,6 +2499,7 @@ class KNMIImporter:
         )
 
         try:
+            say("knmi", f"Asking KNMI for the newest file of {dataset['dataset_name']} v{dataset['dataset_version']} ...")
             listing = requests.get(
                 files_url,
                 headers=headers,
@@ -2446,8 +2523,10 @@ class KNMIImporter:
                 or KNMIImporter._parse_iso(latest.get("created"))
             )
 
+            say("knmi", f"Newest file: {filename} (valid {valid_time.isoformat() if valid_time else 'unknown'})")
             Model = get_model_class(dataset["target_model"])
             if valid_time and Model.objects.filter(date_time=valid_time).exists():
+                say("knmi", "  already imported, nothing to download")
                 return ImportResult(
                     "success",
                     f"Latest KNMI file ({filename}) is already imported; nothing to do.",
@@ -2471,6 +2550,8 @@ class KNMIImporter:
                 with open(raw_path, "wb") as fh:
                     for chunk in download.iter_content(chunk_size=1024 * 1024):
                         fh.write(chunk)
+            say("knmi", f"  downloaded {raw_path.stat().st_size / 1e6:.1f} MB; converting to a GeoTIFF "
+                        f"in EPSG:{coordinate_system} ...")
 
             tif_path = raw_path.with_suffix(".tif")
             note = KNMIImporter.to_geotiff(str(raw_path), str(tif_path))
@@ -2488,6 +2569,7 @@ class KNMIImporter:
             return ImportResult("error", f"KNMI request failed: {e}")
         except Exception as e:
             logger.exception(f"KNMI import error for {dataset['key']}")
+            say("ERROR", f"KNMI import error for {dataset['key']} (traceback above)")
             return ImportResult("error", f"KNMI import failed: {e}")
 
 
@@ -2651,6 +2733,7 @@ class OSMImporter:
             url = getattr(settings, "OVERPASS_URL", None) or dataset["url"]
 
             logger.info(f"Fetching Overpass: {url} dataset={dataset_key}")
+            say("osm", f"Fetching Overpass: {url} dataset={dataset_key}")
             response = requests.post(
                 url, data={"data": query},
                 headers={"User-Agent": OSMImporter.USER_AGENT},
@@ -2674,6 +2757,8 @@ class OSMImporter:
                 polygons_only=geom_type in ("POLYGON", "MULTIPOLYGON"),
             )
             logger.info(f"Fetched {len(features)} feature(s) for {dataset_key}")
+            say("osm", f"Overpass returned {len(body.get('elements', []))} OSM element(s) -> "
+                       f"{len(features)} feature(s) kept for {dataset_key}")
             if not features:
                 return ImportResult("success", "No features found in the specified area.", 0)
 
@@ -2692,12 +2777,14 @@ class OSMImporter:
             if errors:
                 msg += f" ({len(errors)} errors)"
                 logger.warning(f"Import errors for {dataset_key}: {errors[:5]}")
+                say("WARNING", f"Import errors for {dataset_key}: {errors[:5]}")
             return ImportResult("success", msg, created_count, updated_count)
 
         except requests.RequestException as e:
             return ImportResult("error", f"Overpass request failed: {e}")
         except Exception as e:
             logger.exception(f"Overpass import error for {dataset_key}")
+            say("ERROR", f"Overpass import error for {dataset_key} (traceback above)")
             return ImportResult("error", f"Import failed: {e}")
 
 
@@ -2730,23 +2817,28 @@ def import_dataset(
     
     # Check if enabled
     if not dataset.get("enabled", True):
+        say("fetch", f"{dataset_key}: skipped, the dataset is not enabled yet")
         return ImportResult("skipped", "Dataset is not yet enabled.")
-    
+
     # Check bbox requirement
     if dataset.get("requires_bbox") and not bbox:
+        say("fetch", f"{dataset_key}: skipped, it needs an area (bbox) and none was given")
         return ImportResult("skipped", "This dataset requires a bounding box.")
-    
+
     # Initialize GEE if needed
     if dataset["source"] == "gee" and not GEEAuthManager.is_initialized():
+        say("gee", "Initializing Google Earth Engine ...")
         success, msg = GEEAuthManager.initialize(getattr(settings, "GEE_PROJECT_ID", None))
         if not success:
+            say("ERROR", f"Earth Engine: {msg}")
             return ImportResult("error", msg)
-    
+
     # Dispatch based on source and format
     source = dataset["source"]
     fmt = dataset.get("format", "wfs")
-    
-    print(f"[DISPATCH] import_dataset: dataset_key={dataset_key} bbox={bbox} date_from={date_from} date_to={date_to}")
+
+    say("fetch", f"{dataset_key}: source={source}, format={fmt}, bbox={bbox or '-'}, "
+                 f"dates={date_from or '-'} .. {date_to or '-'}")
     if source in ("pdok", "rivm", "bodemdata", "kea") or (source == "CBS" and fmt == "wfs"):
 
         if fmt == "wfs":

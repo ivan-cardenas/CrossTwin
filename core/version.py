@@ -35,11 +35,11 @@ def _get_git_info() -> dict:
 def _derive_version(commit_count: str) -> str:
     """
     Derive a semver-ish label from the raw commit count.
-    0–99   → v0.1,  100–199 → v0.2, …  1000+ → v1.x
+    Counts half the commits: 158 commits → 79 → v0.7.9, 200+ → v1.x.
     Tweak the thresholds to taste.
     """
     try:
-        n = int(commit_count)
+        n = int(commit_count) // 2
     except ValueError:
         return "v0.1"
 

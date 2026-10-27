@@ -6,6 +6,7 @@ Renders the catalog UI and dispatches imports via external_data.import_dataset.
 """
 import json
 import logging
+import time
 
 from django.apps import apps
 from django.conf import settings
@@ -20,6 +21,7 @@ from .external_catalog import (
     get_catalog_grouped,
 )
 from .external_data import import_dataset
+from .console import say   # same console format as the upload wizard
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +81,8 @@ def get_external_data(request):
             } for d in EXTERNAL_DATA_CATALOG}
         ),
     }
+    say("catalog", f"Catalog page: {len(EXTERNAL_DATA_CATALOG)} dataset(s) in {len(categories)} "
+                    f"categories from {len(all_sources)} source(s)")
     return render(request, "importer/external_data.html", context)
 
 
@@ -105,6 +109,7 @@ def get_admin_areas_geojson(request):
     """
     level = request.GET.get("level", "neighborhood")
     if level not in ADMIN_AREA_LEVELS:
+        say("ERROR", f"Area picker asked for unknown level '{level}'")
         return JsonResponse(
             {"error": f"Unknown level '{level}'. Use one of: {', '.join(ADMIN_AREA_LEVELS)}."},
             status=400,
@@ -132,7 +137,10 @@ def get_admin_areas_geojson(request):
             })
         except Exception as e:
             logger.warning(f"Skipping {level} {unit.id} ({getattr(unit, name_field)}) from GeoJSON: {e}")
+            say("WARNING", f"Area picker skips {level} {unit.id} ({getattr(unit, name_field)}): {e}")
 
+    say("areas", f"Area picker: {len(features)} {level}(s) sent to the map"
+                  f"{f', simplified to {tolerance} deg' if tolerance else ''}")
     return JsonResponse({"type": "FeatureCollection", "features": features})
 
 
@@ -145,6 +153,7 @@ def start_external_import(request):
     try:
         body = json.loads(request.body)
     except json.JSONDecodeError:
+        say("ERROR", "External import: request body is not valid JSON")
         return JsonResponse({"error": "Invalid JSON"}, status=400)
 
     selected_keys = body.get("datasets", [])
@@ -155,23 +164,34 @@ def start_external_import(request):
     date_to = body.get("date_to", None)
 
     if not selected_keys:
+        say("ERROR", "External import: no datasets selected")
         return JsonResponse({"error": "No datasets selected."}, status=400)
 
     invalid = [k for k in selected_keys if k not in CATALOG_BY_KEY]
     if invalid:
+        say("ERROR", f"External import: unknown dataset(s) {', '.join(invalid)}")
         return JsonResponse({"error": f"Unknown datasets: {', '.join(invalid)}"}, status=400)
 
-    results = {}
+    say("fetch", f"External import of {len(selected_keys)} dataset(s): {', '.join(selected_keys)}")
+    say("fetch", f"  area: {f'bbox {bbox}' if bbox else 'none (whole source)'}"
+                  f" | dates: {date_from or '-'} .. {date_to or '-'}"
+                  f" | openEO credentials: {'from the form' if openeo_client_id else 'server default'}")
 
-    for key in selected_keys:
+    results = {}
+    started = time.perf_counter()
+
+    for n, key in enumerate(selected_keys, 1):
         # Check that required prerequisite model has records before importing
         ds = CATALOG_BY_KEY[key]
+        say("fetch", f"[{n}/{len(selected_keys)}] {key}: {ds['name']} ({ds['source']}) -> {ds['target_model']}"
+                      f"{' - slow, please wait' if ds.get('slow') else ''} ...")
         req_model_path = ds.get("requires_model")
         if req_model_path:
             try:
                 app_label, model_name = req_model_path.split(".")
                 ReqModel = apps.get_model(app_label, model_name)
                 if not ReqModel.objects.exists():
+                    say("fetch", f"[{n}/{len(selected_keys)}] {key}: skipped, needs {req_model_path} rows first")
                     results[key] = {
                         "status": "error",
                         "message": (
@@ -183,6 +203,7 @@ def start_external_import(request):
             except LookupError:
                 pass  # model not registered yet — let the import attempt and fail naturally
 
+        t0 = time.perf_counter()
         result = import_dataset(
             dataset_key=key,
             bbox=bbox,
@@ -192,5 +213,13 @@ def start_external_import(request):
             openeo_client_secret=openeo_client_secret,
         )
         results[key] = result.to_dict()
+        step = "ERROR" if result.status == "error" else "done"
+        say(step, f"[{n}/{len(selected_keys)}] {key}: {result.status} in {time.perf_counter() - t0:.1f} s"
+                   f" - {result.records_created} created, {result.records_updated} updated")
+        if result.message:
+            say(step, f"  {result.message}")
 
+    statuses = [r["status"] for r in results.values()]
+    say("done", f"External import finished in {time.perf_counter() - started:.1f} s: "
+                 + ", ".join(f"{statuses.count(s)} {s}" for s in dict.fromkeys(statuses)))
     return JsonResponse({"results": results})
