@@ -169,6 +169,22 @@ Only the area $R_b$ still holds is given back, so what a later ring $b'$ took fr
 
 \textbf{DAG edge:} \dagedge{New\_Units $\rightarrow$ LandCover} --- \statusdone{} (stored for map-editor buildings; the housing pipeline's land take is a dashboard statistic, \S\ref{sec:pipeline-land-take})
 
+\subsection{Building changes on the DSM --- \code{dsm\_patches.record\_change()}, \code{apply\_patches()}}
+\label{sec:dsm-patches}
+Source: \code{physicalEnv/dsm\_patches.py}, receivers \code{building\_dsm\_saved}/\code{building\_dsm\_deleted} in \code{physicalEnv/signals.py}. A building created, reshaped, re-heighted or deleted in the map editor (\code{core.editing.is\_editor\_change()}; imports never) is stored as one \code{DSMBuildingPatch} row: its footprint before the first edit $F_0$ (none for a drawn building), its current footprint $F$ (none when deleted) and its height above ground
+\begin{equation}
+  h = \begin{cases} \code{height\_m} & \text{if set} \\ 3\,\si{m} \times \code{numberFloors} & \text{if set} \\ \text{none} & \text{otherwise (only } F_0 \text{ is cleared)} \end{cases}
+\end{equation}
+The DSM COG is never rewritten. Every read of a DSM window for analysis (\code{svf.load\_dsm}: the SVF tool and the SOLWEIG tool) applies the patches that touch it, on the window's grid:
+\begin{align}
+  z'(x) &= g(x) && x \in \textstyle\bigcup F_0 \\
+  z'(x) &= \operatorname{median}_{y \in F} g(y) + h && x \in F \quad \text{(flat roof, applied after the clearing)} \\
+  z'(x) &= z(x) && \text{otherwise}
+\end{align}
+where $z$ is the DSM and $g$ the ground: the DEM read on the same grid, or without a DEM the minimum filter of $z$ over a \SI{40}{m} window (\code{estimate\_ground}). Cells are assigned by their centre (\code{rasterio.features.rasterize}). Patches are journalled for the editor's backup (\code{dsm\_patch\_rewriting}/\code{dsm\_patch\_created}), so Restore reverts them with the buildings. Every change of a patch, Restore included, appends a \code{DSMEdit} with the bounding box of the old and new footprints; an SVF raster or a SOLWEIG run older than an overlapping \code{DSMEdit} is flagged as stale on the map (\code{urban\_heat/solweig/pipeline.py::stale\_results}).
+
+\textbf{DAG edge:} \dagedge{Buildings $\rightarrow$ DSM} --- \statusdone{} (editor changes as an overlay on the DSM; flat roofs)
+
 \section{Physical environment app --- soil hydrology and infiltration}
 \label{sec:physicalenv}
 
@@ -549,7 +565,7 @@ The house-price-to-income ratio formulation is the standard affordability metric
 \section{Urban heat app}
 \label{sec:urbanheat}
 
-Source: \code{urban\_heat/calculations.py}. Thermal-comfort rasters (SVF, $T_{mrt}$, PET, UTCI) are expected to arrive pre-computed from an external SOLWEIG run \cite{Lindberg2008SOLWEIG}; CrossTwin currently only reads and classifies them, it does not derive one raster from another. The exception is LST, computed from Landsat and CrossTwin's NDVI layer (Section~\ref{sec:lst-smw}).
+Source: \code{urban\_heat/calculations.py}. Thermal-comfort rasters (SVF, $T_{mrt}$, PET, UTCI) are computed on demand for the map view with SOLWEIG \cite{Lindberg2008SOLWEIG} (Section~\ref{sec:solweig}) or imported pre-computed; the dashboard statistics below only read and classify them. LST is computed from Landsat and CrossTwin's NDVI layer (Section~\ref{sec:lst-smw}).
 
 \subsection{Green area and vegetation coverage}
 \textbf{Location:} \code{calculate\_green\_area()} (\code{urban\_heat/calculations.py:18}), \code{calculate\_vegetation\_coverage()} (\code{:55})
@@ -617,6 +633,35 @@ Python port of the Earth Engine modules of Ermida et al.\ \cite{Ermida2020SMW} (
   \mathrm{LST} &= A_i \frac{T_b}{\varepsilon} + \frac{B_i}{\varepsilon} + C_i
 \end{align}
 $\mathrm{TPW}_{1,2}$ are the two water-vapour fields of the acquisition day closest in time ($\Delta t_{1,2}$ their distances, in units of the source's field spacing: \SI{6}{h} for NCEP, \SI{1}{h} for ERA5). NCEP reanalysis (\texttt{NCEP\_RE/surface\_wv}), which the original code uses, ended on 2026-03-18; later scenes use ERA5 hourly \texttt{total\_column\_water\_vapour}, which over Enschede differs from NCEP by about 1--4\,mm, mostly within one \SI{6}{mm} coefficient bin. The source used is stored in \code{measurement\_method}. $(A_i, B_i, C_i)$ is the Landsat~9 row of the SMW table for TPW bin $i$ (\code{coefficients.py}). Water pixels (QA bit~7) get $\varepsilon = 0.99$, snow/ice (bit~5) $0.989$; cloud and cloud shadow (bits 3, 4), TPW $<0$ (masked water-vapour cell) and cells outside the NDVI layer are nodata. The clip in FVC is applied after squaring, as in the published code, so NDVI $<0.2$ gives a small positive FVC. With \code{--aster-emissivity} the vegetation correction is skipped: $\varepsilon = 0.6820\,\varepsilon_{13} + 0.2578\,\varepsilon_{14} + 0.0584$. Output: one \code{LandSurfaceTemperature} raster in \si{\celsius}, nodata $-9999$, COG via \code{core/signals.py}. Computed on demand, not by a receiver (it downloads from Earth Engine). \textbf{DAG edges:} \dagedge{RS\_Imagery $\rightarrow$ LST}, \dagedge{LandCover $\rightarrow$ LST} --- \statusdone{}
+
+\subsection{Thermal comfort with SOLWEIG --- \code{urban\_heat/solweig/}}
+\label{sec:solweig}
+\textbf{Location:} \code{urban\_heat/solweig/inputs.py} (input rasters), \code{met.py} (meteorology), \code{pipeline.py} (run, PET, storage); run from the map's thermal comfort tool (Actions menu, over the area in view and one hour) as a background \code{ThermalComfortRun}. Full description and process graph: \code{docs/THERMAL\_COMFORT.md}.
+
+\textbf{Inputs on one grid.} The view is extended by a halo of \SI{50}{m} (shadows of buildings outside the view), read from the DSM with the editor's building patches (Section~\ref{sec:dsm-patches}) at a cell size $\Delta$ (default \SI{1}{m}) and split into SOLWEIG's rasters:
+\begin{align}
+  \text{Building\_DSM}(x) &= \begin{cases} \max(z(x), g(x)) & x \in \bigcup \text{building footprints} \\ g(x) & \text{otherwise} \end{cases} \\
+  \text{Trees}(x) &= \begin{cases} z(x) - g(x) & x \notin \text{footprints},\ z(x) - g(x) > 2.5\,\si{m} \\ 0 & \text{otherwise} \end{cases}
+\end{align}
+with $g$ the ground as above. The land cover of the latest year is mapped to SOLWEIG's classes (1 paved, 2 buildings, 5 grass, 6 bare soil, 7 water; class-name keywords at word starts, anything else paved), buildings burned last. Windows above $10^6$ cells are refused.
+
+\textbf{Meteorology.} One hourly record (air temperature $T_a$, relative humidity RH, wind speed $v$ and direction, global radiation $K_\downarrow$, pressure $p$), uniform over the view: entered by hand, or from the KNMI station nearest to the view centre that measured that hour (validated hourly data; $T$ and $v$ in 0.1 units, $K_\downarrow = Q \cdot 10^4 / 3600$ with $Q$ in \si{J/cm^2} per hour, $p$ in 0.1\,\si{hPa}), or from ERA5 hourly at the view centre \cite{Hersbach2020ERA5}:
+\begin{align}
+  \mathrm{RH} &= 100\,\frac{e_s(T_d)}{e_s(T_a)}, \qquad e_s(T) = 6.1094 \exp\!\left(\frac{17.625\,T}{T + 243.04}\right) \\
+  v &= \sqrt{u^2 + v_{n}^2}, \qquad \theta = \operatorname{atan2}(-u, -v_{n}) \bmod 360^\circ \\
+  K_\downarrow &= \mathrm{ssrd} / 3600\,\si{s}
+\end{align}
+(Magnus form of \cite{Alduchov1996Magnus}; $\theta$ is the direction the wind blows from). The record is written as a UMEP met file for the hour before and the analysed hour, in local time at the view centre.
+
+\textbf{SOLWEIG.} \code{solweig-gpu} \cite{SolweigGPU} (PyTorch; CUDA when available) computes wall heights and aspects, the sky view factors and shadow matrices (cached per input hash), and SOLWEIG 2022a's radiant fluxes, mean radiant temperature $T_{mrt}$ and UTCI \cite{Lindberg2008SOLWEIG, Blazejczyk2013UTCI}. The solar position comes from the centre of the input grid and its timezone on that date (SPA), so it follows the view. The analysed hour is band~2; the halo is cropped off.
+
+\textbf{PET.} With one met record, $T_a$, RH and $v$ are the same in every cell, so PET depends on $T_{mrt}$ alone. It is solved with the steady-state model of \cite{Hoppe1999PET} as corrected by \cite{Walther2018PET} (\code{pythermalcomfort.pet\_steady}; standard person: 35 years, \SI{1.75}{m}, \SI{75}{kg}, 0.9\,clo, 1.37\,met) on a grid $t_k$ of \SI{0.25}{\celsius} steps over the range of $T_{mrt}$, and interpolated:
+\begin{equation}
+  \mathrm{PET}(x) = \operatorname{interp}\big(T_{mrt}(x);\ t_k,\ \mathrm{PET}(T_a, t_k, v, \mathrm{RH}, p)\big)
+\end{equation}
+The met-file wind speed (\SI{10}{m}) is used as is, as UMEP's SOLWEIG does.
+
+Output: one \code{MeanRadiantTemperature}, \code{UTCI} and \code{PET} raster in \si{\celsius} (nodata $-9999$, COGs via \code{core/signals.py}), replacing earlier SOLWEIG rows of the same hour inside the view. Computed on demand, not by a receiver. \textbf{DAG edges:} \dagedge{DSM $\rightarrow$ SVF $\rightarrow$ Tmrt, PET}, \dagedge{Meteorology $\rightarrow$ Tmrt, PET, UTCI}, \dagedge{Tmrt $\rightarrow$ PET, UTCI} --- \statusdone{} (on demand; meteorology uniform over the view, no directional wind coefficients)
 
 \subsection{Nature-Based Solutions coverage --- \code{calculate\_nbs\_coverage()}}
 \textbf{Location:} \code{urban\_heat/calculations.py:283}
@@ -733,6 +778,7 @@ administrative & \code{\_city\_growth\_factor()} & Population\_Growth$\to$Total\
 administrative & \code{annual\_growth\_rate()} & Population\_Growth$\to$Total\_Pop & \statusdone{} \\
 administrative & \code{City.save()} / \code{Province.save()} & (population cascade) & \statusdone{} \\
 physicalEnv & \code{urbanize\_around()} / \code{release\_ring()} & New\_Units$\to$LandCover (editor buildings) & \statusdone{} \\
+physicalEnv & \code{dsm\_patches.record\_change()} / \code{apply\_patches()} & Buildings$\to$DSM (editor buildings) & \statusdone{} \\
 watersupply & \code{calculate\_total\_demand()} / \code{TotalWaterDemand.save()} & Total\_Pop$\to$Total\_Water\_Demand & \statusdone{} \\
 watersupply & \code{ConsumptionCapita.save()} & Total\_Pop$\to$Total\_Consumption & \statusdone{} \\
 watersupply & \code{calculate\_total\_extraction()} & Available\_FW$\to$Total\_Extraction & \statusdone{} \\
@@ -765,6 +811,7 @@ urban\_heat & \code{calculate\_green\_area()} / \code{calculate\_vegetation\_cov
 urban\_heat & \code{calculate\_urban\_morphology()} & Buildings/Streets$\to$Canyon\_Aspect & \statuspartial{} \\
 urban\_heat & \code{get\_thermal\_indices()} & DSM$\to$SVF$\to$Tmrt/PET$\to$UTCI & \statusgap{} \\
 urban\_heat & \code{lst.pipeline.calculate\_lst()} / \code{lst.smw} & RS\_Imagery/LandCover$\to$LST & \statusdone{} \\
+urban\_heat & \code{solweig.pipeline.calculate()} & DSM$\to$SVF$\to$Tmrt$\to$UTCI/PET; Meteorology$\to$Tmrt/PET/UTCI & \statusdone{} \\
 urban\_heat & \code{calculate\_nbs\_coverage()} & UTCI/PET$\to$NBS & \statusgap{} \\
 mainMap & \code{feature\_form()} / \code{feature\_delete()} & (tooling: edits State objects via \code{save()}) & \statusdone{} \\
 mainMap & \code{journal()} / \code{restore\_backup()} & (tooling: what-if restore point) & \statusdone{} \\
@@ -795,6 +842,16 @@ Beyond the CBS 85173NED forecasts used for the \texttt{Population\_Growth}$\to$\
 \bibitem{Oke1987} Oke, T. R. (1987). \textit{Boundary Layer Climates} (2nd ed.). Routledge. (Urban canyon height-to-width aspect ratio.)
 
 \bibitem{Matzarakis1996} Matzarakis, A., \& Mayer, H. (1996). Another kind of environmental stress: thermal stress. \textit{WHO Newsletter}, 18, 7--10. (Physiological Equivalent Temperature classification.)
+
+\bibitem{Hoppe1999PET} Höppe, P. (1999). The physiological equivalent temperature -- a universal index for the biometeorological assessment of the thermal environment. \textit{International Journal of Biometeorology}, 43(2), 71--75.
+
+\bibitem{Walther2018PET} Walther, E., \& Goestchel, Q. (2018). The P.E.T. comfort index: Questioning the model. \textit{Building and Environment}, 137, 1--10.
+
+\bibitem{Hersbach2020ERA5} Hersbach, H., Bell, B., Berrisford, P., et al. (2020). The ERA5 global reanalysis. \textit{Quarterly Journal of the Royal Meteorological Society}, 146(730), 1999--2049.
+
+\bibitem{Alduchov1996Magnus} Alduchov, O. A., \& Eskridge, R. E. (1996). Improved Magnus form approximation of saturation vapor pressure. \textit{Journal of Applied Meteorology}, 35(4), 601--609.
+
+\bibitem{SolweigGPU} SOLWEIG-GPU, version 2.0.0. GPU-accelerated SOLWEIG thermal comfort model (Python, PyTorch). \url{https://github.com/nvnsudharsan/solweig-gpu}, \url{https://solweig-gpu.readthedocs.io}.
 
 \bibitem{Blazejczyk2013UTCI} Bröde, P., Fiala, D., Błażejczyk, K., et al. (2012). Deriving the operational procedure for the Universal Thermal Climate Index (UTCI). \textit{International Journal of Biometeorology}, 56(3), 481--494.
 

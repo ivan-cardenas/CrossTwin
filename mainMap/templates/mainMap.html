@@ -27,6 +27,7 @@
 <script src="{% static 'js/Editing.js' %}"></script>
 <script src="{% static 'js/LstTool.js' %}"></script>
 <script src="{% static 'js/SvfTool.js' %}"></script>
+<script src="{% static 'js/SolweigTool.js' %}"></script>
 <script src="{% static 'js/MapSettings.js' %}"></script>
 <script src="{% static 'js/Events.js' %}"></script>
 <script src="{% static 'js/Map_init.js' %}"></script>
@@ -295,6 +296,59 @@
       <div class="lst-status" id="svf-status" role="status"></div>
     </div>
 
+    <!-- THERMAL COMFORT TOOL — SOLWEIG Tmrt, UTCI and PET for the area in view
+         and one hour (core/static/js/SolweigTool.js, urban_heat/solweig/,
+         docs/THERMAL_COMFORT.md). Reuses the LST card's lst-* classes. -->
+    <div class="lst-card" id="solweig-card"
+         data-info-url="{% url 'urban_heat:solweig_info' %}"
+         data-met-url="{% url 'urban_heat:solweig_met' %}"
+         data-calculate-url="{% url 'urban_heat:solweig_calculate' %}"
+         data-run-url="{% url 'urban_heat:solweig_run' 0 %}"
+         data-stale-url="{% url 'urban_heat:solweig_stale' %}"
+         data-can-calculate="{{ user.is_staff|yesno:'1,0' }}">
+      {% csrf_token %}
+      <div class="lst-card-header">
+        <div class="lst-card-title">THERMAL COMFORT (SOLWEIG)</div>
+        <button class="lst-card-close" id="solweig-card-close" aria-label="Close thermal comfort tool">✕</button>
+      </div>
+      <p class="lst-card-hint">Mean radiant temperature, UTCI and PET for the area in view at one hour. The sun position follows the view.</p>
+      <div class="lst-card-fields">
+        <label>Date <input type="date" id="solweig-date"></label>
+        <label>Hour
+          <select id="solweig-hour"></select>
+        </label>
+        <label>Cell
+          <select id="solweig-resolution">
+            <option value="1" selected>1 m</option>
+            <option value="2">2 m</option>
+            <option value="5">5 m</option>
+          </select>
+        </label>
+      </div>
+      <div class="lst-card-fields met-source">
+        <label>Weather
+          <select id="solweig-source">
+            <option value="manual">Manual</option>
+            <option value="knmi" selected>Nearest KNMI station</option>
+            <option value="era5">ERA5</option>
+          </select>
+        </label>
+        <button class="lst-btn" id="solweig-fetch" type="button">Fetch</button>
+      </div>
+      <div class="lst-card-fields met-values">
+        <label>Air temp. °C <input type="number" id="solweig-ta_c" step="0.1" value="25"></label>
+        <label>RH % <input type="number" id="solweig-rh_pct" step="1" min="0" max="100" value="50"></label>
+        <label>Wind m/s <input type="number" id="solweig-wind_ms" step="0.1" min="0" value="2"></label>
+        <label>Wind dir. ° <input type="number" id="solweig-wind_dir_deg" step="1" min="0" max="360" value="240"></label>
+        <label>Kdown W/m² <input type="number" id="solweig-kdown_wm2" step="1" min="0" value="600"></label>
+        <label>Pressure kPa <input type="number" id="solweig-pressure_kpa" step="0.01" value="101.3"></label>
+      </div>
+      <div class="lst-view-info" id="solweig-met-info"></div>
+      <div class="lst-view-info" id="solweig-view-info"></div>
+      <button class="lst-btn lst-btn-primary" id="solweig-calculate" disabled>Calculate thermal comfort</button>
+      <div class="lst-status" id="solweig-status" role="status"></div>
+    </div>
+
     {% if user.is_staff %}
     <!-- MAP SETTINGS — editable layers and styles (staff; core/static/js/MapSettings.js,
          mainMap/settings_views.py). Opened from the header's Map settings button;
@@ -381,6 +435,7 @@
           <span class="bi bi-sliders"></span> Actions ·
           <span id="actions-menu-year">2025</span>
           <span class="actions-menu-caret">▴</span>
+          <span class="stale-dot" hidden title="Buildings changed in this view: recalculate SVF / thermal comfort"></span>
         </button>
       </div>
 
@@ -429,6 +484,14 @@
         <button class="action-panel-btn" id="svfToolBtn">
           <span class="bi bi-brightness-high"></span>
           <span class="action-btn-text">Sky View Factor</span>
+          <span class="stale-dot" hidden title="Buildings changed here since the SVF was calculated: run it again"></span>
+        </button>
+      </div>
+      <div class="actions-menu-row">
+        <button class="action-panel-btn" id="solweigToolBtn">
+          <span class="bi bi-person-walking"></span>
+          <span class="action-btn-text">Thermal Comfort (SOLWEIG)</span>
+          <span class="stale-dot" hidden title="Buildings changed here since thermal comfort was calculated: run it again"></span>
         </button>
       </div>
 

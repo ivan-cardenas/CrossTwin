@@ -111,16 +111,15 @@ def _cog_filename(instance):
     Build a COG filename from whatever satellite/process metadata the raster
     model carries, e.g. NDVI_Sentinel2_20260908_42.tif, so files on disk are
     identifiable by what produced them instead of just a class name and id.
-    Falls back to the model's class name for models with no such metadata
-    (e.g. weather's interpolated rasters). The trailing id always stays, since
+    Starts with the index, else the model's class name. The trailing id always stays, since
     two records can share the same index/source/date (re-imports, different
     cities on the same day) and must not overwrite each other's COG.
     """
-    parts = []
-
+    # Without an index the class name leads: models of one app share a folder
+    # and their own id sequences (SOLWEIG writes Tmrt, UTCI and PET with the
+    # same source, date and, at first, id).
     index = getattr(instance, 'index', None)
-    if index:
-        parts.append(str(index))
+    parts = [str(index) if index else instance.__class__.__name__]
 
     provenance = getattr(instance, 'satellite_type', None) or getattr(instance, 'source', None)
     if provenance:
@@ -131,9 +130,6 @@ def _cog_filename(instance):
         parts.append(date_value.strftime('%Y%m%d'))
     elif getattr(instance, 'year', None):
         parts.append(str(instance.year))
-
-    if not parts:
-        parts.append(instance.__class__.__name__)
 
     safe_parts = [p for p in (re.sub(r'[^A-Za-z0-9]+', '', str(part)) for part in parts) if p]
     safe_parts.append(str(instance.id))

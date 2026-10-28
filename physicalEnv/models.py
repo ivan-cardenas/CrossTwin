@@ -178,6 +178,43 @@ class UrbanFabricCut(models.Model):
     def __str__(self):
         return f"Cut of land cover {self.target} by building {self.owner_building}"
 
+
+class DSMBuildingPatch(models.Model):
+    """
+    A map-editor change of one building, applied on top of every DSM when it is
+    read for analysis (physicalEnv/dsm_patches.py::apply_patches): the original
+    footprint goes back to ground level, then the current footprint is raised
+    to ground + height_m. The DSM COG itself is never rewritten. Not a map
+    layer (registry_hidden).
+
+    DAG edge: Buildings -> DSM.
+    """
+    registry_hidden = True
+
+    building_id = models.BigIntegerField(unique=True, help_text="Id of the edited builtup.Building")
+    original_footprint = models.MultiPolygonField(srid=CoordinateSystem, null=True, blank=True, help_text="Footprint before the first edit (None: drawn in the editor)")
+    footprint = models.MultiPolygonField(srid=CoordinateSystem, null=True, blank=True, help_text="Current footprint (None: deleted)")
+    height_m = models.FloatField(null=True, blank=True, help_text="Height above ground; None: the footprint is only cleared")
+    updated = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"DSM patch for building {self.building_id}"
+
+
+class DSMEdit(models.Model):
+    """
+    Append-only log of the areas where the DSM overlay changed (a patch saved,
+    restored or deleted). SVF and thermal-comfort results calculated before an
+    edit that overlaps them are stale (dsm_patches.stale_results).
+    """
+    registry_hidden = True
+
+    area = models.PolygonField(srid=CoordinateSystem, help_text="Bounding box of the old and new footprint")
+    at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    def __str__(self):
+        return f"DSM edit at {self.at:%Y-%m-%d %H:%M}"
+
 class LandCoverRaster(models.Model):
     id = models.AutoField(primary_key=True)
     city = models.ForeignKey("administrative.City", on_delete=models.DO_NOTHING, help_text="City code from administrative.City", null=True, blank=True)

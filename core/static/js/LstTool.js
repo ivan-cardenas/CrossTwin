@@ -93,6 +93,7 @@
     function open() {
       // Same corner as the SVF card: show one at a time.
       document.getElementById('svf-card')?.classList.remove('visible');
+      document.getElementById('solweig-card')?.classList.remove('visible');
       card.classList.add('visible');
       if (typeof setActionsMenuOpen === 'function') setActionsMenuOpen(false);
       if (!canCalculate) {

@@ -2268,3 +2268,23 @@
 .settings-range { grid-template-columns: 1fr 1fr; }
 .settings-actions { display: flex; gap: 6px; }
 .settings-actions .lst-btn { flex: 1; }
+
+/* Thermal comfort card (SolweigTool.js): weather source + Fetch, three met inputs per row */
+#solweig-card .lst-card-fields.met-source { grid-template-columns: minmax(0, 1fr) 72px; align-items: end; }
+/* minmax(0, ...): number inputs would otherwise widen the columns past the card */
+#solweig-card .lst-card-fields.met-values { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+#solweig-card .lst-card-fields input { width: 100%; box-sizing: border-box; }
+
+/* Stale-results mark (SolweigTool.js): buildings changed since SVF / thermal comfort was calculated */
+.stale-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin-left: 6px;
+    border-radius: 50%;
+    background: #f5a623;
+    box-shadow: 0 0 0 2px rgba(245, 166, 35, 0.25);
+    vertical-align: middle;
+    flex: none;
+}
+.stale-dot[hidden] { display: none; }

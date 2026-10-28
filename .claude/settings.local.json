@@ -10,7 +10,9 @@
       "Bash(python3 -c \"import json; print\\('ok'\\)\")",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Leo\\\\Documents\\\\GitHub\\\\CrossTwin\" -Recurse -Directory)",
       "Bash(Select-Object -ExpandProperty FullName)",
-      "Bash(Sort-Object)"
+      "Bash(Sort-Object)",
+      "PowerShell(Select-String *)",
+      "PowerShell($f = \".venv\\\\Lib\\\\site-packages\\\\solweig_gpu\\\\preprocessor.py\"; \\(Get-Content $f\\)[1340..1402] -join \"`n\"; \"-----\"; \\(Get-Content $f\\)[1430..1500] -join \"`n\")"
     ]
   },
   "skillOverrides": {

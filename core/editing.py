@@ -22,6 +22,7 @@ follows from each model's save().
 import json
 import threading
 import tomllib
+from contextlib import contextmanager
 from pathlib import Path
 
 from django import forms
@@ -229,7 +230,8 @@ def feature_form(request, app_label, model_name, pk=None):
                 obj.pk = _next_negative_pk(model)
             # force_insert: two editors creating at once can get the same id, and a
             # plain save() would then UPDATE (overwrite) the other's new object.
-            obj.save(force_insert=creating)
+            with editor_change():
+                obj.save(force_insert=creating)
             form.save_m2m()
             if creating:
                 journal(key, model, obj.pk, created=True)
@@ -264,7 +266,8 @@ def feature_delete(request, app_label, model_name, pk):
     try:
         with transaction.atomic():
             journal(key, model, obj.pk)
-            obj.delete()
+            with editor_change():
+                obj.delete()
             _check_constraints()
     except IntegrityError as exc:
         obj = get_object_or_404(model, pk=pk)
@@ -310,7 +313,8 @@ def _backup_bar(request, message=None, status=200):
     backup = active_backup()
     context = {
         'backup': backup,
-        'changed': backup.rows.count() if backup else 0,
+        # Map objects only: bookkeeping rows (land-cover cuts, DSM patches) are side effects.
+        'changed': backup.rows.filter(layer_key__in=list(VECTOR_REGISTRY)).count() if backup else 0,
         'message': message,
     }
     return render(request, BACKUP_TEMPLATE, context, status=status)
@@ -339,6 +343,28 @@ def backup_discard(request):
         return _forbidden()
     EditBackup.objects.all().delete()
     return _backup_bar(request)
+
+
+_editor = threading.local()
+
+
+@contextmanager
+def editor_change():
+    """Marks a save/delete made by the map editor (feature_form / feature_delete)."""
+    _editor.active = True
+    try:
+        yield
+    finally:
+        _editor.active = False
+
+
+def is_editor_change():
+    """
+    True inside a map-editor save or delete. Receivers that must react to a
+    user's edit but not to imports (e.g. physicalEnv's Buildings -> DSM patch:
+    a BAG import must not replace AHN's measured roofs) check it.
+    """
+    return getattr(_editor, 'active', False)
 
 
 _restoring = threading.local()

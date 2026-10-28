@@ -821,3 +821,40 @@ class SkyViewFactorToolViewTests(TestCase):
             response = self.client.post("/physicalEnv/svf/calculate/", params)
             self.assertEqual(response.status_code, 400, params)
             self.assertIn("error", response.json())
+
+
+class DsmBuildingPatchOverlayTests(TestCase):
+    """dsm_patches.apply_patches: DAG edge Buildings -> DSM, applied when the DSM is read."""
+
+    def _square(self, x, y, half):
+        from django.conf import settings
+        return MultiPolygon(Polygon(((x - half, y - half), (x + half, y - half), (x + half, y + half),
+                                     (x - half, y + half), (x - half, y - half))), srid=settings.COORDINATE_SYSTEM)
+
+    def test_load_dsm_clears_the_old_footprint_and_raises_the_new_one(self):
+        import numpy as np
+
+        from . import svf
+        from .models import DSMBuildingPatch
+
+        data = np.full((80, 80), 5.0, dtype="float32")
+        data[10:20, 10:20] = 25.0                                  # building at x 250010..20, y 469980..90
+        dsm = _stored_dsm(data)
+        DSMBuildingPatch.objects.create(
+            building_id=1, original_footprint=self._square(250015, 469985, 5),
+            footprint=self._square(250055, 469945, 5), height_m=12.0)
+
+        height, origin, cell, _ = svf.load_dsm(dsm, (250000.0, 469920.0, 250080.0, 470000.0))
+        self.assertEqual(origin, (250000.0, 470000.0))
+        np.testing.assert_allclose(height[10:20, 10:20], 5.0)      # cleared to the (estimated) ground
+        np.testing.assert_allclose(height[50:60, 50:60], 17.0)     # ground 5 + 12 m
+        raw, *_ = svf.load_dsm(dsm, (250000.0, 469920.0, 250080.0, 470000.0), patches=False)
+        self.assertEqual(float(raw[15, 15]), 25.0)
+
+    def test_without_patches_the_grid_is_unchanged(self):
+        import numpy as np
+
+        from .dsm_patches import apply_patches
+
+        grid = np.ones((4, 4), dtype="float32")
+        self.assertIs(apply_patches(grid, (0.0, 4.0), 1.0, 28992), grid)

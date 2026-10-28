@@ -178,10 +178,15 @@ def wgs84_to_storage(bbox_wgs84):
     return poly.extent
 
 
+def _db_raster(row):
+    """The raster stored in Postgres of a DSM (dsm_raster) or DEM (dem_raster) row, or None."""
+    return getattr(row, "dsm_raster", None) or getattr(row, "dem_raster", None)
+
+
 def dsm_extent(dsm):
-    """Extent of a DSM row in the storage CRS (header reads only), or None."""
-    if dsm.dsm_raster is not None:
-        return tuple(dsm.dsm_raster.extent)
+    """Extent of a DSM (or DEM) row in the storage CRS (header reads only), or None."""
+    if _db_raster(dsm) is not None:
+        return tuple(_db_raster(dsm).extent)
     if not dsm.cog_path:
         return None
     import rasterio
@@ -204,15 +209,16 @@ def _area(box):
     return (box[2] - box[0]) * (box[3] - box[1]) if box else 0.0
 
 
-def dsm_for_view(view):
+def dsm_for_view(view, model=None):
     """
-    The DSM that covers most of `view` (storage CRS), newest year first on a
-    tie. Returns (dsm, the part of the view it covers) or (None, None).
+    The DSM (or row of `model`, e.g. DigitalElevationModel) that covers most
+    of `view` (storage CRS), newest year first on a tie. Returns (row, the part
+    of the view it covers) or (None, None).
     """
     from .models import DigitalSurfaceModel
 
     best, best_key = (None, None), None
-    for dsm in DigitalSurfaceModel.objects.order_by("-year", "-pk"):
+    for dsm in (model or DigitalSurfaceModel).objects.order_by("-year", "-pk"):
         extent = dsm_extent(dsm)
         covered = _intersection(view, extent) if extent else None
         if covered is None:
@@ -225,8 +231,8 @@ def dsm_for_view(view):
 
 def source_cell_size(dsm):
     """The DSM's own cell size in metres (the COG is in degrees)."""
-    if dsm.dsm_raster is not None:
-        return abs(dsm.dsm_raster.scale[0])
+    if _db_raster(dsm) is not None:
+        return abs(_db_raster(dsm).scale[0])
     import rasterio
     from rasterio.warp import calculate_default_transform
 
@@ -236,7 +242,26 @@ def source_cell_size(dsm):
     return (abs(native.a) + abs(native.e)) / 2
 
 
-def load_dsm(dsm, bbox, resolution=None):
+def read_cog_on_grid(cog_path, origin, cell, shape, srid):
+    """
+    A COG warped onto a given grid of the storage CRS (upper-left `origin`,
+    square `cell`, `shape` rows x cols), float32 with NaN at nodata. Nearest
+    neighbour keeps building edges sharp; the VRT only fetches the source
+    tiles under the grid.
+    """
+    import numpy as np
+    import rasterio
+    from rasterio.enums import Resampling
+    from rasterio.transform import from_origin
+    from rasterio.vrt import WarpedVRT
+
+    with rasterio.open(cog_path) as src, WarpedVRT(
+            src, crs=f"EPSG:{srid}", transform=from_origin(origin[0], origin[1], cell, cell),
+            width=shape[1], height=shape[0], resampling=Resampling.nearest) as vrt:
+        return vrt.read(1, masked=True).astype(np.float32).filled(np.nan)
+
+
+def load_dsm(dsm, bbox, resolution=None, patches=True):
     """
     Elevation grid of a DigitalSurfaceModel row inside `bbox`, in the storage CRS.
 
@@ -247,9 +272,20 @@ def load_dsm(dsm, bbox, resolution=None):
     resolution: cell size in metres for the COG path (default: the source
                 COG's own cell size, converted from degrees to metres).
 
+    patches:    apply the map editor's building changes
+                (dsm_patches.apply_patches; DAG edge Buildings -> DSM).
+
     Returns (height ndarray float32 with NaN at nodata, origin (x, y) of the
     upper-left corner, cell size in metres, srid).
     """
+    data, origin, cell, srid = _read_dsm(dsm, bbox, resolution)
+    if patches:
+        from .dsm_patches import apply_patches
+        data = apply_patches(data, origin, cell, srid)
+    return data, origin, cell, srid
+
+
+def _read_dsm(dsm, bbox, resolution):
     import numpy as np
 
     srid = _storage_srid()
@@ -278,9 +314,6 @@ def load_dsm(dsm, bbox, resolution=None):
         raise SVFError(f"DSM {dsm.pk} has neither a stored raster nor a COG.")
 
     import rasterio
-    from rasterio.enums import Resampling
-    from rasterio.transform import from_origin
-    from rasterio.vrt import WarpedVRT
     from rasterio.warp import transform_bounds
 
     cell = float(resolution or source_cell_size(dsm))
@@ -296,12 +329,7 @@ def load_dsm(dsm, bbox, resolution=None):
         minx, maxy = np.floor(minx / cell) * cell, np.ceil(maxy / cell) * cell
         width = int(np.ceil((maxx - minx) / cell))
         height = int(np.ceil((maxy - miny) / cell))
-        transform = from_origin(minx, maxy, cell, cell)
-        # Nearest keeps building edges sharp (the COG is nearest too). The VRT
-        # only fetches the source tiles under this window.
-        with WarpedVRT(src, crs=dst_crs, transform=transform, width=width,
-                       height=height, resampling=Resampling.nearest) as vrt:
-            data = vrt.read(1, masked=True).astype(np.float32).filled(np.nan)
+    data = read_cog_on_grid(dsm.cog_path, (minx, maxy), cell, (height, width), srid)
     return data, (minx, maxy), cell, srid
 
 

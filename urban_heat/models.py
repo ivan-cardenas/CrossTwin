@@ -225,3 +225,34 @@ class NeighborhoodHeat(models.Model):
     class Meta:
         verbose_name = "Neighborhood Heat"
         verbose_name_plural = "Neighborhood Heat"
+
+
+class ThermalComfortRun(models.Model):
+    """
+    One SOLWEIG thermal-comfort calculation for a map view and hour
+    (urban_heat/solweig/, docs/THERMAL_COMFORT.md): the job the map's tool
+    polls while it runs in the background, then the provenance of the Tmrt,
+    UTCI and PET rasters it stored. Not a map layer (registry_hidden).
+    """
+    registry_hidden = True
+
+    STATUS_CHOICES = [("queued", "Queued"), ("running", "Running"), ("done", "Done"), ("failed", "Failed")]
+
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="queued")
+    message = models.TextField(blank=True, default="", help_text="Progress, or the error of a failed run")
+    area = models.PolygonField(srid=settings.COORDINATE_SYSTEM, help_text="The view the results cover (storage CRS)")
+    bbox_wgs84 = models.JSONField(help_text="The requested view: [west, south, east, north]")
+    date_time = models.DateTimeField(help_text="Analysed hour (local, aware)")
+    met = models.JSONField(help_text="Meteorological inputs: ta_c, rh_pct, wind_ms, wind_dir_deg, kdown_wm2, pressure_kpa, source")
+    resolution = models.FloatField(help_text="Cell size in metres")
+    device = models.CharField(max_length=20, blank=True, default="", help_text="'cuda' or 'cpu'")
+    inputs = models.JSONField(default=dict, blank=True, help_text="DSM/DEM ids, building patches, land cover, sun position")
+    stats = models.JSONField(default=dict, blank=True)
+    mrt = models.ForeignKey(MeanRadiantTemperature, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    utci = models.ForeignKey(UTCI, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    pet = models.ForeignKey(PET, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    created = models.DateTimeField(auto_now_add=True)
+    finished = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"SOLWEIG run {self.pk} ({self.status}) for {self.date_time:%Y-%m-%d %H:%M}"

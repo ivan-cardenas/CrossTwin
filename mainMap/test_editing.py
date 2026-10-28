@@ -42,7 +42,8 @@ class EditingTestCase(TestCase):
         self.building.refresh_from_db()
 
     def post_building(self, url, **fields):
-        data = {'name': 'Edited', 'usageFunction': 'Residential function',
+        # The form posts every field; height_m as stored, like the browser would.
+        data = {'name': 'Edited', 'usageFunction': 'Residential function', 'height_m': 9.0,
                 'geom': _wgs84_geojson(make_polygon(half_size_m=10))}
         data.update(fields)
         return self.client.post(url, data)
@@ -408,3 +409,53 @@ class EditableLayersConfigTests(SimpleTestCase):
                      '["builtup.Park"\n'):                           # invalid TOML
             with self.subTest(text=text), self.assertRaises(ImproperlyConfigured):
                 self._load(text)
+
+
+class BuildingDsmPatchTests(EditingTestCase):
+    """DAG edge Buildings -> DSM: editor building changes patch the DSM (physicalEnv/dsm_patches.py)."""
+
+    def patch(self, pk=1234):
+        from physicalEnv.models import DSMBuildingPatch
+        return DSMBuildingPatch.objects.filter(building_id=pk).first()
+
+    def test_a_new_height_records_a_patch_and_an_edit(self):
+        from physicalEnv.models import DSMEdit
+
+        self.post_building(_edit_url(1234), height_m=25)
+        patch = self.patch()
+        self.assertEqual(patch.height_m, 25)
+        self.assertTrue(patch.original_footprint.equals_exact(self.building.geom, tolerance=1e-6))
+        self.assertTrue(DSMEdit.objects.exists())
+
+    def test_an_attribute_only_edit_records_nothing(self):
+        self.post_building(_edit_url(1234), height_m=9, name='Renamed')
+        self.assertIsNone(self.patch())
+
+    def test_imports_and_plain_saves_record_nothing(self):
+        self.building.height_m = 40
+        self.building.save()
+        Building.objects.create(id=99, height_m=12, geom=make_polygon(x=257100, half_size_m=5))
+        self.assertIsNone(self.patch())
+        self.assertIsNone(self.patch(99))
+
+    def test_a_drawn_building_keeps_no_original_footprint(self):
+        self.post_building(NEW_URL, height_m=12, geom=_wgs84_geojson(make_polygon(x=257100, half_size_m=5)))
+        patch = self.patch(-1)
+        self.assertIsNone(patch.original_footprint)
+        self.assertEqual(patch.height_m, 12)
+
+    def test_a_deleted_building_is_lowered_to_the_ground(self):
+        self.client.post(reverse('map:feature_delete', args=['builtup', 'Building', 1234]))
+        patch = self.patch()
+        self.assertIsNone(patch.footprint)
+        self.assertIsNotNone(patch.original_footprint)
+
+    def test_restore_reverts_the_patch_and_logs_the_area(self):
+        from physicalEnv.models import DSMEdit
+
+        self.client.post(BACKUP_URL)
+        self.post_building(_edit_url(1234), height_m=30)
+        edits = DSMEdit.objects.count()
+        self.client.post(RESTORE_URL)
+        self.assertIsNone(self.patch())
+        self.assertGreater(DSMEdit.objects.count(), edits)   # results calculated before Restore are stale too

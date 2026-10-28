@@ -315,3 +315,262 @@ class LstToolViewTests(LstTestMixin, TestCase):
         self.assertEqual(data["layer"]["layer_type"], "raster")
         self.assertEqual(data["replaced"], [])
         self.assertAlmostEqual(data["stats"]["max"], self.expected_lst(self.bare_em()), places=3)
+
+
+# ── SOLWEIG thermal comfort (urban_heat/solweig/) ─────────────────────
+
+KNMI_SAMPLE = """# STN         LON(east)   LAT(north)  ALT(m)      NAME
+# 260         5.180       52.100      1.90        De Bilt
+# 290         6.891       52.274      34.80       Twenthe Airport
+# 283         6.657       52.069      29.10       Hupsel
+#
+# STN,YYYYMMDD,HH,    T,    U,   FF,   DD,    Q,    P
+  260,20250715,   13,  250,   40,   30,  240,  250,10170
+  283,20250715,   13,  205,   55,   40,  250,  150,10172
+  290,20250715,   13,     ,   63,   50,  290,  161,10174
+"""
+
+
+class SolweigMetTests(SimpleTestCase):
+    def test_write_umep_puts_the_values_in_solweigs_columns(self):
+        import os
+        import tempfile
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        import numpy as np
+
+        from .solweig.met import Met, write_umep
+
+        met = Met(ta_c=28.5, rh_pct=45, wind_ms=2.5, wind_dir_deg=240, kdown_wm2=750, pressure_kpa=101.2)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "met.txt")
+            write_umep(met, datetime(2025, 7, 15, 0, tzinfo=ZoneInfo("Europe/Amsterdam")), path)
+            rows = np.loadtxt(path, skiprows=1, delimiter=" ")   # as solweig_gpu reads it
+        self.assertEqual(rows.shape, (2, 24))
+        self.assertEqual(list(rows[0, :4]), [2025, 195, 23, 0])   # the hour before, previous day
+        self.assertEqual(list(rows[1, :4]), [2025, 196, 0, 0])
+        self.assertEqual([rows[1, i] for i in (9, 10, 11, 12, 14, 23)], [2.5, 45, 28.5, 101.2, 750, 240])
+        self.assertEqual(rows[1, 21], -999)
+
+    def test_knmi_picks_the_nearest_station_with_data_and_converts_units(self):
+        from datetime import datetime, timezone
+
+        from .solweig import met
+
+        response = mock.Mock(text=KNMI_SAMPLE, raise_for_status=lambda: None)
+        with mock.patch("requests.post", return_value=response) as post:
+            values, station = met.knmi_hourly(datetime(2025, 7, 15, 13, tzinfo=timezone.utc), 6.89, 52.22)
+        self.assertEqual(post.call_args.kwargs["data"]["start"], "2025071513")
+        # Twenthe (290) is closest but has no temperature: Hupsel (283) is next.
+        self.assertEqual(station["id"], 283)
+        self.assertEqual((values.ta_c, values.rh_pct, values.wind_ms, values.wind_dir_deg), (20.5, 55.0, 4.0, 250.0))
+        self.assertAlmostEqual(values.kdown_wm2, 416.7)          # 150 J/cm2 per hour
+        self.assertAlmostEqual(values.pressure_kpa, 101.72)
+
+    def test_knmi_midnight_is_hour_24_of_the_previous_day(self):
+        from datetime import datetime, timezone
+
+        from .solweig.met import _knmi_hour
+
+        self.assertEqual(_knmi_hour(datetime(2025, 7, 16, 0, tzinfo=timezone.utc)), ("20250715", 24))
+
+    def test_era5_conversions(self):
+        from .solweig.met import era5_from_values, wind_from
+
+        values = era5_from_values({
+            "temperature_2m": 300.15, "dewpoint_temperature_2m": 300.15, "surface_pressure": 101300,
+            "u_component_of_wind_10m": 0.0, "v_component_of_wind_10m": -3.0,
+            "surface_solar_radiation_downwards": 3600 * 500,
+        })
+        self.assertEqual((values.ta_c, values.rh_pct, values.wind_ms, values.kdown_wm2, values.pressure_kpa),
+                         (27.0, 100.0, 3.0, 500.0, 101.3))
+        self.assertEqual(values.wind_dir_deg, 0.0)                # v < 0: wind from the north
+        self.assertAlmostEqual(wind_from(3.0, 0.0)[1], 270.0)     # u > 0: from the west
+
+
+class SolweigInputsTests(TestCase):
+    def test_land_cover_classes(self):
+        from .solweig.inputs import BARE, GRASS, PAVED, WATER, umep_class
+
+        self.assertEqual(umep_class("water bodies"), WATER)
+        self.assertEqual(umep_class("pastures"), GRASS)
+        self.assertEqual(umep_class("green urban areas"), GRASS)
+        self.assertEqual(umep_class("beaches, dunes, sands"), BARE)
+        self.assertEqual(umep_class("urban fabric"), PAVED)
+        self.assertEqual(umep_class("road and rail networks and associated land"), PAVED)
+
+    def test_build_splits_the_dsm_into_buildings_and_trees(self):
+        import numpy as np
+        from django.contrib.gis.geos import MultiPolygon, Polygon
+
+        from builtup.models import Building
+        from physicalEnv.tests import _stored_dsm
+
+        from .solweig import inputs
+
+        data = np.full((80, 80), 5.0, dtype="float32")
+        data[10:20, 10:20] = 25.0      # building, footprint below
+        data[50:54, 50:54] = 13.0      # tree (no footprint), 8 m
+        data[30:32, 30:32] = 6.0       # 1 m: not a tree
+        _stored_dsm(data)
+        footprint = Polygon.from_bbox((250010, 469980, 250020, 469990))
+        Building.objects.create(id=7, geom=MultiPolygon(footprint, srid=28992))
+
+        p = inputs.plan((250030.0, 469930.0, 250050.0, 469950.0))   # view 20 x 20 m, halo 50 m
+        result = inputs.build(p)
+        a = result.arrays
+        self.assertEqual(result.shape, (80, 80))                  # the window is clipped to the DSM
+        self.assertEqual(float(a["Building_DSM"][15, 15]), 25.0)
+        self.assertEqual(float(a["Building_DSM"][52, 52]), 5.0)
+        self.assertEqual(float(a["Trees"][52, 52]), 8.0)
+        self.assertEqual(float(a["Trees"][15, 15]), 0.0)
+        self.assertEqual(float(a["Trees"][31, 31]), 0.0)
+        self.assertNotIn("Landcover", a)
+        self.assertEqual(result.crop, (50, 30, 20, 20))
+
+    def test_a_too_large_view_is_refused(self):
+        import numpy as np
+
+        from physicalEnv.tests import _stored_dsm
+
+        from .solweig import inputs
+
+        _stored_dsm(np.zeros((80, 80), dtype="float32"))
+        with mock.patch.object(inputs, "MAX_CELLS", 100), self.assertRaisesRegex(inputs.SolweigError, "zoom in"):
+            inputs.plan((250030.0, 469930.0, 250050.0, 469950.0))
+
+
+def _fake_solweig(inputs, met, when_local):
+    """Stand-in for SOLWEIG-GPU: Tmrt = Ta + 20, UTCI = Ta + 5 everywhere."""
+    import numpy as np
+
+    tmrt = np.full(inputs.shape, met.ta_c + 20.0, dtype="float32")
+    return tmrt, np.full(inputs.shape, met.ta_c + 5.0, dtype="float32")
+
+
+@mock.patch("core.rasterOperations.export_raster_to_cog")
+@mock.patch("urban_heat.solweig.pipeline.run_solweig", side_effect=_fake_solweig)
+@mock.patch("urban_heat.solweig.pipeline.device", return_value="cpu")
+@mock.patch("urban_heat.solweig.pipeline.pet_lookup", side_effect=lambda tmrt, met: tmrt - 10.0)
+class SolweigPipelineTests(TestCase):
+    BBOX = [6.8930, 52.2200, 6.8940, 52.2206]
+
+    def setUp(self):
+        import numpy as np
+
+        from physicalEnv.svf import wgs84_to_storage
+        from physicalEnv.tests import _stored_dsm
+
+        view = wgs84_to_storage(self.BBOX)
+        _stored_dsm(np.full((300, 300), 5.0, dtype="float32"),
+                    origin=(float(np.floor(view[0])) - 100, float(np.ceil(view[3])) + 100))
+
+    def _run(self, hour=15, **met):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        from physicalEnv.svf import _storage_box, wgs84_to_storage
+
+        from .models import ThermalComfortRun
+        from .solweig import pipeline
+
+        values = dict(ta_c=25.0, rh_pct=50.0, wind_ms=2.0, wind_dir_deg=240.0, kdown_wm2=700.0,
+                      pressure_kpa=101.3, source="manual")
+        values.update(met)
+        run = ThermalComfortRun.objects.create(
+            area=_storage_box(wgs84_to_storage(self.BBOX)), bbox_wgs84=self.BBOX,
+            date_time=datetime(2025, 7, 15, hour, tzinfo=ZoneInfo("Europe/Amsterdam")), met=values, resolution=2.0)
+        return pipeline.execute(run.pk)
+
+    def test_stores_tmrt_utci_and_pet_for_the_view(self, *_mocks):
+        run = self._run()
+        self.assertEqual(run.status, "done", run.message)
+        self.assertEqual(run.stats["tmrt"]["mean"], 45.0)
+        self.assertEqual(run.stats["utci"]["mean"], 30.0)
+        self.assertEqual(run.stats["pet"]["mean"], 35.0)
+        self.assertEqual(run.mrt.date_time, run.date_time)
+        self.assertTrue(run.mrt.source.startswith("SOLWEIG DSM "))
+        self.assertEqual(run.inputs["timezone"], "Europe/Amsterdam")
+        x0, _, x1, _ = run.mrt.raster.extent
+        vx0, _, vx1, _ = run.area.extent
+        self.assertAlmostEqual(x1 - x0, vx1 - vx0, delta=2.0)     # the halo is cropped off
+
+    def test_a_rerun_of_the_same_hour_replaces_the_rows(self, *_mocks):
+        from .models import UTCI
+
+        first = self._run()
+        second = self._run(ta_c=30.0)
+        self.assertEqual(second.stats["replaced"]["utci"], [first.utci_id])
+        self.assertEqual(list(UTCI.objects.values_list("pk", flat=True)), [second.utci_id])
+        self._run(hour=12)
+        self.assertEqual(UTCI.objects.count(), 2)                 # another hour is kept
+
+    def test_a_failure_is_recorded_on_the_run(self, _pet, _device, run_solweig, _cog):
+        run_solweig.side_effect = RuntimeError("CUDA out of memory")
+        run = self._run()
+        self.assertEqual(run.status, "failed")
+        self.assertIn("CUDA out of memory", run.message)
+
+    def test_results_older_than_a_building_edit_are_stale(self, *_mocks):
+        from physicalEnv.models import DSMEdit
+        from physicalEnv.svf import wgs84_to_storage
+
+        from .solweig.pipeline import stale_results
+
+        run = self._run()
+        view = wgs84_to_storage(self.BBOX)
+        self.assertEqual(stale_results(view)["thermal"], [])
+        DSMEdit.objects.create(area=run.area)
+        self.assertEqual(stale_results(view)["thermal"], [run.pk])
+        self.assertEqual(stale_results((0, 0, 10, 10))["thermal"], [])
+
+
+class SolweigPetTests(SimpleTestCase):
+    def test_the_lookup_matches_pet_steady(self):
+        import numpy as np
+
+        try:
+            from pythermalcomfort.models import pet_steady
+        except ImportError:
+            self.skipTest("uv sync --extra solweig")
+        from .solweig.met import Met
+        from .solweig.pipeline import PET_PERSON, pet_lookup
+
+        met = Met(ta_c=25.0, rh_pct=50.0, wind_ms=1.5, wind_dir_deg=240.0, kdown_wm2=700.0)
+        tmrt = np.array([[30.0, 41.3], [55.7, 62.0]], dtype="float32")
+        pet = pet_lookup(tmrt, met)
+        for t, p in zip(tmrt.ravel(), pet.ravel()):
+            exact = pet_steady(tdb=25.0, tr=float(t), v=1.5, rh=50.0, p_atm=1013.0, **PET_PERSON).pet
+            self.assertAlmostEqual(float(p), exact, delta=0.05)
+
+
+class SolweigViewTests(TestCase):
+    def test_calculating_needs_staff(self):
+        from django.contrib.auth import get_user_model
+        from django.urls import reverse
+
+        self.client.force_login(get_user_model().objects.create_user("viewer", password="x"))
+        response = self.client.post(reverse("urban_heat:solweig_calculate"), {"bbox": "6.89,52.22,6.9,52.23"})
+        self.assertEqual(response.status_code, 403)
+
+    def test_bad_met_values_are_refused(self):
+        from django.contrib.auth import get_user_model
+        from django.urls import reverse
+
+        self.client.force_login(get_user_model().objects.create_user("staff", password="x", is_staff=True))
+        with mock.patch("urban_heat.solweig.pipeline.solweig_available", return_value=True):
+            response = self.client.post(reverse("urban_heat:solweig_calculate"), {
+                "bbox": "6.89,52.22,6.9,52.23", "datetime": "2025-07-15T15:00", "ta_c": "25",
+                "rh_pct": "150", "wind_ms": "2", "kdown_wm2": "600"})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("rh_pct", response.json()["error"])
+
+    def test_info_without_a_dsm_explains_why(self):
+        from django.urls import reverse
+
+        response = self.client.get(reverse("urban_heat:solweig_info"),
+                                   {"bbox": "6.89,52.22,6.9,52.23", "datetime": "2025-07-15T15:00"})
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()["dsm"])
+        self.assertIn("No Digital Surface Model", response.json()["error"])

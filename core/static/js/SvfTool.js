@@ -118,6 +118,7 @@
     function open() {
       // Same corner as the LST card: show one at a time.
       document.getElementById('lst-card')?.classList.remove('visible');
+      document.getElementById('solweig-card')?.classList.remove('visible');
       card.classList.add('visible');
       if (typeof setActionsMenuOpen === 'function') setActionsMenuOpen(false);
       loadInfo();

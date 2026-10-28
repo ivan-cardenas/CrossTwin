@@ -9,8 +9,9 @@ from django.db.models import Max, Q
 from django.utils import timezone
 
 from core.cache import bump_layer_version
+from .dsm_patches import building_height, record_change
 from .landcover import release_ring, urbanize_around
-from .models import LandCoverClasses, LandCoverVector
+from .models import DSMBuildingPatch, DSMEdit, LandCoverClasses, LandCoverVector
 from builtup.models import Building
 from administrative.models import Neighborhood, District, City, Province
 # Reused from administrative's own population cascade rather than
@@ -206,21 +207,32 @@ def _urbanize(instance):
     urbanize_around(instance.geom, city_id, land_use=land_use, building_id=instance.pk)
 
 
-def _land_cover_step(instance, step, action):
-    """Run one land-cover step in its own savepoint; a failure never blocks the building's save."""
+def _guarded(step, what):
+    """Run one side effect in its own savepoint; a failure never blocks the building's save."""
     try:
         with transaction.atomic():
             step()
     except Exception:
-        logger.exception("Urban-fabric buffer %s for building %s failed", action, instance.pk)
+        logger.exception("%s failed", what)
+
+
+def _land_cover_step(instance, step, action):
+    _guarded(step, f"Urban-fabric buffer {action} for building {instance.pk}")
 
 
 @receiver(pre_save, sender=Building, dispatch_uid="physicalEnv_building_presave")
 def building_presave(sender, instance, raw=False, **kwargs):
-    """Remember an editor building's stored footprint, so post_save can tell a move from an attribute edit."""
-    if raw or not _is_editor_building(instance):
+    """
+    Remember the stored footprint and height of a building the editor
+    changes, so post_save can tell a move or a new height from an attribute
+    edit (land-cover ring, DSM patch).
+    """
+    from core.editing import is_editor_change
+    if raw or not (_is_editor_building(instance) or is_editor_change()):
         return
-    instance._stored_geom = Building.objects.filter(pk=instance.pk).values_list("geom", flat=True).first()
+    stored = Building.objects.filter(pk=instance.pk).values("geom", "height_m", "numberFloors").first()
+    instance._stored = stored
+    instance._stored_geom = stored["geom"] if stored else None
 
 
 @receiver(post_save, sender=Building, dispatch_uid="physicalEnv_building_saved")
@@ -259,3 +271,65 @@ def building_deleted(sender, instance, **kwargs):
     if not _is_editor_building(instance) or is_restoring():
         return
     _land_cover_step(instance, lambda: release_ring(instance.pk), "release")
+
+
+@receiver(post_save, sender=Building, dispatch_uid="physicalEnv_building_dsm_saved")
+def building_dsm_saved(sender, instance, created, raw=False, **kwargs):
+    """
+    DAG edge: Buildings -> DSM. A building created, reshaped or re-heighted
+    in the map editor patches the DSM over its footprint
+    (dsm_patches.record_change). Imports and raw saves (backup Restore puts the
+    patch rows back itself) are skipped.
+    """
+    from types import SimpleNamespace
+
+    from core.editing import is_editor_change
+    if raw or not is_editor_change() or not instance.geom:
+        return
+    stored = getattr(instance, "_stored", None)
+    height = building_height(instance)
+    # 1 cm: the editor's WGS84 round trip moves vertices by far less than a DSM cell.
+    if (stored and stored["geom"] is not None and stored["geom"].equals_exact(instance.geom, tolerance=0.01)
+            and building_height(SimpleNamespace(**stored)) == height):
+        return
+    before = stored["geom"] if stored else None
+    _guarded(lambda: record_change(instance.pk, before, instance.geom, height),
+             f"DSM patch for building {instance.pk}")
+
+
+@receiver(post_delete, sender=Building, dispatch_uid="physicalEnv_building_dsm_deleted")
+def building_dsm_deleted(sender, instance, **kwargs):
+    """DAG edge: Buildings -> DSM. Deleting a building in the editor lowers its footprint to the ground."""
+    from core.editing import is_editor_change
+    if not is_editor_change():
+        return
+    _guarded(lambda: record_change(instance.pk, instance.geom, None, None),
+             f"DSM patch for deleted building {instance.pk}")
+
+
+@receiver(pre_save, sender=DSMBuildingPatch, dispatch_uid="physicalEnv_dsm_patch_presave")
+def dsm_patch_presave(sender, instance, **kwargs):
+    """The footprint the overlay held before this save (raw saves too: Restore moves it back)."""
+    instance._stored_footprint = (DSMBuildingPatch.objects.filter(pk=instance.pk)
+                                  .values_list("footprint", flat=True).first() if instance.pk else None)
+
+
+@receiver(post_save, sender=DSMBuildingPatch, dispatch_uid="physicalEnv_dsm_patch_saved")
+@receiver(post_delete, sender=DSMBuildingPatch, dispatch_uid="physicalEnv_dsm_patch_deleted")
+def dsm_patch_changed(sender, instance, **kwargs):
+    """
+    Log the area where the DSM overlay changed (DSMEdit), raw saves and
+    Restore's deletes included, so results calculated before it are flagged
+    as stale.
+    """
+    from django.contrib.gis.geos import Polygon
+
+    geoms = [g for g in (instance.original_footprint, instance.footprint,
+                         getattr(instance, "_stored_footprint", None)) if g is not None and not g.empty]
+    if not geoms:
+        return
+    extents = [g.extent for g in geoms]
+    area = Polygon.from_bbox((min(e[0] for e in extents), min(e[1] for e in extents),
+                              max(e[2] for e in extents), max(e[3] for e in extents)))
+    area.srid = geoms[0].srid
+    DSMEdit.objects.create(area=area)

@@ -48,12 +48,28 @@ dependencies = [
     "pydot>=4.0.1",
 ]
 
+[project.optional-dependencies]
+# Thermal comfort (SOLWEIG, urban_heat/solweig/): uv sync --extra solweig
+# torch is listed so [tool.uv.sources] can point it at the CUDA wheels.
+solweig = [
+    "solweig-gpu>=2.0.0",
+    "torch>=2.6",
+    "pythermalcomfort>=3.0",
+]
+
 [dependency-groups]
 dev = [
     "ipykernel>=7.2.0",
 ]
 
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
 [tool.uv.sources]
+# CUDA 12.8 wheels on Windows/Linux (CPU fallback at run time without a GPU); macOS has none.
+torch = { index = "pytorch-cu128", marker = "sys_platform != 'darwin'" }
 # Christoph Gohlke's GDAL wheels (bundle the GDAL/GEOS/PROJ DLLs). cgohlke.com is not a
 # package index; the wheels are GitHub releases of cgohlke/geospatial-wheels. GDAL 3.13.3
 # (v2026.8.20) has no cp311 wheel, so Python 3.11 stays on 3.11.4 (v2025.10.25).
