@@ -230,7 +230,10 @@ def solweig_run(request, run_id):
 
     from urban_heat.models import ThermalComfortRun
 
-    run = get_object_or_404(ThermalComfortRun.objects.select_related("mrt", "utci", "pet"), pk=run_id)
+    # The catalog entries need the result rows but not their raster bands (MBs each).
+    runs = (ThermalComfortRun.objects.select_related("mrt", "utci", "pet")
+            .defer("mrt__raster", "utci__raster", "pet__raster"))
+    run = get_object_or_404(runs, pk=run_id)
     return JsonResponse(_run_json(run))
 
 

@@ -83,4 +83,5 @@
 
 14. PET and thermal comfort indicators are calculated with a even weather, so things like wind is not on grid but the value inputed. Should it run with a wind raster better? same for a local tempearture??
 
+
 20. LIMITATION --  THE SYSTEM USE RELATIONAL DATABASES AND MULTIPLE TABLES. SO SPEED OF JOINS CAN BE AN ISSUE. MAYBE USING NODE4J OR GRAPHDB IS A BETTER OPTION

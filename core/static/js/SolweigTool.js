@@ -19,7 +19,11 @@
   // The last four are the day's values for the urban heat island in PET (blank = without it).
   const MET_FIELDS = ['ta_c', 'rh_pct', 'wind_ms', 'wind_dir_deg', 'kdown_wm2', 'pressure_kpa',
                       'tmax_c', 'tmin_c', 'kdown_day_wm2', 'wind_day_ms'];
-  const POLL_MS = 3000;
+  // Run polling backs off: a run takes minutes, so the first checks come quickly
+  // (a cached run finishes in seconds) and later ones every POLL_MAX_MS at most.
+  const POLL_MIN_MS = 2000;
+  const POLL_MAX_MS = 15000;
+  const POLL_GROWTH = 1.5;
 
   function init() {
     const card = document.getElementById('solweig-card');
@@ -213,10 +217,24 @@
       if (utci) await addLayer(utci);
     }
 
+    // Resolves after `ms`, and not before the tab is visible again: a hidden tab polls nothing.
+    function pause(ms) {
+      return new Promise(resolve => setTimeout(() => {
+        if (!document.hidden) { resolve(); return; }
+        document.addEventListener('visibilitychange', function shown() {
+          if (document.hidden) return;
+          document.removeEventListener('visibilitychange', shown);
+          resolve();
+        });
+      }, ms));
+    }
+
     async function poll(runId, started) {
       const url = card.dataset.runUrl.replace(/0\/$/, `${runId}/`);
+      let delay = POLL_MIN_MS;
       for (;;) {
-        await new Promise(resolve => setTimeout(resolve, POLL_MS));
+        await pause(delay);
+        delay = Math.min(delay * POLL_GROWTH, POLL_MAX_MS);
         const run = await readJson(await fetch(url));
         const elapsed = Math.round((Date.now() - started) / 1000);
         if (run.status === 'done' || run.status === 'failed') return run;
