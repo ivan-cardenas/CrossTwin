@@ -11,6 +11,11 @@ the user can still change them before calculating:
     era5    ECMWF ERA5 hourly at the view centre, through Earth Engine
             (ECMWF/ERA5/HOURLY; ~5 days behind real time)
 
+The KNMI and ERA5 sources also fill the day's values (Tmax, Tmin, mean
+Kdown and mean wind of the UTC day) that pet_adjusted's urban heat island
+model needs for PET (pipeline.urban_pet); without them PET uses the station's
+air temperature.
+
 write_umep() writes the record as a UMEP met file (the format SOLWEIG reads).
 
 DAG edge: Meteorology -> Tmrt, UTCI, PET (the inputs).
@@ -47,9 +52,19 @@ class Met:
     kdown_wm2: float
     pressure_kpa: float = DEFAULT_PRESSURE_KPA
     source: str = "manual"
+    # The day around the hour, for the urban heat island in PET (None = unknown).
+    tmax_c: float | None = None
+    tmin_c: float | None = None
+    kdown_day_wm2: float | None = None
+    wind_day_ms: float | None = None
 
     def as_dict(self):
         return asdict(self)
+
+    def day_values(self):
+        """(tmax, tmin, s_down, u_mean) for pet_adjusted, or None when one is missing."""
+        values = (self.tmax_c, self.tmin_c, self.kdown_day_wm2, self.wind_day_ms)
+        return None if any(v is None for v in values) else values
 
 
 def write_umep(met, when_local, path):
@@ -112,10 +127,28 @@ def parse_knmi(text):
     return stations, rows
 
 
+def knmi_day_values(rows):
+    """
+    The day's values of one station's hourly KNMI rows: {tmax_c, tmin_c,
+    kdown_day_wm2, wind_day_ms}, each None without measurements.
+    """
+    def column(key):
+        return [r[key] for r in rows if r.get(key) is not None]
+
+    t, q, ff = column("T"), column("Q"), column("FF")
+    return {
+        "tmax_c": max(t) / 10.0 if t else None,
+        "tmin_c": min(t) / 10.0 if t else None,
+        "kdown_day_wm2": round(sum(q) / len(q) * 1e4 / 3600.0, 1) if q else None,
+        "wind_day_ms": round(sum(ff) / len(ff) / 10.0, 2) if ff else None,
+    }
+
+
 def knmi_hourly(when_utc, lon, lat):
     """
     Met of the KNMI station closest to (lon, lat) that measured temperature,
-    humidity, wind and global radiation in the hour ending at `when_utc`.
+    humidity, wind and global radiation in the hour ending at `when_utc`,
+    with that station's day values (hours 1-24 of the KNMI day).
     Returns (Met, {"id", "name", "distance_km"}).
     """
     import requests
@@ -123,12 +156,13 @@ def knmi_hourly(when_utc, lon, lat):
     day, hh = _knmi_hour(when_utc.astimezone(timezone.utc))
     try:
         response = requests.post(KNMI_URL, data={
-            "start": f"{day}{hh:02d}", "end": f"{day}{hh:02d}", "vars": "T:U:FF:DD:Q:P", "stns": "ALL",
+            "start": f"{day}01", "end": f"{day}24", "vars": "T:U:FF:DD:Q:P", "stns": "ALL",
         }, timeout=60)
         response.raise_for_status()
     except requests.RequestException as e:
         raise MetError(f"KNMI hourly data could not be retrieved: {e}") from None
-    stations, rows = parse_knmi(response.text)
+    stations, all_rows = parse_knmi(response.text)
+    rows = [r for r in all_rows if r.get("HH") == hh]
     candidates = []
     for row in rows:
         stn = row.get("STN")
@@ -149,6 +183,7 @@ def knmi_hourly(when_utc, lon, lat):
         kdown_wm2=round(row["Q"] * 1e4 / 3600.0, 1),  # J/cm2 per hour -> W/m2
         pressure_kpa=row["P"] / 100.0 if row.get("P") else DEFAULT_PRESSURE_KPA,  # 0.1 hPa -> kPa
         source=f"KNMI {stn} {name}"[:60],
+        **knmi_day_values([r for r in all_rows if r.get("STN") == stn]),
     )
     return met, {"id": stn, "name": name, "distance_km": round(distance, 1)}
 
@@ -181,27 +216,65 @@ def era5_from_values(values):
     )
 
 
+def era5_day_from_values(values):
+    """ERA5 day reductions (tmax/tmin K, ssrd J/m2 per hour, wind m/s) -> Met day fields (None when missing)."""
+    def get(key, convert):
+        return None if values.get(key) is None else round(convert(values[key]), 2)
+
+    return {
+        "tmax_c": get("tmax", lambda k: k - 273.15),
+        "tmin_c": get("tmin", lambda k: k - 273.15),
+        "kdown_day_wm2": get("ssrd", lambda j: max(j, 0.0) / 3600.0),
+        "wind_day_ms": get("wind", float),
+    }
+
+
 ERA5_BANDS = ("temperature_2m", "dewpoint_temperature_2m", "surface_pressure",
               "u_component_of_wind_10m", "v_component_of_wind_10m", "surface_solar_radiation_downwards")
 
 
+def _era5_day(ee, start, point):
+    """Tmax, Tmin, mean ssrd and mean wind speed of ERA5's hours on the UTC day of `start`."""
+    day = start.replace(hour=0, minute=0, second=0, microsecond=0)
+    hours = ee.ImageCollection(ERA5_ASSET).filterDate(ee.Date(day.isoformat()),
+                                                      ee.Date((day + timedelta(days=1)).isoformat()))
+    t = hours.select("temperature_2m")
+    wind = hours.map(lambda im: im.select("u_component_of_wind_10m")
+                     .hypot(im.select("v_component_of_wind_10m")).rename("wind"))
+    image = ee.Image.cat(t.max().rename("tmax"), t.min().rename("tmin"),
+                         hours.select("surface_solar_radiation_downwards").mean().rename("ssrd"), wind.mean())
+    return era5_day_from_values(image.reduceRegion(ee.Reducer.first(), point, 1000).getInfo() or {})
+
+
 def era5_hourly(when_utc, lon, lat):
-    """ERA5 at (lon, lat) for the hour ending at `when_utc` (ssrd is accumulated over that hour)."""
+    """
+    ERA5 at (lon, lat) for the hour ending at `when_utc` (ssrd is accumulated
+    over that hour), with the values of its UTC day.
+    """
     import ee
 
     from urban_heat.lst import gee
 
     gee.initialize()
     start = when_utc.astimezone(timezone.utc)
+    point = ee.Geometry.Point([lon, lat])
     image = (ee.ImageCollection(ERA5_ASSET)
              .filterDate(ee.Date(start.isoformat()), ee.Date((start + timedelta(minutes=30)).isoformat()))
              .first())
     try:
         values = ee.Algorithms.If(
             image, ee.Image(image).select(list(ERA5_BANDS)).reduceRegion(
-                ee.Reducer.first(), ee.Geometry.Point([lon, lat]), 1000), None).getInfo()
+                ee.Reducer.first(), point, 1000), None).getInfo()
     except ee.EEException as e:
         raise MetError(f"ERA5 could not be read from Earth Engine: {e}") from None
     if not values or any(values.get(b) is None for b in ERA5_BANDS):
         raise MetError(f"ERA5 has no data for {start:%Y-%m-%d %H}:00 UT yet (it runs ~5 days behind).")
-    return era5_from_values(values), None
+    met = era5_from_values(values)
+    try:
+        day = _era5_day(ee, start, point)
+    except ee.EEException as e:
+        logger.warning("ERA5 day values could not be read: %s", e)
+        day = {}
+    for key, value in day.items():
+        setattr(met, key, value)
+    return met, None

@@ -6,7 +6,7 @@
 [![ORCID](https://img.shields.io/badge/ORCID-0009--0005--0245--633X-A6CE39?logo=orcid&logoColor=white)](https://orcid.org/0009-0005-0245-633X)
 [![Last commit](https://img.shields.io/github/last-commit/ivan-cardenas/CrossTwin)](https://github.com/ivan-cardenas/CrossTwin/commits/main)
 
-[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Django 5.2](https://img.shields.io/badge/django-5.2-092E20?logo=django&logoColor=white)](https://www.djangoproject.com/)
 [![PostgreSQL + PostGIS](https://img.shields.io/badge/PostgreSQL-PostGIS-4169E1?logo=postgresql&logoColor=white)](https://postgis.net/)
 [![GDAL 3.11+](https://img.shields.io/badge/GDAL-3.11%2B-5CAE58?logo=osgeo&logoColor=white)](https://gdal.org/)
@@ -29,7 +29,7 @@ The project follows the **DPSIR framework** (Driver → Pressure → State → I
 
 ## 🔧 Requirements
 
-- Python 3.11 or newer, on Windows, macOS or Linux
+- Python 3.12 or newer, on Windows, macOS or Linux
 - GDAL/GEOS: on Windows they come with the `gdal` wheel that `uv sync` installs; on macOS and Linux install them from the system package manager (see below)
 - PostgreSQL 16 or 17 with the `postgis` and `postgis_raster` extensions
 - A Mapbox access token
@@ -59,13 +59,13 @@ Dependencies are declared in `pyproject.toml` and pinned in `uv.lock`. `uv sync`
 
 **GDAL.** GeoDjango needs the GDAL and GEOS C libraries:
 
-- **Windows**: nothing to install. `uv sync` installs [Christoph Gohlke's GDAL wheel](https://github.com/cgohlke/geospatial-wheels) for your Python version (3.11–3.15) and CPU (x64 or ARM64), which bundles the GDAL, GEOS and PROJ DLLs; `DigitalTwin/settings.py` finds them in the venv's `osgeo` folder. PyPI has no Windows wheel for GDAL, so `pyproject.toml` points uv straight at the GitHub release files (`[tool.uv.sources]`). 32-bit Python and Python 3.16+ have no wheel there and fall back to building GDAL from source.
+- **Windows**: nothing to install. `uv sync` installs [Christoph Gohlke's GDAL wheel](https://github.com/cgohlke/geospatial-wheels) for your Python version (3.12–3.15) and CPU (x64 or ARM64), which bundles the GDAL, GEOS and PROJ DLLs; `DigitalTwin/settings.py` finds them in the venv's `osgeo` folder. PyPI has no Windows wheel for GDAL, so `pyproject.toml` points uv straight at the GitHub release files (`[tool.uv.sources]`). 32-bit Python and Python 3.16+ have no wheel there and fall back to building GDAL from source.
 - **macOS**: `brew install gdal`
 - **Linux (Debian/Ubuntu)**: `sudo apt install gdal-bin libgdal-dev`
 
   On macOS and Linux the `gdal` Python package is not installed: Django loads the system library, and rasterio, pyogrio and pyproj bundle their own GDAL/PROJ in their wheels.
 
-**Without uv.** Without uv, `python -m venv .venv` and `pip install -r requirements.txt` still work (activate `.venv` and drop the `uv run` prefix from the commands), but `requirements.txt` is a frozen Windows + Python 3.11 environment (its GDAL wheel is `cp311-win_amd64`).
+**Without uv.** Without uv, `python -m venv .venv` and `pip install -r requirements.txt` still work (activate `.venv` and drop the `uv run` prefix from the commands), with `requirements.txt` (`uv export --format requirements-txt --no-hashes` of `uv.lock`; its markers pick the GDAL wheel per Python version and CPU on Windows).
 
 </details>
 

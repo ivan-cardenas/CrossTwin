@@ -8,7 +8,8 @@ Tmrt, UTCI and PET for the area in view and one hour.
     GET  /urban_heat/solweig/met/?bbox=&datetime=&source=knmi|era5
          -> the met values of the nearest KNMI station or ERA5, to prefill the form
     POST /urban_heat/solweig/calculate/  bbox, datetime, resolution, ta_c, rh_pct,
-         wind_ms, wind_dir_deg, kdown_wm2, pressure_kpa, source
+         wind_ms, wind_dir_deg, kdown_wm2, pressure_kpa, source and optional
+         tmax_c, tmin_c, kdown_day_wm2, wind_day_ms (urban heat island in PET)
          -> starts a ThermalComfortRun in the background; returns its id
     GET  /urban_heat/solweig/runs/<id>/
          -> status; when done, the layer-catalog entries of Tmrt, UTCI and PET
@@ -40,6 +41,13 @@ MET_FIELDS = (
     ("kdown_wm2", None, 0.0, 1400.0, "W/m²"),
     ("pressure_kpa", 101.3, 85.0, 110.0, "kPa"),
 )
+# The day's values for the urban heat island in PET: optional, blank = PET without it.
+DAY_FIELDS = (
+    ("tmax_c", -40.0, 50.0, "°C"),
+    ("tmin_c", -40.0, 50.0, "°C"),
+    ("kdown_day_wm2", 0.0, 1400.0, "W/m²"),
+    ("wind_day_ms", 0.0, 40.0, "m/s"),
+)
 
 
 class BadRequest(ValueError):
@@ -69,6 +77,10 @@ def _number(data, name, default, low, high, unit="m"):
     if not low <= value <= high:
         raise BadRequest(f"{name} must be between {low:g} and {high:g} {unit}.")
     return value
+
+
+def _optional_number(data, name, low, high, unit):
+    return None if data.get(name) in (None, "") else _number(data, name, None, low, high, unit)
 
 
 def _when(value, bbox):
@@ -200,6 +212,7 @@ def solweig_calculate(request):
         resolution = _resolution(data)
         met = Met(**{name: _number(data, name, default, low, high, unit)
                      for name, default, low, high, unit in MET_FIELDS},
+                  **{name: _optional_number(data, name, low, high, unit) for name, low, high, unit in DAY_FIELDS},
                   source=(data.get("source") or "manual")[:60])
         p = inputs.plan(wgs84_to_storage(bbox), cell=resolution)  # refuse a too-large view now
         with transaction.atomic():

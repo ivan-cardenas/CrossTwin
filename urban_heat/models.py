@@ -243,7 +243,7 @@ class ThermalComfortRun(models.Model):
     area = models.PolygonField(srid=settings.COORDINATE_SYSTEM, help_text="The view the results cover (storage CRS)")
     bbox_wgs84 = models.JSONField(help_text="The requested view: [west, south, east, north]")
     date_time = models.DateTimeField(help_text="Analysed hour (local, aware)")
-    met = models.JSONField(help_text="Meteorological inputs: ta_c, rh_pct, wind_ms, wind_dir_deg, kdown_wm2, pressure_kpa, source")
+    met = models.JSONField(help_text="Meteorological inputs: ta_c, rh_pct, wind_ms, wind_dir_deg, kdown_wm2, pressure_kpa, source; day values for PET: tmax_c, tmin_c, kdown_day_wm2, wind_day_ms")
     resolution = models.FloatField(help_text="Cell size in metres")
     device = models.CharField(max_length=20, blank=True, default="", help_text="'cuda' or 'cpu'")
     inputs = models.JSONField(default=dict, blank=True, help_text="DSM/DEM ids, building patches, land cover, sun position")

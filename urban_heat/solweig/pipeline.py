@@ -6,7 +6,9 @@ SOLWEIG thermal comfort for a map view and one hour (docs/THERMAL_COMFORT.md).
     met.Met (manual / nearest KNMI station / ERA5) -> met.write_umep
     solweig-gpu (PyTorch, CUDA when available): walls + aspect, SVF and shadow
         matrices (cached per input hash), Solweig_2022a -> Tmrt -> UTCI
-    PET from Tmrt (pet_lookup), halo cropped
+    PET from Tmrt with pet-adjusted (urban_pet): air temperature with the
+        urban heat island and 1.2 m wind from the DSM's buildings and trees
+    halo cropped
     -> one MeanRadiantTemperature, UTCI and PET row (COGs via core/signals.py),
        replacing earlier rows of the same hour inside the view
 
@@ -36,9 +38,12 @@ WORK_ROOT = os.path.join(settings.BASE_DIR, "cogs", "solweig_work")
 # Band of the analysed hour in SOLWEIG's outputs (met.write_umep writes the
 # hour before it first).
 RESULT_BAND = 2
-# PET: Höppe's (1999) standard person; wind as in the met file, like UMEP's SOLWEIG.
+# PET: Höppe's (1999) standard person.
 PET_PERSON = {"met": 1.37, "clo": 0.9, "age": 35, "weight": 75, "height": 1.75, "sex": "male"}
-PET_STEP_C = 0.25
+# Stand-in NDVI for pet_adjusted, which only thresholds it (vegetation above 0.16,
+# water below 0 without land cover): SOLWEIG's own trees and grass are the vegetation.
+VEGETATION_NDVI, WATER_NDVI = 0.6, -0.1
+MIN_WIND_MS = 0.1
 # A run still 'running' after this long died with its process.
 RUN_TIMEOUT_S = 3 * 3600
 
@@ -95,22 +100,79 @@ def sun_position(when_local, lon, lat):
     return {"altitude": round(90.0 - zenith, 1), "azimuth": round(azimuth, 1)}
 
 
-def pet_lookup(tmrt, met):
-    """
-    PET (°C) of every Tmrt cell. Air temperature, humidity and wind are the
-    same everywhere (one met record), so PET depends on Tmrt alone: solve it
-    on a 1-D grid of PET_STEP_C over the Tmrt range and interpolate.
-    """
+def _ndvi(inputs):
     import numpy as np
-    from pythermalcomfort.models import pet_steady
 
-    finite = tmrt[np.isfinite(tmrt)]
-    if not finite.size:
-        return np.full_like(tmrt, np.nan)
-    grid = np.arange(np.floor(finite.min()), np.ceil(finite.max()) + PET_STEP_C, PET_STEP_C)
-    pet = np.array([pet_steady(tdb=met.ta_c, tr=float(t), v=max(met.wind_ms, 0.1), rh=met.rh_pct,
-                               p_atm=met.pressure_kpa * 10.0, **PET_PERSON).pet for t in grid])
-    return np.interp(tmrt, grid, pet).astype(np.float32)
+    from .inputs import GRASS, WATER
+
+    landcover = inputs.arrays.get("Landcover")
+    vegetation = inputs.arrays["Trees"] > 0
+    ndvi = np.zeros(inputs.shape, dtype=np.float32)
+    if landcover is not None:
+        vegetation |= landcover == GRASS
+        ndvi[landcover == WATER] = WATER_NDVI
+    ndvi[vegetation] = VEGETATION_NDVI
+    return ndvi
+
+
+def urban_pet(inputs, tmrt, met, when_local):
+    """
+    PET (°C) of every cell of the window with pet-adjusted (Koopmans et al.
+    2020): the air temperature is the met record's plus the urban heat island
+    of the cell's upwind source area (sky view factor and vegetation, scaled by
+    the day's Tmax - Tmin, mean Kdown and mean wind and the hour's diurnal
+    factor), the wind is the 10 m wind reduced to 1.2 m by the frontal areas
+    of buildings and trees. Building cells are NaN (PET is for pedestrians).
+
+    Without the day's values, outside April-September (the diurnal table) or
+    on a day with Tmax = Tmin the air temperature stays the met record's.
+    Returns (pet, model label).
+    """
+    from datetime import timezone
+
+    import numpy as np
+    import pet_adjusted
+
+    from .inputs import BUILDING
+
+    when_utc = when_local.astimezone(timezone.utc)
+    dsm = inputs.arrays["Building_DSM"] + inputs.arrays["Trees"]
+    dem = inputs.arrays["DEM"]
+    landcover = inputs.arrays.get("Landcover")
+    ndvi = _ndvi(inputs)
+    ff10 = max(met.wind_ms, MIN_WIND_MS)
+    # Calm or variable (-999): the source areas are squares below 1.5 m/s anyway.
+    wind_dir = met.wind_dir_deg if met.wind_dir_deg >= 0 else 0.0
+    common = dict(tr=tmrt, rh=met.rh_pct, p_atm=met.pressure_kpa * 10.0, **PET_PERSON)
+
+    day = met.day_values()
+    reason = None
+    if day is None:
+        reason = "no day values"
+    elif day[0] <= day[1]:
+        reason = "Tmax = Tmin"
+    else:
+        try:
+            pet_adjusted.diurnal_factor(when_utc.date(), when_utc.hour)
+        except ValueError:
+            reason = "outside April-September"
+
+    if reason is None:
+        tmax, tmin, s_down, u_mean = day
+        pet = pet_adjusted.urban_pet_from_rasters(
+            dsm, dem, ndvi, inputs.cell, t_ref=met.ta_c, ff10=ff10, wind_dir=wind_dir,
+            s_down=s_down, tmax=tmax, tmin=tmin, u_mean=max(u_mean, MIN_WIND_MS),
+            day=when_utc.date(), hour_utc=when_utc.hour, landcover=landcover, **common)
+        label = "PET urban (Koopmans 2020)"
+    else:
+        lambda_b, lambda_t, h = pet_adjusted.wind_inputs(dsm, dem, ndvi, inputs.cell, wind_dir, ff10,
+                                                        landcover=landcover)
+        v = pet_adjusted.urban_wind_speed(ff10, lambda_b, lambda_t, h)
+        pet = pet_adjusted.pet_steady(met.ta_c, v=v, **common)
+        label = f"PET 1.2 m wind, no UHI ({reason})"
+    if landcover is not None:
+        pet = np.where(landcover == BUILDING, np.nan, pet)
+    return pet.astype(np.float32), label
 
 
 def run_solweig(inputs, met, when_local):
@@ -214,11 +276,12 @@ def calculate(run):
                    f"({inputs.shape[1]} x {inputs.shape[0]} cells)…")
     with _gpu:
         tmrt, utci = run_solweig(inputs, met, when_local)
+        # On the whole window, so the source areas of the view's cells reach into the halo.
+        _progress(run, "Computing PET…")
+        pet, pet_model = urban_pet(inputs, tmrt, met, when_local)
 
     r0, c0, rows, cols = inputs.crop
-    tmrt, utci = tmrt[r0:r0 + rows, c0:c0 + cols], utci[r0:r0 + rows, c0:c0 + cols]
-    _progress(run, "Computing PET…")
-    pet = pet_lookup(tmrt, met)
+    tmrt, utci, pet = (a[r0:r0 + rows, c0:c0 + cols] for a in (tmrt, utci, pet))
 
     origin, cell, srid = inputs.view_origin, inputs.cell, inputs.srid
     source = f"{SOURCE_PREFIX}{p['dsm'].pk}: {met.source}"[:100]
@@ -227,7 +290,7 @@ def calculate(run):
     with transaction.atomic():
         records = {}
         for key, model, array in (("mrt", MeanRadiantTemperature, tmrt), ("utci", UTCI, utci), ("pet", PET, pet)):
-            method_label = f"{method}, PET lookup" if key == "pet" else method
+            method_label = f"{method}, {pet_model}" if key == "pet" else method
             records[key] = model.objects.create(
                 raster=_raster(array, origin, cell, srid), date_time=when_local,
                 source=source, measurement_method=method_label[:100], resolution=cell)
@@ -238,6 +301,7 @@ def calculate(run):
         run.area = extent
         run.mrt, run.utci, run.pet = records["mrt"], records["utci"], records["pet"]
     run.inputs = {**inputs.labels, "grid": [inputs.shape[1], inputs.shape[0]], "halo_m": solweig_inputs.HALO_M,
+                  "pet_model": pet_model,
                   "timezone": str(when_local.tzinfo), "sun": sun_position(when_local, *centre(run.bbox_wgs84))}
     run.stats = {"tmrt": _stats(tmrt), "utci": _stats(utci), "pet": _stats(pet), "replaced": replaced}
     return run

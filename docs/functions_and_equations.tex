@@ -655,13 +655,16 @@ with $g$ the ground as above. The land cover of the latest year is mapped to SOL
 
 \textbf{SOLWEIG.} \code{solweig-gpu} \cite{SolweigGPU} (PyTorch; CUDA when available) computes wall heights and aspects, the sky view factors and shadow matrices (cached per input hash), and SOLWEIG 2022a's radiant fluxes, mean radiant temperature $T_{mrt}$ and UTCI \cite{Lindberg2008SOLWEIG, Blazejczyk2013UTCI}. The solar position comes from the centre of the input grid and its timezone on that date (SPA), so it follows the view. The analysed hour is band~2; the halo is cropped off.
 
-\textbf{PET.} With one met record, $T_a$, RH and $v$ are the same in every cell, so PET depends on $T_{mrt}$ alone. It is solved with the steady-state model of \cite{Hoppe1999PET} as corrected by \cite{Walther2018PET} (\code{pythermalcomfort.pet\_steady}; standard person: 35 years, \SI{1.75}{m}, \SI{75}{kg}, 0.9\,clo, 1.37\,met) on a grid $t_k$ of \SI{0.25}{\celsius} steps over the range of $T_{mrt}$, and interpolated:
-\begin{equation}
-  \mathrm{PET}(x) = \operatorname{interp}\big(T_{mrt}(x);\ t_k,\ \mathrm{PET}(T_a, t_k, v, \mathrm{RH}, p)\big)
-\end{equation}
-The met-file wind speed (\SI{10}{m}) is used as is, as UMEP's SOLWEIG does.
+\textbf{PET.} \code{pipeline.urban\_pet} calls the \code{pet-adjusted} package (\code{urban\_pet\_from\_rasters}) on the SOLWEIG window, before the halo is cropped. It solves the steady-state model of \cite{Hoppe1999PET} as corrected by \cite{Walther2018PET} (a vectorised port of \code{pythermalcomfort.pet\_steady}; standard person: 35 years, \SI{1.75}{m}, \SI{75}{kg}, 0.9\,clo, 1.37\,met) per cell, with air temperature and wind adjusted to the street after \cite{Koopmans2020PET}:
+\begin{align}
+  T_a(x) &= T_{ref} + \mathrm{UHI}_{max}(x)\, f(d, h), \qquad
+  \mathrm{UHI}_{max}(x) = \big(2 - \overline{\mathrm{SVF}}(x) - \overline{F_{veg}}(x)\big)\left(\frac{S_{\downarrow}}{\rho c_p}\,\frac{(T_{max} - T_{min})^3}{\bar u}\right)^{1/4} \\
+  v(x) &= u_{10}\,\big((u_{1.2}/u_{10})(\lambda_b, \lambda_t, H) - 0.0796\big)\, 0.9175 + 0.1254\, u_{10} \\
+  \mathrm{PET}(x) &= \mathrm{PET}\big(T_a(x), T_{mrt}(x), v(x), \mathrm{RH}, p\big)
+\end{align}
+$\overline{\mathrm{SVF}}$ and $\overline{F_{veg}}$ are averaged over the cell's upwind source area, $f(d, h)$ is the diurnal factor of the date and UTC hour (1 April -- 30 September only), $S_{\downarrow}$, $T_{max}$, $T_{min}$ and $\bar u$ are the day's mean shortwave radiation, extreme temperatures and mean wind (\code{met.Met} day fields, from the KNMI station or ERA5), and $\lambda_b$, $\lambda_t$, $H$ are the frontal area densities of buildings and trees and their mean height (Macdonald). DSM = \code{Building\_DSM} + \code{Trees}; vegetation = SOLWEIG's trees and grass. Without the day's values or outside the diurnal table's months, $T_a = T_{ref}$ (the 1.2\,m wind is kept). Building cells are nodata.
 
-Output: one \code{MeanRadiantTemperature}, \code{UTCI} and \code{PET} raster in \si{\celsius} (nodata $-9999$, COGs via \code{core/signals.py}), replacing earlier SOLWEIG rows of the same hour inside the view. Computed on demand, not by a receiver. \textbf{DAG edges:} \dagedge{DSM $\rightarrow$ SVF $\rightarrow$ Tmrt, PET}, \dagedge{Meteorology $\rightarrow$ Tmrt, PET, UTCI}, \dagedge{Tmrt $\rightarrow$ PET, UTCI} --- \statusdone{} (on demand; meteorology uniform over the view, no directional wind coefficients)
+Output: one \code{MeanRadiantTemperature}, \code{UTCI} and \code{PET} raster in \si{\celsius} (nodata $-9999$, COGs via \code{core/signals.py}), replacing earlier SOLWEIG rows of the same hour inside the view. Computed on demand, not by a receiver. \textbf{DAG edges:} \dagedge{DSM $\rightarrow$ SVF $\rightarrow$ Tmrt, PET}, \dagedge{Meteorology $\rightarrow$ Tmrt, PET, UTCI}, \dagedge{Tmrt $\rightarrow$ PET, UTCI} --- \statusdone{} (on demand; meteorology uniform over the view for Tmrt and UTCI; PET has the urban heat island and 1.2\,m wind, with source areas truncated at the window's 50\,m halo)
 
 \subsection{Nature-Based Solutions coverage --- \code{calculate\_nbs\_coverage()}}
 \textbf{Location:} \code{urban\_heat/calculations.py:283}
@@ -843,6 +846,7 @@ Beyond the CBS 85173NED forecasts used for the \texttt{Population\_Growth}$\to$\
 
 \bibitem{Matzarakis1996} Matzarakis, A., \& Mayer, H. (1996). Another kind of environmental stress: thermal stress. \textit{WHO Newsletter}, 18, 7--10. (Physiological Equivalent Temperature classification.)
 
+\bibitem{Koopmans2020PET} Koopmans, S., Heusinkveld, B. G., \& Steeneveld, G. J. (2020). A standardized Physical Equivalent Temperature urban heat map at 1-m spatial resolution to facilitate climate stress tests in the Netherlands. \textit{Building and Environment}, 181, 106984.
 \bibitem{Hoppe1999PET} Höppe, P. (1999). The physiological equivalent temperature -- a universal index for the biometeorological assessment of the thermal environment. \textit{International Journal of Biometeorology}, 43(2), 71--75.
 
 \bibitem{Walther2018PET} Walther, E., \& Goestchel, Q. (2018). The P.E.T. comfort index: Questioning the model. \textit{Building and Environment}, 137, 1--10.

@@ -328,6 +328,8 @@ KNMI_SAMPLE = """# STN         LON(east)   LAT(north)  ALT(m)      NAME
   260,20250715,   13,  250,   40,   30,  240,  250,10170
   283,20250715,   13,  205,   55,   40,  250,  150,10172
   290,20250715,   13,     ,   63,   50,  290,  161,10174
+  260,20250715,   14,  310,   35,   30,  240,  280,10168
+  283,20250715,   14,  230,   50,   20,  250,  250,10170
 """
 
 
@@ -361,12 +363,17 @@ class SolweigMetTests(SimpleTestCase):
         response = mock.Mock(text=KNMI_SAMPLE, raise_for_status=lambda: None)
         with mock.patch("requests.post", return_value=response) as post:
             values, station = met.knmi_hourly(datetime(2025, 7, 15, 13, tzinfo=timezone.utc), 6.89, 52.22)
-        self.assertEqual(post.call_args.kwargs["data"]["start"], "2025071513")
+        self.assertEqual((post.call_args.kwargs["data"]["start"], post.call_args.kwargs["data"]["end"]),
+                         ("2025071501", "2025071524"))           # the whole day, for PET's UHI
         # Twenthe (290) is closest but has no temperature: Hupsel (283) is next.
         self.assertEqual(station["id"], 283)
         self.assertEqual((values.ta_c, values.rh_pct, values.wind_ms, values.wind_dir_deg), (20.5, 55.0, 4.0, 250.0))
         self.assertAlmostEqual(values.kdown_wm2, 416.7)          # 150 J/cm2 per hour
         self.assertAlmostEqual(values.pressure_kpa, 101.72)
+        # The day of the same station (hours 13 and 14), not De Bilt's.
+        self.assertEqual((values.tmax_c, values.tmin_c, values.wind_day_ms), (23.0, 20.5, 3.0))
+        self.assertAlmostEqual(values.kdown_day_wm2, 555.6)       # mean of 150 and 250 J/cm2 per hour
+        self.assertEqual(values.day_values(), (23.0, 20.5, 555.6, 3.0))
 
     def test_knmi_midnight_is_hour_24_of_the_previous_day(self):
         from datetime import datetime, timezone
@@ -387,6 +394,14 @@ class SolweigMetTests(SimpleTestCase):
                          (27.0, 100.0, 3.0, 500.0, 101.3))
         self.assertEqual(values.wind_dir_deg, 0.0)                # v < 0: wind from the north
         self.assertAlmostEqual(wind_from(3.0, 0.0)[1], 270.0)     # u > 0: from the west
+
+    def test_era5_day_conversions(self):
+        from .solweig.met import Met, era5_day_from_values
+
+        day = era5_day_from_values({"tmax": 303.15, "tmin": 288.15, "ssrd": 3600 * 250, "wind": 3.5})
+        self.assertEqual(day, {"tmax_c": 30.0, "tmin_c": 15.0, "kdown_day_wm2": 250.0, "wind_day_ms": 3.5})
+        self.assertIsNone(era5_day_from_values({})["tmax_c"])
+        self.assertIsNone(Met(ta_c=20, rh_pct=50, wind_ms=2, wind_dir_deg=0, kdown_wm2=0, tmax_c=25).day_values())
 
 
 class SolweigInputsTests(TestCase):
@@ -452,7 +467,8 @@ def _fake_solweig(inputs, met, when_local):
 @mock.patch("core.rasterOperations.export_raster_to_cog")
 @mock.patch("urban_heat.solweig.pipeline.run_solweig", side_effect=_fake_solweig)
 @mock.patch("urban_heat.solweig.pipeline.device", return_value="cpu")
-@mock.patch("urban_heat.solweig.pipeline.pet_lookup", side_effect=lambda tmrt, met: tmrt - 10.0)
+@mock.patch("urban_heat.solweig.pipeline.urban_pet",
+            side_effect=lambda inputs, tmrt, met, when: (tmrt - 10.0, "test PET"))
 class SolweigPipelineTests(TestCase):
     BBOX = [6.8930, 52.2200, 6.8940, 52.2206]
 
@@ -492,6 +508,8 @@ class SolweigPipelineTests(TestCase):
         self.assertEqual(run.mrt.date_time, run.date_time)
         self.assertTrue(run.mrt.source.startswith("SOLWEIG DSM "))
         self.assertEqual(run.inputs["timezone"], "Europe/Amsterdam")
+        self.assertEqual(run.inputs["pet_model"], "test PET")
+        self.assertTrue(run.pet.measurement_method.endswith("test PET"))
         x0, _, x1, _ = run.mrt.raster.extent
         vx0, _, vx1, _ = run.area.extent
         self.assertAlmostEqual(x1 - x0, vx1 - vx0, delta=2.0)     # the halo is cropped off
@@ -527,22 +545,78 @@ class SolweigPipelineTests(TestCase):
 
 
 class SolweigPetTests(SimpleTestCase):
-    def test_the_lookup_matches_pet_steady(self):
-        import numpy as np
+    """pipeline.urban_pet on a 120 m window: a 15 m building block, grass on the west side."""
 
+    def setUp(self):
         try:
-            from pythermalcomfort.models import pet_steady
+            import pet_adjusted  # noqa: F401
         except ImportError:
             self.skipTest("uv sync --extra solweig")
-        from .solweig.met import Met
-        from .solweig.pipeline import PET_PERSON, pet_lookup
 
-        met = Met(ta_c=25.0, rh_pct=50.0, wind_ms=1.5, wind_dir_deg=240.0, kdown_wm2=700.0)
-        tmrt = np.array([[30.0, 41.3], [55.7, 62.0]], dtype="float32")
-        pet = pet_lookup(tmrt, met)
-        for t, p in zip(tmrt.ravel(), pet.ravel()):
-            exact = pet_steady(tdb=25.0, tr=float(t), v=1.5, rh=50.0, p_atm=1013.0, **PET_PERSON).pet
-            self.assertAlmostEqual(float(p), exact, delta=0.05)
+    def _inputs(self, built=True):
+        import numpy as np
+
+        from .solweig.inputs import BUILDING, GRASS, PAVED, Inputs
+
+        shape = (60, 60)
+        ground = np.zeros(shape, dtype="float32")
+        landcover = np.full(shape, PAVED, dtype="float32")
+        landcover[:, :15] = GRASS
+        building_dsm = ground.copy()
+        if built:
+            building_dsm[20:40, 25:45] = 15.0
+            landcover[20:40, 25:45] = BUILDING
+        arrays = {"Building_DSM": building_dsm, "DEM": ground, "Trees": ground.copy(), "Landcover": landcover}
+        return Inputs(origin=(0.0, 120.0), cell=2.0, shape=shape, srid=28992, crop=(0, 0, 60, 60),
+                      key="test", arrays=arrays)
+
+    def _met(self, **day):
+        from .solweig.met import Met
+
+        return Met(ta_c=25.0, rh_pct=50.0, wind_ms=3.0, wind_dir_deg=240.0, kdown_wm2=0.0, pressure_kpa=101.3, **day)
+
+    def _when(self, month, hour_utc):
+        from datetime import datetime, timezone
+
+        return datetime(2025, month, 15, hour_utc, tzinfo=timezone.utc)
+
+    def test_without_the_heat_island_it_is_pet_steady_with_the_1_2_m_wind(self):
+        import numpy as np
+        from pythermalcomfort.models import pet_steady
+
+        import pet_adjusted
+
+        from .solweig.pipeline import PET_PERSON, urban_pet
+
+        tmrt = np.full((60, 60), 40.0, dtype="float32")
+        day = dict(tmax_c=30.0, tmin_c=15.0, kdown_day_wm2=250.0, wind_day_ms=3.0)
+        pet, label = urban_pet(self._inputs(built=False), tmrt, self._met(**day), self._when(10, 21))
+        self.assertIn("outside April-September", label)
+        v = float(pet_adjusted.urban_wind_speed(3.0, 0.0, 0.0, 4.0))   # open terrain
+        exact = pet_steady(tdb=25.0, tr=40.0, v=v, rh=50.0, p_atm=1013.0, **PET_PERSON).pet
+        self.assertTrue(np.allclose(pet, exact, atol=0.05))
+
+    def test_the_heat_island_warms_pet_in_the_evening(self):
+        import numpy as np
+
+        from .solweig.pipeline import urban_pet
+
+        inputs, tmrt = self._inputs(), np.full((60, 60), 30.0, dtype="float32")
+        day = dict(tmax_c=30.0, tmin_c=15.0, kdown_day_wm2=250.0, wind_day_ms=3.0)
+        urban, label = urban_pet(inputs, tmrt, self._met(**day), self._when(7, 21))
+        plain, plain_label = urban_pet(inputs, tmrt, self._met(), self._when(7, 21))
+        self.assertEqual(label, "PET urban (Koopmans 2020)")
+        self.assertIn("no day values", plain_label)
+        self.assertGreater(np.nanmean(urban), np.nanmean(plain) + 0.5)
+
+    def test_roofs_have_no_pet(self):
+        import numpy as np
+
+        from .solweig.pipeline import urban_pet
+
+        pet, _ = urban_pet(self._inputs(), np.full((60, 60), 40.0, dtype="float32"), self._met(), self._when(7, 12))
+        self.assertTrue(np.isnan(pet[20:40, 25:45]).all())
+        self.assertTrue(np.isfinite(pet[:20]).all())
 
 
 class SolweigViewTests(TestCase):

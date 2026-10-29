@@ -54,16 +54,16 @@ class Diagram:
         self.back.append(
             f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="18" fill="{f}" fill-opacity="0.55" '
             f'stroke="{s}" stroke-opacity="0.55" stroke-width="1.5"{dash}/>'
-            f'<text class="t" x="{x+20}" y="{y+30}" font-size="15" font-weight="700" fill="{t}" '
+            f'<text class="t" x="{x+20}" y="{y+30}" font-size="16.5" font-weight="700" fill="{t}" '
             f'letter-spacing="0.4">{escape(label.upper())}</text>')
         if tag:
-            tw = 9 + 7.4 * len(tag)
+            tw = 10 + 8 * len(tag)
             self.back.append(
                 f'<rect x="{x+w-tw-16}" y="{y+13}" width="{tw}" height="24" rx="12" fill="{s}"/>'
-                f'<text class="m" x="{x+w-tw/2-16}" y="{y+30}" font-size="12" fill="#fff" '
+                f'<text class="m" x="{x+w-tw/2-16}" y="{y+30}" font-size="13" fill="#fff" '
                 f'text-anchor="middle" font-weight="600">{escape(tag)}</text>')
 
-    def box(self, x, y, w, h, title, lines=(), kind="neutral", tag=None, mono_lines=False, title_size=16):
+    def box(self, x, y, w, h, title, lines=(), kind="neutral", tag=None, mono_lines=False, title_size=17.5):
         s, f, t = PALETTE[kind]
         out = [f'<rect x="{x+2}" y="{y+4}" width="{w}" height="{h}" rx="12" fill="{INK}" fill-opacity="0.06"/>',
                f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="12" fill="#fff" stroke="{s}" stroke-width="1.8"/>',
@@ -71,27 +71,27 @@ class Diagram:
         ty = y + 42
         out.append(f'<text class="t" x="{x+16}" y="{ty}" font-size="{title_size}" font-weight="700" fill="{t}">{escape(title)}</text>')
         if tag:
-            tw = 8 + 7 * len(tag)
+            tw = 8 + 7.6 * len(tag)
             out.append(f'<rect x="{x+w-tw-12}" y="{y+26}" width="{tw}" height="22" rx="11" fill="{f}" stroke="{s}" stroke-width="1"/>'
-                       f'<text class="m" x="{x+w-tw/2-12}" y="{y+41}" font-size="11.5" fill="{t}" text-anchor="middle">{escape(tag)}</text>')
+                       f'<text class="m" x="{x+w-tw/2-12}" y="{y+41}" font-size="12.5" fill="{t}" text-anchor="middle">{escape(tag)}</text>')
         cls = "m" if mono_lines else "t"
-        fs = 12 if mono_lines else 13
+        fs = 13 if mono_lines else 14
         for i, ln in enumerate(lines):
-            out.append(f'<text class="{cls}" x="{x+16}" y="{ty+22+i*18}" font-size="{fs}" fill="{INK_3}">{escape(ln)}</text>')
+            out.append(f'<text class="{cls}" x="{x+16}" y="{ty+22+i*19}" font-size="{fs}" fill="{INK_3}">{escape(ln)}</text>')
         self.mid.append("".join(out))
         return (x, y, w, h)
 
     def pill(self, x, y, text, kind="neutral"):
         s, f, t = PALETTE[kind]
-        w = 16 + 6.9 * len(text)
+        w = 16 + 7.5 * len(text)
         self.mid.append(f'<rect x="{x}" y="{y}" width="{w}" height="24" rx="12" fill="{f}" stroke="{s}" stroke-width="1.2"/>'
-                        f'<text class="m" x="{x+w/2}" y="{y+16}" font-size="11.5" fill="{t}" text-anchor="middle">{escape(text)}</text>')
+                        f'<text class="m" x="{x+w/2}" y="{y+16.5}" font-size="12.5" fill="{t}" text-anchor="middle">{escape(text)}</text>')
         return w
 
-    def note(self, x, y, lines, color=INK_4, size=12.5, italic=True):
+    def note(self, x, y, lines, color=INK_4, size=13.5, italic=True):
         st = ' font-style="italic"' if italic else ""
         for i, ln in enumerate(lines):
-            self.front.append(f'<text class="t" x="{x}" y="{y+i*17}" font-size="{size}" fill="{color}"{st}>{escape(ln)}</text>')
+            self.front.append(f'<text class="t" x="{x}" y="{y+i*18.5}" font-size="{size}" fill="{color}"{st}>{escape(ln)}</text>')
 
     def edge(self, pts, kind="neutral", label=None, step=None, flow=True, dashed=False, label_at=None, both=False):
         s = PALETTE[kind][0]
@@ -106,17 +106,17 @@ class Diagram:
             (x1, y1), (x2, y2) = pts[i], pts[i + 1]
             mx, my = (x1 + x2) / 2, (y1 + y2) / 2
             if label:
-                w = 14 + 6.6 * len(label)
+                w = 16 + 7.2 * len(label)
                 off = 14 if step else 0
                 self.front.append(
-                    f'<rect x="{mx-w/2+off}" y="{my-11}" width="{w}" height="22" rx="11" fill="#fff" stroke="{s}" stroke-width="1"/>'
-                    f'<text class="t" x="{mx+off}" y="{my+4.5}" font-size="12" fill="{INK_2}" text-anchor="middle">{escape(label)}</text>')
+                    f'<rect x="{mx-w/2+off}" y="{my-12}" width="{w}" height="24" rx="12" fill="#fff" stroke="{s}" stroke-width="1"/>'
+                    f'<text class="t" x="{mx+off}" y="{my+4.5}" font-size="13" fill="{INK_2}" text-anchor="middle">{escape(label)}</text>')
                 if step:
                     mx = mx - w / 2 + off - 13
             if step:
                 self.front.append(
-                    f'<circle cx="{mx}" cy="{my}" r="12" fill="{s}" stroke="#fff" stroke-width="2"/>'
-                    f'<text class="t" x="{mx}" y="{my+4.5}" font-size="12.5" font-weight="700" fill="#fff" text-anchor="middle">{step}</text>')
+                    f'<circle cx="{mx}" cy="{my}" r="13" fill="{s}" stroke="#fff" stroke-width="2"/>'
+                    f'<text class="t" x="{mx}" y="{my+4.5}" font-size="13.5" font-weight="700" fill="#fff" text-anchor="middle">{step}</text>')
 
     def legend(self, items, x=None, y=None):
         x = 40 if x is None else x
@@ -124,8 +124,8 @@ class Diagram:
         for kind, label in items:
             s, f, _ = PALETTE[kind]
             self.front.append(f'<rect x="{x}" y="{y-12}" width="16" height="16" rx="4" fill="{f}" stroke="{s}" stroke-width="1.8"/>'
-                              f'<text class="t" x="{x+24}" y="{y+1}" font-size="12.5" fill="{INK_3}">{escape(label)}</text>')
-            x += 40 + 7.2 * len(label)
+                              f'<text class="t" x="{x+24}" y="{y+1}" font-size="13.5" fill="{INK_3}">{escape(label)}</text>')
+            x += 40 + 7.8 * len(label)
 
     # -- output -------------------------------------------------------------
     def svg(self):
@@ -138,9 +138,9 @@ class Diagram:
         head = (f'<rect width="{self.w}" height="{self.h}" fill="#ffffff"/>'
                 + "".join(f'<rect x="{i * self.w / 7:.1f}" width="{self.w / 7 + 1:.1f}" height="5" fill="{s}"/>'
                           for i, (s, _, _) in enumerate(v for k, v in PALETTE.items() if k != "neutral")) +
-                f'<text class="t" x="40" y="58" font-size="30" font-weight="600" fill="{INK}">{escape(self.title)}</text>'
-                f'<text class="t" x="40" y="86" font-size="15" fill="{INK_4}">{escape(self.subtitle)}</text>'
-                f'<text class="m" x="{self.w-40}" y="58" font-size="12" fill="{INK_5}" text-anchor="end">CrossTwin · architecture</text>')
+                f'<text class="t" x="40" y="58" font-size="32" font-weight="600" fill="{INK}">{escape(self.title)}</text>'
+                f'<text class="t" x="40" y="88" font-size="16.5" fill="{INK_4}">{escape(self.subtitle)}</text>'
+                f'<text class="m" x="{self.w-40}" y="58" font-size="13" fill="{INK_5}" text-anchor="end">CrossTwin · architecture</text>')
         return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {self.w} {self.h}" width="{self.w}" height="{self.h}" '
                 f'role="img" aria-label="{escape(self.title)}">'
                 f'<title>{escape(self.title)}</title><style>{STYLE}</style><defs>{markers}</defs>'
@@ -234,7 +234,7 @@ def apps():
     ]
     x = 60
     for i, (n, c, lines) in enumerate(apps_):
-        w = 165 if i < 6 else 128
+        w = 172 if i < 6 else 120
         d.box(x, 170, w, 140 if i < 6 else 110, n, lines, "django", tag=str(c))
         x += w + 12
     d.note(60, 345, ["Number tags = model classes per app. Indicator dashboards (watersupply, housing, urban_heat, builtup) follow",
@@ -432,7 +432,7 @@ def signals():
     d.box(1340, 820, 200, 110, "Coverage", ["PipeNetwork +", "UsersLocation"], "django")
     d.box(1110, 820, 200, 110, "NonRevenueWater", ["→ same-year ILI"], "django")
     d.edge([(1540, 205), (1555, 205), (1555, 710), (1540, 710)], "signal", flow=False, dashed=True)
-    d.note(1110, 795, ["WaterTreatment · MeteredResidential · PipeNetwork → OPEX"], size=11.5)
+    d.note(1110, 795, ["WaterTreatment · MeteredResidential · PipeNetwork → OPEX"], size=12.5)
 
     d.group(40, 910, 990, 160, "Bulk writes  ·  importer/batching.py::deferred_cascades()", "neutral", dashed=True)
     d.note(70, 975, ["= administrative.deferred_population_cascade()  +  physicalEnv.deferred_urban_area()",
@@ -440,7 +440,7 @@ def signals():
                      "Inside the block, receivers only record the affected parent; on exit each cascade runs once per parent",
                      "(errors during that flush are logged, never raised over the original exception).",
                      "Always call schedule_urban_area_recompute() rather than the recompute itself, so an enclosing deferral is respected."],
-           color=INK_2, italic=False, size=13.5)
+           color=INK_2, italic=False, size=14.5)
     return d
 
 

@@ -343,6 +343,12 @@
         <label>Kdown W/m² <input type="number" id="solweig-kdown_wm2" step="1" min="0" value="600"></label>
         <label>Pressure kPa <input type="number" id="solweig-pressure_kpa" step="0.01" value="101.3"></label>
       </div>
+      <div class="lst-card-fields met-values" title="The day's values for the urban heat island in PET; leave blank for PET without it">
+        <label>Day Tmax °C <input type="number" id="solweig-tmax_c" step="0.1"></label>
+        <label>Day Tmin °C <input type="number" id="solweig-tmin_c" step="0.1"></label>
+        <label>Day Kdown W/m² <input type="number" id="solweig-kdown_day_wm2" step="1" min="0"></label>
+        <label>Day wind m/s <input type="number" id="solweig-wind_day_ms" step="0.1" min="0"></label>
+      </div>
       <div class="lst-view-info" id="solweig-met-info"></div>
       <div class="lst-view-info" id="solweig-view-info"></div>
       <button class="lst-btn lst-btn-primary" id="solweig-calculate" disabled>Calculate thermal comfort</button>

@@ -16,7 +16,9 @@
 (function () {
   'use strict';
 
-  const MET_FIELDS = ['ta_c', 'rh_pct', 'wind_ms', 'wind_dir_deg', 'kdown_wm2', 'pressure_kpa'];
+  // The last four are the day's values for the urban heat island in PET (blank = without it).
+  const MET_FIELDS = ['ta_c', 'rh_pct', 'wind_ms', 'wind_dir_deg', 'kdown_wm2', 'pressure_kpa',
+                      'tmax_c', 'tmin_c', 'kdown_day_wm2', 'wind_day_ms'];
   const POLL_MS = 3000;
 
   function init() {
@@ -165,7 +167,7 @@
         const data = await readJson(await fetch(`${card.dataset.metUrl}?${p}`));
         MET_FIELDS.forEach(f => {
           const v = data.met[f];
-          met[f].value = (f === 'wind_dir_deg' && v < 0) ? '' : v;
+          met[f].value = (v == null || (f === 'wind_dir_deg' && v < 0)) ? '' : v;
         });
         metLabel = data.met.source;
         el.metInfo.textContent = data.station
@@ -240,7 +242,8 @@
         if (run.status === 'failed') throw new Error(run.message);
         const s = run.stats;
         setStatus(`Run #${run.id} (${run.device.toUpperCase()}): Tmrt ${s.tmrt.min}–${s.tmrt.max} °C, ` +
-                  `UTCI ${s.utci.min}–${s.utci.max} °C, PET ${s.pet.min}–${s.pet.max} °C.`, 'ok');
+                  `UTCI ${s.utci.min}–${s.utci.max} °C, PET ${s.pet.min}–${s.pet.max} °C ` +
+                  `(${run.inputs?.pet_model || 'PET'}).`, 'ok');
         await showLayers(run);
       } catch (error) {
         setStatus(error.message, 'error');

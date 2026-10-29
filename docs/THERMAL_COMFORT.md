@@ -21,7 +21,7 @@ the DSM* and *Thermal comfort with SOLWEIG*).
 | `DSM -> SVF` | SOLWEIG's sky view factors (cached per input); also the standalone SVF tool (`physicalEnv/svf.py`) |
 | `SVF -> Tmrt`, `Meteorology -> Tmrt` | SOLWEIG 2022a radiant fluxes |
 | `Tmrt -> UTCI`, `Meteorology -> UTCI` | SOLWEIG-GPU's UTCI |
-| `Tmrt -> PET`, `SVF -> PET`, `Meteorology -> PET` | `pipeline.pet_lookup` (PET from Tmrt; SVF acts through Tmrt) |
+| `Tmrt -> PET`, `SVF -> PET`, `Meteorology -> PET` | `pipeline.urban_pet` with `pet-adjusted` (Tmrt; SVF of the upwind source area in the heat island; the met record and the day's values) |
 
 The thermal-comfort run is computed on demand, not by a receiver: a model save
 must never start a GPU job. `Buildings -> DSM` is stored and propagates through
@@ -96,10 +96,10 @@ flowchart TD
 
     G4 --> C1["Crop the halo (band 2)"]
     G5 --> C1
-    C1 --> PET["PET = interp(Tmrt) of pet_steady<br/>on a 0.25 °C Tmrt grid"]
+    G4 --> PET["PET (pet-adjusted): Ta + urban heat island,<br/>1.2 m wind from buildings and trees"]
     W4 --> PET
-    C1 --> O1
-    PET --> O1["MeanRadiantTemperature · UTCI · PET rows<br/>(replace the same hour inside the view)"]
+    PET --> C1
+    C1 --> O1["MeanRadiantTemperature · UTCI · PET rows<br/>(replace the same hour inside the view)"]
     O1 --> O2["COG export (core/signals.py)"]
     O2 --> O3(["Map layers; ThermalComfortRun<br/>records inputs, met, device, stats"])
     O3 -. "newer than the edits: mark cleared" .-> S1
@@ -207,14 +207,40 @@ and the card polls its status.
 
 ### 7. PET
 
-With one met record, air temperature, humidity and wind are the same in every
-cell, so PET depends on Tmrt alone. It is solved with `pythermalcomfort`'s
-`pet_steady` (Höppe 1999, corrected by Walther & Goestchel 2018; standard
-person 35 years, 1.75 m, 75 kg, 0.9 clo, 1.37 met) on a 0.25 °C grid over the
-Tmrt range, then interpolated per cell. That is about a hundred solves instead
-of one per cell. The test suite checks the lookup against direct solves
-(< 0.05 °C). The 10 m wind of the met file is used as is, as UMEP's SOLWEIG
-does.
+PET comes from the `pet-adjusted` package (`pipeline.urban_pet`,
+`pet_adjusted.urban_pet_from_rasters`). It solves the steady-state PET model
+of `pythermalcomfort` (Höppe 1999, corrected by Walther & Goestchel 2018;
+standard person 35 years, 1.75 m, 75 kg, 0.9 clo, 1.37 met) for every cell at
+once, on CuPy when a CUDA GPU is available, otherwise NumPy. Two inputs vary
+per cell, following Koopmans et al. (2020):
+
+- **Air temperature** = the met record's + the urban heat island. The daily
+  maximum UHI (Eq. S.3) scales with the day's Tmax − Tmin, mean Kdown and mean
+  wind, and falls with the sky view factor and vegetation fraction of the
+  cell's source area (1 km upwind + 100 m downwind × 500 m on 25 m tiles;
+  a 700 m square below 1.5 m/s). It
+  is multiplied by the diurnal factor of the UTC hour (Tables S.3/S.4).
+- **Wind** = the 10 m wind reduced to 1.2 m by the frontal area densities and
+  mean height of buildings and trees in a 280 × 140 m source area (Macdonald
+  2000).
+
+Inputs are the SOLWEIG window: DSM = `Building_DSM` + `Trees`, `DEM`, the
+SOLWEIG land cover, and a stand-in NDVI (0.6 on trees and grass, −0.1 on
+water), since pet-adjusted only thresholds NDVI at 0.16. PET runs on the
+whole window before the halo is cropped, so the view's cells see 50 m beyond
+it. Building cells are nodata, since PET is for pedestrians.
+
+The day's values (`tmax_c`, `tmin_c`, `kdown_day_wm2`, `wind_day_ms`) are
+filled by *Fetch*: the same KNMI station's hours 1–24 of the day, or ERA5's
+hours of the UTC day. Without them, outside 1 April – 30 September (the
+diurnal table's range) or with Tmax = Tmin, the heat island is left out and
+the air temperature is the met record's; the wind is still reduced to 1.2 m.
+`measurement_method` and `ThermalComfortRun.inputs["pet_model"]` say which
+model was used.
+
+PET runs on NumPy unless CuPy is installed, since the `solweig` extra does not
+include `pet-adjusted[cuda]`. On the CPU it took ~35 s per 250 000 cells (a
+500 m view at 1 m), which is small next to SOLWEIG itself.
 
 ### 8. Storage
 
@@ -254,7 +280,10 @@ Recalculating produces results newer than the edits, which clears the mark.
 - Trees are any non-building surface more than 2.5 m above the ground, which
   can include street furniture, bridges or vehicles in the DSM. Without a DEM,
   the ground estimate fails for buildings wider than 40 m.
-- PET uses SOLWEIG's 10 m wind speed (no reduction to 1.1 m), like UMEP.
+- PET's heat-island source areas reach up to 1 km upwind, but the window has a
+  50 m halo: the source areas are truncated at its edge, so the heat island of
+  a small view is underestimated. Frontal areas are exact only for N/E/S/W
+  winds (pet-adjusted's shortcut).
 - Land-cover classes are mapped by name keywords; urban fabric counts as paved.
 - One hour per run; a diurnal cycle would be 24 runs (the cached sky view
   factors make each additional hour cheaper).
@@ -263,7 +292,7 @@ Recalculating produces results newer than the edits, which clears the mark.
 ## Installation
 
 ```bash
-uv sync --extra solweig          # solweig-gpu, torch (CUDA 12.8 wheels), pythermalcomfort
+uv sync --extra solweig          # solweig-gpu, torch (CUDA 12.8 wheels), pet-adjusted
 uv run python -c "import torch; print(torch.cuda.is_available())"
 ```
 
@@ -277,7 +306,7 @@ bindings (`osgeo`) matching the system libgdal.
 |---|---|
 | `GET /urban_heat/solweig/info/?bbox=&datetime=&resolution=` | DSM, grid, cell count and limit, sun position, device, estimated time, stale results |
 | `GET /urban_heat/solweig/met/?bbox=&datetime=&source=knmi\|era5` | Met values to prefill the card (and the station) |
-| `POST /urban_heat/solweig/calculate/` | Start a run (staff): `bbox`, `datetime`, `resolution`, `ta_c`, `rh_pct`, `wind_ms`, `wind_dir_deg`, `kdown_wm2`, `pressure_kpa`, `source` |
+| `POST /urban_heat/solweig/calculate/` | Start a run (staff): `bbox`, `datetime`, `resolution`, `ta_c`, `rh_pct`, `wind_ms`, `wind_dir_deg`, `kdown_wm2`, `pressure_kpa`, `source`; optional `tmax_c`, `tmin_c`, `kdown_day_wm2`, `wind_day_ms` (heat island in PET) |
 | `GET /urban_heat/solweig/runs/<id>/` | Run status; when done, the three layers |
 | `GET /urban_heat/solweig/stale/?bbox=` | SVF and thermal-comfort results made stale by building edits |
 
@@ -287,6 +316,8 @@ bindings (`osgeo`) matching the system libgdal.
 - SOLWEIG-GPU 2.0.0. https://github.com/nvnsudharsan/solweig-gpu, https://solweig-gpu.readthedocs.io
 - Bröde, P., Fiala, D., Błażejczyk, K., et al. (2012). Deriving the operational procedure for the Universal Thermal Climate Index (UTCI). *International Journal of Biometeorology*, 56(3), 481–494.
 - Höppe, P. (1999). The physiological equivalent temperature – a universal index for the biometeorological assessment of the thermal environment. *International Journal of Biometeorology*, 43(2), 71–75.
+- Koopmans, S., Heusinkveld, B. G., & Steeneveld, G. J. (2020). A standardized Physical Equivalent Temperature urban heat map at 1-m spatial resolution to facilitate climate stress tests in the Netherlands. *Building and Environment*, 181, 106984.
+- Cárdenas, I. pet-adjusted 0.1.5: PET with urban-adjusted air temperature and 1.2 m wind speed. https://github.com/ivan-cardenas/PET-Adjusted
 - Walther, E., & Goestchel, Q. (2018). The P.E.T. comfort index: Questioning the model. *Building and Environment*, 137, 1–10.
 - Reda, I., & Andreas, A. (2004). Solar position algorithm for solar radiation applications. *Solar Energy*, 76(5), 577–589.
 - Hersbach, H., et al. (2020). The ERA5 global reanalysis. *Quarterly Journal of the Royal Meteorological Society*, 146(730), 1999–2049.

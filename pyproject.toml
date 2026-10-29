@@ -3,8 +3,8 @@ name = "crosstwin"
 version = "0.1.0"
 description = "Django digital twin platform for Dutch geospatial urban data"
 readme = "README.md"
-# Floor set by numpy/scipy; no upper bound.
-requires-python = ">=3.11"
+# Floor set by pet-adjusted (solweig extra); no upper bound.
+requires-python = ">=3.12"
 dependencies = [
     # Web / Django
     "django>=5.2.12,<5.3",
@@ -21,8 +21,7 @@ dependencies = [
     # DLLs inside osgeo/. On Linux/macOS GeoDjango uses the system libgdal/libgeos
     # (apt install gdal-bin / brew install gdal), and rasterio, pyogrio and pyproj bundle
     # their own GDAL/PROJ in their wheels.
-    "gdal==3.11.4; sys_platform == 'win32' and python_version == '3.11'",
-    "gdal==3.13.3; sys_platform == 'win32' and python_version >= '3.12'",
+    "gdal==3.13.3; sys_platform == 'win32'",
     "geopandas>=1.1.2",
     "pyogrio>=0.11.1",
     "shapely>=2.1.2",
@@ -54,7 +53,9 @@ dependencies = [
 solweig = [
     "solweig-gpu>=2.0.0",
     "torch>=2.6",
-    "pythermalcomfort>=3.0",
+    # PET with urban air temperature and 1.2 m wind (brings pythermalcomfort). Not its own
+    # [solweig] extra: that pins gdal from PyPI, which has no Windows wheel.
+    "pet-adjusted>=0.1.5",
 ]
 
 [dependency-groups]
@@ -71,11 +72,8 @@ explicit = true
 # CUDA 12.8 wheels on Windows/Linux (CPU fallback at run time without a GPU); macOS has none.
 torch = { index = "pytorch-cu128", marker = "sys_platform != 'darwin'" }
 # Christoph Gohlke's GDAL wheels (bundle the GDAL/GEOS/PROJ DLLs). cgohlke.com is not a
-# package index; the wheels are GitHub releases of cgohlke/geospatial-wheels. GDAL 3.13.3
-# (v2026.8.20) has no cp311 wheel, so Python 3.11 stays on 3.11.4 (v2025.10.25).
+# package index; the wheels are GitHub releases of cgohlke/geospatial-wheels.
 gdal = [
-    { url = "https://github.com/cgohlke/geospatial-wheels/releases/download/v2025.10.25/gdal-3.11.4-cp311-cp311-win_amd64.whl", marker = "python_version == '3.11' and platform_machine == 'AMD64'" },
-    { url = "https://github.com/cgohlke/geospatial-wheels/releases/download/v2025.10.25/gdal-3.11.4-cp311-cp311-win_arm64.whl", marker = "python_version == '3.11' and platform_machine == 'ARM64'" },
     { url = "https://github.com/cgohlke/geospatial-wheels/releases/download/v2026.8.20/gdal-3.13.3-cp312-cp312-win_amd64.whl", marker = "python_version == '3.12' and platform_machine == 'AMD64'" },
     { url = "https://github.com/cgohlke/geospatial-wheels/releases/download/v2026.8.20/gdal-3.13.3-cp312-cp312-win_arm64.whl", marker = "python_version == '3.12' and platform_machine == 'ARM64'" },
     { url = "https://github.com/cgohlke/geospatial-wheels/releases/download/v2026.8.20/gdal-3.13.3-cp313-cp313-win_amd64.whl", marker = "python_version == '3.13' and platform_machine == 'AMD64'" },
