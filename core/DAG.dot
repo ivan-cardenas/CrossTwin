@@ -122,6 +122,7 @@ digraph CrossTwin {
     Urbanization        [label="Urbanization"];
     Total_Population    [label="Total Population"];
     Housing_Demand      [label="Housing Demand"];
+    Household_Size      [label="Household Size"];
     Housing_Supply      [label="Housing Supply"];
     Vegetation_Coverage [label="Vegetation Coverage"];
     Total_Extraction    [label="Total Extraction"];
@@ -164,7 +165,10 @@ digraph CrossTwin {
     Urbanization        -> Streets;
     Urbanization        -> LandCover;
     Urbanization        -> Housing_Demand;
-    
+    Total_Population    -> Housing_Demand;
+    Household_Size      -> Housing_Demand;
+    Household_Size      -> Property;
+
     CityArea            -> Coverage_WS_Area;
     CityArea            -> Network;
 

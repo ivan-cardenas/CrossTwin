@@ -21,6 +21,7 @@ from administrative.signals import deferred_population_cascade
 from core.cache import bump_layer_version
 from physicalEnv.signals import deferred_urban_area, schedule_urban_area_recompute
 from watersupply.signals import deferred_water_refresh
+from housing.signals import deferred_housing_refresh
 
 logger = logging.getLogger(__name__)
 
@@ -90,16 +91,17 @@ class SpatialParentIndex:
 def deferred_cascades():
     """
     Run the administrative population cascade, the land-cover urban-area
-    recompute and the population -> water refresh once per affected parent
-    when the block ends, instead of once per row saved inside it. Enter this
-    inside the import's transaction so the recompute commits (or rolls back)
-    with the rows.
+    recompute, the population -> water refresh and the population -> housing
+    demand / residents refresh once per affected parent when the block ends,
+    instead of once per row saved inside it. Enter this inside the import's
+    transaction so the recompute commits (or rolls back) with the rows.
     """
     with ExitStack() as stack:
         # Exit order is the reverse: urban area first (it re-enters the
         # population cascade directly), then the deferred population cascade
-        # (which announces city_population_changed), and the water refresh
-        # last, so it collects the cities of both and runs once per city.
+        # (which announces city_population_changed), and the water and housing
+        # refreshes last, so they collect the cities of both and run once per city.
+        stack.enter_context(deferred_housing_refresh())
         stack.enter_context(deferred_water_refresh())
         stack.enter_context(deferred_population_cascade())
         stack.enter_context(deferred_urban_area())

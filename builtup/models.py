@@ -261,6 +261,9 @@ class Property(models.Model):
     listingPrice_EUR = models.FloatField(help_text="Listing price of the property in EUR", null=True, blank=True)
     salePrice_EUR = models.FloatField(help_text="Sale price of the property in EUR", null=True, blank=True)
     unitaryPrice_EUR_per_sqm = models.FloatField(help_text="Unitary price in EUR per square meter", null=True, blank=True)
+    # Not derived in save(): builtup must not import housing. housing/signals.py
+    # writes it (DAG edge Household_Size -> Property) for dwellings only.
+    residents = models.FloatField(null=True, blank=True, help_text="Estimated residents: the city's average persons per home (CBS household size), for dwellings; set by housing/signals.py")
     last_updated = models.DateTimeField(default=timezone.now)
     geom = models.PointField(srid=CoordinateSystem)
     

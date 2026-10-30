@@ -9,7 +9,7 @@
     <div class="gauge-header">
       <div class="card-icon">🏘️</div>
       <div class="card-label">Housing Supply Coverage</div>
-      {% include 'partials/_info_btn.html' with title="Housing Supply Coverage" text="Share of housing demand currently met: supply units ÷ demand units, from the latest HousingSupplyDemand record for the area. Below 100% means there aren't enough homes for the estimated demand." %}
+      {% include 'partials/_info_btn.html' with title="Housing Supply Coverage" text="Share of housing demand currently met: supply units ÷ demand units. Supply is the CBS housing stock; demand is population ÷ average persons per home (the slider above), so it follows the population dock. Below 100% means there aren't enough homes for the estimated demand." %}
     </div>
     <div class="gauge-body bottom">
       <svg viewBox="0 0 120 70" width="160" height="95" aria-hidden="true">
@@ -31,6 +31,12 @@
               fill="rgba(232,244,255,0.45)">of {{ indicators.demand_units }} demand</text>
       </svg>
     </div>
+    {% if indicators.household_size %}
+    <div style="font-size:9px; color:rgba(232,244,255,0.45);">
+      {{ indicators.housed_residents }} residents housed at {{ indicators.household_size }} per home
+      {% if indicators.dwellings %}· {{ indicators.dwellings }} mapped dwellings ≈ {{ indicators.estimated_residents }} residents{% endif %}
+    </div>
+    {% endif %}
   </div>
 
   <!-- Affordability (Price-to-Income) -->
@@ -82,7 +88,7 @@
     <div class="gauge-header">
       <div class="card-icon">📈</div>
       <div class="card-label">Average Fixed Mortgage Rate</div>
-      {% include 'partials/_info_btn.html' with title="Average Fixed Mortgage Rate" text="The area's average mortgage rate from credit-supply data (or the slider override above). Moving the slider recalculates Monthly Payment from the average loan amount using the standard annuity formula, assuming a 30-year fixed term." %}
+      {% include 'partials/_info_btn.html' with title="Average Fixed Mortgage Rate" text="The area's average mortgage rate from the credit-supply data, with the average monthly payment and loan amount of the recorded mortgages." %}
     </div>
     <div style="display:flex; align-items:baseline; gap:8px;">
       <div class="card-value">{{ indicators.mortgage_rate|default:"–" }}%</div>

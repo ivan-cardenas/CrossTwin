@@ -3,7 +3,7 @@ from django.db.models import Sum, Avg, F, FloatField, ExpressionWrapper, Count, 
 from .models import (
     HousingSupplyDemand, HousingProject, CentralBankPolicy,
     CreditSupplyConditions, Mortgage, Rentals, HousePriceIndex,
-    HousingAffordability,
+    HousingAffordability, HouseholdSize, ResidentialProperty,
 )
 from administrative.admin_units import cities_within, neighborhoods_within, province_of
 from builtup.models import Property, ZoningArea, Building
@@ -28,14 +28,12 @@ def calculate_supply_demand(city, year):
             'deficit_pct': None,
         }
 
-    deficit = record.demand_units - record.supply_units
-    deficit_pct = (
-        round(deficit / record.demand_units * 100, 1)
-        if record.demand_units else None
-    )
+    demand = record.demand_units or 0   # None until a household size is known
+    deficit = demand - record.supply_units
+    deficit_pct = round(deficit / demand * 100, 1) if demand else None
     return {
         'supply_units': record.supply_units,
-        'demand_units': record.demand_units,
+        'demand_units': demand,
         'deficit': deficit,
         'deficit_pct': deficit_pct,
     }
@@ -48,7 +46,7 @@ def calculate_supply_demand_for_unit(adminBund, year):
 
     agg = records.aggregate(
         supply=Sum('supply_units'),
-        demand=Sum('demand_units'),
+        demand=Sum('demand_units'),   # NULL demand (no household size yet) is ignored
     )
     supply = agg['supply'] or 0
     demand = agg['demand'] or 0
@@ -59,6 +57,47 @@ def calculate_supply_demand_for_unit(adminBund, year):
         'demand_units': demand,
         'deficit': deficit,
         'deficit_pct': round(deficit / demand * 100, 1) if demand else None,
+    }
+
+
+# -- Household size & residents ----------------------------------------------
+
+def calculate_household_size(adminBund, year):
+    """Average persons per home of an admin unit (CBS), the dashboard slider's default.
+
+    Each city contributes the household record of `year` (else the closest year,
+    HouseholdSize.for_year); the unit's value is the sum of their populations over
+    the sum of their households, so a big city weighs more than a small one.
+    `year` of the result is the oldest year used; None values when no city has data.
+
+    DAG edges:  Total_Population -> Household_Size
+    """
+    records = [r for r in (HouseholdSize.for_year(c, year) for c in cities_within(adminBund))
+               if r and r.population and r.households]
+    population = sum(r.population for r in records)
+    households = sum(r.households for r in records)
+    return {
+        'average_size': round(population / households, 3) if households else None,
+        'year': min((r.year for r in records), default=None),
+        'households': households or None,
+        'population': population or None,
+    }
+
+
+def calculate_dwellings(adminBund):
+    """Dwellings (BAG woonfunctie) of the unit and the residents estimated for them.
+
+    `residents` is written by housing/signals.py (each dwelling holds the city's
+    average persons per home), so this only counts and sums.
+
+    DAG edges:  Household_Size -> Property
+    """
+    dwellings = ResidentialProperty.objects.filter(
+        building__neighborhood__in=neighborhoods_within(adminBund))
+    agg = dwellings.aggregate(count=Count('id'), residents=Sum('residents'))
+    return {
+        'dwellings': agg['count'] or 0,
+        'estimated_residents': round(agg['residents']) if agg['residents'] else 0,
     }
 
 

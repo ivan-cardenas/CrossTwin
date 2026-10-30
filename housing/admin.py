@@ -4,6 +4,7 @@ from .models import *
 
 
 admin.site.register(HousingSupplyDemand)
+admin.site.register(HouseholdSize)
 admin.site.register(CentralBankPolicy)
 admin.site.register(CreditSupplyConditions)
 admin.site.register(Mortgage)

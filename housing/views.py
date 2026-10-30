@@ -3,7 +3,10 @@ from django.http import JsonResponse
 
 from administrative.admin_units import resolve_admin_unit, ADMIN_LEVELS
 from administrative.population import DEFAULT_SCENARIO, get_population, population_params
+from . import chain
 from .calculations import (
+    calculate_household_size,
+    calculate_dwellings,
     calculate_supply_demand_for_unit,
     calculate_new_units_for_unit,
     calculate_pipeline_land_take,
@@ -24,13 +27,17 @@ def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, po
 
     `population` is the projected population for `year` (CBS variant `pop_scenario`
     plus `pop_growth` % extra growth per year); it equals the current population
-    when no projections are imported. Supply and demand units still come from the
-    stored HousingSupplyDemand records.
+    when no projections are imported. `population_baseline` is the same without
+    the what-if. Supply and demand units come from the stored HousingSupplyDemand
+    records (demand = baseline population / persons per home); `_build_indicators`
+    applies the what-ifs on top of them.
     """
     adminUnit = resolve_admin_unit(level, location)
     if adminUnit is None:
         return None
 
+    household = calculate_household_size(adminUnit, year)
+    dwellings = calculate_dwellings(adminUnit)
     supply_demand = calculate_supply_demand_for_unit(adminUnit, year)
     new_units = calculate_new_units_for_unit(adminUnit, year)
     land_take = calculate_pipeline_land_take(adminUnit, year)
@@ -44,6 +51,9 @@ def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, po
     return {
         'adminUnit': adminUnit,
         'population': get_population(adminUnit, year, pop_scenario, pop_growth),
+        'population_baseline': get_population(adminUnit, year),
+        'household': household,
+        'dwellings': dwellings,
         'supply_demand': supply_demand,
         'new_units': new_units,
         'land_take': land_take,
@@ -61,6 +71,9 @@ MOCK_DATA = {
         'adminUnitName': 'Demo', 'currentPopulation': 500_000,
     })(),
     'population': 500_000,
+    'population_baseline': 500_000,
+    'household': {'average_size': 2.3, 'year': 2025, 'households': 217_000, 'population': 500_000},
+    'dwellings': {'dwellings': 180_000, 'estimated_residents': 414_000},
     'supply_demand': {
         'supply_units': 180_000, 'demand_units': 210_000,
         'deficit': 30_000, 'deficit_pct': 14.3,
@@ -121,9 +134,17 @@ MOCK_DATA = {
 
 # -- shared calculation -------------------------------------------------------
 
-def _build_indicators(data, interest_rate_override=None):
-    """Pure function: takes DB data dict, returns flat indicators dict."""
+def _build_indicators(data, household_size_override=None):
+    """
+    Pure function: takes DB data dict, returns flat indicators dict.
+
+    `household_size_override` (persons per home, the slider) and the population
+    what-ifs already in data['population'] only deviate from the stored baseline
+    through chain.what_if_demand; nothing is written.
+    """
     sd = data['supply_demand']
+    household = data.get('household') or {}
+    dwellings = data.get('dwellings') or {}
     nu = data['new_units']
     land_take = data.get('land_take') or {}
     mtg = data['mortgage']
@@ -133,28 +154,24 @@ def _build_indicators(data, interest_rate_override=None):
     zoning = data['zoning']
     aff = data['affordability']
 
-    # Allow overriding interest rate for what-if scenarios
-    effective_rate = interest_rate_override or mtg.get('mortgage_rate')
-
-    # Recalculate monthly payment if interest rate changed
+    effective_rate = mtg.get('mortgage_rate')
     avg_monthly = mtg.get('avg_monthly_payment')
-    if interest_rate_override and mtg.get('avg_loan_amount') and mtg.get('avg_loan_amount') > 0:
-        # Standard annuity formula: M = P * r(1+r)^n / ((1+r)^n - 1)
-        loan = mtg['avg_loan_amount']
-        r = interest_rate_override / 100 / 12  # monthly rate
-        n = 30 * 12  # 30-year term default
-        if r > 0:
-            avg_monthly = round(loan * r * (1 + r) ** n / ((1 + r) ** n - 1), 2)
-        else:
-            avg_monthly = round(loan / n, 2)
 
-    # Housing deficit as % of demand
-    deficit_pct = sd.get('deficit_pct') or 0
+    # Housing demand = population / persons per home. The stored baseline is
+    # scaled by the what-ifs (population dock, persons-per-home slider).
+    stored_size = household.get('average_size')
+    size = household_size_override or stored_size
+    demand_units = chain.what_if_demand(
+        sd['demand_units'], data.get('population'), data.get('population_baseline'),
+        stored_size, size)
+    demand_units = demand_units or 0
+    deficit = demand_units - sd['supply_units']
+    deficit_pct = round(deficit / demand_units * 100, 1) if demand_units else 0
 
     # Supply coverage: what share of demand is currently met (gauge display)
     supply_coverage_pct = None
-    if sd.get('demand_units'):
-        supply_coverage_pct = round(sd['supply_units'] / sd['demand_units'] * 100, 1)
+    if demand_units:
+        supply_coverage_pct = round(sd['supply_units'] / demand_units * 100, 1)
 
     # Affordability: housing cost burden (mortgage or rent / income)
     income = aff.get('avg_median_income')
@@ -168,10 +185,20 @@ def _build_indicators(data, interest_rate_override=None):
 
     return {
         'population': data.get('population'),
+        # -- Household size (CBS persons per home; the slider) --
+        'household_size': round(size, 2) if size else None,
+        'household_size_stored': round(stored_size, 2) if stored_size else None,
+        'household_size_year': household.get('year'),
+        'size_min': chain.SIZE_MIN,
+        'size_max': chain.SIZE_MAX,
+        'dwellings': dwellings.get('dwellings', 0),
+        'estimated_residents': dwellings.get('estimated_residents', 0),
+        # residents the supplied homes hold at this size, against the population
+        'housed_residents': chain.housed_residents(sd['supply_units'], size),
         # -- Supply & Demand --
         'supply_units': sd['supply_units'],
-        'demand_units': sd['demand_units'],
-        'deficit': sd['deficit'],
+        'demand_units': demand_units,
+        'deficit': deficit,
         'deficit_pct': deficit_pct,
         'supply_coverage_pct': supply_coverage_pct,
 
@@ -264,15 +291,20 @@ def housing_indicators(request, level, location, year):
 
 
 def recalculate_indicators(request, level, location, year):
-    interest_rate = request.GET.get('interest_rate')
-    interest_rate = float(interest_rate) if interest_rate else None
+    household_size = request.GET.get('household_size')
+    try:
+        household_size = float(household_size) if household_size else None
+    except ValueError:
+        household_size = None
+    if household_size is not None:
+        household_size = min(max(household_size, chain.SIZE_MIN), chain.SIZE_MAX)
 
     pop_scenario, pop_growth = population_params(request.GET)
     data = _get_adminUnit_data(level, location, year, pop_scenario, pop_growth)
     if data is None:
         data = MOCK_DATA
 
-    indicators = _build_indicators(data, interest_rate_override=interest_rate)
+    indicators = _build_indicators(data, household_size_override=household_size)
 
     return render(request, 'housing/partials/indicators_grid.html', {'indicators': indicators})
 

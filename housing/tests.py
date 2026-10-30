@@ -1,10 +1,17 @@
+from unittest import mock
+
+from django.conf import settings
+from django.contrib.gis.geos import Point
 from django.test import TestCase
 
-from builtup.models import ZoningArea
+from administrative.models import PopulationProjection
+from builtup.models import Building, Property, ZoningArea
 from physicalEnv.models import HILUCSLandUse
 from watersupply.tests.factories import make_neighborhood, make_polygon
 
+from . import chain, signals
 from .calculations import calculate_zoning
+from .models import HouseholdSize, HousingSupplyDemand
 
 
 class ZoningGroupsTests(TestCase):
@@ -72,3 +79,176 @@ class PipelineLandTakeTests(TestCase):
         from .calculations import calculate_pipeline_land_take
         take = calculate_pipeline_land_take(self.hood, 2025)
         self.assertEqual((take["footprint_ha"], take["by_class"]), (0.0, []))
+
+
+class HouseholdSizeTests(TestCase):
+    """HouseholdSize derives persons per home from the two CBS columns."""
+
+    def setUp(self):
+        self.city = make_neighborhood().district.city
+
+    def test_average_is_population_over_households(self):
+        row = HouseholdSize.objects.create(city=self.city, year=2025, population=100_000, households=48_000)
+        self.assertAlmostEqual(row.average_size, 100_000 / 48_000)
+
+    def test_each_cbs_table_fills_its_own_column(self):
+        # the importer's update_or_create saves with update_fields = the columns it was handed
+        HouseholdSize.objects.update_or_create(city=self.city, year=2025, defaults={"households": 50_000})
+        row, _ = HouseholdSize.objects.update_or_create(city=self.city, year=2025, defaults={"population": 110_000})
+        row.refresh_from_db()
+        self.assertAlmostEqual(row.average_size, 2.2)
+
+    def test_for_year_uses_the_closest_earlier_record(self):
+        HouseholdSize.objects.create(city=self.city, year=2020, population=100, households=50)
+        HouseholdSize.objects.create(city=self.city, year=2024, population=100, households=40)
+        self.assertEqual(HouseholdSize.for_year(self.city, 2022).year, 2020)
+        self.assertEqual(HouseholdSize.for_year(self.city, 2030).year, 2024)
+        self.assertEqual(HouseholdSize.for_year(self.city, 2010).year, 2020)   # earliest later one
+
+
+class DemandFollowsPopulationTests(TestCase):
+    """DAG edges: Total_Population, Household_Size -> Housing_Demand."""
+
+    def setUp(self):
+        self.hood = make_neighborhood()           # currentPopulation 1200: only the imported part
+        self.city = self.hood.district.city
+        HouseholdSize.objects.create(city=self.city, year=2025, population=100_000, households=50_000)
+
+    def _record(self, year):
+        return HousingSupplyDemand.objects.create(city=self.city, year=year, supply_units=45_000)
+
+    def test_demand_uses_the_cbs_population_not_the_imported_neighborhoods(self):
+        record = self._record(2025)
+        self.assertEqual(record.demand_units, 50_000)   # 100 000 / 2.0, not 1 200 / 2.0
+
+    def test_median_forecast_change_updates_demand(self):
+        PopulationProjection.objects.create(city=self.city, year=2030, population=120_000)
+        record = self._record(2030)
+        self.assertEqual(record.demand_units, 60_000)   # size of 2025 carries forward
+
+        PopulationProjection.objects.filter(city=self.city, year=2030).first().delete()
+        PopulationProjection.objects.create(city=self.city, year=2030, population=140_000)
+        record.refresh_from_db()
+        self.assertEqual(record.demand_units, 70_000)
+
+    def test_other_forecast_variants_do_not_move_the_stored_demand(self):
+        PopulationProjection.objects.create(city=self.city, year=2030, population=120_000)
+        record = self._record(2030)
+        PopulationProjection.objects.create(city=self.city, year=2030, scenario="high", population=999_999)
+        record.refresh_from_db()
+        self.assertEqual(record.demand_units, 60_000)
+
+    def test_new_household_size_updates_demand(self):
+        record = self._record(2025)
+        HouseholdSize.objects.filter(city=self.city, year=2025).first().delete()
+        HouseholdSize.objects.create(city=self.city, year=2025, population=100_000, households=40_000)
+        record.refresh_from_db()
+        self.assertEqual(record.demand_units, 40_000)   # 100 000 / 2.5
+
+    def test_city_population_cascade_updates_demand(self):
+        # a city without CBS population for the year falls back to the imported population
+        self.city.refresh_from_db()   # the cascade writes with update(): the factory's instance is stale
+        record = self._record(2026)
+        self.assertEqual(record.demand_units, round(self.city.currentPopulation / 2.0))
+        self.hood.currentPopulation = 5_000
+        self.hood.save()    # Neighborhood -> District -> City cascade announces city_population_changed
+        record.refresh_from_db()
+        self.assertEqual(record.demand_units, round(5_000 / 2.0))
+
+    def test_without_household_size_a_stored_demand_is_kept(self):
+        HouseholdSize.objects.all().delete()
+        record = HousingSupplyDemand.objects.create(city=self.city, year=2025, supply_units=1, demand_units=77)
+        self.assertEqual(record.demand_units, 77)
+
+
+class ResidentsTests(TestCase):
+    """DAG edge: Household_Size -> Property (each dwelling holds the average)."""
+
+    def setUp(self):
+        self.hood = make_neighborhood()
+        self.city = self.hood.district.city
+        self.building = Building.objects.create(
+            id=1, buildingType="residential", geom=make_polygon(257000.0, 470000.0, 20))
+        HouseholdSize.objects.create(city=self.city, year=2025, population=100_000, households=50_000)
+
+    def _property(self, usage, dx=0.0):
+        return Property.objects.create(
+            name="p", grossArea=80, usageFunction=usage,
+            geom=Point(257000.0 + dx, 470000.0, srid=settings.COORDINATE_SYSTEM))
+
+    def test_new_dwelling_gets_the_average_and_a_shop_does_not(self):
+        dwelling = self._property(["Residential function"])
+        shop = self._property(["Shop function"], dx=1.0)
+        dwelling.refresh_from_db()
+        shop.refresh_from_db()
+        self.assertEqual(dwelling.residents, 2.0)
+        self.assertIsNone(shop.residents)
+
+    def test_new_household_size_updates_every_dwelling(self):
+        dwellings = [self._property(["Residential function"], dx=i) for i in range(3)]
+        shop = self._property(["Shop function"], dx=5.0)
+        HouseholdSize.objects.create(city=self.city, year=2026, population=100_000, households=40_000)
+        self.assertEqual({Property.objects.get(pk=d.pk).residents for d in dwellings}, {2.5})
+        self.assertIsNone(Property.objects.get(pk=shop.pk).residents)
+
+    def test_a_dwelling_turned_into_a_shop_loses_its_residents(self):
+        prop = self._property(["Residential function"])
+        prop.usageFunction = ["Shop function"]
+        prop.save()
+        prop.refresh_from_db()
+        self.assertIsNone(prop.residents)
+
+
+class DeferralTests(TestCase):
+    """Bulk imports refresh a city once (housing.signals.deferred_housing_refresh)."""
+
+    def setUp(self):
+        self.city = make_neighborhood().district.city
+        HouseholdSize.objects.create(city=self.city, year=2020, population=100, households=50)
+        HousingSupplyDemand.objects.create(city=self.city, year=2020, supply_units=1)
+
+    def _save_projections(self):
+        for year in range(2030, 2036):
+            PopulationProjection.objects.create(city=self.city, year=year, population=1000 + year)
+
+    def test_without_deferral_every_row_refreshes(self):
+        with mock.patch.object(signals, '_resave', wraps=signals._resave) as resave:
+            self._save_projections()
+        self.assertEqual(resave.call_count, 6)
+
+    def test_deferred_refreshes_once_per_city(self):
+        with mock.patch.object(signals, '_resave', wraps=signals._resave) as resave:
+            with signals.deferred_housing_refresh():
+                self._save_projections()
+            self.assertEqual(resave.call_count, 1)
+
+
+class DashboardIsADeviationFromTheBaselineTests(TestCase):
+    """The dashboard with default controls equals the stored demand, whatever the import coverage."""
+
+    def setUp(self):
+        self.hood = make_neighborhood()
+        self.city = self.hood.district.city
+        HouseholdSize.objects.create(city=self.city, year=2025, population=100_000, households=50_000)
+        HousingSupplyDemand.objects.create(city=self.city, year=2025, supply_units=45_000)
+
+    def _indicators(self, **kwargs):
+        from .views import _build_indicators, _get_adminUnit_data
+        data = _get_adminUnit_data('city', self.city.cityName, 2025)
+        return _build_indicators(data, **kwargs)
+
+    def test_default_controls_equal_the_stored_demand(self):
+        ind = self._indicators()
+        self.assertEqual(ind['demand_units'], 50_000)
+        self.assertEqual(ind['household_size'], 2.0)
+        self.assertEqual(ind['deficit'], 5_000)
+
+    def test_slider_scales_demand_without_writing(self):
+        ind = self._indicators(household_size_override=2.5)
+        self.assertEqual(ind['demand_units'], 40_000)
+        self.assertEqual(HousingSupplyDemand.objects.get().demand_units, 50_000)
+
+    def test_what_if_helper(self):
+        self.assertEqual(chain.what_if_demand(50_000, 110, 100, 2.0, 2.0), 55_000)     # +10 % population
+        self.assertEqual(chain.what_if_demand(0, 100_000, 100_000, 2.0, 2.5), 40_000)  # no stored demand
+        self.assertEqual(chain.what_if_demand(70, 1, 1, None, None), 70)                # no size: unchanged

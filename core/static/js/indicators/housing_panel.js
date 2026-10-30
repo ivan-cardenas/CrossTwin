@@ -1,5 +1,5 @@
 // ============================================================
-// housing_panel.js — Housing indicators: mortgage-rate-slider zone
+// housing_panel.js — Housing indicators: persons-per-home-slider zone
 // styling and gauge/bar animation, for housing/partials/
 // indicators_panel.html (htmx side-panel partial). There is no
 // standalone housing page equivalent to water_page.js/heat.js —
@@ -9,23 +9,24 @@
 // ============================================================
 (function () {  // ← IIFE wrapper — all vars are local, no redeclaration
 
+  // Persons per home: the NL average is ~2.1; the track is split in thirds (1-2, 2-3, 3-4).
   function zoneStyle(val) {
-    if (val < 4)      return { col: '#22c55e', label: 'Favorable', cls: 'ok'   };
-    else if (val < 8) return { col: '#f59e0b', label: 'Elevated',  cls: 'warn' };
-    else              return { col: '#ef4444', label: 'High',      cls: 'bad'  };
+    if (val < 2)      return { col: '#f59e0b', label: 'Small households', cls: 'warn' };
+    else if (val < 3) return { col: '#22c55e', label: 'Typical',          cls: 'ok'   };
+    else              return { col: '#f59e0b', label: 'Large households', cls: 'warn' };
   }
 
   function applyZone(val) {
     const z    = zoneStyle(val);
-    const sl   = document.getElementById('mortgage-rate-slider');
+    const sl   = document.getElementById('household-size-slider');
     const tag  = document.getElementById('zone-tag');
     const disp = document.getElementById('slider-display');
-    if (disp) disp.textContent = val;
+    if (disp) disp.textContent = val.toFixed(2);
     if (sl)   sl.style.setProperty('--thumb-col', z.col);
     if (tag)  { tag.textContent = z.label; tag.className = 'threshold-tag ' + z.cls; }
   }
 
-  const slider = document.getElementById('mortgage-rate-slider');
+  const slider = document.getElementById('household-size-slider');
   if (slider) {
     applyZone(parseFloat(slider.value));
     slider.addEventListener('input', e => applyZone(parseFloat(e.target.value)));

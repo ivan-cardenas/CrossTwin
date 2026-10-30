@@ -7,6 +7,11 @@
 2. How to populate the table of Supply and Demand for housing?
 
     - Currently, I have a yearly stock balance and new constructions authorized per year. But not the real demand of housing
+    - **Answered (demand):** demand is derived, not imported: homes needed = population ÷ average persons per home. The persons per home come from CBS (households 86291NED ÷ population on 1 January 03759NED, both per municipality and year, stored in `housing.HouseholdSize`), and `HousingSupplyDemand.demand_units` is recomputed whenever the population or the household size changes. The old import that stored building permits (`VergundeNieuwbouw_2`) as demand is removed.
+    - **Still open (supply):** `supply_units` is still the CBS stock balance. Should supply be the count of BAG dwellings (`ResidentialProperty`) plus completions of the housing pipeline instead? That would also make the per-dwelling `Property.residents` add up to the housed population.
+    - **Open:** CBS household forecast (85172NED) was "temporarily unavailable" when this was built, so persons per home is carried forward from the latest year into the forecast years. Import it when it is back?
+    - **Open:** `Property.residents` uses the city's latest household size, whatever year the dashboard shows. Should it follow the selected year?
+    - **Open:** when only some neighborhoods of a city are imported, the demand is right (it uses the whole-municipality CBS population) but the panel's "inhabitants" line shows only the imported sum. Add a note?
 
 3. How to populate building address from Ligplaats? 
 	- Property info is still not connected, how to get it and connect to building?
@@ -83,5 +88,11 @@
 
 14. PET and thermal comfort indicators are calculated with a even weather, so things like wind is not on grid but the value inputed. Should it run with a wind raster better? same for a local tempearture??
 
+
+15. BUG -- `uv run` and `uv sync` fail with "crosstwin[graphify]'s requirements are unsatisfiable" (`graphify>=0.8.0` has no resolvable version). Workaround: `uv run --no-sync ...`. Needs the extra's pin fixed or the extra removed, then `uv lock`.
+
+16. The test database (`test_crosstwin`) had no PostGIS because the app's DB user cannot `CREATE EXTENSION`; tests failed with `type "geometry" does not exist` until a superuser created the extensions in it. Should `setup_db.bat` create them in the test database too?
+
+17. The CBS household-size imports (`CBS_Households`, `CBS_PopulationJan`) were verified against the live API by hand, but not yet run through the importer UI. Check that rows land in `HouseholdSize` with a sensible average (about 2.0-2.3 for most municipalities).
 
 20. LIMITATION --  THE SYSTEM USE RELATIONAL DATABASES AND MULTIPLE TABLES. SO SPEED OF JOINS CAN BE AN ISSUE. MAYBE USING NODE4J OR GRAPHDB IS A BETTER OPTION

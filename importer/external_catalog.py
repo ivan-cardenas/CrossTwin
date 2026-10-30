@@ -91,7 +91,26 @@ FIELD_MAPPINGS = {
         "__city_source__": "RegioS",
         "__city_field__": "city",
         "SaldoVoorraad_21": "supply_units",
-        "VergundeNieuwbouw_2": "demand_units",
+        # demand_units is derived (population / persons per home, HousingSupplyDemand.save()),
+        # not the building permits (VergundeNieuwbouw_2) this used to import as demand.
+    },
+    # Average persons per home = population / households, both whole-gemeente CBS
+    # on 1 January; each table fills its own HouseholdSize column and save() derives the ratio.
+    "CBS_Households": {
+        "__unique_fields__": ["city", "year"],
+        "__year_source__": "Perioden",
+        "__year_field__": "year",
+        "__city_source__": "RegioS",
+        "__city_field__": "city",
+        "ParticuliereHuishoudens_1": "households",
+    },
+    "CBS_PopulationJan": {
+        "__unique_fields__": ["city", "year"],
+        "__year_source__": "Perioden",
+        "__year_field__": "year",
+        "__city_source__": "RegioS",
+        "__city_field__": "city",
+        "BevolkingOp1Januari_1": "population",
     },
     # CBS 85173NED "Regionale prognose 2023-2050": one row per gemeente x year x
     # forecast variant, population in thousands.
@@ -497,7 +516,41 @@ EXTERNAL_DATA_CATALOG = [
       "requires_bbox": True,
       "params": {
           "filter": "Gebruiksfunctie eq 'A045364' and startswith(RegioS,'GM') and substringof('KW04',Perioden)",
-          "select": ["RegioS", "Perioden", "SaldoVoorraad_21", "VergundeNieuwbouw_2"],
+          "select": ["RegioS", "Perioden", "SaldoVoorraad_21"],
+      },
+      "enabled": True,
+    },
+
+    {
+      "key": "CBS_Households",
+      "source": "CBS",
+      "category": "Housing",
+      "name": "Private households 2014- (86291NED)",
+      "description": "CBS number of private households per municipality on 1 January. With the population on 1 January (CBS_PopulationJan) it gives the average number of persons per home, the housing dashboard's slider.",
+      "target_model": "housing.HouseholdSize",
+      "table_id": "86291NED",
+      "format": "odata",
+      "requires_bbox": True,
+      "params": {
+          "filter": "LeeftijdReferentiepersoon eq '10000' and Huishoudenssamenstelling eq 'T001139' and GrootteVanHetHuishouden eq 'T001106' and startswith(RegioS,'GM') and substringof('JJ00',Perioden)",
+          "select": ["RegioS", "Perioden", "ParticuliereHuishoudens_1"],
+      },
+      "enabled": True,
+    },
+
+    {
+      "key": "CBS_PopulationJan",
+      "source": "CBS",
+      "category": "Housing",
+      "name": "Population on 1 January (03759NED)",
+      "description": "CBS total population per municipality on 1 January. Whole-gemeente figure, so the average persons per home is right even when only some neighborhoods are imported.",
+      "target_model": "housing.HouseholdSize",
+      "table_id": "03759ned",
+      "format": "odata",
+      "requires_bbox": True,
+      "params": {
+          "filter": "Geslacht eq 'T001038' and Leeftijd eq '10000' and BurgerlijkeStaat eq 'T001019' and startswith(RegioS,'GM') and substringof('JJ00',Perioden)",
+          "select": ["RegioS", "Perioden", "BevolkingOp1Januari_1"],
       },
       "enabled": True,
     },

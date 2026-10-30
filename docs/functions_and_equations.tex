@@ -502,7 +502,21 @@ Source: \code{housing/calculations.py}, \code{housing/models.py}.
   \text{Deficit} &= D - S \\
   \text{Deficit\%} &= \frac{D - S}{D} \times 100
 \end{align}
-where $S = \texttt{supply\_units}$, $D = \texttt{demand\_units}$ (stored, not derived from population). \textbf{DAG edges:} \dagedge{Urbanization $\rightarrow$ Housing\_Demand}, \dagedge{New\_Units $\rightarrow$ Housing\_Supply}, \dagedge{Housing\_Demand $\rightarrow$ House\_Price\_Index} --- \statusgap{} (\texttt{demand\_units} is a stored value, not derived from \S\ref{sec:administrative}'s population projection; no \code{Urbanization} model exists)
+where $S = \texttt{supply\_units}$ (CBS housing stock, 86098NED) and $D = \texttt{demand\_units}$ (derived, below). \textbf{DAG edges:} \dagedge{Urbanization $\rightarrow$ Housing\_Demand}, \dagedge{New\_Units $\rightarrow$ Housing\_Supply}, \dagedge{Housing\_Demand $\rightarrow$ House\_Price\_Index} --- \statusgap{} (no \code{Urbanization} model exists; \code{Housing\_Demand $\rightarrow$ House\_Price\_Index} is not implemented)
+
+\subsubsection{Household size and housing demand --- \code{HouseholdSize.save()}, \code{HousingSupplyDemand.save()}}
+\label{sec:household-size}
+\textbf{Location:} \code{housing/chain.py} (the equations, one copy for the stored and the dashboard path), \code{housing/models.py}, \code{housing/signals.py}. With $P$ the population on 1 January and $H$ the number of private households of a city and year (CBS 03759NED and 86291NED, both whole-gemeente, so the ratio is right even when only some neighborhoods are imported):
+\begin{align}
+  \bar{s} &= P / H \qquad \text{(persons per home, \code{HouseholdSize.average\_size})} \\
+  D_{c,y} &= \operatorname{round}\!\left(P^{\text{base}}_{c,y} / \bar{s}_{c,y}\right) \qquad \text{(\code{demand\_units})} \\
+  \text{residents}(p) &= \bar{s}_{c,\text{latest}} \qquad \text{for each dwelling } p \text{ of city } c \;(\code{Property.residents})
+\end{align}
+$P^{\text{base}}_{c,y}$ is the CBS 1~January population stored with that year's \code{HouseholdSize}, else the CBS median forecast (\S\ref{sec:administrative}), else the imported population. $\bar{s}_{c,y}$ is the record of year $y$, else the closest earlier one. A dwelling is a \code{Property} whose BAG usage includes \emph{Residential function}. Dashboard what-if with population $P'$ and slider value $s'$ (never written; equals $D$ at default controls):
+\begin{equation}
+  D' = D \cdot \frac{P'}{P^{\text{base}}} \cdot \frac{\bar{s}}{s'}
+\end{equation}
+\textbf{Receivers} (\code{housing/signals.py}): \code{City}/\code{city\_population\_changed}, median \code{PopulationProjection}, \code{HouseholdSize}, \code{Property}/\code{ResidentialProperty}; bulk imports defer them (\code{deferred\_housing\_refresh}). \textbf{DAG edges:} \dagedge{Total\_Population $\rightarrow$ Housing\_Demand}, \dagedge{Household\_Size $\rightarrow$ Housing\_Demand}, \dagedge{Household\_Size $\rightarrow$ Property} --- \statusdone{}
 
 \subsection{Pipeline units --- \code{calculate\_new\_units()}}
 \textbf{Location:} \code{housing/calculations.py:66}

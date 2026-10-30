@@ -1,11 +1,12 @@
 # TODO — Unimplemented DAG Edges
 
-The DPSIR causal graph in [`core/DAG.dot`](core/DAG.dot) defines 103 edges (one, `Total_Water_Prod -> OPEX`, is listed twice). **Only 31 are backed by real derivation logic** — a `save()` method or a `calculations.py` function that actually reads the source field, not just a docstring claiming the edge. The rest are either flat stored fields with no computation, or `calculations.py` functions whose docstring claims an edge the code doesn't implement.
+The DPSIR causal graph in [`core/DAG.dot`](core/DAG.dot) defines 105 distinct edges (106 edge lines; `Total_Water_Prod -> OPEX` is listed twice). **Only 45 are backed by real derivation logic** (count as in `CLAUDE.md` › DAG Edge Coverage Gaps) — a `save()` method or a `calculations.py` function that actually reads the source field, not just a docstring claiming the edge. The rest are either flat stored fields with no computation, or `calculations.py` functions whose docstring claims an edge the code doesn't implement.
 
 This file tracks the gaps, grouped by app. When one is closed, move it to the "Done" note at the bottom (or delete the line) and add the `# DAG edges:` comment to the implementing function per the convention in `CLAUDE.md`.
 
 ## Import bugs
 
+- [ ] `uv run` / `uv sync` fail on this machine: the `crosstwin[graphify]` extra asks for `graphify>=0.8.0`, which has no resolvable version, so only `uv run --no-sync` works. Fix the extra's pin in `pyproject.toml` (or drop it) and re-lock.
 - [ ] GEE importer needs to be verified against the actual configuration of each layer in the catalog see https://developers.google.com/earth-engine/datasets/catalog 
 
 ## administrative
@@ -13,7 +14,7 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 - [x] `City.popGrowthRate` — now derived in `City.save()` from `population.annual_growth_rate()` (CBS compound annual growth rate over the city's imported projection years)
 - [x] Population curve moves with change, it should be a static curve for bounds and the change can move, the bounds work as comparative 
 - [ ] `urbanizationRate` — still a flat field, never consumed by function. This should be calculated from historical remote sensing imagery. This would be time consuming and memory intensive, so it should be a `calculations.py` function that reads a raster and averages over a time period.
-- [ ] Housing supply/demand does not depend on the projected population — `HousingSupplyDemand` demand still comes from stored rows, not `get_population()`
+- [x] Housing demand depends on the projected population — `HousingSupplyDemand.demand_units` is derived in `save()` (baseline population ÷ CBS persons per home, `housing/chain.py`) and refreshed by `housing/signals.py` when the city population, the median `PopulationProjection` or the `HouseholdSize` changes (see builtup / housing)
 - [ ] Urban heat does not depend on the projected population
 - [x] `urban_area` — now cascades Neighborhood → District → City → Province via `administrative/signals.py::_recompute_population()` (generalized to also sum `urban_area`), sourced at the Neighborhood level from `physicalEnv.LandCoverVector` spatial intersection area (`physicalEnv/signals.py`)
 - [ ] No `Urbanization` model exists — `Urbanization -> CityArea/Buildings/Streets/LandCover` has nowhere to live (the new `urban_area` cascade computes a *result* consistent with what an `Urbanization` node would represent, but does not create the node or its DAG edges)
@@ -37,6 +38,13 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 
 ## builtup / housing
 
+- [x] `Total_Population, Household_Size -> Housing_Demand` — `housing.HouseholdSize` (CBS households 86291NED + 1 January population 03759NED, catalog `CBS_Households` / `CBS_PopulationJan`, `average_size` derived in `save()`); `HousingSupplyDemand.demand_units` = baseline population ÷ persons per home. The housing dashboard slider is now *Average persons per home* (default = the CBS value of the unit; a what-if via `chain.what_if_demand`, never written)
+- [x] `Household_Size -> Property` — `builtup.Property.residents` of every dwelling (BAG *Residential function*) = the city's latest average, written by `housing/signals.py` (one `update()` per city; bulk imports deferred)
+- [ ] Verify `CBS_Households` and `CBS_PopulationJan` with a real import from the importer UI — the API columns and filters were checked by hand, but no import has run end to end yet
+- [ ] `HousingSupplyDemand` has no supply derivation — `supply_units` is still the CBS stock balance (`CBS_Housing`); decide whether supply should be the count of BAG dwellings (`ResidentialProperty`) plus `New_Units` completions instead
+- [ ] `Property.residents` uses the city's *latest* household size, not the dashboard's year; and household size is carried forward into forecast years (CBS 85172NED, the household forecast, was unavailable when this was built — import it when it is back, as `HouseholdSize` rows for 2027+)
+- [ ] Dashboard note when a city's population only covers the imported neighborhoods (the stored demand already uses the whole-gemeente CBS population, so it is right; the panel's *inhabitants* line is not)
+- [ ] `Housing_Demand -> Zoning_Status` and `Housing_Demand -> House_Price_Index` — demand is now stored, but nothing reads it yet; households are not split by tenure (owner/rental) or size class
 - [ ] No `Accessibility` model exists — `Facilities/Streets/Green_Area -> Accessibility -> Property` unimplemented (`Building.connectivity` is the closest analog, itself an open TODO)
 - [ ] `Zoning_Status -> Property` — `Property` has no `save()` logic
 - [ ] `Property -> House_Price_Index/Mortgage` — `Mortgage`/`HousePriceIndex` `calculations.py` functions only average pre-existing stored values
@@ -112,7 +120,7 @@ Collected from `#TODO` comments across the codebase:
 - [ ] Confirm where zoning data should live and how additional sources should import into it — `builtup.ZoningArea` already receives INSPIRE spatial-plan data via the `pdok_landcover_kadaster` import, but zone *type* classification still has no source (see the existing `plu:ZoningElement` note in `importer/external_catalog.py`).
 - [ ] Design how surface albedo could be derived for `LandCoverVector.material` from satellite band math (e.g. shortwave broadband albedo formulas over Sentinel-2/Landsat bands), instead of leaving `material` unset for WFS-sourced rows.
 - [ ] Design how land-cover *changes between survey years* should propagate to dependent calculations — e.g. `AvailableFreshWater.infiltrationRate_cm_h` (see the inline TODO above) and surface reflection/albedo — rather than each being a flat, independently-set field.
-- [ ] Link `builtup.Building`/`builtup.Property` to `housing` models via the BAG `woonfunctie` (residential-use) classification — no FK/relationship currently connects them.
+- [ ] Link `builtup.Building`/`builtup.Property` to `housing` models via the BAG `woonfunctie` (residential-use) classification — partly done: `housing.ResidentialProperty` (proxy on dwellings) and `Property.residents` (set from `HouseholdSize`) connect them by signal; there is still no FK from `HousingSupplyDemand`/`HousingProject` to buildings.
 - [ ] Decide whether the admin-hierarchy layer (Province/City/District/Neighborhood) should always stay available in `Config.js`'s `TOOL_CATEGORIES` for indicator grouping, given that makes map-click popup queries harder to disambiguate against other layers.
 - [ ] Decide whether groundwater should stay as its own domain — currently little derivation logic actually uses it.
 - [ ] Investigate whether underground-infrastructure navigation/visualization is feasible to add.

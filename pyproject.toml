@@ -57,6 +57,10 @@ solweig = [
     # [solweig] extra: that pins gdal from PyPI, which has no Windows wheel.
     "pet-adjusted>=0.1.5",
 ]
+# Graphify: uv sync --extra graphify
+graphify = [
+    "graphifyy>=0.8.0",
+]
 
 [dependency-groups]
 dev = [

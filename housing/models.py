@@ -4,10 +4,65 @@ from django.core.exceptions import ValidationError
 from django.conf import settings
 
 from builtup.models import Property
+from . import chain
 
 COORDINATE_SYSTEM = settings.COORDINATE_SYSTEM
-AFFORDABILITY_STRESS_LEVELS = [('low', 'Low'), ('moderate', 'Moderate'), ('high', 'High')] #TODO: check if these are the right thresholds for the affordability stress levels, 
+AFFORDABILITY_STRESS_LEVELS = [('low', 'Low'), ('moderate', 'Moderate'), ('high', 'High')] #TODO: check if these are the right thresholds for the affordability stress levels,
                                                                             #  or if we should use different thresholds based on the literature
+
+
+class HouseholdSize(models.Model):
+    """
+    Average number of persons per private household (= per occupied home) of a
+    City and year, from CBS: households of table 86291NED and the population on
+    1 January of table 03759NED (catalog CBS_Households / CBS_PopulationJan,
+    each fills its own column; City.pk is the gemeente number). The average is
+    derived, so a manually entered `average_size` is kept only without both
+    inputs.
+
+    Feeds the dashboard's "persons per home" slider, `HousingSupplyDemand`
+    (demand = population / average_size) and `builtup.Property.residents`
+    (each dwelling is occupied by this average); see housing/signals.py.
+
+    DAG edges: Total_Population -> Household_Size (CBS ratio)
+    """
+    id = models.AutoField(primary_key=True)
+    city = models.ForeignKey("administrative.City", verbose_name="City", on_delete=models.DO_NOTHING)
+    year = models.IntegerField(help_text="Year (1 January) of the household data")
+    households = models.IntegerField(null=True, blank=True, help_text="Private households (CBS 86291NED)")
+    population = models.IntegerField(null=True, blank=True, help_text="Population on 1 January (CBS 03759NED)")
+    average_size = models.FloatField(null=True, blank=True, help_text="Average persons per household = population / households")
+    last_updated = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return f"Household size {self.year} for {self.city_id}: {self.average_size}"
+
+    def save(self, *args, **kwargs):
+        size = chain.average_household_size(self.population, self.households)
+        if size is not None:
+            self.average_size = size
+        # update_or_create() (the CBS importer) saves with update_fields = the
+        # columns it was handed; without this the derived average is never written.
+        if kwargs.get("update_fields"):
+            kwargs["update_fields"] = set(kwargs["update_fields"]) | {"average_size"}
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def for_year(cls, city, year):
+        """Record of `year`, else the closest earlier one, else the earliest later one (with an average)."""
+        records = cls.objects.filter(city=city, average_size__isnull=False)
+        return (records.filter(year__lte=year).order_by('-year').first()
+                or records.order_by('year').first())
+
+    @classmethod
+    def latest(cls, city_id):
+        return cls.objects.filter(city_id=city_id, average_size__isnull=False).order_by('-year').first()
+
+    class Meta:
+        verbose_name = "Household Size"
+        verbose_name_plural = "Household Sizes"
+        constraints = [models.UniqueConstraint(fields=['city', 'year'], name='unique_household_size_city_year')]
+
 
 # Create your models here.
 class HousingSupplyDemand(models.Model):
@@ -16,12 +71,29 @@ class HousingSupplyDemand(models.Model):
     neighborhood = models.ForeignKey("administrative.Neighborhood", verbose_name="Neighborhood", on_delete=models.DO_NOTHING, null=True, blank=True)
     year = models.IntegerField(help_text="Year of the housing supply/demand data")
     supply_units = models.IntegerField(help_text="Number of housing units supplied")
-    demand_units = models.IntegerField(help_text="Number of housing units demanded")
+    demand_units = models.IntegerField(null=True, blank=True, help_text="Number of housing units demanded = baseline population of the year / average household size (derived for city records; a stored value is kept without both inputs)")
     last_updated = models.DateTimeField(default=timezone.now)
-    
+
     def __str__(self):
         return f"Housing Supply/Demand {self.year} for {self.neighborhood}"
-    
+
+    def save(self, *args, **kwargs):
+        """
+        Housing demand follows the population: homes needed = baseline
+        population of the year / average persons per home.
+
+        DAG edges: Total_Population, Household_Size -> Housing_Demand
+        """
+        if self.city_id:
+            size = HouseholdSize.for_year(self.city_id, self.year)
+            population, _partial = chain.baseline_population(self.city, self.year)
+            demand = chain.demand_units(population, size.average_size if size else None)
+            if demand is not None:
+                self.demand_units = demand
+                if kwargs.get("update_fields"):
+                    kwargs["update_fields"] = set(kwargs["update_fields"]) | {"demand_units"}
+        super().save(*args, **kwargs)
+
     class Meta:
         verbose_name = "Housing Supply and Demand"
         verbose_name_plural = "Housing Supply and Demand Records"
