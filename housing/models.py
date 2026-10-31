@@ -14,37 +14,51 @@ AFFORDABILITY_STRESS_LEVELS = [('low', 'Low'), ('moderate', 'Moderate'), ('high'
 class HouseholdSize(models.Model):
     """
     Average number of persons per private household (= per occupied home) of a
-    City and year, from CBS: households of table 86291NED and the population on
-    1 January of table 03759NED (catalog CBS_Households / CBS_PopulationJan,
-    each fills its own column; City.pk is the gemeente number). The average is
-    derived, so a manually entered `average_size` is kept only without both
-    inputs.
+    City and year. Only the households are imported (CBS 86291NED, catalog
+    CBS_Households; City.pk is the gemeente number). The population is not a
+    second import: it is the median forecast already stored in
+    administrative.PopulationProjection (CBS_PopulationForecast) for that city
+    and year, and `average_size` = population / households. Both are derived in
+    `save()` and re-derived by housing/signals.py when a forecast arrives later,
+    so the two imports can run in either order. Years without a forecast
+    (before 2023) have no average; a manually entered `population` is kept
+    for them.
 
     Feeds the dashboard's "persons per home" slider, `HousingSupplyDemand`
     (demand = population / average_size) and `builtup.Property.residents`
     (each dwelling is occupied by this average); see housing/signals.py.
 
-    DAG edges: Total_Population -> Household_Size (CBS ratio)
+    DAG edges: Total_Population -> Household_Size (ratio)
     """
     id = models.AutoField(primary_key=True)
     city = models.ForeignKey("administrative.City", verbose_name="City", on_delete=models.DO_NOTHING)
     year = models.IntegerField(help_text="Year (1 January) of the household data")
     households = models.IntegerField(null=True, blank=True, help_text="Private households (CBS 86291NED)")
-    population = models.IntegerField(null=True, blank=True, help_text="Population on 1 January (CBS 03759NED)")
-    average_size = models.FloatField(null=True, blank=True, help_text="Average persons per household = population / households")
+    population = models.IntegerField(null=True, blank=True, help_text="Population of the year: the median forecast of PopulationProjection when there is one (derived), else as entered")
+    average_size = models.FloatField(null=True, blank=True, help_text="Average persons per household = population / households (derived)")
     last_updated = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
         return f"Household size {self.year} for {self.city_id}: {self.average_size}"
 
+    def derive(self):
+        """(population, average_size) from the stored forecast; the current values where it has none."""
+        from administrative.models import PopulationProjection
+        from administrative.population import DEFAULT_SCENARIO
+
+        projected = PopulationProjection.objects.filter(
+            city_id=self.city_id, year=self.year, scenario=DEFAULT_SCENARIO,
+        ).values_list('population', flat=True).first()
+        population = projected if projected is not None else self.population
+        size = chain.average_household_size(population, self.households)
+        return population, size if size is not None else self.average_size
+
     def save(self, *args, **kwargs):
-        size = chain.average_household_size(self.population, self.households)
-        if size is not None:
-            self.average_size = size
+        self.population, self.average_size = self.derive()
         # update_or_create() (the CBS importer) saves with update_fields = the
-        # columns it was handed; without this the derived average is never written.
+        # columns it was handed; without this the derived columns are never written.
         if kwargs.get("update_fields"):
-            kwargs["update_fields"] = set(kwargs["update_fields"]) | {"average_size"}
+            kwargs["update_fields"] = set(kwargs["update_fields"]) | {"population", "average_size"}
         super().save(*args, **kwargs)
 
     @classmethod

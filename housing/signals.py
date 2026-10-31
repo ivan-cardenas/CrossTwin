@@ -73,12 +73,28 @@ def _set_city_residents(city_id):
         bump_layer_version(Property, ResidentialProperty)
 
 
+def _rederive_household_sizes(city_id):
+    """
+    Refill HouseholdSize.population / average_size from the stored forecast, for
+    a forecast imported after the households (or corrected since). A queryset
+    update(), not save(): re-saving would fire household_size_changed, which
+    comes back here.
+
+    DAG edge: Total_Population -> Household_Size
+    """
+    for row in HouseholdSize.objects.filter(city_id=city_id):
+        population, size = row.derive()
+        if (population, size) != (row.population, row.average_size):
+            HouseholdSize.objects.filter(pk=row.pk).update(population=population, average_size=size)
+
+
 def _refresh_city_housing(city_id):
-    """Recompute the city's demand records and the residents of its dwellings."""
+    """Recompute the city's household sizes, its demand records and the residents of its dwellings."""
     pending = getattr(_deferred, "pending", None)
     if pending is not None:
         pending.add(city_id)
         return
+    _rederive_household_sizes(city_id)
     _resave(HousingSupplyDemand.objects.filter(city_id=city_id))
     _set_city_residents(city_id)
 

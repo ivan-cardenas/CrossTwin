@@ -91,12 +91,30 @@ class HouseholdSizeTests(TestCase):
         row = HouseholdSize.objects.create(city=self.city, year=2025, population=100_000, households=48_000)
         self.assertAlmostEqual(row.average_size, 100_000 / 48_000)
 
-    def test_each_cbs_table_fills_its_own_column(self):
-        # the importer's update_or_create saves with update_fields = the columns it was handed
-        HouseholdSize.objects.update_or_create(city=self.city, year=2025, defaults={"households": 50_000})
-        row, _ = HouseholdSize.objects.update_or_create(city=self.city, year=2025, defaults={"population": 110_000})
+    def test_population_comes_from_the_forecast_import(self):
+        # only the households are imported; the importer's update_or_create saves with
+        # update_fields = the columns it was handed, so the derived ones must be added
+        PopulationProjection.objects.create(city=self.city, year=2025, population=110_000)
+        row, _ = HouseholdSize.objects.update_or_create(city=self.city, year=2025, defaults={"households": 50_000})
         row.refresh_from_db()
+        self.assertEqual(row.population, 110_000)
         self.assertAlmostEqual(row.average_size, 2.2)
+
+    def test_forecast_imported_after_the_households_fills_the_average(self):
+        row = HouseholdSize.objects.create(city=self.city, year=2026, households=50_000)
+        self.assertIsNone(row.average_size)             # no population for 2026 yet
+        PopulationProjection.objects.create(city=self.city, year=2026, population=120_000)
+        row.refresh_from_db()
+        self.assertAlmostEqual(row.average_size, 2.4)
+        PopulationProjection.objects.filter(city=self.city, year=2026).update(population=100_000)
+        PopulationProjection.objects.get(city=self.city, year=2026).save()   # a corrected forecast
+        row.refresh_from_db()
+        self.assertAlmostEqual(row.average_size, 2.0)
+
+    def test_other_forecast_variants_are_not_the_population(self):
+        PopulationProjection.objects.create(city=self.city, year=2026, scenario="high", population=999_999)
+        row = HouseholdSize.objects.create(city=self.city, year=2026, households=50_000)
+        self.assertIsNone(row.population)
 
     def test_for_year_uses_the_closest_earlier_record(self):
         HouseholdSize.objects.create(city=self.city, year=2020, population=100, households=50)
@@ -112,7 +130,8 @@ class DemandFollowsPopulationTests(TestCase):
     def setUp(self):
         self.hood = make_neighborhood()           # currentPopulation 1200: only the imported part
         self.city = self.hood.district.city
-        HouseholdSize.objects.create(city=self.city, year=2025, population=100_000, households=50_000)
+        PopulationProjection.objects.create(city=self.city, year=2025, population=100_000)
+        HouseholdSize.objects.create(city=self.city, year=2025, households=50_000)   # average 2.0
 
     def _record(self, year):
         return HousingSupplyDemand.objects.create(city=self.city, year=year, supply_units=45_000)
@@ -141,12 +160,13 @@ class DemandFollowsPopulationTests(TestCase):
     def test_new_household_size_updates_demand(self):
         record = self._record(2025)
         HouseholdSize.objects.filter(city=self.city, year=2025).first().delete()
-        HouseholdSize.objects.create(city=self.city, year=2025, population=100_000, households=40_000)
+        HouseholdSize.objects.create(city=self.city, year=2025, households=40_000)
         record.refresh_from_db()
         self.assertEqual(record.demand_units, 40_000)   # 100 000 / 2.5
 
     def test_city_population_cascade_updates_demand(self):
-        # a city without CBS population for the year falls back to the imported population
+        # a city without a CBS forecast falls back to the imported population
+        PopulationProjection.objects.all().delete()
         self.city.refresh_from_db()   # the cascade writes with update(): the factory's instance is stale
         record = self._record(2026)
         self.assertEqual(record.demand_units, round(self.city.currentPopulation / 2.0))

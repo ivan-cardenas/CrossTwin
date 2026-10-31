@@ -33,7 +33,8 @@ def baseline_population(city, year):
     City.currentPopulation is the sum of the neighborhoods imported locally,
     often far below the real city, while the household stock is whole-gemeente
     CBS, so the local sum must not be divided by a CBS household size. In order:
-      1. the CBS 1 January population stored with that year's HouseholdSize;
+      1. the population stored with that year's HouseholdSize (the forecast
+         median of that year, or a manually entered value);
       2. the CBS median forecast (watersupply.chain.baseline_population), when
          the city has projections;
       3. the current population, with partial=True: it only covers what is

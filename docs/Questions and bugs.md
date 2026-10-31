@@ -7,7 +7,7 @@
 2. How to populate the table of Supply and Demand for housing?
 
     - Currently, I have a yearly stock balance and new constructions authorized per year. But not the real demand of housing
-    - **Answered (demand):** demand is derived, not imported: homes needed = population ÷ average persons per home. The persons per home come from CBS (households 86291NED ÷ population on 1 January 03759NED, both per municipality and year, stored in `housing.HouseholdSize`), and `HousingSupplyDemand.demand_units` is recomputed whenever the population or the household size changes. The old import that stored building permits (`VergundeNieuwbouw_2`) as demand is removed.
+    - **Answered (demand):** demand is derived, not imported: homes needed = population ÷ average persons per home. The persons per home come from CBS (households 86291NED ÷ the median population forecast already imported for the population dock, both per municipality and year, stored in `housing.HouseholdSize`; only the households are a housing import), and `HousingSupplyDemand.demand_units` is recomputed whenever the population or the household size changes. The old import that stored building permits (`VergundeNieuwbouw_2`) as demand is removed.
     - **Still open (supply):** `supply_units` is still the CBS stock balance. Should supply be the count of BAG dwellings (`ResidentialProperty`) plus completions of the housing pipeline instead? That would also make the per-dwelling `Property.residents` add up to the housed population.
     - **Open:** CBS household forecast (85172NED) was "temporarily unavailable" when this was built, so persons per home is carried forward from the latest year into the forecast years. Import it when it is back?
     - **Open:** `Property.residents` uses the city's latest household size, whatever year the dashboard shows. Should it follow the selected year?
@@ -93,6 +93,6 @@
 
 16. The test database (`test_crosstwin`) had no PostGIS because the app's DB user cannot `CREATE EXTENSION`; tests failed with `type "geometry" does not exist` until a superuser created the extensions in it. Should `setup_db.bat` create them in the test database too?
 
-17. The CBS household-size imports (`CBS_Households`, `CBS_PopulationJan`) were verified against the live API by hand, but not yet run through the importer UI. Check that rows land in `HouseholdSize` with a sensible average (about 2.0-2.3 for most municipalities).
+17. The CBS household import (`CBS_Households`) was verified against the live API by hand, but not yet run through the importer UI. Check that rows land in `HouseholdSize` with a sensible average (about 2.0-2.3 for most municipalities).
 
 20. LIMITATION --  THE SYSTEM USE RELATIONAL DATABASES AND MULTIPLE TABLES. SO SPEED OF JOINS CAN BE AN ISSUE. MAYBE USING NODE4J OR GRAPHDB IS A BETTER OPTION

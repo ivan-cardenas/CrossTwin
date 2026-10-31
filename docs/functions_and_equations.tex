@@ -506,13 +506,13 @@ where $S = \texttt{supply\_units}$ (CBS housing stock, 86098NED) and $D = \textt
 
 \subsubsection{Household size and housing demand --- \code{HouseholdSize.save()}, \code{HousingSupplyDemand.save()}}
 \label{sec:household-size}
-\textbf{Location:} \code{housing/chain.py} (the equations, one copy for the stored and the dashboard path), \code{housing/models.py}, \code{housing/signals.py}. With $P$ the population on 1 January and $H$ the number of private households of a city and year (CBS 03759NED and 86291NED, both whole-gemeente, so the ratio is right even when only some neighborhoods are imported):
+\textbf{Location:} \code{housing/chain.py} (the equations, one copy for the stored and the dashboard path), \code{housing/models.py}, \code{housing/signals.py}. With $P$ the median population forecast of the city and year (\code{PopulationProjection}, CBS 85173NED, imported once for the whole project) and $H$ the number of private households (CBS 86291NED, the only housing import), both whole-gemeente, so the ratio is right even when only some neighborhoods are imported:
 \begin{align}
   \bar{s} &= P / H \qquad \text{(persons per home, \code{HouseholdSize.average\_size})} \\
   D_{c,y} &= \operatorname{round}\!\left(P^{\text{base}}_{c,y} / \bar{s}_{c,y}\right) \qquad \text{(\code{demand\_units})} \\
   \text{residents}(p) &= \bar{s}_{c,\text{latest}} \qquad \text{for each dwelling } p \text{ of city } c \;(\code{Property.residents})
 \end{align}
-$P^{\text{base}}_{c,y}$ is the CBS 1~January population stored with that year's \code{HouseholdSize}, else the CBS median forecast (\S\ref{sec:administrative}), else the imported population. $\bar{s}_{c,y}$ is the record of year $y$, else the closest earlier one. A dwelling is a \code{Property} whose BAG usage includes \emph{Residential function}. Dashboard what-if with population $P'$ and slider value $s'$ (never written; equals $D$ at default controls):
+$P^{\text{base}}_{c,y}$ is the population stored with that year's \code{HouseholdSize} (the forecast median, or a manually entered value), else the CBS median forecast (\S\ref{sec:administrative}), else the imported population. Years before the forecast starts (2023) have no $\bar{s}$ and use the closest year. $\bar{s}_{c,y}$ is the record of year $y$, else the closest earlier one. A dwelling is a \code{Property} whose BAG usage includes \emph{Residential function}. Dashboard what-if with population $P'$ and slider value $s'$ (never written; equals $D$ at default controls):
 \begin{equation}
   D' = D \cdot \frac{P'}{P^{\text{base}}} \cdot \frac{\bar{s}}{s'}
 \end{equation}
