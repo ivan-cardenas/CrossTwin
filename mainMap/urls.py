@@ -1,5 +1,5 @@
 from django.urls import path, register_converter
-from .views import model_geojson, map_view, available_layers, layer_bounds, admin_unit_at_point, dashboard_summary, population_panel
+from .views import model_geojson, map_view, landing_view, available_layers, layer_bounds, admin_unit_at_point, dashboard_summary, population_panel
 from core import editing
 from . import settings_views
 from core import views
@@ -23,6 +23,7 @@ app_name = "map"
 urlpatterns = [
     # Map page
     path('', map_view, name='map'),
+    path('welcome/', landing_view, name='landing'),
 
     # API endpoints
     path('api/layers/', available_layers, name='available_layers'),

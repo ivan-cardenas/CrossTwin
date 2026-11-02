@@ -262,7 +262,8 @@ function add3DBuildings() {
       type: 'fill-extrusion',
       minzoom: 5,
       paint: {
-        'fill-extrusion-color': '#d0e0f0',
+        
+        'fill-extrusion-color': '#bd643b',
         'fill-extrusion-height': [
           'interpolate', ['linear'], ['zoom'],
           13, 0, 16, ['get', 'height']
@@ -274,7 +275,11 @@ function add3DBuildings() {
         'fill-extrusion-opacity': [
           'interpolate', ['linear'], ['zoom'],
           5, 1, 20, 0.7 
-        ]
+        ],
+        'fill-extrusion-cast-shadow': true,
+        
+        'fill-extrusion-line-color': '#494949',
+        'fill-extrusion-height-alignment': 'terrain',
       }
     }, labelLayerId);
   }
