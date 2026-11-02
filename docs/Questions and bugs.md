@@ -89,8 +89,6 @@
 14. PET and thermal comfort indicators are calculated with a even weather, so things like wind is not on grid but the value inputed. Should it run with a wind raster better? same for a local tempearture??
 
 
-15. BUG -- `uv run` and `uv sync` fail with "crosstwin[graphify]'s requirements are unsatisfiable" (`graphify>=0.8.0` has no resolvable version). Workaround: `uv run --no-sync ...`. Needs the extra's pin fixed or the extra removed, then `uv lock`.
-
 16. The test database (`test_crosstwin`) had no PostGIS because the app's DB user cannot `CREATE EXTENSION`; tests failed with `type "geometry" does not exist` until a superuser created the extensions in it. Should `setup_db.bat` create them in the test database too?
 
 17. The CBS household import (`CBS_Households`) was verified against the live API by hand, but not yet run through the importer UI. Check that rows land in `HouseholdSize` with a sensible average (about 2.0-2.3 for most municipalities).

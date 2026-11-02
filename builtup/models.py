@@ -47,7 +47,7 @@ class Street(models.Model):
     surfaceMaterial = models.ForeignKey(SurfaceMaterialProperties, verbose_name="Surface Material", on_delete=models.DO_NOTHING, null=True, blank=True)
     classification = models.CharField(max_length=50, choices=[('primary', 'Primary'), ('secondary', 'Secondary'), ('residential', 'Residential')], help_text="Street classification (e.g., primary, secondary, residential)")
     width = models.FloatField(help_text="Width of the street in meters")
-    geom = models.LineStringField(srid=CoordinateSystem)
+    geom = models.MultiLineStringField(srid=CoordinateSystem)
     
     def __str__(self):
         return self.name
@@ -172,6 +172,9 @@ class Building(models.Model):
     geom = models.MultiPolygonField(srid=CoordinateSystem)
     
     def save(self, *args, **kwargs):
+        # WFS delivers the BAG identificatie as a string ("0153100000212134");
+        # receivers compare the pk as a number (physicalEnv.signals._is_editor_building).
+        self.id = self._meta.pk.to_python(self.id)
         if self.usageFunction or self.usageFunction == "":
             self.usageFunction = bag_usage_labels(self.usageFunction)
             label_to_code = {label: code for code, label in self.BAG_USAGE_FUNCTIONS}

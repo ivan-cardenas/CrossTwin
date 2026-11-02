@@ -58,6 +58,16 @@ class BuildingDerivedFieldsTests(TestCase):
         self.assertEqual(building.usageFunction, ["Undefined"])
         self.assertEqual(building.buildingType, "")
 
+    def test_string_id_from_wfs_is_imported(self):
+        # WFS delivers identificatie as a zero-padded string; the first import
+        # of a building creates it with that value as its pk.
+        building, created = Building.objects.update_or_create(
+            id="0153100000212134", defaults={"usageFunction": "woonfunctie", "geom": _square(0, 0)})
+
+        self.assertTrue(created)
+        self.assertEqual(building.pk, 153100000212134)
+        self.assertTrue(Building.objects.filter(pk=153100000212134).exists())
+
 
 # -- Indicator dashboard ------------------------------------------------------
 
