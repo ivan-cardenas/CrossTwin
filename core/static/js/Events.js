@@ -24,11 +24,12 @@ function initializeUI() {
     toolbar.querySelectorAll('.tool-button').forEach(b =>
       b.classList.toggle('active', b === btn)
     );
+    sync3DBuildingColor();
 
     if (hint) hint.remove();
 
     // Basemap switch
-    changeBasemap(tool === 'satellite' ? 'satellite' : 'light');
+    changeBasemap(tool === 'satellite' ? 'satellite' : 'DigitalTwin');
 
     // Groundwater WMS toggle
     if (tool === 'groundwater') toggleGroundwaterLayer();

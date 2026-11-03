@@ -287,3 +287,30 @@ def _tile_response(content, content_type, ttl, server_timing):
     )
     response['Server-Timing'] = server_timing
     return response
+
+
+def live_weather(request):
+    """
+    Current weather at ?lat=&lng= (WGS84) for the map's weather pill
+    (weather/live.py, Open-Meteo). URL: /weather/live/
+    """
+    from django.http import JsonResponse
+
+    from .live import LiveWeatherError, current_weather, enabled
+
+    try:
+        lat = float(request.GET["lat"])
+        lng = float(request.GET["lng"])
+    except (KeyError, ValueError):
+        return JsonResponse({"error": "Give lat and lng."}, status=400)
+    if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        return JsonResponse({"error": "lat/lng out of range."}, status=400)
+    if not enabled():
+        return JsonResponse({"error": "Live weather is turned off."}, status=503)
+    try:
+        values = current_weather(lat, lng)
+    except LiveWeatherError as e:
+        return JsonResponse({"error": str(e)}, status=502)
+    response = JsonResponse(values)
+    response["Cache-Control"] = "private, max-age=300"
+    return response

@@ -13,6 +13,7 @@ from .calculations import (
     calculate_nbs_coverage,
     get_latest_meteorology,
 )
+from .chain import WEATHER_LIMITS, clamp_weather, weather_heat_stress
 
 
 # ── constants ─────────────────────────────────────────────────────────
@@ -41,7 +42,57 @@ def _get_adminUnit_data(level, location):
         'thermal': thermal,
         'nbs': nbs,
         'meteorology': meteo,
+        'weather': _baseline_weather(adminUnit, meteo),
     }
+
+
+def _baseline_weather(adminUnit, meteo):
+    """
+    The weather the what-if starts from: live Open-Meteo values at a point of
+    the unit (weather/live.py), else the latest stored station reading,
+    else None. Keys: ta_c, rh_pct, wind_ms, kdown_wm2, source, time,
+    description, icon.
+    """
+    from weather.live import current_weather_or_none
+
+    geom = getattr(adminUnit, 'geom', None)
+    if geom is not None:
+        point = geom.point_on_surface.transform(4326, clone=True)
+        live = current_weather_or_none(point.y, point.x)
+        if live is not None:
+            return live
+    return _station_weather(meteo)
+
+
+def _station_weather(meteo):
+    """A get_latest_meteorology() record in the what-if's keys (None without one)."""
+    if not meteo or meteo.get('temperature_C') is None:
+        return None
+    when = meteo.get('datetime')
+    return {
+        'ta_c': meteo.get('temperature_C'),
+        'rh_pct': meteo.get('humidity_pct'),
+        'wind_ms': meteo.get('wind_speed_m_s'),
+        'kdown_wm2': meteo.get('solar_radiation_W_m2'),
+        'source': 'Weather station',
+        'time': when.isoformat() if when else None,
+        'description': None,
+        'icon': '🌡️',
+    }
+
+
+def weather_overrides(params):
+    """The panel's weather what-if values from request params, clamped (bad values ignored)."""
+    overrides = {}
+    for name in WEATHER_LIMITS:
+        raw = params.get(name)
+        if raw in (None, ''):
+            continue
+        try:
+            overrides[name] = clamp_weather(name, raw)
+        except (TypeError, ValueError):
+            continue
+    return overrides
 
 
 MOCK_DATA = {
@@ -91,13 +142,48 @@ MOCK_DATA = {
 }
 
 
-def _build_indicators(data):
-    """Pure function: takes raw data dict, returns display-ready indicators."""
+def _weather_indicators(baseline, overrides):
+    """
+    Weather card + what-if: the values in use (baseline with any override),
+    the baseline itself for the panel's reset, and the weather-only heat
+    stress (urban_heat/chain.py). Pure.
+    """
+    baseline = baseline or {}
+    overrides = overrides or {}
+    current = {name: overrides.get(name, baseline.get(name)) for name in WEATHER_LIMITS}
+    whatif = any(
+        name in overrides and overrides[name] != baseline.get(name) for name in WEATHER_LIMITS
+    )
+    stress = weather_heat_stress(current['ta_c'], current['rh_pct'], current['wind_ms'], current['kdown_wm2'])
+    wbgt = stress['wbgt_estimate_c'] if stress else None
+    return {
+        'weather': current,
+        'weather_baseline': {name: baseline.get(name) for name in WEATHER_LIMITS},
+        'weather_whatif': whatif,
+        'weather_source': baseline.get('source'),
+        'weather_time': baseline.get('time'),
+        'weather_description': baseline.get('description'),
+        'weather_icon': baseline.get('icon') or '🌡️',
+        'weather_stress': stress,
+        'weather_wbgt_category': classify_wbgt(wbgt),
+        'weather_wbgt_color': wbgt_color(wbgt),
+    }
+
+
+def _build_indicators(data, weather_override=None):
+    """
+    Pure function: takes raw data dict, returns display-ready indicators.
+    weather_override: the heat panel's weather what-if (weather_overrides()),
+    applied on top of data['weather']; never stored.
+    """
     thermal = data.get('thermal', {})
     vegetation = data.get('vegetation', {})
     morphology = data.get('morphology', {})
     nbs = data.get('nbs', {})
     meteo = data.get('meteorology') or {}
+    weather = _weather_indicators(
+        data.get('weather') or _station_weather(data.get('meteorology')), weather_override)
+    current = weather['weather']
 
     # Extract mean values from thermal indices (or None)
     lst_stats  = thermal.get('lst')
@@ -174,11 +260,13 @@ def _build_indicators(data):
         'nbs_area_km2':       nbs.get('total_area_km2', 0),
         'nbs_area_m2':        nbs.get('total_area_m2', 0),
 
-        # ── Meteorology ──
-        'air_temp_C':         meteo.get('temperature_C'),
-        'humidity_pct':       meteo.get('humidity_pct'),
-        'wind_speed_m_s':     meteo.get('wind_speed_m_s'),
-        'solar_radiation':    meteo.get('solar_radiation_W_m2'),
+        # ── Meteorology (live or station baseline, with the what-if applied) ──
+        'air_temp_C':         current['ta_c'],
+        'humidity_pct':       current['rh_pct'],
+        'wind_speed_m_s':     current['wind_ms'],
+        'solar_radiation':    current['kdown_wm2'],
+        'station_air_temp_C': meteo.get('temperature_C'),
+        **weather,
     }
 
 
@@ -197,7 +285,7 @@ def heat_indicators(request, level, location):
         'adminUnit': data['adminUnit'],
         'level': level,
         'location': location,
-        'indicators': _build_indicators(data),
+        'indicators': _build_indicators(data, weather_overrides(request.GET)),
     }
 
     if request.headers.get('HX-Request'):
@@ -206,9 +294,11 @@ def heat_indicators(request, level, location):
 
 
 def recalculate_indicators(request, level, location):
-    """HTMX endpoint: recalculate with optional vegetation override.
+    """HTMX endpoint: recalculate with optional vegetation and weather overrides.
 
-    This allows what-if analysis: "what if vegetation coverage were X%?"
+    What-ifs: "what if vegetation coverage were X%?" and "what if the air
+    temperature / humidity / wind / radiation were ...?" (ta_c, rh_pct,
+    wind_ms, kdown_wm2). Nothing is written.
     """
     data = _get_adminUnit_data(level, location)
     if data is None:
@@ -216,7 +306,7 @@ def recalculate_indicators(request, level, location):
 
     # Allow vegetation override for scenario analysis
     veg_override = request.GET.get('vegetation_pct')
-    indicators = _build_indicators(data)
+    indicators = _build_indicators(data, weather_overrides(request.GET))
 
     if veg_override is not None:
         indicators['vegetation_pct'] = float(veg_override)

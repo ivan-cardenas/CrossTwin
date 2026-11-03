@@ -17,6 +17,9 @@ Dependency chain implemented here (source -> dependent):
     WaterTreatment, MeteredResidential, PipeNetwork -> OPEX
     PipeNetwork, UsersLocation -> CoverageWaterSupply
     NonRevenueWater -> ILI of the same-year Real-loss records
+    SoilArea, SoilType, LandCoverVector, GroundwaterDepth (soil x land cover)
+    and daily Meteorology (rain, reference ET)
+        -> AvailableFreshWater infiltration rate, recharge depth and yield
 
 Conventions (see administrative/signals.py): every receiver has a dispatch_uid,
 dependents are refreshed by re-saving them so their own save() logic (and the
@@ -40,6 +43,10 @@ from django.utils import timezone
 from administrative.models import City, PopulationProjection
 from administrative.population import DEFAULT_SCENARIO
 from administrative.signals import city_population_changed
+from physicalEnv.landcover import landcover_created
+from physicalEnv.models import GroundwaterDepth, LandCoverVector, SoilArea, SoilType
+from weather.knmi import daily_water_balance_changed
+from weather.models import Meteorology
 
 from .models import (
     AvailableFreshWater, ConsumptionCapita, CoverageWaterSupply, ExtractionWater,
@@ -120,24 +127,35 @@ def deferred_water_refresh():
 
     _deferred.pending = set()
     _deferred.security = set()
+    _deferred.freshwater = set()
     try:
         yield
     except BaseException:
-        pending, security = _deferred.pending, _deferred.security
-        _deferred.pending = _deferred.security = None
+        pending, security, freshwater = _deferred.pending, _deferred.security, _deferred.freshwater
+        _deferred.pending = _deferred.security = _deferred.freshwater = None
         try:
-            _flush_water_refresh(pending, security)
+            _flush_water_refresh(pending, security, freshwater)
         except Exception:
             # e.g. the transaction is already broken; don't mask the original error
             logger.exception("Deferred water refresh failed after an aborted block")
         raise
     else:
-        pending, security = _deferred.pending, _deferred.security
-        _deferred.pending = _deferred.security = None
-        _flush_water_refresh(pending, security)
+        pending, security, freshwater = _deferred.pending, _deferred.security, _deferred.freshwater
+        _deferred.pending = _deferred.security = _deferred.freshwater = None
+        _flush_water_refresh(pending, security, freshwater)
 
 
-def _flush_water_refresh(city_ids, security_city_ids=()):
+def _flush_water_refresh(city_ids, security_city_ids=(), freshwater_ids=()):
+    security_city_ids = set(security_city_ids)
+    if freshwater_ids:
+        # Each source's post_save refreshes every city's supply security:
+        # collect those requests and run them once with the others below.
+        _deferred.security = set()
+        try:
+            _resave(AvailableFreshWater.objects.filter(pk__in=freshwater_ids))
+        finally:
+            security_city_ids |= _deferred.security
+            _deferred.security = None
     for city_id in city_ids:
         _refresh_city_water(city_id)
     # cities whose chain was just re-run already have a fresh SupplySecurity
@@ -331,3 +349,149 @@ def nrw_changed(sender, instance, raw=False, **kwargs):
     uarl = sum(r.loss_Quantity_m3 * r.UnavoidableLossses_PCT / 100 for r in real)
     ili = round(carl / uarl, 2) if uarl > 0 else None
     real.update(ILI=ili, last_updated=timezone.now())
+
+
+# ── soil, land cover, groundwater, meteorology -> available fresh water ─
+
+def _skip_raw(raw):
+    """
+    Fixtures and backup loads skip the refresh, except the map editor's
+    Restore: it rewrites land cover with raw saves (the urban-fabric ring of
+    a building) inside deferred_cascades(), so the sources over it are
+    re-derived once at the end.
+    """
+    if not raw:
+        return False
+    from core.editing import is_restoring
+    return not is_restoring()
+
+
+def refresh_freshwater(extent=None, pks=None):
+    """
+    Re-save the AvailableFreshWater sources overlapping `extent` (a geometry
+    in the storage CRS) or with the given pks, so save() re-derives their
+    infiltration rate, recharge depth and yield. Queued while
+    deferred_water_refresh() is active. Also called by the importer's bulk
+    finalizers (importer/batching.py), since bulk_create fires no post_save.
+    """
+    if pks is None:
+        if extent is None:
+            return
+        pks = AvailableFreshWater.objects.filter(geom__intersects=extent).values_list('pk', flat=True)
+    pks = set(pks)
+    if not pks:
+        return
+    pending = getattr(_deferred, "freshwater", None)
+    if pending is not None:
+        pending.update(pks)
+        return
+    _flush_water_refresh((), (), pks)
+
+
+def bbox_polygon(box, srid=None):
+    """Polygon of an (xmin, ymin, xmax, ymax) extent in the storage CRS (None for None)."""
+    from django.conf import settings
+    from django.contrib.gis.geos import Polygon
+
+    if not box:
+        return None
+    polygon = Polygon.from_bbox(box)
+    polygon.srid = srid or settings.COORDINATE_SYSTEM
+    return polygon
+
+
+def _raster_extent(raster):
+    if raster is None:
+        return None
+    try:
+        return bbox_polygon(raster.extent, raster.srid)
+    except Exception:  # an unreadable raster: nothing to locate
+        return None
+
+
+@receiver(post_save, sender=SoilArea, dispatch_uid="water_soilarea_saved")
+@receiver(post_delete, sender=SoilArea, dispatch_uid="water_soilarea_deleted")
+@receiver(post_save, sender=LandCoverVector, dispatch_uid="water_landcover_saved")
+@receiver(post_delete, sender=LandCoverVector, dispatch_uid="water_landcover_deleted")
+def soil_or_landcover_changed(sender, instance, raw=False, **kwargs):
+    """
+    DAG edges: LandCover -> Infiltration -> Available_FW
+               Soil_Type -> Infiltration -> Available_FW
+    """
+    if not _skip_raw(raw):
+        refresh_freshwater(instance.geom)
+
+
+@receiver(post_save, sender=SoilType, dispatch_uid="water_soiltype_saved")
+def soil_type_changed(sender, instance, created=False, raw=False, **kwargs):
+    """A renamed soil type can change its hydrologic group. DAG edge: Soil_Type -> Infiltration"""
+    from django.contrib.gis.db.models import Extent
+
+    if created or _skip_raw(raw):
+        return  # a new type has no areas yet
+    box = SoilArea.objects.filter(soil_type=instance).aggregate(e=Extent('geom'))['e']
+    refresh_freshwater(bbox_polygon(box))
+
+
+@receiver(post_save, sender=GroundwaterDepth, dispatch_uid="water_groundwater_saved")
+@receiver(post_delete, sender=GroundwaterDepth, dispatch_uid="water_groundwater_deleted")
+def groundwater_changed(sender, instance, raw=False, **kwargs):
+    """
+    Shallow groundwater turns undrained soil into group D.
+    DAG edge: Soil_Type -> Infiltration (groundwater rule)
+    """
+    if not _skip_raw(raw):
+        refresh_freshwater(_raster_extent(instance.depth_raster))
+
+
+@receiver(landcover_created, sender=LandCoverVector, dispatch_uid="water_landcover_created")
+def landcover_rows_created(sender, pks, **kwargs):
+    """Land cover inserted with raw SQL by the map editor (physicalEnv/landcover.py). DAG edge: LandCover -> Infiltration"""
+    from django.contrib.gis.db.models import Extent
+
+    box = LandCoverVector.objects.filter(pk__in=pks).aggregate(e=Extent('geom'))['e']
+    refresh_freshwater(bbox_polygon(box))
+
+
+def _sources_near_stations(station_ids):
+    """
+    Sources that may take their meteorology from one of these stations: those
+    with one of them among the stations weather.water_balance would try.
+    """
+    from django.contrib.gis.db.models.functions import Distance
+
+    from weather.models import WeatherStation
+    from weather.water_balance import MAX_STATIONS
+
+    station_ids = set(station_ids)
+    daily = Meteorology.objects.filter(reference_et_mm__isnull=False).values('station_id')
+    candidates = WeatherStation.objects.filter(pk__in=daily)
+    pks = []
+    for source in AvailableFreshWater.objects.only('pk', 'geom'):
+        if source.geom is None:
+            continue
+        nearest = (candidates.annotate(d=Distance('geom', source.geom.point_on_surface))
+                   .order_by('d').values_list('pk', flat=True)[:MAX_STATIONS])
+        # a deleted station's rows are gone: it is no longer a candidate, so
+        # refresh sources whose nearest candidates it could have displaced
+        if station_ids & set(nearest) or len(nearest) < MAX_STATIONS:
+            pks.append(source.pk)
+    return pks
+
+
+@receiver(daily_water_balance_changed, dispatch_uid="water_daily_balance_imported")
+def daily_balance_imported(sender, station_ids, **kwargs):
+    """Bulk KNMI daily import (weather/knmi.py::store_daily). DAG edge: Meteorology -> Available_FW"""
+    refresh_freshwater(pks=_sources_near_stations(station_ids))
+
+
+@receiver(post_save, sender=Meteorology, dispatch_uid="water_meteorology_saved")
+@receiver(post_delete, sender=Meteorology, dispatch_uid="water_meteorology_deleted")
+def meteorology_changed(sender, instance, raw=False, **kwargs):
+    """
+    A daily water-balance row (reference ET set) saved or deleted one at a time.
+    DAG edge: Meteorology -> Available_FW
+    """
+    if raw or instance.reference_et_mm is None:
+        return
+    refresh_freshwater(pks=_sources_near_stations([instance.station_id]))

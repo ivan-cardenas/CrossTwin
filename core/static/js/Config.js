@@ -6,7 +6,7 @@ let map;
 let availableLayers = [];
 const loadedLayers = {};
 const layerVisibility = {};
-let activeBasemap = 'light';
+let activeBasemap = 'DigitalTwin';
 let tilted = true;
 let activeTool = 'overview';
 let cityNameTimeout;
@@ -29,6 +29,8 @@ let CONFIG = {
 // See docs/PERFORMANCE.md §1.
 const VIEWPORT_LOAD_MIN_FEATURES = 5000;
 const VIEWPORT_RELOAD_DELAY_MS = 350;
+
+
 
 // Coordinates sent to the server: 4 decimals of a degree is ~11 m (~7 m of
 // longitude here), finer than any lookup needs. Shorter URLs, and requests
@@ -61,6 +63,7 @@ function roundBboxInUrl(url) {
 
 // Basemap styles
 const BASEMAPS = {
+  DigitalTwin: 'mapbox://styles/cygnus26/cmh0rq554001y01sc2i2z9i6k',
   light:     'mapbox://styles/mapbox/light-v11',
   dark:      'mapbox://styles/mapbox/dark-v11',
   streets:   'mapbox://styles/mapbox/streets-v12',
@@ -115,3 +118,68 @@ const TOOL_CONTENT = {
     `
   }
 };
+
+const LOADER_SHOW_DELAY_MS = 5000;  // only surface it for genuinely slow loads
+
+const HIDES_3D_BUILDINGS_APPS = new Set(['builtup']); // app to hide 3D buildings when any of its layers is visible
+const HIDES_3D_BUILDINGS_KEYS = new Set(['physicalEnv.DSM']);
+
+const BUILDING_COLOR_DEFAULT = '#bd643b';
+const BUILDING_COLOR_BY_TOOL = {
+  water:       '#cde5fa',
+  // temperature: '#c0504d',
+  // housing:     '#d9a441',
+  groundwater: '#b4e7e3',
+};
+
+// ── GUIDED TOUR ────────────────────────────────────────────────────────────
+const TOUR_STEPS = [
+  {
+    num: 1,
+    title: "① Select Topic",
+    desc: "Start by picking a thematic domain from the left toolbar — Housing, Energy, Heat, Water Supply, and more. Each icon switches the data context for the entire platform.",
+    target: ".toolbar",
+  },
+  {
+    num: 2,
+    title: "② Explore Current Data",
+    desc: "Click the 📑 Administrative Data icon to open the Database Layers panel. Browse all available spatial datasets, toggle individual layers on/off, and choose a basemap style.",
+    target: '[data-tool="administrative"]',
+  },
+  {
+    num: 3,
+    title: "③ Explore Indicators",
+    desc: "Select a thematic tool like 🚰 Water Supply or 🌡️ Heat to load live KPI dashboards in the right panel. Indicators are calculated directly from the spatial database.",
+    target: ".side-panel",
+  },
+  {
+    num: 4,
+    title: "④ Select Scenarios",
+    desc: "Use the Dashboard and Scenarios buttons at the bottom-right. Adjust sliders and input overrides (e.g. consumption, interest rate) to model what-if futures and compare years.",
+    target: ".bottom-right",
+  },
+  {
+    num: 5,
+    title: "⑤ Import Data",
+    desc: "Open the Actions menu in the bottom bar. Upload your own GeoJSON or Shapefile with 'Upload Data', or pull live datasets from PDOK, CBS, Sentinel-2, and Google Earth Engine via 'Retrieve Data from APIs'.",
+    target: "#actions-menu-btn",
+  },
+  {
+    num: 6,
+    title: "⑥ Run Analysis",
+    desc: "With scenario parameters set, trigger cross-domain calculations. The DPSIR causal network automatically links drivers (e.g. population growth) to urban impacts (heat, water stress).",
+    target: null,
+  },
+  {
+    num: 7,
+    title: "⑦ View Results",
+    desc: "Results populate the side panel as charts, KPI cards, and new map layers. Use the year selector in the Actions menu to compare the current baseline against future scenario projections.",
+    target: "#panel-body",
+  },
+  {
+    num: 8,
+    title: "⑧ Export Results",
+    desc: "Download scenario outputs as GeoJSON, CSV, or raster files. Share results with stakeholders or import into external GIS tools and technical reports.",
+    target: null,
+  },
+];

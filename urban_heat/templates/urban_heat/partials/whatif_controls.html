@@ -1,0 +1,104 @@
+{% load l10n %}
+{% comment %} Heat what-if controls (weather + vegetation), shared by the side-panel
+partial and the standalone dashboard. Driven by core/static/js/indicators/heat.js.
+{% endcomment %}
+  <form id="heat-whatif">
+
+  <!-- Weather what-if: starts at the live (or station) weather; the map's
+       weather pill mirrors it (heat.js -> WeatherPill.js). Never stored. -->
+  {% localize off %}
+  <div class="slider-container heat-weather-controls"
+       data-live-ta_c="{{ indicators.weather_baseline.ta_c|default_if_none:'' }}"
+       data-live-rh_pct="{{ indicators.weather_baseline.rh_pct|default_if_none:'' }}"
+       data-live-wind_ms="{{ indicators.weather_baseline.wind_ms|default_if_none:'' }}"
+       data-live-kdown_wm2="{{ indicators.weather_baseline.kdown_wm2|default_if_none:'' }}">
+    <div class="slider-header">
+      <div class="slider-header-left">
+        <div class="card-icon" style="background:rgba(56,189,248,0.08);border-color:rgba(56,189,248,0.15);">{{ indicators.weather_icon }}</div>
+        <span class="card-label">Weather what-if</span>
+      </div>
+      <button type="button" class="heat-weather-reset" id="heat-weather-reset"
+              {% if not indicators.weather_whatif %}hidden{% endif %}>Reset to {% if indicators.weather_source %}{{ indicators.weather_source }}{% else %}defaults{% endif %}</button>
+    </div>
+    <label class="heat-weather-row">
+      <span>Air temp.</span>
+      <input class="heat-weather-input" type="range" name="ta_c" min="-20" max="45" step="0.5"
+             value="{{ indicators.weather.ta_c|default_if_none:20 }}"
+             hx-get="{% url 'urban_heat:recalculate_indicators' level location %}"
+             hx-trigger="input changed delay:250ms" hx-target="#indicators-grid" hx-include="#heat-whatif">
+      <output data-for="ta_c">{{ indicators.weather.ta_c|default_if_none:'—' }}</output><small>°C</small>
+    </label>
+    <label class="heat-weather-row">
+      <span>Humidity</span>
+      <input class="heat-weather-input" type="range" name="rh_pct" min="0" max="100" step="1"
+             value="{{ indicators.weather.rh_pct|default_if_none:70 }}"
+             hx-get="{% url 'urban_heat:recalculate_indicators' level location %}"
+             hx-trigger="input changed delay:250ms" hx-target="#indicators-grid" hx-include="#heat-whatif">
+      <output data-for="rh_pct">{{ indicators.weather.rh_pct|default_if_none:'—' }}</output><small>%</small>
+    </label>
+    <label class="heat-weather-row">
+      <span>Wind</span>
+      <input class="heat-weather-input" type="range" name="wind_ms" min="0" max="25" step="0.5"
+             value="{{ indicators.weather.wind_ms|default_if_none:3 }}"
+             hx-get="{% url 'urban_heat:recalculate_indicators' level location %}"
+             hx-trigger="input changed delay:250ms" hx-target="#indicators-grid" hx-include="#heat-whatif">
+      <output data-for="wind_ms">{{ indicators.weather.wind_ms|default_if_none:'—' }}</output><small>m/s</small>
+    </label>
+    <label class="heat-weather-row">
+      <span>Solar rad.</span>
+      <input class="heat-weather-input" type="range" name="kdown_wm2" min="0" max="1100" step="10"
+             value="{{ indicators.weather.kdown_wm2|default_if_none:0 }}"
+             hx-get="{% url 'urban_heat:recalculate_indicators' level location %}"
+             hx-trigger="input changed delay:250ms" hx-target="#indicators-grid" hx-include="#heat-whatif">
+      <output data-for="kdown_wm2">{{ indicators.weather.kdown_wm2|default_if_none:'—' }}</output><small>W/m²</small>
+    </label>
+  </div>
+  {% endlocalize %}
+
+  <!-- Vegetation slider -->
+  <div class="slider-container">
+    <div class="slider-header">
+      <div class="slider-header-left">
+        <div class="card-icon" style="background:rgba(34,197,94,0.08);border-color:rgba(34,197,94,0.15);">🌿</div>
+        <span class="card-label">Vegetation Coverage</span>
+      </div>
+      <div class="slider-value-display">
+        <span id="slider-display">{{ indicators.vegetation_pct }}</span>
+        <span class="slider-unit">% of area</span>
+      </div>
+    </div>
+
+    <div class="slider-zones-container">
+      <div class="slider-zones">
+        <div class="sz-bad"></div>
+        <div class="sz-warn"></div>
+        <div class="sz-ok"></div>
+      </div>
+      <div class="slider-zone-wrap">
+        <input
+          id="vegetation-slider"
+          class="zone-slider"
+          type="range"
+          name="vegetation_pct"
+          min="0" max="60" step="0.5"
+          value="{{ indicators.vegetation_pct }}"
+          hx-get="{% url 'urban_heat:recalculate_indicators' level location %}"
+          hx-trigger="input changed delay:200ms"
+          hx-target="#indicators-grid"
+          hx-include="#heat-whatif"
+        />
+      </div>
+      <div class="slider-threshold-labels">
+        <span>0%</span>
+        <span>15%</span>
+        <span>30%</span>
+        <span>60%</span>
+      </div>
+    </div>
+
+    <div>
+      <span id="zone-tag" class="threshold-tag ok">Good</span>
+    </div>
+  </div>
+
+  </form>

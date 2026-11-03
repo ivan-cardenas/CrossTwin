@@ -28,6 +28,7 @@
 <script src="{% static 'js/LstTool.js' %}"></script>
 <script src="{% static 'js/SvfTool.js' %}"></script>
 <script src="{% static 'js/SolweigTool.js' %}"></script>
+<script src="{% static 'js/WeatherPill.js' %}"></script>
 <script src="{% static 'js/MapSettings.js' %}"></script>
 <script src="{% static 'js/Events.js' %}"></script>
 <script src="{% static 'js/Map_init.js' %}"></script>
@@ -171,7 +172,8 @@
       <div class="basemap-selector">
         <label for="basemap-select">Basemap</label>
         <select id="basemap-select">
-          <option value="light" selected>Light</option>
+          <option value="DigitalTwin" selected>Default</option>
+          <option value="light" >Light</option>
           <option value="dark">Dark</option>
           <option value="streets">Streets</option>
           <option value="satellite">Satellite</option>
@@ -382,6 +384,17 @@
         />
       </div>
     </div>
+
+    <!-- WEATHER PILL (top centre): live weather at the map centre; a click opens
+         the Urban Heat panel, whose weather sliders adjust it (WeatherPill.js). -->
+    <button type="button" class="weather-pill" id="weather-pill" hidden
+            data-live-url="{% url 'weather:live_weather' %}"
+            aria-label="Weather at the map centre">
+      <span class="weather-pill-icon" id="weather-pill-icon">🌡️</span>
+      <span class="weather-pill-temp" id="weather-pill-temp">–</span>
+      <span class="weather-pill-meta" id="weather-pill-meta"></span>
+      <span class="weather-pill-badge" id="weather-pill-badge" hidden>What-if</span>
+    </button>
 
     <!-- MAP LOADER -->
     <div class="map-loader" id="map-loader">

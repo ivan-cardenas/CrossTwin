@@ -2389,6 +2389,40 @@ class KNMIImporter:
     DOWNLOAD_TIMEOUT = 180
 
     @staticmethod
+    def fetch_daily(dataset: Dict, bbox: list, date_from: str, date_to: str) -> ImportResult:
+        """
+        Daily precipitation (RH) and Makkink reference ET (EV24) of the KNMI
+        stations near the bbox, from daggegevens.knmi.nl (no API key), stored
+        as weather.Meteorology rows (weather/knmi.py). Feeds the yearly recharge
+        of watersupply.AvailableFreshWater, refreshed when the block ends.
+        """
+        from datetime import date as _date
+
+        from weather.knmi import KNMIError, fetch_daily, store_daily
+        from .batching import deferred_cascades
+
+        try:
+            start = _date.fromisoformat(date_from)
+            end = _date.fromisoformat(date_to)
+        except (TypeError, ValueError):
+            return ImportResult("error", "Give a start and end date (YYYY-MM-DD).")
+        if end < start:
+            return ImportResult("error", "The end date is before the start date.")
+        say("fetch", f"{dataset['key']}: KNMI daily {start} .. {end}")
+        try:
+            text = fetch_daily(start, end)
+            with transaction.atomic(), deferred_cascades():
+                stations, rows = store_daily(text, bbox)
+        except KNMIError as e:
+            return ImportResult("error", str(e))
+        return ImportResult(
+            "success",
+            f"{rows} daily records from {stations} KNMI station(s) stored; "
+            "fresh-water sources nearby were recalculated.",
+            records_created=rows,
+        )
+
+    @staticmethod
     def parse_valid_time(filename: str) -> Optional[datetime]:
         """UTC datetime encoded in a KNMI file name, or None if it has none."""
         match = _KNMI_TIMESTAMP_RE.search(filename or "")
@@ -2871,6 +2905,8 @@ def import_dataset(
     elif source == "knmi":
         if fmt == "wms":
             return register_wms_layer(dataset)
+        if fmt == "daily":
+            return KNMIImporter.fetch_daily(dataset, bbox, date_from, date_to)
         return KNMIImporter.fetch_latest(dataset)
 
     elif source == "osm" and fmt == "overpass":

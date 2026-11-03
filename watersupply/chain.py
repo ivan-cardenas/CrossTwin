@@ -77,3 +77,47 @@ def recharge_Mm3_yr(infiltration_depth_cm_yr, area_m2):
     DAG edge: Infiltration -> Available_FW
     """
     return infiltration_depth_cm_yr / 100 * area_m2 / 1e6
+
+
+def recharge_depth_cm_yr(daily_rain_mm, et_ref_mm_yr, composition):
+    """
+    Yearly recharge depth (cm/yr) of an area from a year of daily rain, a
+    year's reference evapotranspiration and its soil-group x land-cover
+    composition, as a simple yearly water balance:
+
+        runoff_d = sum over pieces of SCS Q(P_d, CN_piece) x area_piece / area
+        recharge = max(0, sum(P_d) - sum(runoff_d) - ET_ref) / 10
+
+    Q is computed per piece and day (physicalEnv.soil.scs_runoff_mm), because
+    it is non-linear in both P and CN. Simplifications: Makkink reference ET
+    with crop factor 1 for every surface, no soil-moisture store between days
+    (a dry year gives 0, not a deficit carried over), and pieces without a
+    curve number are left out of the area.
+
+    composition: [(soil_group, land_cover_class, area_m2), ...]
+    Returns None when no piece has a curve number.
+
+    DAG edges:  Meteorology  -> Available_FW
+                LandCover    -> Infiltration -> Available_FW
+                Soil_Type    -> Infiltration -> Available_FW
+    """
+    from physicalEnv.soil import curve_number, scs_runoff_mm
+
+    # Pieces with the same curve number behave alike: weight per CN.
+    area_by_cn = {}
+    for soil_group, land_cover_class, area_m2 in composition:
+        cn = curve_number(land_cover_class, soil_group)
+        if cn is None or area_m2 <= 0:
+            continue
+        area_by_cn[cn] = area_by_cn.get(cn, 0.0) + area_m2
+    total = sum(area_by_cn.values())
+    if not total:
+        return None
+    shares = [(cn, a / total) for cn, a in area_by_cn.items()]
+    rain = runoff = 0.0
+    for p in daily_rain_mm:
+        if not p or p <= 0:
+            continue
+        rain += p
+        runoff += sum(scs_runoff_mm(p, cn) * share for cn, share in shares)
+    return max(0.0, rain - runoff - (et_ref_mm_yr or 0.0)) / 10

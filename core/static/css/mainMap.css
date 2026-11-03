@@ -1429,6 +1429,81 @@
 
 .map-loader.visible { display: flex; }
 
+/* Below the weather pill, which owns the top centre */
+.map-loader { top: 52px; }
+
+/* ============================================================
+   WEATHER PILL (top centre; WeatherPill.js)
+   Live weather at the map centre; a click opens the Urban Heat panel,
+   whose weather sliders turn it into a what-if (amber border + badge).
+   ============================================================ */
+
+.weather-pill {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: min(560px, calc(100vw - 180px));
+    padding: 5px 14px 5px 6px;
+    background: var(--overlay-bg);
+    backdrop-filter: var(--overlay-blur);
+    -webkit-backdrop-filter: var(--overlay-blur);
+    box-shadow: var(--overlay-shadow);
+    border: 1px solid var(--border-ui);
+    border-radius: 999px;
+    color: var(--text-main);
+    font-family: var(--font-base);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+.weather-pill[hidden] { display: none; }
+.weather-pill:hover { background: var(--bg-raised); }
+.weather-pill:focus-visible { outline: 2px solid var(--border-ui-strong); outline-offset: 2px; }
+
+.weather-pill-icon {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--bg-raised);
+    border: 1px solid var(--border-ui);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+.weather-pill-temp { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.weather-pill-meta {
+    font-size: 11px;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-variant-numeric: tabular-nums;
+}
+.weather-pill-badge {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 999px;
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, 0.5);
+    background: rgba(245, 158, 11, 0.1);
+}
+.weather-pill.is-whatif { border-color: rgba(245, 158, 11, 0.6); }
+.weather-pill.is-error .weather-pill-meta { color: var(--text-tertiary); }
+
+@media (max-width: 768px) {
+    .weather-pill { top: 8px; padding: 3px 10px 3px 4px; }
+    .weather-pill-meta { display: none; }
+}
+
 /* ============================================================
    MAPBOX OVERRIDES
    ============================================================ */

@@ -1226,6 +1226,18 @@ EXTERNAL_DATA_CATALOG = [
         "enabled": True,
     },
     {
+        "key": "knmi_daily_water_balance",
+        "source": "knmi",
+        "category": "Climate",
+        "name": "Daily rain and evapotranspiration (KNMI stations)",
+        "description": "Daily precipitation and Makkink reference evapotranspiration of the KNMI stations within 25 km of the area (the nearest one when none is), from daggegevens.knmi.nl (no API key). Pick at least one whole year: fresh-water sources nearby derive their yearly recharge from it.",
+        "target_model": "weather.Meteorology",
+        "format": "daily",
+        "requires_bbox": True,
+        "requires_date_range": True,
+        "enabled": True,
+    },
+    {
         "key": "knmi_radar_forecast",
         "source": "knmi",
         "category": "Climate",
