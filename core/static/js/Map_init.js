@@ -257,6 +257,57 @@ function sync3DBuildingColor() {
 }
 
 /**
+ * Ids of the thin outline layers drawn on top of '3d-buildings'
+ * (roof outline + footprint outline). Layers.js::sync3DBuildings shows and
+ * hides them together with the extrusions.
+ */
+const BUILDING_EDGE_LAYER_IDS = ['3d-buildings-edges-roof', '3d-buildings-edges-base'];
+const BUILDING_EDGE_COLOR = '#494949';
+
+/**
+ * Thin edges on the Mapbox 3D buildings.
+ *
+ * fill-extrusion has no outline property in the style spec, so the edges are
+ * line layers on the same source-layer: the polygon rings raised to the roof
+ * with line-z-offset, and one at the ground. line-occlusion-opacity hides the
+ * parts behind other buildings. They start at zoom 16, where the extrusion
+ * has reached its full height (its height interpolates over 13–16), so the
+ * roof line sits on the roof. line-z-offset is a layout property, evaluated
+ * per tile zoom, so it can't follow that interpolation smoothly.
+ */
+function add3DBuildingEdges(beforeId) {
+  const common = {
+    type: 'line',
+    source: 'composite',
+    'source-layer': 'building',
+    filter: ['==', ['get', 'extrude'], 'true'],
+    minzoom: 16,
+    paint: {
+      'line-color': BUILDING_EDGE_COLOR,
+      'line-width': ['interpolate', ['linear'], ['zoom'], 16, 0.4, 18, 0.8, 20, 1.2],
+      'line-opacity': ['interpolate', ['linear'], ['zoom'], 16, 0, 16.5, 0.7],
+      'line-occlusion-opacity': 0,
+    },
+  };
+  const edges = [
+    { id: BUILDING_EDGE_LAYER_IDS[0], zOffset: ['get', 'height'] },
+    { id: BUILDING_EDGE_LAYER_IDS[1], zOffset: ['get', 'min_height'] },
+  ];
+  for (const { id, zOffset } of edges) {
+    if (map.getLayer(id)) continue;
+    map.addLayer({
+      ...common,
+      id,
+      layout: {
+        'line-join': 'miter',
+        'line-elevation-reference': 'ground',
+        'line-z-offset': zOffset,
+      },
+    }, beforeId);
+  }
+}
+
+/**
  * Add 3D building extrusions
  */
 function add3DBuildings() {
@@ -278,6 +329,12 @@ function add3DBuildings() {
       filter: ['==', ['get', 'extrude'], 'true'],
       type: 'fill-extrusion',
       minzoom: 5,
+      // Bevels every edge, so the vertical corners catch the light and read
+      // as a lighter or darker line between two walls (fill-extrusion has
+      // no stroke, and a line layer can only draw horizontal edges)
+      layout: {
+        'fill-extrusion-edge-radius': 0.5,
+      },
       paint: {
         
         'fill-extrusion-color': buildingColorForTool(),
@@ -289,17 +346,23 @@ function add3DBuildings() {
           'interpolate', ['linear'], ['zoom'],
           13, 0, 16, ['get', 'min_height']
         ],
-        'fill-extrusion-opacity': 0.9,
+        'fill-extrusion-opacity': 1,
         // 'fill-extrusion-opacity': [
         //   'interpolate', ['linear'], ['zoom'],
         //   13, 1, 20, 0.80 ],        
-        'fill-extrusion-cast-shadow': true,
-        
-        'fill-extrusion-line-color': '#494949',
+        'fill-extrusion-cast-shadows': true,
+        // Darkens the inside corners between walls and the foot of each wall
+        // (~0.3 is the value the style spec calls plausible for buildings)
+        'fill-extrusion-ambient-occlusion-intensity': 0.35,
+        'fill-extrusion-ambient-occlusion-wall-radius': 3,
+        'fill-extrusion-ambient-occlusion-ground-radius': 5,
+        'fill-extrusion-vertical-gradient': true,
         'fill-extrusion-height-alignment': 'terrain',
       }
     }, labelLayerId);
   }
+
+  add3DBuildingEdges(labelLayerId);
 
   // Stays hidden while a builtup layer is shown (also after a basemap switch,
   // which re-creates this layer)

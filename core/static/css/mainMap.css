@@ -1438,7 +1438,9 @@
    whose weather sliders turn it into a what-if (amber border + badge).
    ============================================================ */
 
-.weather-pill {
+/* The wrapper holds the pill and, while it rains, the radar toggle beside it
+   (a button can't contain another button). */
+.weather-pill-wrap {
     position: absolute;
     top: 12px;
     left: 50%;
@@ -1446,8 +1448,16 @@
     z-index: 10;
     display: flex;
     align-items: center;
+    gap: 6px;
+    pointer-events: none;            /* only the buttons take clicks */
+}
+.weather-pill-wrap > * { pointer-events: auto; }
+
+.weather-pill {
+    display: flex;
+    align-items: center;
     gap: 8px;
-    max-width: min(560px, calc(100vw - 180px));
+    max-width: min(560px, calc(100vw - 260px));
     padding: 5px 14px 5px 6px;
     background: var(--overlay-bg);
     backdrop-filter: var(--overlay-blur);
@@ -1499,8 +1509,32 @@
 .weather-pill.is-whatif { border-color: rgba(245, 158, 11, 0.6); }
 .weather-pill.is-error .weather-pill-meta { color: var(--text-tertiary); }
 
+/* Radar toggle: shown only while it rains at the map centre and the KNMI
+   radar WMS layer is in the catalog; pressed = radar layer visible. */
+.weather-pill-radar {
+    padding: 6px 12px;
+    background: var(--overlay-bg);
+    backdrop-filter: var(--overlay-blur);
+    -webkit-backdrop-filter: var(--overlay-blur);
+    box-shadow: var(--overlay-shadow);
+    border: 1px solid var(--border-ui);
+    border-radius: 999px;
+    color: var(--text-main);
+    font-family: var(--font-base);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+.weather-pill-radar[hidden] { display: none; }
+.weather-pill-radar:hover { background: var(--bg-raised); }
+.weather-pill-radar:focus-visible { outline: 2px solid var(--border-ui-strong); outline-offset: 2px; }
+.weather-pill-radar[aria-pressed="true"] { border-color: rgba(56, 189, 248, 0.7); background: rgba(56, 189, 248, 0.15); }
+
 @media (max-width: 768px) {
-    .weather-pill { top: 8px; padding: 3px 10px 3px 4px; }
+    .weather-pill-wrap { top: 8px; }
+    .weather-pill { padding: 3px 10px 3px 4px; }
     .weather-pill-meta { display: none; }
 }
 

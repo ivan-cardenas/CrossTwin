@@ -3,10 +3,7 @@
 {% load static %} 
 {% block title %}Urban Twin - Map View{% endblock %} 
 {% block extra_css %}
-<link
-  href="https://api.mapbox.com/mapbox-gl-js/v3.18.0/mapbox-gl.css"
-  rel="stylesheet"
-/>
+
 <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.1.0/mapbox-gl-geocoder.min.js"></script>
 <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.1.0/mapbox-gl-geocoder.css" type="text/css">
 <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.5.0/mapbox-gl-draw.css" type="text/css">
@@ -15,9 +12,10 @@
 <link rel="stylesheet" href="{% static 'css/indicators.css' %}" />
 {% endblock %} {% block extra_js %}
 <!-- Includes the Mapbox GL JS CSS stylesheet -->
-{% comment %} <link href="https://api.mapbox.com/mapbox-gl-js/v3.32.0/mapbox-gl.css" rel="stylesheet"> {% endcomment %}
 <!-- Imports the Mapbox GL JS bundle -->
-<script src="https://api.mapbox.com/mapbox-gl-js/v3.32.0/mapbox-gl.js"></script>
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.33.0/mapbox-gl.css" rel="stylesheet">
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.33.0/mapbox-gl.js"></script>
+{% comment %} CrossTwin JS {% endcomment %}
 <script src="{% static 'js/Config.js' %}"></script>
 <script src="{% static 'js/CityName.js' %}"></script>
 <script src="{% static 'js/Draggable.js' %}"></script>
@@ -387,14 +385,18 @@
 
     <!-- WEATHER PILL (top centre): live weather at the map centre; a click opens
          the Urban Heat panel, whose weather sliders adjust it (WeatherPill.js). -->
-    <button type="button" class="weather-pill" id="weather-pill" hidden
-            data-live-url="{% url 'weather:live_weather' %}"
-            aria-label="Weather at the map centre">
-      <span class="weather-pill-icon" id="weather-pill-icon">🌡️</span>
-      <span class="weather-pill-temp" id="weather-pill-temp">–</span>
-      <span class="weather-pill-meta" id="weather-pill-meta"></span>
-      <span class="weather-pill-badge" id="weather-pill-badge" hidden>What-if</span>
-    </button>
+    <div class="weather-pill-wrap" id="weather-pill-wrap">
+      <button type="button" class="weather-pill" id="weather-pill" hidden
+              data-live-url="{% url 'weather:live_weather' %}"
+              aria-label="Weather at the map centre">
+        <span class="weather-pill-icon" id="weather-pill-icon">🌡️</span>
+        <span class="weather-pill-temp" id="weather-pill-temp">–</span>
+        <span class="weather-pill-meta" id="weather-pill-meta"></span>
+        <span class="weather-pill-badge" id="weather-pill-badge" hidden>What-if</span>
+      </button>
+      <button type="button" class="weather-pill-radar" id="weather-pill-radar" hidden
+              aria-pressed="false" title="Show the KNMI rain radar">🌧 Radar</button>
+    </div>
 
     <!-- MAP LOADER -->
     <div class="map-loader" id="map-loader">

@@ -6,7 +6,7 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 
 ## Import bugs
 
-- [ ] `uv run` / `uv sync` fail on this machine: the `crosstwin[graphify]` extra asks for `graphify>=0.8.0`, which has no resolvable version, so only `uv run --no-sync` works. Fix the extra's pin in `pyproject.toml` (or drop it) and re-lock.
+- [X] `uv run` / `uv sync` fail on this machine: the `crosstwin[graphify]` extra asks for `graphify>=0.8.0`, which has no resolvable version, so only `uv run --no-sync` works. Fix the extra's pin in `pyproject.toml` (or drop it) and re-lock.
 - [ ] GEE importer needs to be verified against the actual configuration of each layer in the catalog see https://developers.google.com/earth-engine/datasets/catalog 
 
 ## administrative
@@ -151,7 +151,8 @@ Existing three-layer pattern (`calculations.py` + `views.py` + templates, see CL
 - [x] Live weather feed in the map UI: a weather pill at the top centre of the map shows the current weather at the map centre (Open-Meteo nowcast, `weather/live.py`, `/weather/live/`, cached per ~2 km cell for 10 min; `core/static/js/WeatherPill.js`). A click opens the Urban Heat panel, whose weather sliders (air temp., humidity, wind, solar radiation) are a what-if: weather-only heat stress (Steadman apparent temperature in shade/sun, BoM approximate WBGT; `urban_heat/chain.py`), never stored, mirrored on the pill with a *What-if* badge
 - [ ] Live data comes from a model (Open-Meteo), not a physical station: connect to real-time station data (KNMI Data Platform `10-minute-in-situ-meteorological-observations`, needs `KNMI_API_KEY` and a NetCDF4 reader) if station measurements are wanted
 - [ ] The weather what-if does not recompute the stored PET/UTCI rasters (those need a SOLWEIG run); consider prefilling the Thermal Comfort tool's manual weather from the panel's what-if
-- [ ] Evaluate whether Mapbox's live rain-radar rendering can be combined with the pill (the KNMI radar forecast WMS layer already exists)
+- [x] Evaluate whether Mapbox's live rain-radar rendering can be combined with the pill (the KNMI radar forecast WMS layer already exists). Mapbox has no rain radar for the Netherlands: its precipitation tilesets (`raster-array`) cover Japan only, and `map.setRain`/`setSnow` (GL JS ≥ 3.9, experimental) are screen-wide particle effects that only take zoom/light expressions, so they cannot show where it rains. Done: the pill's live weather code switches the rain/snow effect on as ambience (zoom ≥ 11–13, off with `prefers-reduced-motion`), and while it rains a *Radar* button beside the pill toggles the KNMI radar WMS layer (`WeatherPill.js`)
+- [ ] Drive the rain effect from the KNMI radar value under the map centre instead of Open-Meteo's model precipitation (needs a GetFeatureInfo call through the WMS proxy)
 
 **urban_heat (duplicate of gaps already tracked above)**
 - The "create LST/PET/SVF/SUHII calculation functions, see SOLWEIG" item: LST (`urban_heat/lst/`), SVF (`physicalEnv/svf.py`) and Tmrt/UTCI/PET (`urban_heat/solweig/`) now exist; SUHII has no calculation yet and `LST -> PET` is open (see the `## urban_heat` section).

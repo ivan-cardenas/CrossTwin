@@ -701,7 +701,12 @@ function sync3DBuildings() {
   const hide = Object.entries(loadedLayers).some(([key, entry]) =>
     layerVisibility[key] !== false &&
     (HIDES_3D_BUILDINGS_APPS.has(entry.config.app_label) || HIDES_3D_BUILDINGS_KEYS.has(key)));
-  map.setLayoutProperty('3d-buildings', 'visibility', hide ? 'none' : 'visible');
+  const visibility = hide ? 'none' : 'visible';
+  map.setLayoutProperty('3d-buildings', 'visibility', visibility);
+  // Their outlines (Map_init.js::add3DBuildingEdges) follow the extrusions
+  for (const id of (typeof BUILDING_EDGE_LAYER_IDS !== 'undefined' ? BUILDING_EDGE_LAYER_IDS : [])) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility);
+  }
 }
 
 function toggleLayerVisibility(key, visible) {
