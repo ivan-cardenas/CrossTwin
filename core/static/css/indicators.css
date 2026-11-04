@@ -496,3 +496,59 @@ input[type="range"].zone-slider::-moz-range-thumb {
 .card:nth-child(3) { animation-delay: 0.15s; }
 .card:nth-child(4) { animation-delay: 0.20s; }
 .card:nth-child(5) { animation-delay: 0.25s; }
+
+
+/* ── Heat panel: weather what-if (urban_heat/partials/whatif_controls.html, heat.js) ── */
+.heat-weather-controls .slider-header { margin-bottom: 6px; }
+.heat-weather-row {
+  display: grid;
+  grid-template-columns: 70px 1fr 44px 34px;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: rgba(232, 244, 255, 0.65);
+  margin: 4px 0;
+}
+.heat-weather-row input[type="range"] { width: 100%; accent-color: #38bdf8; }
+.heat-weather-row output {
+  text-align: right;
+  font-weight: 600;
+  color: rgba(232, 244, 255, 0.95);
+  font-variant-numeric: tabular-nums;
+}
+.heat-weather-row small { color: rgba(232, 244, 255, 0.45); }
+.heat-weather-reset {
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(245, 158, 11, 0.5);
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+  cursor: pointer;
+}
+.heat-weather-reset[hidden] { display: none; }
+
+.heat-weather-card.is-whatif { border-left-color: #f59e0b; }
+.heat-weather-source {
+  font-size: 10px;
+  color: rgba(232, 244, 255, 0.45);
+  margin-bottom: 8px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.heat-weather-values { display: flex; gap: 16px; flex-wrap: wrap; }
+.heat-weather-stress {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(232, 244, 255, 0.08);
+}
+.heat-weather-label {
+  font-size: 9px;
+  color: rgba(232, 244, 255, 0.45);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.heat-weather-value { font-family: var(--font-base); font-size: 0.9rem; font-weight: 600; }
+.heat-weather-value span { font-size: 0.7rem; color: rgba(232, 244, 255, 0.45); }

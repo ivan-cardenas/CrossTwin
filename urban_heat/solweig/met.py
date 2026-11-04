@@ -25,6 +25,8 @@ import math
 from dataclasses import asdict, dataclass
 from datetime import timedelta, timezone
 
+from weather.knmi import distance_km as _distance_km, parse_knmi  # shared with the daily import
+
 logger = logging.getLogger(__name__)
 
 KNMI_URL = "https://www.daggegevens.knmi.nl/klimatologie/uurgegevens"
@@ -88,43 +90,11 @@ def write_umep(met, when_local, path):
         f.write(" ".join(UMEP_COLUMNS) + "\n" + "\n".join(rows) + "\n")
 
 
-def _distance_km(lon1, lat1, lon2, lat2):
-    p1, p2 = math.radians(lat1), math.radians(lat2)
-    a = (math.sin((p2 - p1) / 2) ** 2
-         + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2)
-    return 6371.0 * 2 * math.asin(math.sqrt(a))
-
-
 def _knmi_hour(when_utc):
     """KNMI date + hour field: HH (1-24) is the UT hour the observation ends, 24 = midnight."""
     if when_utc.hour == 0:
         return (when_utc - timedelta(days=1)).strftime("%Y%m%d"), 24
     return when_utc.strftime("%Y%m%d"), when_utc.hour
-
-
-def parse_knmi(text):
-    """
-    KNMI uurgegevens CSV -> ({stn: (lon, lat, name)}, [{stn, T, U, FF, DD, Q, P}, ...]).
-    Station coordinates come from the '# STN LON LAT ALT NAME' header block;
-    empty fields are None.
-    """
-    stations, rows, columns = {}, [], None
-    for line in text.splitlines():
-        if line.startswith("#"):
-            body = line[1:].strip()
-            parts = body.split()
-            if body.startswith("STN,"):
-                columns = [c.strip() for c in body.split(",")]
-            elif len(parts) >= 5 and parts[0].isdigit():
-                try:
-                    stations[int(parts[0])] = (float(parts[1]), float(parts[2]), " ".join(parts[4:]))
-                except ValueError:
-                    pass
-        elif line.strip() and columns:
-            fields = [f.strip() for f in line.split(",")]
-            row = {c: (int(v) if v.lstrip("-").isdigit() else None) for c, v in zip(columns, fields)}
-            rows.append(row)
-    return stations, rows
 
 
 def knmi_day_values(rows):
@@ -168,7 +138,7 @@ def knmi_hourly(when_utc, lon, lat):
         stn = row.get("STN")
         if stn not in stations or any(row.get(k) is None for k in ("T", "U", "FF", "Q")):
             continue
-        s_lon, s_lat, name = stations[stn]
+        s_lon, s_lat, _alt, name = stations[stn]
         candidates.append((_distance_km(lon, lat, s_lon, s_lat), stn, name, row))
     if not candidates:
         raise MetError(f"No KNMI station has hourly data for {day} hour {hh} UT (validated data lag a few days).")

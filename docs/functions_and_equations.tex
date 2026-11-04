@@ -298,6 +298,19 @@ For the pieces $i$ of a unit, with area $A_i$ and curve number $\mathrm{CN}_i = 
 \end{align}
 Runoff is computed per piece before weighting: since $Q$ is convex in CN, evaluating $Q(P, \overline{\mathrm{CN}})$ would overstate infiltration. $\overline{\mathrm{CN}}$ is reported for reference only.
 
+\subsection{Stored infiltration rate --- \code{weighted\_infiltration\_rate\_mm\_h()}}
+\label{sec:infiltration-rate}
+\textbf{Location:} \code{physicalEnv/soil.py::weighted\_infiltration\_rate\_mm\_h}, called by \code{AvailableFreshWater.save()} (\code{watersupply/models.py})
+
+For the pieces $i$ of a fresh-water source polygon (wet-season groundwater, so $G'_i$ includes the shallow-groundwater rule), with $\bar f(G)$ the middle of the group's final rate range (group A: $f_{\min} = 7.6$\,\si{mm/h}, it has no upper bound) and $s(c)$ the sealed share of land-cover class $c$:
+\begin{equation}
+  f_{\text{src}} = \frac{\sum_i A_i\, \bar f(G'_i)\,\bigl(1 - s(c_i)\bigr)}{\sum_i A_i}\ [\si{mm/h}], \qquad
+  \texttt{infiltrationRate\_cm\_h} = f_{\text{src}} / 10
+\end{equation}
+$s(c)$: residential (discontinuous) urban fabric 0.65, continuous urban fabric 0.85, industrial/commercial 0.72 (TR-55 table 2-2a \cite{TR55}); open water and wetlands 1 (their CN turns all rain into runoff); roads and rail 0.6 (estimate: TR-55 gives no share for roads with open ditches); every other class 0. Without soil or land-cover pieces the stored value is kept.
+
+\textbf{DAG edges:} \dagedge{LandCover $\rightarrow$ Infiltration}, \dagedge{Soil\_Type $\rightarrow$ Infiltration} --- \statusdone{} (stored; refreshed by \code{watersupply/signals.py} when \code{SoilArea}, \code{SoilType}, \code{LandCoverVector} or \code{GroundwaterDepth} change)
+
 \subsection{HILUCS land-use codes --- \code{parse\_hilucs\_href()}, \code{hilucs\_q()}}
 \textbf{Location:} \code{physicalEnv/hilucs.py:18, 48}
 
@@ -342,7 +355,16 @@ where $P$ is \code{city.currentPopulation}. Note the two representations differ 
 \end{equation}
 $A$ is the source polygon's area in the storage CRS. Recalculated on every save when $d_{\text{inf}}$ is known; otherwise a supplied yield is kept. \texttt{infiltrationRate\_cm\_h} is a capacity during rain, not a yearly amount, and is not used.
 
-\textbf{DAG edge:} \dagedge{Infiltration $\rightarrow$ Available\_FW} --- \statuspartial{} ($d_{\text{inf}}$ is still a flat input; linking it to the SCS event infiltration and precipitation is open)
+\subsection{Yearly recharge depth --- \code{recharge\_depth\_cm\_yr()}}
+\textbf{Location:} \code{watersupply/chain.py::recharge\_depth\_cm\_yr}, called by \code{AvailableFreshWater.save()}; meteorology from \code{weather/water\_balance.py::yearly\_water\_balance}, imported by \code{weather/knmi.py} (catalog \texttt{knmi\_daily\_water\_balance})
+
+With $P_d$ the daily precipitation (KNMI \texttt{RH}) and $E$ the year's Makkink reference evapotranspiration (sum of KNMI \texttt{EV24}) at the nearest station with a complete year ($\geq 360$ days; \texttt{recharge\_year}, else its latest), and the pieces $i$ of the source as in \S\ref{sec:infiltration-rate}:
+\begin{equation}
+  d_{\text{inf}} = \frac{1}{10}\max\Bigl(0,\ \sum_d P_d - \sum_d \sum_i \frac{A_i}{\sum_j A_j}\, Q(P_d, \mathrm{CN}_i) - E\Bigr)\ [\si{cm/yr}]
+\end{equation}
+$Q$ per piece and day as in \S\ref{sec:scs-summary}. Simplifications: crop factor 1 for every surface, no soil-moisture store between days (a dry year gives 0), pieces without a CN are left out. Without pieces or a complete year the stored $d_{\text{inf}}$ is kept. $Y$ then follows from $d_{\text{inf}}$ as above.
+
+\textbf{DAG edges:} \dagedge{Infiltration $\rightarrow$ Available\_FW}, \dagedge{Meteorology $\rightarrow$ Available\_FW} --- \statusdone{} (refreshed by \code{watersupply/signals.py} on daily \code{Meteorology} rows and on \code{weather.knmi.daily\_water\_balance\_changed})
 
 \subsection{Total extraction --- \code{calculate\_total\_extraction()}}
 \textbf{Location:} \code{watersupply/calculations.py} (\code{calculate\_total\_extraction}, \code{watershed\_share})
@@ -475,7 +497,7 @@ The Infrastructure Leakage Index formulation follows the IWA Water Loss Task For
   \text{AFW} &= \sum_{\,\text{intersecting } u} \texttt{totalQuantity\_Mm3} \\
   A_{\text{drought}} &= \sum_{\,\text{intersecting } u,\ \text{year}} \texttt{areaAffected\_km2}
 \end{align}
-\textbf{DAG edges:} \dagedge{Infiltration $\rightarrow$ Available\_FW}, \dagedge{Meteorology $\rightarrow$ Available\_FW}, \dagedge{Total\_Extraction $\rightarrow$ Area\_Drought} --- \statusgap{} for the Infiltration side: infiltration is now computed per event (\S\ref{sec:infiltration-indicator}), but \code{AvailableFreshWater.infiltrationRate\_cm\_h} is still a flat, manually entered field --- turning the event coefficient into a recharge volume is open
+\textbf{DAG edges:} \dagedge{Infiltration $\rightarrow$ Available\_FW}, \dagedge{Meteorology $\rightarrow$ Available\_FW}, \dagedge{Total\_Extraction $\rightarrow$ Area\_Drought} --- \statusgap{} here: this function only sums the stored \texttt{totalQuantity\_Mm3}; the stored source records derive their rate, recharge depth and yield (\S\ref{sec:infiltration-rate} and the yearly recharge depth)
 
 \subsection{Infiltration indicator (dashboard) --- \code{calculate\_infiltration()}, \code{\_infiltration\_indicators()}}
 \label{sec:infiltration-indicator}
@@ -811,7 +833,9 @@ watersupply & \code{calculate\_coverage()} / \code{CoverageWaterSupply.save()} &
 watersupply & \code{calculate\_nrw()} / \code{NonRevenueWater.save()} & Real/Apparent\_Losses$\to$NRW, ILI & \statuspartial{} \\
 watersupply & \code{NonRevenueWater.pipe} / \code{calculate\_nrw()} & Network$\to$Real\_Losses & \statusdone{} \\
 watersupply & \code{calculate\_water\_quality()} & Samples\_WQ$\to$User\_Acceptance\_WS & \statusgap{} \\
-watersupply & \code{calculate\_available\_freshwater()} & Infiltration/Meteorology$\to$Available\_FW & \statusgap{} \\
+watersupply & \code{calculate\_available\_freshwater()} & Infiltration/Meteorology$\to$Available\_FW & \statusgap{} \
+physicalEnv & \code{weighted\_infiltration\_rate\_mm\_h()} / \code{AvailableFreshWater.save()} & LandCover/Soil\_Type$\to$Infiltration (stored) & \statusdone{} \
+watersupply & \code{recharge\_depth\_cm\_yr()} / \code{AvailableFreshWater.save()} & Infiltration/Meteorology$\to$Available\_FW & \statusdone{} \\
 physicalEnv & \code{classify\_soil\_group()} / \code{SoilType.save()} & Soil\_Type$\to$Infiltration & \statusdone{} \\
 physicalEnv & \code{soil\_landcover\_composition()} & LandCover/Soil\_Type (+ groundwater)$\to$Infiltration & \statusdone{} \\
 physicalEnv & \code{scs\_runoff\_mm()} / \code{summarize\_infiltration()} & LandCover/Soil\_Type$\to$Infiltration & \statusdone{} \\

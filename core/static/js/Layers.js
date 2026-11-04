@@ -4,7 +4,6 @@
 // ============================================================
 
 let loaderTimeout = null;
-const LOADER_SHOW_DELAY_MS = 5000;  // only surface it for genuinely slow loads
 
 /**
  * Show/hide loading indicator
@@ -699,9 +698,10 @@ function repositionDynamicLegends() {
  */
 function sync3DBuildings() {
   if (!map || !map.getLayer('3d-buildings')) return;
-  const builtupShown = Object.entries(loadedLayers).some(([key, entry]) =>
-    entry.config.app_label === 'builtup' && layerVisibility[key] !== false);
-  map.setLayoutProperty('3d-buildings', 'visibility', builtupShown ? 'none' : 'visible');
+  const hide = Object.entries(loadedLayers).some(([key, entry]) =>
+    layerVisibility[key] !== false &&
+    (HIDES_3D_BUILDINGS_APPS.has(entry.config.app_label) || HIDES_3D_BUILDINGS_KEYS.has(key)));
+  map.setLayoutProperty('3d-buildings', 'visibility', hide ? 'none' : 'visible');
 }
 
 function toggleLayerVisibility(key, visible) {

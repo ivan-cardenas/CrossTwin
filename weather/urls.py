@@ -5,5 +5,6 @@ app_name = "weather"
 
 urlpatterns = [
     path('wms/<str:wms_name>/times/', views.wms_time_steps, name='wms_time_steps'),
+    path('live/', views.live_weather, name='live_weather'),
     path('wms/<str:wms_name>/tile/', views.wms_tile_proxy, name='wms_tile_proxy'),
 ]

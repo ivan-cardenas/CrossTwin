@@ -153,6 +153,11 @@ def map_view(request):
     }
     return render(request, 'mainMap.html', context)
 
+
+def landing_view(request):
+    """Display the landing page. Static content: no database queries."""
+    return render(request, 'mainMap/landing.html')
+
 def admin_unit_at_point(request):
     """
     Point-in-polygon lookup for the map center: resolve the smallest

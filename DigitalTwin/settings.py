@@ -145,6 +145,12 @@ def _env_flag(name, default):
 
 QUERY_STATS = _env_flag("QUERY_STATS", DEBUG)
 QUERY_STATS_SLOW_MS = int(os.environ.get("QUERY_STATS_SLOW_MS", 500))
+
+# Live weather for the map's weather pill and the heat panel's what-if
+# baseline (weather/live.py, Open-Meteo, no key). LIVE_WEATHER=false turns the
+# lookup off (offline use, tests); OPEN_METEO_URL overrides the endpoint.
+LIVE_WEATHER = _env_flag("LIVE_WEATHER", True)
+OPEN_METEO_URL = os.environ.get("OPEN_METEO_URL")
 SQL_LOG = _env_flag("SQL_LOG", False)
 
 if QUERY_STATS:

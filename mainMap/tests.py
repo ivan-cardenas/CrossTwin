@@ -433,3 +433,38 @@ class RasterStyleTests(SimpleTestCase):
     def test_flat_raster_gets_a_non_empty_range(self):
         from .styles.rasterStyles import _raster_statistics
         self.assertEqual(_raster_statistics(self._raster([[20.0, 20.0]])), (19.5, 20.5))
+
+
+class LandingPageTests(TestCase):
+
+    def test_landing_returns_200_without_queries(self):
+        with self.assertNumQueries(0):
+            response = self.client.get('/welcome/')
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'mainMap/landing.html')
+
+    def test_map_stays_at_the_root(self):
+        self.assertEqual(reverse('map:map'), '/')
+
+    def test_text_is_in_the_html_for_every_stage(self):
+        html = self.client.get('/welcome/').content.decode()
+        self.assertEqual(html.count('<h1'), 1)
+        self.assertEqual(html.count('<h2'), 8)
+        self.assertEqual(html.count('class="stage'), 9)
+        self.assertEqual(html.count('<li><a href="#'), 9)
+        self.assertIn('href="/"', html)
+
+    def test_no_inline_script_except_the_import_map(self):
+        html = self.client.get('/welcome/').content.decode()
+        inline = re.findall(r'<script(?![^>]*\bsrc=)([^>]*)>', html)
+        self.assertEqual(inline, [' type="importmap"'])
+
+    def test_graph_edges_exist_in_the_dag(self):
+        """The network drawn on the page (landing/graph.js) only shows real DAG.dot edges."""
+        root = settings.BASE_DIR
+        dag = (root / 'core' / 'DAG.dot').read_text(encoding='utf-8')
+        dag_edges = set(re.findall(r'^\s*(\w+)\s*->\s*(\w+)', dag, flags=re.M))
+        graph = (root / 'core' / 'static' / 'js' / 'landing' / 'graph.js').read_text(encoding='utf-8')
+        drawn = re.findall(r"\['(\w+)', '(\w+)', (?:true|false)\]", graph)
+        self.assertGreater(len(drawn), 10)
+        self.assertEqual([edge for edge in drawn if edge not in dag_edges], [])

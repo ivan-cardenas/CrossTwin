@@ -169,6 +169,74 @@ def infiltration_coefficient(rain_mm, cn):
     return 1 - scs_runoff_mm(rain_mm, cn) / rain_mm
 
 
+# ── Infiltration rate (stored on watersupply.AvailableFreshWater) ────
+
+# Representative final infiltration rate of a soil group, mm/h: the middle of
+# the group's SOIL_GROUPS range; group A has no upper bound, so its lower
+# bound is used (conservative).
+def group_rate_mm_h(soil_group):
+    rates = SOIL_GROUPS.get(soil_group)
+    if rates is None:
+        return None
+    if rates['max_mm_h'] is None:
+        return rates['min_mm_h']
+    return (rates['min_mm_h'] + rates['max_mm_h']) / 2
+
+
+# Land-cover class keywords -> share of the surface that is sealed (no
+# infiltration into the soil). Residential, commercial and industrial shares
+# are the TR-55 table 2-2a values behind CURVE_NUMBERS; open water and
+# wetlands count as sealed because their curve number turns all rain into
+# runoff. Roads and rail are an estimate (TR-55 gives no share for "paved
+# roads with open ditches, incl. right-of-way"): paved carriageway with
+# pervious verges or ballast. Every other class counts as unsealed.
+IMPERVIOUS_FRACTIONS = [
+    (("water course", "water bodies", "sea and ocean", "lagoon", "estuar"), 1.0),
+    (("marsh", "peat bog", "saline", "intertidal", "wetland"), 1.0),
+    (("green urban", "sport", "leisure"), 0.0),
+    (("discontinuous urban fabric",), 0.65),
+    (("continuous urban fabric",), 0.85),
+    (("urban fabric",), 0.65),
+    (("industrial", "commercial", "port area", "airport"), 0.72),
+    (("road", "rail"), 0.6),
+]
+
+
+def impervious_fraction(land_cover_class):
+    """Sealed share (0-1) of a land-cover class; 0 for classes not in IMPERVIOUS_FRACTIONS."""
+    if not land_cover_class:
+        return 0.0
+    name = land_cover_class.lower()
+    for keywords, fraction in IMPERVIOUS_FRACTIONS:
+        if _matches(name, keywords):
+            return fraction
+    return 0.0
+
+
+def weighted_infiltration_rate_mm_h(composition):
+    """
+    Area-weighted final infiltration rate (mm/h) of a set of soil-group x
+    land-cover pieces: each piece infiltrates at its group's representative
+    rate (group_rate_mm_h) over its unsealed share (1 - impervious_fraction).
+
+    composition: [(soil_group, land_cover_class, area_m2), ...], as returned
+    by soil_landcover_composition (group already set to D over shallow
+    groundwater). Pieces without a soil group are left out. None when no
+    piece has one.
+
+    DAG edges:  LandCover -> Infiltration
+                Soil_Type -> Infiltration
+    """
+    weighted = area = 0.0
+    for soil_group, land_cover_class, area_m2 in composition:
+        rate = group_rate_mm_h(soil_group)
+        if rate is None or area_m2 <= 0:
+            continue
+        weighted += rate * (1 - impervious_fraction(land_cover_class)) * area_m2
+        area += area_m2
+    return weighted / area if area else None
+
+
 def summarize_infiltration(composition, rain_mm):
     """
     Area-weighted SCS result for a set of soil-group x land-cover pieces.

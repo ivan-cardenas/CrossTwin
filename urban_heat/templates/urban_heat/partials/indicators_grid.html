@@ -2,39 +2,62 @@
 <div class="grid">
 
   
-  <!-- ── Meteorology ── -->
-  <div class="card c3 wide">
+  <!-- ── Weather (live baseline + what-if) ── -->
+  {% load l10n %}
+  <div class="card c3 wide heat-weather-card{% if indicators.weather_whatif %} is-whatif{% endif %}">
     <div class="gauge-header">
-      <div class="card-icon">☁️</div>
-      <div class="card-label">Current Meteorology</div>
-      {% include 'partials/_info_btn.html' with title="Current Meteorology" text="Latest reading from the nearest active weather station within the area: air temperature, humidity, wind speed and solar radiation. These conditions feed into how PET/UTCI are computed upstream." %}
+      <div class="card-icon">{{ indicators.weather_icon }}</div>
+      <div class="card-label">{% if indicators.weather_whatif %}Weather what-if{% else %}Current Weather{% endif %}</div>
+      {% include 'partials/_info_btn.html' with title="Weather" text="Live conditions from Open-Meteo at a point of the area (a model nowcast, refreshed every 15 minutes), or the latest stored station reading when live data is unavailable. Change the weather sliders above to explore a what-if: the heat-stress estimates below are recomputed from the weather alone (Steadman apparent temperature, BoM approximate WBGT) and nothing is stored. The PET/UTCI rasters are not recomputed: run the Thermal Comfort tool for those." %}
     </div>
-    <div style="display:flex; gap:16px; flex-wrap:wrap;">
+    <div class="heat-weather-source">
+      {% if indicators.weather_whatif %}<span class="threshold-tag warn">What-if</span>{% endif %}
+      {% if indicators.weather_source %}{{ indicators.weather_source }}{% if indicators.weather_description %} · {{ indicators.weather_description }}{% endif %}{% if indicators.weather_time %} · {{ indicators.weather_time }}{% endif %}{% else %}No weather data{% endif %}
+    </div>
+    <div class="heat-weather-values">
       <div>
-        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Air Temp</div>
-        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">
-          {% if indicators.air_temp_C != None %}{{ indicators.air_temp_C }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">°C</span>{% else %}—{% endif %}
-        </div>
+        <div class="heat-weather-label">Air Temp</div>
+        <div class="heat-weather-value">{% if indicators.air_temp_C != None %}{{ indicators.air_temp_C|floatformat:1 }} <span>°C</span>{% else %}—{% endif %}</div>
       </div>
       <div>
-        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Humidity</div>
-        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">
-          {% if indicators.humidity_pct != None %}{{ indicators.humidity_pct }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">%</span>{% else %}—{% endif %}
-        </div>
+        <div class="heat-weather-label">Humidity</div>
+        <div class="heat-weather-value">{% if indicators.humidity_pct != None %}{{ indicators.humidity_pct|floatformat:0 }} <span>%</span>{% else %}—{% endif %}</div>
       </div>
       <div>
-        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Wind</div>
-        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">
-          {% if indicators.wind_speed_m_s != None %}{{ indicators.wind_speed_m_s }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">m/s</span>{% else %}—{% endif %}
-        </div>
+        <div class="heat-weather-label">Wind</div>
+        <div class="heat-weather-value">{% if indicators.wind_speed_m_s != None %}{{ indicators.wind_speed_m_s|floatformat:1 }} <span>m/s</span>{% else %}—{% endif %}</div>
       </div>
       <div>
-        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Solar Radiation</div>
-        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">
-          {% if indicators.solar_radiation != None %}{{ indicators.solar_radiation }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">W/m²</span>{% else %}—{% endif %}
-        </div>
+        <div class="heat-weather-label">Solar Radiation</div>
+        <div class="heat-weather-value">{% if indicators.solar_radiation != None %}{{ indicators.solar_radiation|floatformat:0 }} <span>W/m²</span>{% else %}—{% endif %}</div>
       </div>
     </div>
+    {% if indicators.weather_stress %}
+    <div class="heat-weather-values heat-weather-stress">
+      <div>
+        <div class="heat-weather-label">Feels like (shade)</div>
+        <div class="heat-weather-value">{{ indicators.weather_stress.apparent_shade_c }} <span>°C</span></div>
+      </div>
+      <div>
+        <div class="heat-weather-label">Feels like (sun)</div>
+        <div class="heat-weather-value">{{ indicators.weather_stress.apparent_sun_c }} <span>°C</span></div>
+      </div>
+      <div>
+        <div class="heat-weather-label">WBGT estimate</div>
+        <div class="heat-weather-value" style="color:{{ indicators.weather_wbgt_color }};">{{ indicators.weather_stress.wbgt_estimate_c }} <span>°C</span></div>
+        <div class="heat-weather-label">{{ indicators.weather_wbgt_category }}</div>
+      </div>
+    </div>
+    {% endif %}
+    {% localize off %}
+    <div id="heat-weather-state" hidden
+         data-whatif="{{ indicators.weather_whatif|yesno:'1,0' }}"
+         data-ta_c="{{ indicators.weather.ta_c|default_if_none:'' }}"
+         data-rh_pct="{{ indicators.weather.rh_pct|default_if_none:'' }}"
+         data-wind_ms="{{ indicators.weather.wind_ms|default_if_none:'' }}"
+         data-kdown_wm2="{{ indicators.weather.kdown_wm2|default_if_none:'' }}"
+         data-feels="{{ indicators.weather_stress.apparent_sun_c|default_if_none:'' }}"></div>
+    {% endlocalize %}
   </div>
 
   <!-- ── LST ── -->

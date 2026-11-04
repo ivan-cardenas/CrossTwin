@@ -73,15 +73,93 @@
     });
   };
 
+  // ---- Weather what-if --------------------------------------------------
+  // The weather sliders start at the live (or station) weather. Only the
+  // sliders the user moved are sent (data-touched): a range input snaps its
+  // value to its step, so an untouched slider would otherwise report a
+  // slightly different value and count as a what-if. The grid's
+  // #heat-weather-state tells the map's weather pill (WeatherPill.js) what
+  // is in use after every recalculation.
+  const WEATHER_FIELDS = ['ta_c', 'rh_pct', 'wind_ms', 'kdown_wm2'];
+  const DEFAULTS = { ta_c: 20, rh_pct: 70, wind_ms: 3, kdown_wm2: 0 };
+
+  function weatherInputs() {
+    return Array.from(document.querySelectorAll('#heat-whatif .heat-weather-input'));
+  }
+
+  function showValue(input) {
+    const out = document.querySelector(`#heat-whatif output[data-for="${input.name}"]`);
+    if (out) out.textContent = input.value;
+  }
+
+  function anyTouched() {
+    return weatherInputs().some(i => i.dataset.touched === '1');
+  }
+
+  function syncResetButton() {
+    const reset = document.getElementById('heat-weather-reset');
+    if (reset) reset.hidden = !anyTouched();
+  }
+
+  window.publishHeatWeather = function () {
+    const state = document.getElementById('heat-weather-state');
+    if (!state) return;
+    const detail = { whatif: state.dataset.whatif === '1' };
+    WEATHER_FIELDS.concat(['feels']).forEach(f => {
+      const v = state.dataset[f];
+      detail[f] = v === '' || v === undefined ? null : parseFloat(v);
+    });
+    window.dispatchEvent(new CustomEvent('crosstwin:heat-weather', { detail }));
+  };
+
+  function resetWeather() {
+    const controls = document.querySelector('#heat-whatif .heat-weather-controls');
+    weatherInputs().forEach(input => {
+      const live = controls ? controls.getAttribute('data-live-' + input.name) : null;
+      input.value = live ? live : DEFAULTS[input.name];
+      delete input.dataset.touched;
+      showValue(input);
+    });
+    syncResetButton();
+    // Recalculate without weather overrides (untouched sliders are dropped)
+    const veg = document.getElementById('vegetation-slider');
+    if (veg) htmx.trigger(veg, 'input');
+  }
+
+  weatherInputs().forEach(input => {
+    input.addEventListener('input', () => {
+      input.dataset.touched = '1';
+      showValue(input);
+      syncResetButton();
+    });
+  });
+  document.getElementById('heat-weather-reset')?.addEventListener('click', resetWeather);
+  document.getElementById('heat-whatif')?.addEventListener('submit', e => e.preventDefault());
+  window.resetHeatWeather = resetWeather;
+
+  if (!window._heatWeatherListenersAttached) {
+    document.body.addEventListener('htmx:configRequest', function (evt) {
+      if (!evt.detail.elt.closest || !evt.detail.elt.closest('#heat-whatif')) return;
+      weatherInputs().forEach(input => {
+        if (input.dataset.touched !== '1') delete evt.detail.parameters[input.name];
+      });
+    });
+    window._heatWeatherListenersAttached = true;
+  }
+
   // Run on first load / panel open
   window.initGauges();
+  window.publishHeatWeather();
 
   // Re-run after every HTMX swap targeting #indicators-grid. Guarded so
   // re-running this script (e.g. the panel partial swapped back in) never
   // attaches a second listener.
   if (!window._heatGaugeListenerAttached) {
     document.body.addEventListener('htmx:afterSwap', function (evt) {
-      if (evt.detail.target.id === 'indicators-grid') window.initGauges();
+      if (evt.detail.target.id === 'indicators-grid') {
+        window.initGauges();
+        window.publishHeatWeather();
+      }
     });
     window._heatGaugeListenerAttached = true;
   }

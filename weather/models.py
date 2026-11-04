@@ -53,9 +53,10 @@ class WMSLayer(models.Model):
 class WeatherStation(models.Model):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=200, help_text="Name of the weather station")
+    knmi_id = models.IntegerField(unique=True, null=True, blank=True, help_text="KNMI station number (STN), set for stations imported from KNMI daily data")
     geom = models.PointField(srid=COORDINATE_SYSTEM, help_text="Location of the weather station")
     elevation_m = models.FloatField(help_text="Elevation of the station in meters")
-    installation_date = models.DateField(help_text="Date when the station was installed")
+    installation_date = models.DateField(null=True, blank=True, help_text="Date when the station was installed (unknown for KNMI imports)")
     is_active = models.BooleanField(default=True, help_text="Whether the station is currently operational")
     
     class Meta:
@@ -82,6 +83,10 @@ class Meteorology(models.Model):
     precipitation_mm = models.FloatField(
         null=True, blank=True,
         help_text="Precipitation in millimeters"
+    )
+    reference_et_mm = models.FloatField(
+        null=True, blank=True,
+        help_text="Reference evapotranspiration (Makkink) over the day in millimeters; set on daily water-balance rows (KNMI EV24)"
     )
     wind_speed_m_s = models.FloatField(
         null=True, blank=True,

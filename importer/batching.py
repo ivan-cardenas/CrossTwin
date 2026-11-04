@@ -20,7 +20,7 @@ from django.db import models, transaction
 from administrative.signals import deferred_population_cascade
 from core.cache import bump_layer_version
 from physicalEnv.signals import deferred_urban_area, schedule_urban_area_recompute
-from watersupply.signals import deferred_water_refresh
+from watersupply.signals import deferred_water_refresh, refresh_freshwater
 from housing.signals import deferred_housing_refresh
 
 logger = logging.getLogger(__name__)
@@ -112,9 +112,19 @@ def deferred_cascades():
 # Bulk writes
 # ---------------------------------------------------------------------------
 
+def _refresh_freshwater_over(rows):
+    """Replays watersupply's soil/land-cover receivers: one extent for the whole batch."""
+    from django.contrib.gis.geos import GeometryCollection
+
+    geoms = [row.geom for row in rows if getattr(row, "geom", None) is not None]
+    if geoms:
+        refresh_freshwater(GeometryCollection(*geoms, srid=geoms[0].srid).envelope)
+
+
 def _finalize_landcover(rows):
     for city_id in {row.city_id for row in rows if row.city_id}:
         schedule_urban_area_recompute(city_id)
+    _refresh_freshwater_over(rows)       # replays watersupply/signals.py
 
 
 # Models the importer may write with bulk_create. bulk_create skips save()
@@ -127,7 +137,7 @@ BULK_IMPORT_MODELS = {
     "physicalEnv.LandCoverVector": _finalize_landcover,   # replays physicalEnv/signals.py
     "builtup.Street": None,
     "builtup.Facility": None,
-    "physicalEnv.SoilArea": None,
+    "physicalEnv.SoilArea": _refresh_freshwater_over,     # replays watersupply/signals.py
     "nature.ProtectedArea": None,
     "nature.WaterWaysLN": None,
     "nature.WaterWaysPG": None,

@@ -242,26 +242,39 @@ class AvailableFreshWater(models.Model):
     SourceName = models.CharField(max_length=100, help_text="Name of the water source. Corresponds to the Balance Area ")
     watershed = models.ForeignKey(Watershed, on_delete=models.DO_NOTHING, null=True, help_text="Watershed code from watersupply.Watershed. ")
     geom = models.MultiPolygonField(srid=COORDINATE_SYSTEM)
-    infiltrationRate_cm_h = models.FloatField(help_text="Infiltration rate in centimeters per hour", null=True, blank=True) #TODO: this should be calculated from land cover and soil type
-    infiltrationDepth_cm = models.FloatField(help_text="Yearly infiltration (recharge) depth in centimeters per year over the source area", null=True, blank=True) #TODO: this should be calculated from land cover and soil type
-    totalQuantity_Mm3 = models.FloatField(help_text="total quantity in million cubic meters", null=True, blank=True) #TODO: this should be calculated from land cover and soil type
+    infiltrationRate_cm_h = models.FloatField(help_text="Area-weighted final infiltration rate in centimeters per hour. Derived in save() from the soil map and land cover (wet-season groundwater) when they cover the source; otherwise a supplied value is kept", null=True, blank=True)
+    infiltrationDepth_cm = models.FloatField(help_text="Yearly infiltration (recharge) depth in centimeters per year over the source area. Derived in save() from a year of daily KNMI rain and reference ET at the nearest station, soil map and land cover when all are available; otherwise a supplied value is kept", null=True, blank=True)
+    recharge_year = models.IntegerField(null=True, blank=True, help_text="Year of meteorology the recharge depth is derived from; empty = the nearest station's latest complete year")
+    totalQuantity_Mm3 = models.FloatField(help_text="total quantity in million cubic meters", null=True, blank=True)
     yield_Mm3_year = models.FloatField(help_text="Yield in million cubic meters per year. Derived in save() from infiltrationDepth_cm and the area when the depth is given", null=True, blank=True)
     last_updated = models.DateTimeField(default=timezone.now)
-    
+
     def __str__(self):
         return f"{self.SourceName} - {self.totalQuantity_Mm3} Mm3"
-    
+
     def save(self, *args, **kwargs):
         """
-        DAG edge: Infiltration -> Available_FW
-        yield_Mm3_year = infiltrationDepth_cm / 100 * area_m2 / 1e6 (chain.recharge_Mm3_yr),
-        recalculated whenever the depth is known so it follows edits to the depth
-        or the polygon; without a depth a supplied yield is kept. The infiltration
-        rate is not used: it is a capacity during rain, not a yearly amount.
-        Area in the storage CRS's metres (projected, EPSG:28992).
+        DAG edges:  LandCover   -> Infiltration
+                    Soil_Type   -> Infiltration
+                    Infiltration -> Available_FW
+                    Meteorology -> Available_FW
+
+        With soil-map x land-cover pieces over the polygon
+        (physicalEnv.soil.soil_landcover_composition, wet-season groundwater):
+          infiltrationRate_cm_h = soil.weighted_infiltration_rate_mm_h / 10
+          infiltrationDepth_cm  = chain.recharge_depth_cm_yr(daily rain, ET_ref, pieces),
+                                  when a station has a complete year (recharge_year,
+                                  else its latest; weather.water_balance)
+        Then yield_Mm3_year = infiltrationDepth_cm / 100 * area_m2 / 1e6
+        (chain.recharge_Mm3_yr), whenever the depth is known.
+        A missing input keeps the stored (or supplied) value instead of
+        writing None. The rate is a capacity during rain, not a yearly amount,
+        so it does not enter the yield. Area in the storage CRS's metres.
         """
         from .chain import recharge_Mm3_yr
 
+        if self.geom is not None:
+            self._derive_infiltration()
         if self.infiltrationDepth_cm is not None and self.geom is not None:
             self.yield_Mm3_year = recharge_Mm3_yr(self.infiltrationDepth_cm, self.geom.area)
         # Assign the watershed from location only when none was given explicitly
@@ -269,6 +282,26 @@ class AvailableFreshWater(models.Model):
             self.watershed = Watershed.objects.filter(geom__contains=self.geom.centroid).first()
         self.last_updated = timezone.now()
         super().save(*args, **kwargs)
+
+    def _derive_infiltration(self):
+        """Fill the rate and the yearly depth from soil, land cover and meteorology (see save())."""
+        from physicalEnv.soil import SEASONS, soil_landcover_composition, weighted_infiltration_rate_mm_h
+        from weather.water_balance import yearly_water_balance
+
+        from .chain import recharge_depth_cm_yr
+
+        composition = soil_landcover_composition(self.geom, SEASONS['wet']['statistic'])[0]
+        if not composition:
+            return
+        rate = weighted_infiltration_rate_mm_h(composition)
+        if rate is not None:
+            self.infiltrationRate_cm_h = round(rate / 10, 4)
+        balance = yearly_water_balance(self.geom.point_on_surface, self.recharge_year)
+        if balance is None:
+            return
+        depth = recharge_depth_cm_yr(balance['daily_rain_mm'], balance['et_ref_mm'], composition)
+        if depth is not None:
+            self.infiltrationDepth_cm = round(depth, 2)
 
     class Meta:
         verbose_name = "Available Fresh Water"

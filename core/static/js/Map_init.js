@@ -240,6 +240,23 @@ function safeFitBounds(bounds, options = {}) {
 }
 
 /**
+ * Determine the color for 3D buildings based on the active tool
+ */
+function buildingColorForTool() {
+  const tool = document.querySelector('.tool-button.active')?.dataset.tool;
+  return BUILDING_COLOR_BY_TOOL[tool] || BUILDING_COLOR_DEFAULT;
+}
+
+/**
+ * Update the color of 3D buildings
+ */
+function sync3DBuildingColor() {
+  if (map.getLayer('3d-buildings')) {
+    map.setPaintProperty('3d-buildings', 'fill-extrusion-color', buildingColorForTool());
+  }
+}
+
+/**
  * Add 3D building extrusions
  */
 function add3DBuildings() {
@@ -262,7 +279,8 @@ function add3DBuildings() {
       type: 'fill-extrusion',
       minzoom: 5,
       paint: {
-        'fill-extrusion-color': '#d0e0f0',
+        
+        'fill-extrusion-color': buildingColorForTool(),
         'fill-extrusion-height': [
           'interpolate', ['linear'], ['zoom'],
           13, 0, 16, ['get', 'height']
@@ -271,10 +289,14 @@ function add3DBuildings() {
           'interpolate', ['linear'], ['zoom'],
           13, 0, 16, ['get', 'min_height']
         ],
-        'fill-extrusion-opacity': [
-          'interpolate', ['linear'], ['zoom'],
-          5, 1, 20, 0.7 
-        ]
+        'fill-extrusion-opacity': 0.9,
+        // 'fill-extrusion-opacity': [
+        //   'interpolate', ['linear'], ['zoom'],
+        //   13, 1, 20, 0.80 ],        
+        'fill-extrusion-cast-shadow': true,
+        
+        'fill-extrusion-line-color': '#494949',
+        'fill-extrusion-height-alignment': 'terrain',
       }
     }, labelLayerId);
   }
