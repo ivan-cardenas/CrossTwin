@@ -4,9 +4,12 @@ no API key, unlike the KNMI Data Platform the importer's other KNMI entries use)
 
 parse_knmi() reads the CSV both endpoints answer with: the hourly one
 (urban_heat/solweig/met.py, one hour for the Thermal Comfort tool, not
-stored) and the daily one used here, whose precipitation (RH) and Makkink
-reference evapotranspiration (EV24) are stored as daily Meteorology rows for
-the yearly water balance of watersupply.AvailableFreshWater.
+stored) and the daily one used here, stored as daily Meteorology rows:
+precipitation (RH) and Makkink reference evapotranspiration (EV24) for the
+yearly water balance of watersupply.AvailableFreshWater, plus the day's mean
+wind speed (FG), temperature (TG), global radiation (Q, as a 24 h mean
+W/m²), relative humidity (UG) and the vapour pressure derived from TG and UG
+(KNMI publishes no daily vapour pressure).
 
 store_daily() writes with bulk_create, which fires no post_save, so it sends
 daily_water_balance_changed with the station ids instead (downstream apps
@@ -23,7 +26,7 @@ from django.dispatch import Signal
 logger = logging.getLogger(__name__)
 
 KNMI_DAILY_URL = "https://www.daggegevens.knmi.nl/klimatologie/daggegevens"
-DAILY_VARS = "RH:EV24"
+DAILY_VARS = "RH:EV24:FG:TG:Q:UG"
 # Stations within this distance of the area of interest are imported; when
 # none is, the nearest one is.
 STATION_BUFFER_KM = 25.0
@@ -72,6 +75,44 @@ def parse_knmi(text):
     return stations, rows
 
 
+def tenths(value):
+    """KNMI value in 0.1 units (FG 0.1 m/s, TG 0.1 °C, EV24 0.1 mm) -> units."""
+    return None if value is None else value / 10.0
+
+
+def radiation_w_m2(q_j_cm2):
+    """KNMI Q (daily global radiation, J/cm²) -> mean irradiance over the 24 h, W/m²."""
+    return None if q_j_cm2 is None else q_j_cm2 * 1e4 / 86400
+
+
+def vapour_pressure_hpa(ta_c, rh_pct):
+    """
+    Water vapour pressure (hPa) from air temperature and relative humidity
+    (Tetens/Magnus, same constants as urban_heat/chain.py::vapour_pressure_hpa;
+    weather is upstream of urban_heat, so it keeps its own copy). From the
+    daily means TG and UG it slightly understates the mean of the day's
+    hourly values, as e is convex in T.
+    """
+    if ta_c is None or rh_pct is None:
+        return None
+    return rh_pct / 100 * 6.105 * math.exp(17.27 * ta_c / (237.7 + ta_c))
+
+
+def daily_values(row):
+    """Meteorology field values of one KNMI daggegevens row."""
+    temperature, humidity = tenths(row.get("TG")), row.get("UG")
+    vapour = vapour_pressure_hpa(temperature, humidity)
+    return {
+        "precipitation_mm": rain_mm(row.get("RH")),
+        "reference_et_mm": tenths(row.get("EV24")),
+        "wind_speed_m_s": tenths(row.get("FG")),
+        "temperature_C": temperature,
+        "solar_radiation_W_m2": radiation_w_m2(row.get("Q")),
+        "humidity_percent": None if humidity is None else float(humidity),
+        "vapor_pressure_hPa": None if vapour is None else round(vapour, 2),
+    }
+
+
 def rain_mm(rh):
     """KNMI RH (0.1 mm; -1 = less than 0.05 mm) -> mm."""
     if rh is None:
@@ -79,8 +120,12 @@ def rain_mm(rh):
     return 0.0 if rh < 0 else rh / 10.0
 
 
+# Meteorology fields a daily import writes (and overwrites on re-import)
+DAILY_FIELDS = list(daily_values({}))
+
+
 def fetch_daily(start, end):
-    """Raw CSV of RH and EV24 for every KNMI station between two dates (inclusive)."""
+    """Raw CSV of the DAILY_VARS for every KNMI station between two dates (inclusive)."""
     import requests
 
     try:
@@ -116,8 +161,9 @@ def select_stations(stations, bbox_wgs84):
 
 def store_daily(text, bbox_wgs84):
     """
-    Upsert the stations near the bbox and their daily precipitation and
-    reference ET as Meteorology rows (one per station and day, at noon UTC).
+    Upsert the stations near the bbox and their daily values (daily_values:
+    rain, reference ET, mean wind, temperature, radiation, humidity, vapour
+    pressure) as Meteorology rows (one per station and day, at noon UTC).
     Returns (station_count, row_count). Sends daily_water_balance_changed.
     """
     from django.conf import settings
@@ -149,17 +195,16 @@ def store_daily(text, bbox_wgs84):
             day = row.get("YYYYMMDD")
             if station is None or day is None:
                 continue
-            et = row.get("EV24")
             d = date(day // 10000, day // 100 % 100, day % 100)
             records.append(Meteorology(
                 station=station,
                 date=datetime(d.year, d.month, d.day, DAILY_HOUR_UTC, tzinfo=timezone.utc),
-                precipitation_mm=rain_mm(row.get("RH")),
-                reference_et_mm=None if et is None else et / 10.0,
+                period=Meteorology.PERIOD_DAY,
+                **daily_values(row),
             ))
         Meteorology.objects.bulk_create(
             records, batch_size=1000, update_conflicts=True,
-            unique_fields=["station", "date"], update_fields=["precipitation_mm", "reference_et_mm"],
+            unique_fields=["station", "date"], update_fields=DAILY_FIELDS + ["period"],
         )
 
     station_ids = [s.pk for s in by_stn.values()]

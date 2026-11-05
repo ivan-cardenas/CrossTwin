@@ -15,40 +15,81 @@ from weather.models import Meteorology
 
 # ── Vegetation & Green Area ──────────────────────────────────────────
 
+# Land-cover classes counted as green (substring match on class_name, like
+# physicalEnv.signals.URBAN_AREA_KEYWORDS for urban fabric).
+GREEN_LANDCOVER_KEYWORDS = ['forest', 'grass', 'green', 'vegetation', 'tree', 'park', 'nature']
+
+
 def calculate_green_area(adminUnit):
-    """Total green area (parks + green land cover) in km².
+    """Green area inside the unit, in km²: parks and green land cover merged.
 
     DAG edges:  LandCover → Green_Area
+
+    Every polygon is first clipped to the unit (one lying entirely within it
+    is kept whole, only boundary-crossing ones go through ST_Intersection),
+    so nothing that lies outside the unit counts. Land cover uses each city's
+    most recent year, like the neighborhood urban area (physicalEnv/signals.py).
+    LandCoverVector.percentage is not used: it is a share of the province and
+    means nothing for a smaller unit.
+
+    The two layers overlap (a park is usually also a green land-cover polygon,
+    and OSM parks can overlap each other), so they are merged before measuring:
+
+        parks           = |∪ parks ∩ unit|
+        total green     = |∪ (parks + green land cover) ∩ unit|
+        green land cover = total green − parks   (green land outside the parks)
+
+    so parks + green land cover = total, and no square metre counts twice.
     """
-    # Parks within the administrative unit
-    park_area_m2 = (
-        Park.objects
-        .filter(geom__intersects=adminUnit.geom)
-        .aggregate(total=Sum('area'))['total'] or 0
-    )
+    from physicalEnv.models import LandCoverClasses
+    from physicalEnv.signals import _area_sql
 
-    # Green land cover classes (forest, grass, vegetation-related)
-    green_keywords = ['forest', 'grass', 'green', 'vegetation', 'tree', 'park', 'nature']
-    green_filter = Q()
-    for kw in green_keywords:
-        green_filter |= Q(land_cover_type__class_name__icontains=kw)
+    geom = adminUnit.geom
+    if geom is None:
+        return {'park_area_km2': 0.0, 'green_lc_km2': 0.0, 'total_green_km2': 0.0}
 
-    # NOTE: percentage is stored relative to the *Province* total area
-    # (see CLAUDE.md TODO on LandCoverVector.percentage), so this stays
-    # province-relative even when `adminUnit` here is a smaller unit.
-    green_lc_pct = (
-        LandCoverVector.objects
-        .filter(green_filter, geom__intersects=adminUnit.geom)
-        .aggregate(total=Sum('percentage'))['total'] or 0
-    )
-
-    adminUnit_area_km2 = adminUnit.area_km2 or 0
-    green_lc_km2 = adminUnit_area_km2 * green_lc_pct / 100
+    parks = Park._meta.db_table
+    landcover = LandCoverVector._meta.db_table
+    classes = LandCoverClasses._meta.db_table
+    # ST_CollectionExtract(…, 3): a clip can leave slivers of lines/points on
+    # the boundary; keep only the polygon part so the union stays areal.
+    clip = "CASE WHEN ST_Within({g}, u.geom) THEN {g} ELSE ST_CollectionExtract(ST_Intersection({g}, u.geom), 3) END"
+    sql = f"""
+        WITH unit AS (SELECT ST_GeomFromEWKB(%(geom)s) AS geom),
+        park_parts AS (
+            SELECT {clip.format(g='p.geom')} AS g
+            FROM "{parks}" p, unit u
+            WHERE p.geom && u.geom AND ST_Intersects(p.geom, u.geom)
+        ),
+        green_parts AS (
+            SELECT {clip.format(g='l.geom')} AS g
+            FROM "{landcover}" l
+            JOIN "{classes}" c ON c.id = l.land_cover_type_id, unit u
+            WHERE l.geom && u.geom AND ST_Intersects(l.geom, u.geom)
+              AND c.class_name ILIKE ANY(%(patterns)s)
+              AND l.year = (SELECT MAX(l2.year) FROM "{landcover}" l2 WHERE l2.city_id = l.city_id)
+        ),
+        park_union AS (SELECT ST_UnaryUnion(ST_Collect(g)) AS g FROM park_parts),
+        all_union AS (
+            SELECT ST_UnaryUnion(ST_Collect(g)) AS g
+            FROM (SELECT g FROM park_union UNION ALL SELECT g FROM green_parts) parts
+        )
+        SELECT COALESCE((SELECT {_area_sql('g')} FROM park_union), 0),
+               COALESCE((SELECT {_area_sql('g')} FROM all_union), 0)
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(sql, {
+            'geom': bytes(geom.ewkb),
+            'patterns': [f'%{kw}%' for kw in GREEN_LANDCOVER_KEYWORDS],
+        })
+        park_m2, total_m2 = cursor.fetchone()
+    # the union can be a hair smaller than the parks alone through rounding
+    total_m2 = max(total_m2, park_m2)
 
     return {
-        'park_area_km2': round(park_area_m2 / 1e6, 3),
-        'green_lc_km2': round(green_lc_km2, 3),
-        'total_green_km2': round(park_area_m2 / 1e6 + green_lc_km2, 3),
+        'park_area_km2': round(park_m2 / 1e6, 3),
+        'green_lc_km2': round((total_m2 - park_m2) / 1e6, 3),
+        'total_green_km2': round(total_m2 / 1e6, 3),
     }
 
 
@@ -147,7 +188,6 @@ def get_thermal_indices(adminUnit):
 
     DAG edges:  Meteorology → Tmrt, PET, UTCI
                 DSM → SVF → Tmrt, PET
-                LST → PET
                 Tmrt → PET, UTCI
 
     WBGT is not a DAG node: it is an observed measure imported from KNMI
@@ -307,7 +347,11 @@ def calculate_nbs_coverage(adminUnit):
 # ── Meteorology Summary ─────────────────────────────────────────────
 
 def get_latest_meteorology(adminUnit):
-    """Latest meteorological measurements within the administrative unit.
+    """Latest meteorological reading within the administrative unit.
+
+    Only hourly/instant readings (Meteorology.PERIOD_HOUR): daily rows hold
+    24 h means (radiation about half the midday value, temperature below the
+    afternoon's), which would understate heat stress if read as a reading.
 
     DAG edges:  Climate_Change     → Meteorology
                 Anthropogenic_Heat → Meteorology
@@ -315,7 +359,8 @@ def get_latest_meteorology(adminUnit):
     """
     record = (
         Meteorology.objects
-        .filter(station__geom__intersects=adminUnit.geom, station__is_active=True)
+        .filter(station__geom__intersects=adminUnit.geom, station__is_active=True,
+                period=Meteorology.PERIOD_HOUR)
         .order_by('-date')
         .first()
     )

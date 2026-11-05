@@ -151,3 +151,41 @@ class HeatPanelWeatherTests(TestCase):
         self.assertContains(response, "Weather what-if")
         self.assertContains(response, 'data-whatif="1"')
         self.assertContains(response, 'data-ta_c="38.0"')
+
+
+class StationFallbackSkipsDailyRowsTests(TestCase):
+    """
+    The heat panel's station fallback reads hourly readings only: a KNMI daily
+    row (24 h means, stamped at noon UTC) must not pass for a noon reading.
+    """
+
+    def setUp(self):
+        from datetime import datetime, timezone
+
+        from django.contrib.gis.geos import Point
+        from watersupply.tests.factories import make_city
+        from weather.models import Meteorology, WeatherStation
+
+        self.city = make_city(cityName="Heatville")
+        station = WeatherStation.objects.create(
+            name="Inside", geom=Point(257000, 470000, srid=28992), elevation_m=30)
+        Meteorology.objects.create(          # hourly reading, a day older
+            station=station, date=datetime(2024, 7, 14, 13, tzinfo=timezone.utc),
+            temperature_C=31.0, solar_radiation_W_m2=820.0, humidity_percent=40, wind_speed_m_s=2.0)
+        Meteorology.objects.create(          # the daily row of the next day (newer)
+            station=station, date=datetime(2024, 7, 15, 12, tzinfo=timezone.utc),
+            period=Meteorology.PERIOD_DAY,
+            temperature_C=22.0, solar_radiation_W_m2=290.0, humidity_percent=65, wind_speed_m_s=3.0)
+
+    def test_latest_meteorology_is_the_hourly_reading(self):
+        from urban_heat.calculations import get_latest_meteorology
+
+        meteo = get_latest_meteorology(self.city)
+        self.assertEqual((meteo['temperature_C'], meteo['solar_radiation_W_m2']), (31.0, 820.0))
+
+    def test_only_daily_rows_give_no_station_baseline(self):
+        from urban_heat.calculations import get_latest_meteorology
+        from weather.models import Meteorology
+
+        Meteorology.objects.filter(period=Meteorology.PERIOD_HOUR).delete()
+        self.assertIsNone(get_latest_meteorology(self.city))

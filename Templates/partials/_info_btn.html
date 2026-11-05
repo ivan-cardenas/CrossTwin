@@ -1,14 +1,41 @@
-{% comment %}
-Reusable "?" helper button, shared across domain dashboards (watersupply, housing, urban_heat, ...).
-Usage:
-{% include 'partials/_info_btn.html' with title="Card Title" text="Plain-language explanation." %}
-Requires the shared #info-popover markup/script to be included once per page
-(see partials/_info_popover.html).
+{% load indicator_help %}{% comment %}
+"?" help button shared by the domain dashboards and side panels. Render it with
+    {% load indicator_help %}{% info_help "water.supply_security" %}
+which fills `title` and `help` from core/indicator_help.py. A plain
+    {% include 'partials/_info_btn.html' with title="…" text="…" %}
+still works for a one-line note. The content sits in a <template> (inert, never
+displayed); core/static/js/info_popover.js copies it into the shared popover,
+which it creates once under <body> so no panel can clip or offset it.
 {% endcomment %}
-<button type="button" class="info-btn" data-info-title="{{ title }}" data-info-text="{{ text }}" aria-label="What is {{ title }}?">
+<button type="button" class="info-btn" aria-label="What is {{ title }}?" aria-haspopup="dialog">
   <span class="info-btn-mark" aria-hidden="true">
     <span class="tick tick-n"></span><span class="tick tick-e"></span>
     <span class="tick tick-s"></span><span class="tick tick-w"></span>
     <span class="info-btn-glyph">?</span>
   </span>
+  <template class="info-btn-content">
+    <span class="info-popover-title">{{ title }}</span>
+    {% if help %}
+      <span class="info-section-label">What it is</span>
+      <p class="info-popover-text">{{ help.what }}</p>
+      {% if help.how %}
+        <span class="info-section-label">How it is measured</span>
+        <p class="info-popover-text">{{ help.how }}</p>
+      {% endif %}
+      {% if help.eq %}
+        <span class="info-section-label">Equation{{ help.eq|length|pluralize }}</span>
+        <div class="info-eq-block">
+          {% for line in help.eq %}<div class="info-eq">{{ line|friendly_equation }}</div>{% endfor %}
+        </div>
+      {% endif %}
+      {% if help.where %}
+        <dl class="info-where">
+          {% for symbol, meaning in help.where %}<dt>{{ symbol }}</dt><dd>{{ meaning }}</dd>{% endfor %}
+        </dl>
+      {% endif %}
+      {% if help.note %}<p class="info-popover-note">{{ help.note }}</p>{% endif %}
+    {% else %}
+      <p class="info-popover-text">{{ text }}</p>
+    {% endif %}
+  </template>
 </button>

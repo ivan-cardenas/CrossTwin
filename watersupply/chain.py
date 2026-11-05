@@ -101,6 +101,26 @@ def recharge_depth_cm_yr(daily_rain_mm, et_ref_mm_yr, composition):
                 LandCover    -> Infiltration -> Available_FW
                 Soil_Type    -> Infiltration -> Available_FW
     """
+    balance = yearly_water_balance_mm(daily_rain_mm, et_ref_mm_yr, composition)
+    return None if balance is None else balance['recharge_mm'] / 10
+
+
+def yearly_water_balance_mm(daily_rain_mm, et_ref_mm_yr, composition):
+    """
+    The yearly water balance behind recharge_depth_cm_yr, in mm over the
+    area: {'rain_mm', 'runoff_mm', 'et_mm', 'recharge_mm'}, where
+
+        recharge = max(0, rain - runoff - ET_ref)
+        et       = the part of ET_ref the rain left after runoff
+                   (min(ET_ref, rain - runoff)), so rain = runoff + et + recharge
+
+    None when no piece has a curve number. See recharge_depth_cm_yr for the
+    method and its simplifications.
+
+    DAG edges:  Meteorology  -> Available_FW
+                LandCover    -> Infiltration -> Available_FW
+                Soil_Type    -> Infiltration -> Available_FW
+    """
     from physicalEnv.soil import curve_number, scs_runoff_mm
 
     # Pieces with the same curve number behave alike: weight per CN.
@@ -120,4 +140,10 @@ def recharge_depth_cm_yr(daily_rain_mm, et_ref_mm_yr, composition):
             continue
         rain += p
         runoff += sum(scs_runoff_mm(p, cn) * share for cn, share in shares)
-    return max(0.0, rain - runoff - (et_ref_mm_yr or 0.0)) / 10
+    et_ref = et_ref_mm_yr or 0.0
+    return {
+        'rain_mm':     rain,
+        'runoff_mm':   runoff,
+        'et_mm':       min(et_ref, rain - runoff),
+        'recharge_mm': max(0.0, rain - runoff - et_ref),
+    }

@@ -33,8 +33,8 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 
 - [x] `DSM -> SVF -> Tmrt/PET` chain — on demand, not in `save()`: `physicalEnv/svf.py::calculate_svf` (map SVF tool) writes `SkyViewFactor`; the Thermal Comfort tool (`urban_heat/solweig/pipeline.py::calculate`, a background `ThermalComfortRun`) runs SOLWEIG-GPU from the DSM (with the editor's building patches) + one hour of meteorology and stores one `MeanRadiantTemperature`, `UTCI` and `PET` row (PET with `pet-adjusted`, `urban_pet`). No receivers by design (heavy GPU/download work); building edits mark results stale instead (`stale_results`)
 - [x] `Tmrt -> UTCI` — computed by solweig-gpu in the same run (`run_solweig`), stored as `UTCI`
-- [ ] `LST -> PET` — still open: PET uses Tmrt + air temperature (with the Koopmans urban heat island) + 1.2 m wind; the stored Landsat LST (`urban_heat/lst/`) is never read by the PET calculation
-- [ ] Thermal comfort meteorology is uniform over the view for Tmrt/UTCI, and PET's wind/UHI source areas are cut at the 50 m halo
+- [x] `LST -> PET` — removed from `core/DAG.dot`: PET comes from `Tmrt -> PET` (SOLWEIG Tmrt + air temperature with the Koopmans urban heat island + 1.2 m wind), the Landsat LST (`urban_heat/lst/`) is a separate surface temperature and not a PET input
+- [X] Thermal comfort meteorology is uniform over the view for Tmrt/UTCI, and PET's wind/UHI source areas are cut at the 50 m halo
 - [ ] `Canyon_Aspect -> DSM`, `Vegetation_Coverage -> DSM`, `Streets -> Canyon_Aspect` — unimplemented (expected to arrive pre-computed from SOLWEIG externally)
 - [ ] `calculate_urban_morphology()` / `get_thermal_indices()` — only compute statistics *over* existing rasters, don't derive one raster from another
 - [ ] `PET -> NBS` — `calculate_nbs_coverage()` counts NBS geometries but never reads PET values
@@ -100,8 +100,8 @@ Collected from `#TODO` comments across the codebase:
 
 **Data sources & indices**
 - [ ] Review current spectral indices (e.g. NDVI, NDWI) against recent remote-sensing research and evaluate whether better-performing alternatives exist for CrossTwin's Dutch/urban context.
-- [ ] Evaluate Copernicus Destination Earth as a data source — note its native resolution is ~5km, coarse relative to CrossTwin's typical city/neighbourhood-scale Dutch datasets, so assess whether it's actually useful before integrating.
-- [ ] Evaluate the Dutch Klimaateffectatlas (Climate Atlas) as a source: review what maps/layers it offers and whether/how to import or link to them.
+- [X] Evaluate Copernicus Destination Earth as a data source — note its native resolution is ~5km, coarse relative to CrossTwin's typical city/neighbourhood-scale Dutch datasets, so assess whether it's actually useful before integrating.
+- [X] Evaluate the Dutch Klimaateffectatlas (Climate Atlas) as a source: review what maps/layers it offers and whether/how to import or link to them.
 - [x] Cloud-coverage filtering (max ~10%) for satellite imagery imports — already implemented, confirm still working as part of Sentinel-2/GEE import paths before deleting this line.
 
 **Import / update workflow**
@@ -155,7 +155,7 @@ Existing three-layer pattern (`calculations.py` + `views.py` + templates, see CL
 - [ ] Drive the rain effect from the KNMI radar value under the map centre instead of Open-Meteo's model precipitation (needs a GetFeatureInfo call through the WMS proxy)
 
 **urban_heat (duplicate of gaps already tracked above)**
-- The "create LST/PET/SVF/SUHII calculation functions, see SOLWEIG" item: LST (`urban_heat/lst/`), SVF (`physicalEnv/svf.py`) and Tmrt/UTCI/PET (`urban_heat/solweig/`) now exist; SUHII has no calculation yet and `LST -> PET` is open (see the `## urban_heat` section).
+- The "create LST/PET/SVF/SUHII calculation functions, see SOLWEIG" item: LST (`urban_heat/lst/`), SVF (`physicalEnv/svf.py`) and Tmrt/UTCI/PET (`urban_heat/solweig/`) now exist; SUHII has no calculation yet; `LST -> PET` was dropped from the DAG, PET comes from Tmrt (see the `## urban_heat` section).
 
 ## OTHERS
 

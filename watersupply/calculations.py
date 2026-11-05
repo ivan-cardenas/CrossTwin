@@ -470,18 +470,31 @@ def calculate_infiltration(adminBund, season='wet'):
     where it is under 60 cm on undrained land the soil counts as group D;
     drained (built-up, paved) land keeps its texture group.
 
+    `water_balance` is the latest complete year of daily KNMI rain and
+    reference ET at the station nearest the unit (weather/water_balance.py),
+    the input of the yearly recharge; None without daily rows.
+
     DAG edges:  LandCover  → Infiltration
                 Soil_Type  → Infiltration
+                Meteorology → Available_FW (input side of the yearly recharge)
     """
     from physicalEnv.soil import SEASONS, soil_landcover_composition
+    from weather.water_balance import yearly_water_balance
 
     composition, by_group, shallow_m2, drained_m2 = soil_landcover_composition(
         adminBund.geom, SEASONS[season]['statistic'])
+    balance = yearly_water_balance(adminBund.geom.point_on_surface) if composition else None
     return {
         'composition': composition,
         'soil_groups_m2': by_group,
         'shallow_groundwater_m2': shallow_m2,
         'drained_shallow_m2': drained_m2,
+        'water_balance': balance and {
+            'station': balance['station'].name,
+            'year': balance['year'],
+            'daily_rain_mm': balance['daily_rain_mm'],
+            'et_ref_mm': balance['et_ref_mm'],
+        },
     }
 
 

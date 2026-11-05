@@ -3,7 +3,8 @@
 {% load static %} 
 {% block title %}Urban Twin - Map View{% endblock %} 
 {% block extra_css %}
-
+<!-- Includes the Mapbox GL JS CSS stylesheet -->
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.33.0/mapbox-gl.css" rel="stylesheet">
 <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.1.0/mapbox-gl-geocoder.min.js"></script>
 <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.1.0/mapbox-gl-geocoder.css" type="text/css">
 <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.5.0/mapbox-gl-draw.css" type="text/css">
@@ -11,9 +12,9 @@
 <link rel="stylesheet" href="{% static 'css/mainMap.css' %}" />
 <link rel="stylesheet" href="{% static 'css/indicators.css' %}" />
 {% endblock %} {% block extra_js %}
-<!-- Includes the Mapbox GL JS CSS stylesheet -->
+
 <!-- Imports the Mapbox GL JS bundle -->
-<link href="https://api.mapbox.com/mapbox-gl-js/v3.33.0/mapbox-gl.css" rel="stylesheet">
+
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.33.0/mapbox-gl.js"></script>
 {% comment %} CrossTwin JS {% endcomment %}
 <script src="{% static 'js/Config.js' %}"></script>
@@ -27,6 +28,7 @@
 <script src="{% static 'js/SvfTool.js' %}"></script>
 <script src="{% static 'js/SolweigTool.js' %}"></script>
 <script src="{% static 'js/WeatherPill.js' %}"></script>
+<script src="{% static 'js/info_popover.js' %}"></script>
 <script src="{% static 'js/MapSettings.js' %}"></script>
 <script src="{% static 'js/Events.js' %}"></script>
 <script src="{% static 'js/Map_init.js' %}"></script>

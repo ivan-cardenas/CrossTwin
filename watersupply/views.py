@@ -173,10 +173,52 @@ MOCK_DATA = {
         ],
         'soil_groups_m2': {'A': 13e6, 'B': 2e6, 'D': 4e6},
         'shallow_groundwater_m2': 1e6,
+        # ~795 mm of rain (200 dry days, 140 of 3 mm, 25 of 15 mm), Makkink ET ~560 mm
+        'water_balance': {
+            'station': 'Demo', 'year': 2025,
+            'daily_rain_mm': [0.0] * 200 + [3.0] * 140 + [15.0] * 25, 'et_ref_mm': 560.0,
+        },
     },
 }
 
 # ── shared calculation ────────────────────────────────────────────────
+def _recharge_indicators(infiltration, area_m2):
+    """
+    Yearly groundwater recharge of the unit: the same water balance that
+    AvailableFreshWater.save() stores (chain.recharge_depth_cm_yr), over the
+    unit's soil x land cover and the nearest station's latest complete year.
+    The rain-event slider does not enter; the season switch does, through the
+    composition (the stored value uses the wet season, the default).
+
+    DAG edges:  Meteorology -> Available_FW
+                LandCover   -> Infiltration -> Available_FW
+                Soil_Type   -> Infiltration -> Available_FW
+    """
+    met = infiltration.get('water_balance')
+    balance = met and chain.yearly_water_balance_mm(
+        met['daily_rain_mm'], met['et_ref_mm'], infiltration.get('composition', []))
+    if not balance:
+        return {'recharge_mm_yr': None}
+    rain = balance['rain_mm']
+
+    def share(key):
+        return round(balance[key] / rain * 100, 1) if rain else 0
+
+    return {
+        'recharge_mm_yr':        round(balance['recharge_mm']),
+        'recharge_Mm3_yr':       round(chain.recharge_Mm3_yr(balance['recharge_mm'] / 10, area_m2), 2),
+        'recharge_rain_mm_yr':   round(rain),
+        'recharge_runoff_mm_yr': round(balance['runoff_mm']),
+        'recharge_et_mm_yr':     round(balance['et_mm']),
+        # shares of the year's rain, for the stacked bar (sum to 100)
+        'recharge_pct':          share('recharge_mm'),
+        'recharge_runoff_pct':   share('runoff_mm'),
+        'recharge_et_pct':       share('et_mm'),
+        'recharge_station':      met['station'],
+        'recharge_year':         met['year'],
+    }
+
+
 def _infiltration_indicators(infiltration, rain_mm):
     """SCS infiltration of a rain event of `rain_mm` over the unit's soil x land cover."""
     scs = summarize_infiltration(infiltration.get('composition', []), rain_mm)
@@ -186,7 +228,11 @@ def _infiltration_indicators(infiltration, rain_mm):
     shallow_m2 = infiltration.get('shallow_groundwater_m2', 0)
     drained_m2 = infiltration.get('drained_shallow_m2', 0)
     season = infiltration.get('season', DEFAULT_SEASON)
+    classified_m2 = scs['classified_m2']
     return {
+        **_recharge_indicators(infiltration, classified_m2),
+        # the rain event: depth that runs off (comparable across units of any size)
+        'event_runoff_mm':           round(scs['runoff_m3'] / classified_m2 * 1000, 1) if classified_m2 else None,
         'rain_mm':                   rain_mm,
         'season':                    season,
         'groundwater_statistic':     SEASONS[season]['statistic'],

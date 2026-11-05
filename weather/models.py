@@ -69,7 +69,23 @@ class WeatherStation(models.Model):
 
 
 class Meteorology(models.Model):
-    """Time-series weather measurements from stations"""
+    """
+    Time-series weather measurements from stations.
+
+    `period` says what a row's values describe: PERIOD_HOUR rows are a reading
+    at `date` (an instant or the hour ending then), PERIOD_DAY rows are means
+    or sums over the calendar day, stamped at noon UTC (weather/knmi.py). Heat
+    stress depends on the hour (a 24 h mean radiation is about half the midday
+    value), so urban_heat reads only hourly rows; the water balance reads the
+    daily ones.
+    """
+    PERIOD_HOUR = 'hour'
+    PERIOD_DAY = 'day'
+    PERIOD_CHOICES = [
+        (PERIOD_HOUR, 'Reading (instant or hourly)'),
+        (PERIOD_DAY, 'Daily mean / sum'),
+    ]
+
     station = models.ForeignKey(
         WeatherStation, 
         on_delete=models.CASCADE, 
@@ -79,6 +95,10 @@ class Meteorology(models.Model):
     date = models.DateTimeField(
         help_text="Date and time of the weather data",
         db_index=True
+    )
+    period = models.CharField(
+        max_length=4, choices=PERIOD_CHOICES, default=PERIOD_HOUR,
+        help_text="What the values describe: a reading at `date` (instant or hourly), or the day's means and sums (KNMI daily import, stamped at noon UTC)"
     )
     precipitation_mm = models.FloatField(
         null=True, blank=True,
@@ -98,7 +118,7 @@ class Meteorology(models.Model):
     )
     solar_radiation_W_m2 = models.FloatField(
         null=True, blank=True,
-        help_text="Solar radiation in Watts per square meter"
+        help_text="Solar radiation in Watts per square meter (on daily rows: the mean over the 24 h, night included)"
     )
     humidity_percent = models.FloatField(
         null=True, blank=True,

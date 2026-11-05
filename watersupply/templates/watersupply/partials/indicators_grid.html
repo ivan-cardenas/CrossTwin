@@ -1,12 +1,13 @@
+{% load indicator_help %}
 {% comment %} Indicators_grid.html {% endcomment %}
-{% load humanize %}
+{% load humanize l10n %}
 <div class="grid">
 
   <div class="card wide balance-card">
     <div class="gauge-header">
       <div class="card-icon">💧</div>
       <div class="card-label">Supply vs Demand</div>
-      {% include 'partials/_info_btn.html' with title="Supply vs Demand" text="Supply: water available to this area's population each year: its population share of the active wells' extraction in each watershed (measured yearly extraction, else pump flow × operating time) plus imported water. Demand: population × per-capita consumption (the slider above). Both bars share one scale, the larger of the two, so their lengths compare directly. The headline is the yearly surplus or shortfall." %}
+      {% info_help "water.supply_demand" %}
     </div>
     <div class="balance-headline">
       <span class="card-value">{% if indicators.balance_Mm3 > 0 %}+{% elif indicators.balance_Mm3 < 0 %}−{% endif %}{{ indicators.balance_abs_Mm3 }}</span>
@@ -43,7 +44,7 @@
     <div class="gauge-header">
       <div class="card-icon">🛡️</div>
       <div class="card-label">Supply Security</div>
-      {% include 'partials/_info_btn.html' with title="Supply Security" text="Yearly supply ÷ yearly demand, as a percentage. Above 100% means production covers demand with a surplus (shown as a 'surplus' badge); below 100% signals a shortfall." %}
+      {% info_help "water.supply_security" %}
     </div>
     <div class="gauge-body" style="flex:1; display:flex; justify-content:center; align-items:center;">
       <svg viewBox="0 0 100 100" width="110" height="110" aria-hidden="true">
@@ -87,7 +88,7 @@
     <div class="gauge-header">
       <div class="card-icon">⏱️</div>
       <div class="card-label">Service Time</div>
-      {% include 'partials/_info_btn.html' with title="Service Time" text="Hours per day the network can realistically deliver water, capped at 24h. If supply ≥ demand, service is continuous (24h); otherwise it scales down as 24 × (supply ÷ demand)." %}
+      {% info_help "water.service_time" %}
     </div>
     <div>
       <div class="card-value">{{ indicators.service_time }}</div>
@@ -106,7 +107,7 @@
     <div class="gauge-header">
       <div class="card-icon">💶</div>
       <div class="card-label">OPEX</div>
-      {% include 'partials/_info_btn.html' with title="OPEX" text="Estimated yearly operating cost: yearly supply volume (m³) × the average per-m³ operating cost across active extraction wells. The bar shows this against a fixed budget cap of €10,000,000/year." %}
+      {% info_help "water.opex" %}
     </div>
     <div style="display:flex; align-items:baseline; gap:8px;">
       <div class="card-value">€ {{ indicators.opex }}</div>
@@ -134,7 +135,7 @@
     <div class="gauge-header">
       <div class="card-icon">🚰</div>
       <div class="card-label">Non-Revenue Water</div>
-      {% include 'partials/_info_btn.html' with title="Non-Revenue Water (NRW)" text="Water produced but not billed: apparent losses (theft, meter errors) + real losses (leaks), summed from recorded loss entries for the year, shown as m³/day and as a % of total supply. ILI (Infrastructure Leakage Index) rates only the real-loss share against network size — lower is better, roughly below 2 is considered good." %}
+      {% info_help "water.nrw" %}
     </div>
     <div style="display:flex; align-items:baseline; gap:8px;">
       <div class="card-value">{{ indicators.nrw_m3_d }}</div>
@@ -176,24 +177,41 @@
   <div class="card c3 wide">
     <div class="gauge-header">
       <div class="card-icon">🌱</div>
-      <div class="card-label">Infiltration</div>
-      {% include 'partials/_info_btn.html' with title="Infiltration (SCS Curve Number)" text="Share of a rain event that infiltrates instead of running off, by the SCS Curve Number method (USDA TR-55). Each piece of soil map x land cover gets a curve number from its hydrologic soil group (A sand ... D clay/peat; D also on undrained land where the season's groundwater level, GHG wet or GLG dry, is under 60 cm) and land-cover class; runoff Q = (P − 0.2S)² / (P + 0.8S) with S = 25400/CN − 254 mm, computed per piece and weighted by area. Set the rain depth P with the Rain Event slider." %}
+      <div class="card-label">Groundwater Recharge</div>
+      {% info_help "water.recharge" %}
     </div>
     {% if indicators.infiltration_pct != None %}
-    <div style="display:flex; align-items:baseline; gap:8px;">
-      <div class="card-value">{{ indicators.infiltration_pct }}%</div>
-      <div class="card-unit">of {{ indicators.rain_mm|floatformat:0 }} mm infiltrates · CN {{ indicators.curve_number }}</div>
+    {% if indicators.recharge_mm_yr != None %}
+    <div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;">
+      <div class="card-value">{{ indicators.recharge_mm_yr }}</div>
+      <div class="card-unit">mm / yr · {{ indicators.recharge_Mm3_yr }} Mm³/yr over the unit</div>
     </div>
-    <div class="bar-track" style="height:8px;">
-      <div class="bar-fill" style="width:{{ indicators.infiltration_pct }}%; background:#38bdf8;"></div>
+    <div class="bar-track" style="height:8px; display:flex; overflow:hidden;"
+         title="Rain {{ indicators.recharge_rain_mm_yr }} mm in {{ indicators.recharge_year }}: recharge {{ indicators.recharge_mm_yr }} · runoff {{ indicators.recharge_runoff_mm_yr }} · evapotranspiration {{ indicators.recharge_et_mm_yr }} mm">
+      <div class="bar-fill" style="width:{{ indicators.recharge_pct|unlocalize }}%; background:#38bdf8; border-radius:0;"></div>
+      <div class="bar-fill" style="width:{{ indicators.recharge_runoff_pct|unlocalize }}%; background:#f59e0b; border-radius:0;"></div>
+      <div class="bar-fill" style="width:{{ indicators.recharge_et_pct|unlocalize }}%; background:rgba(232,244,255,0.25); border-radius:0;"></div>
     </div>
-    <div style="display:flex; gap:16px; margin-top:10px;">
-      <div>
-        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Infiltrated</div>
-        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.infiltrated_m3|floatformat:"0g" }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">m³</span></div>
+    <div style="display:flex; flex-wrap:wrap; gap:4px 12px; margin-top:6px; font-size:0.72rem; color:rgba(232,244,255,0.6);">
+      <span><b style="color:#38bdf8;">■</b> Recharge {{ indicators.recharge_pct }}%</span>
+      <span><b style="color:#f59e0b;">■</b> Runoff {{ indicators.recharge_runoff_mm_yr }} mm</span>
+      <span><b style="color:rgba(232,244,255,0.4);">■</b> ET {{ indicators.recharge_et_mm_yr }} mm</span>
+      <span>of {{ indicators.recharge_rain_mm_yr }} mm rain · KNMI {{ indicators.recharge_station }} {{ indicators.recharge_year }}</span>
+    </div>
+    {% else %}
+    <div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;">
+      <div class="card-value">{{ indicators.event_runoff_mm }}</div>
+      <div class="card-unit">mm runoff of a {{ indicators.rain_mm|floatformat:0 }} mm rain event</div>
+    </div>
+    <div class="card-unit" style="margin-top:4px;">Yearly recharge needs daily KNMI weather — import <i>Daily weather (KNMI stations)</i>.</div>
+    {% endif %}
+    <div style="display:flex; flex-wrap:wrap; gap:10px 16px; margin-top:10px;">
+      <div title="Single rain event of the Rain Event slider (SCS Curve Number)">
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Event {{ indicators.rain_mm|floatformat:0 }} mm · CN {{ indicators.curve_number }}</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.event_runoff_mm }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">mm runoff · {{ indicators.infiltration_pct }}% infiltrates</span></div>
       </div>
       <div>
-        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Runoff</div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Event runoff</div>
         <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.runoff_m3|floatformat:"0g" }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">m³</span></div>
       </div>
       <div>

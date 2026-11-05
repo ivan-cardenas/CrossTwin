@@ -604,13 +604,14 @@ The house-price-to-income ratio formulation is the standard affordability metric
 Source: \code{urban\_heat/calculations.py}. Thermal-comfort rasters (SVF, $T_{mrt}$, PET, UTCI) are computed on demand for the map view with SOLWEIG \cite{Lindberg2008SOLWEIG} (Section~\ref{sec:solweig}) or imported pre-computed; the dashboard statistics below only read and classify them. LST is computed from Landsat and CrossTwin's NDVI layer (Section~\ref{sec:lst-smw}).
 
 \subsection{Green area and vegetation coverage}
-\textbf{Location:} \code{calculate\_green\_area()} (\code{urban\_heat/calculations.py:18}), \code{calculate\_vegetation\_coverage()} (\code{:55})
+\textbf{Location:} \code{calculate\_green\_area()} (\code{urban\_heat/calculations.py:23}), \code{calculate\_vegetation\_coverage()} (\code{:79})
 \begin{align}
-  A_{\text{green,lc}} &= A_{\text{unit}} \times \frac{\sum \texttt{percentage}_{\,\text{green classes}}}{100} \\
-  A_{\text{green,total}} &= A_{\text{parks}} + A_{\text{green,lc}} \\
+  A_{\text{parks}} &= \Bigl|\, \bigcup_{p\,\in\,\text{parks}} p \;\cap\; U \Bigr| \\
+  A_{\text{green,total}} &= \Bigl|\, \Bigl( \bigcup_{p\,\in\,\text{parks}} p \;\cup \bigcup_{l\,\in\,\text{green classes},\ y_l = y_{\max}(\text{city}_l)} l \Bigr) \cap U \Bigr| \\
+  A_{\text{green,lc}} &= A_{\text{green,total}} - A_{\text{parks}} \\
   \text{VegCov\%} &= \frac{A_{\text{green,total}}}{A_{\text{unit}}} \times 100
 \end{align}
-$\texttt{percentage}$ is stored relative to the \emph{Province} total area regardless of the queried unit (documented limitation, see \code{TODO.md}). \textbf{DAG edges:} \dagedge{LandCover $\rightarrow$ Green\_Area}, \dagedge{Green\_Area $\rightarrow$ Vegetation\_Coverage} --- \statuspartial{}; \dagedge{Vegetation\_Coverage $\rightarrow$ DSM} --- \statusgap{}
+with $U$ the unit's geometry and $|\cdot|$ the area in m$^2$ (a polygon lying entirely within $U$ contributes $|l|$ without being clipped). Green classes are those whose name contains one of \code{GREEN\_LANDCOVER\_KEYWORDS}; only each city's most recent land-cover year $y_{\max}$ counts. The stored \code{percentage} (a share of the province) is no longer used, so the result is valid for any unit level. Parks and green land cover are merged (\code{ST\_UnaryUnion}) after clipping and before measuring, so ground under both, or under two overlapping parks, counts once; $A_{\text{green,lc}}$ is the green land cover outside the parks, and $A_{\text{parks}} + A_{\text{green,lc}} = A_{\text{green,total}}$.\textbf{DAG edges:} \dagedge{LandCover $\rightarrow$ Green\_Area}, \dagedge{Green\_Area $\rightarrow$ Vegetation\_Coverage} --- \statuspartial{}; \dagedge{Vegetation\_Coverage $\rightarrow$ DSM} --- \statusgap{}
 
 \subsection{Urban morphology / canyon aspect proxy --- \code{calculate\_urban\_morphology()}}
 \textbf{Location:} \code{urban\_heat/calculations.py:75}

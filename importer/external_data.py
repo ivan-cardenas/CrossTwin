@@ -2391,8 +2391,10 @@ class KNMIImporter:
     @staticmethod
     def fetch_daily(dataset: Dict, bbox: list, date_from: str, date_to: str) -> ImportResult:
         """
-        Daily precipitation (RH) and Makkink reference ET (EV24) of the KNMI
-        stations near the bbox, from daggegevens.knmi.nl (no API key), stored
+        Daily precipitation (RH), Makkink reference ET (EV24), mean wind (FG),
+        temperature (TG), radiation (Q), humidity (UG) and the derived vapour
+        pressure of the KNMI stations near the bbox, from daggegevens.knmi.nl
+        (no API key), stored
         as weather.Meteorology rows (weather/knmi.py). Feeds the yearly recharge
         of watersupply.AvailableFreshWater, refreshed when the block ends.
         """

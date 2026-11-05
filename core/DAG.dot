@@ -200,8 +200,8 @@ digraph CrossTwin {
     SVF                 -> Tmrt;
     SVF                 -> PET;
 
-    LST                 -> PET;
-
+    // PET is computed from Tmrt (SOLWEIG) + air temperature + wind, not from
+    // the satellite LST, which is a separate observed surface temperature.
     Tmrt                -> PET;
     Tmrt                -> UTCI;
     

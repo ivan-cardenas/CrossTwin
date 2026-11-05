@@ -1,5 +1,5 @@
 from django.contrib.gis.geos import MultiPolygon, Polygon
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
 from physicalEnv.models import LandCoverClasses, LandCoverVector, SoilArea, SoilType
@@ -58,6 +58,60 @@ class InfiltrationIndicatorTests(TestCase):
         response = self.water()
         self.assertIsNone(response.context['indicators']['infiltration_pct'])
         self.assertContains(response, 'import the Soil Map')
+
+
+class RechargeIndicatorTests(TestCase):
+    """The card's main value is the yearly recharge, the same balance AvailableFreshWater stores."""
+
+    def setUp(self):
+        self.city = make_city(cityName="Soilville")
+        sand = SoilType.objects.create(code="Zn21", name="Vlakvaaggronden; leemarm en zwak lemig fijn zand")
+        SoilArea.objects.create(mapAreaID="a", soil_type=sand, geom=_box(X0, Y0, X0 + 1000, Y0 + 1000))
+        pastures = LandCoverClasses.objects.create(class_name="pastures", description="test")
+        LandCoverVector.objects.create(city=self.city, year=2024, land_cover_type=pastures, land_use="x",
+                                       geom=_box(X0, Y0, X0 + 1000, Y0 + 1000), percentage=100)
+
+    def indicators(self, **params):
+        url = reverse('watersupply:recalculate_indicators', args=['city', 'Soilville', 2030])
+        return self.client.get(url, {'consumption': 100, **params}, **HX).context['indicators']
+
+    def test_dashboard_recharge_equals_the_stored_source_recharge(self):
+        from watersupply.models import AvailableFreshWater
+        from weather.knmi import store_daily
+        from .factories import make_polygon
+        from .test_infiltration_recharge import BBOX, knmi_csv
+
+        store_daily(knmi_csv(2024), BBOX)   # 366 days x (2 mm rain - 1 mm ET), no runoff on sandy pasture
+        source = AvailableFreshWater.objects.create(SourceName="Src", geom=make_polygon())
+        ind = self.indicators()
+        self.assertEqual(ind['recharge_mm_yr'], round(source.infiltrationDepth_cm * 10))   # 366
+        self.assertEqual(ind['recharge_Mm3_yr'], 0.37)                                      # 366 mm over 1 km²
+        self.assertEqual((ind['recharge_rain_mm_yr'], ind['recharge_et_mm_yr'], ind['recharge_runoff_mm_yr']), (732, 366, 0))
+        self.assertEqual(ind['recharge_year'], 2024)
+        # the rain slider is a single event, it does not change the yearly value
+        self.assertEqual(self.indicators(rain_mm=150)['recharge_mm_yr'], 366)
+
+    def test_without_daily_weather_the_card_falls_back_to_event_runoff(self):
+        url = reverse('watersupply:water_indicators', args=['city', 'Soilville', 2030])
+        response = self.client.get(url, **HX)
+        self.assertIsNone(response.context['indicators']['recharge_mm_yr'])
+        self.assertContains(response, 'Daily weather (KNMI stations)')
+        ind = self.indicators(rain_mm=100)   # the slider is read by the recalculate endpoint
+        self.assertEqual(ind['event_runoff_mm'], round(scs_runoff_mm(100, 39), 1))
+
+
+class WaterBalanceEquationTests(SimpleTestCase):
+    def test_the_parts_add_up_to_the_rain_and_recharge_matches_the_stored_equation(self):
+        from watersupply.chain import recharge_depth_cm_yr, yearly_water_balance_mm
+
+        rain, pieces = [0.0] * 200 + [3.0] * 140 + [40.0] * 25, [("A", "pastures", 1.0), ("D", "urban fabric", 1.0)]
+        balance = yearly_water_balance_mm(rain, 560.0, pieces)
+        self.assertAlmostEqual(balance['runoff_mm'] + balance['et_mm'] + balance['recharge_mm'], balance['rain_mm'])
+        self.assertGreater(balance['runoff_mm'], 0)
+        self.assertAlmostEqual(recharge_depth_cm_yr(rain, 560.0, pieces), balance['recharge_mm'] / 10)
+        # a dry year: ET is capped at what the rain left, recharge is 0
+        dry = yearly_water_balance_mm([1.0] * 100, 500.0, [("A", "pastures", 1.0)])
+        self.assertEqual((dry['et_mm'], dry['recharge_mm']), (100.0, 0.0))
 
 
 class GroundwaterSeasonTests(TestCase):

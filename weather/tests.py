@@ -156,3 +156,66 @@ class FetchWithRetryTests(SimpleTestCase):
                 mock.patch("weather.views.time.sleep") as sleep:
             views._fetch_with_retry("https://example.test/wms")
         sleep.assert_not_called()
+
+
+DAILY_CSV = """# STN         LON(east)   LAT(north)  ALT(m)      NAME
+# 290  6.891  52.274  34.8  Twenthe
+# 
+# STN,YYYYMMDD,   RH, EV24,   FG,   TG,    Q,   UG
+# 
+  290,20240715,   -1,   42,   35,  213, 2160,   68
+  290,20240116,   12,    3,   61,  -24,  250,   91
+"""
+
+
+class KnmiDailyValuesTests(SimpleTestCase):
+    """KNMI daggegevens units -> Meteorology fields."""
+
+    def test_units_are_converted(self):
+        from .knmi import daily_values, parse_knmi, vapour_pressure_hpa
+
+        _stations, rows = parse_knmi(DAILY_CSV)
+        summer = daily_values(rows[0])
+        self.assertEqual(summer["precipitation_mm"], 0.0)            # -1 = under 0.05 mm
+        self.assertAlmostEqual(summer["reference_et_mm"], 4.2)
+        self.assertAlmostEqual(summer["wind_speed_m_s"], 3.5)
+        self.assertAlmostEqual(summer["temperature_C"], 21.3)
+        self.assertAlmostEqual(summer["solar_radiation_W_m2"], 250.0)  # 2160 J/cm² over 86 400 s
+        self.assertEqual(summer["humidity_percent"], 68.0)
+        self.assertAlmostEqual(summer["vapor_pressure_hPa"], round(vapour_pressure_hpa(21.3, 68), 2))
+        self.assertAlmostEqual(summer["vapor_pressure_hPa"], 17.18, places=2)   # e_s(21.3) = 25.27 hPa x 0.68
+        self.assertAlmostEqual(daily_values(rows[1])["temperature_C"], -2.4)
+
+    def test_missing_columns_stay_empty(self):
+        from .knmi import daily_values
+
+        values = daily_values({"RH": 20})
+        self.assertEqual(values["precipitation_mm"], 2.0)
+        self.assertTrue(all(values[k] is None for k in values if k != "precipitation_mm"))
+
+    def test_vapour_pressure_matches_the_heat_chain(self):
+        from urban_heat.chain import vapour_pressure_hpa as heat_vapour_pressure
+        from .knmi import vapour_pressure_hpa
+
+        self.assertAlmostEqual(vapour_pressure_hpa(30, 50), heat_vapour_pressure(30, 50))
+
+
+class KnmiStoreDailyTests(TestCase):
+    def test_every_variable_is_stored_and_a_reimport_updates_it(self):
+        from .knmi import store_daily
+        from .models import Meteorology
+
+        bbox = [6.85, 52.20, 6.93, 52.24]
+        self.assertEqual(store_daily(DAILY_CSV, bbox), (1, 2))
+        row = Meteorology.objects.get(date__date="2024-07-15")
+        self.assertAlmostEqual(row.temperature_C, 21.3)
+        self.assertAlmostEqual(row.wind_speed_m_s, 3.5)
+        self.assertAlmostEqual(row.solar_radiation_W_m2, 250.0)
+        self.assertEqual(row.humidity_percent, 68.0)
+        self.assertIsNotNone(row.vapor_pressure_hPa)
+        self.assertEqual(row.period, Meteorology.PERIOD_DAY)   # 24 h means, not a noon reading
+
+        store_daily(DAILY_CSV.replace("  213, 2160", "  250, 2160"), bbox)
+        row.refresh_from_db()
+        self.assertAlmostEqual(row.temperature_C, 25.0)
+        self.assertEqual(Meteorology.objects.count(), 2)

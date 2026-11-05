@@ -1,4 +1,5 @@
 {% load static humanize l10n %}
+{% load indicator_help %}
 
 <div style="padding: 0 4px;">
 
@@ -26,7 +27,7 @@
       <div class="slider-header-left">
         <div class="card-icon" style="background:rgba(34,197,94,0.08);border-color:rgba(34,197,94,0.15);">👪</div>
         <span class="card-label">Average Persons per Home</span>
-        {% include 'partials/_info_btn.html' with title="Average Persons per Home" text="Residents per occupied home. The default is the CBS figure for the area (population forecast ÷ private households on 1 January, imported as HouseholdSize). Housing demand is population ÷ this number, and every dwelling on the map is assumed to hold this many residents. Dragging the slider recalculates demand and supply coverage without saving anything; fewer persons per home means more homes are needed for the same population." %}
+        {% info_help "housing.household_size" %}
       </div>
       <div class="slider-value-display">
         <span id="slider-display">{{ indicators.household_size|default:"–" }}</span>
@@ -78,6 +79,5 @@
 
 </div>
 
-{% include 'partials/_info_popover.html' %}
 
 <script src="{% static 'js/indicators/housing_panel.js' %}"></script>

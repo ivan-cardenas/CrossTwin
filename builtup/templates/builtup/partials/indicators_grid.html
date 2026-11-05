@@ -1,4 +1,5 @@
 {% load humanize l10n %}
+{% load indicator_help %}
 <div class="grid">
 
   <!-- Built-up Coverage -->
@@ -9,7 +10,7 @@
     <div class="gauge-header">
       <div class="card-icon">🏙️</div>
       <div class="card-label">Built-up Coverage</div>
-      {% include 'partials/_info_btn.html' with title="Built-up Coverage" text="Share of the unit's area covered by building footprints: Σ building footprint (m²) ÷ unit area (m²). The figure below is the floor-area ratio (FAR): Σ footprint × storeys ÷ unit area, with storeys = recorded floor count, else height ÷ 3 m." %}
+      {% info_help "builtup.coverage" %}
     </div>
     <div class="gauge-body bottom">
       <svg viewBox="0 0 120 70" width="160" height="95" aria-hidden="true">
@@ -42,7 +43,7 @@
     <div class="gauge-header">
       <div class="card-icon">🌳</div>
       <div class="card-label">Park Area per Inhabitant</div>
-      {% include 'partials/_info_btn.html' with title="Park Area per Inhabitant" text="Park area (m², plus the slider's additional hectares) ÷ projected population for the selected year. WHO Europe recommends at least 9 m² of green space per inhabitant and ideally 50 m²; the tag shows whether the area is below the minimum, between minimum and ideal, or at the ideal." %}
+      {% info_help "builtup.park" %}
     </div>
     <div class="gauge-body" style="flex:1; display:flex; justify-content:center; align-items:center;">
       <svg viewBox="0 0 100 100" width="110" height="110" aria-hidden="true">
@@ -81,7 +82,7 @@
     <div class="gauge-header">
       <div class="card-icon">🏢</div>
       <div class="card-label">Building Stock</div>
-      {% include 'partials/_info_btn.html' with title="Building Stock" text="Buildings (BAG panden) whose neighborhood lies in the selected unit. Units are the recorded housing/commercial units; dwellings per 1 000 is units ÷ projected population × 1 000. Height and floors are averages over buildings that report them; vacancy is the share of buildings flagged vacant." %}
+      {% info_help "builtup.stock" %}
     </div>
     <div style="display:flex; gap:16px; flex-wrap:wrap; margin-top:4px;">
       <div>
@@ -115,7 +116,7 @@
     <div class="gauge-header">
       <div class="card-icon">🧩</div>
       <div class="card-label">Building Type Mix</div>
-      {% include 'partials/_info_btn.html' with title="Building Type Mix" text="Share of buildings per coarse type, derived from each building's BAG usage function(s) (gebruiksdoel). A building with usage functions from more than one type counts as Mixed; buildings with no recorded usage show as Unknown type. Colours match the Buildings layer on the map." %}
+      {% info_help "builtup.mix" %}
     </div>
     <div class="bar-track" style="height:10px; display:flex;">
       {% for seg in indicators.mix_segments %}
@@ -140,7 +141,7 @@
     <div class="gauge-header">
       <div class="card-icon">🕰️</div>
       <div class="card-label">Construction Period</div>
-      {% include 'partials/_info_btn.html' with title="Construction Period" text="Buildings with a recorded construction year, grouped into the construction periods of the Dutch housing-stock typology (RVO reference dwellings). Each period shares building regulations, so it is a rough proxy for insulation level and renovation need." %}
+      {% info_help "builtup.age" %}
     </div>
     {% for period in indicators.age_periods %}
     <div style="display:flex; align-items:center; gap:8px; margin-top:6px;">
@@ -161,7 +162,7 @@
     <div class="gauge-header">
       <div class="card-icon">🛣️</div>
       <div class="card-label">Street Network</div>
-      {% include 'partials/_info_btn.html' with title="Street Network" text="Total street length clipped to the unit's boundary (a street crossing it counts only with its inside part) and street density = length (km) ÷ unit area (km²). The split shows primary / secondary / residential streets by length." %}
+      {% info_help "builtup.streets" %}
     </div>
     <div>
       <div class="card-value" style="color:{{ indicators.layer_colors.street }};">{{ indicators.street_density|default:"–" }}</div>
@@ -185,7 +186,7 @@
     <div class="gauge-header">
       <div class="card-icon">🏫</div>
       <div class="card-label">Urban Facilities</div>
-      {% include 'partials/_info_btn.html' with title="Urban Facilities" text="Facilities (schools, hospitals, fire and police stations, markets, transport nodes) in the unit's neighborhoods, and their number per 10 000 projected inhabitants for the selected year." %}
+      {% info_help "builtup.facilities" %}
     </div>
     <div>
       <div class="card-value" style="color:{{ indicators.layer_colors.facility }};">{{ indicators.facilities_per_10k|default:"–" }}</div>

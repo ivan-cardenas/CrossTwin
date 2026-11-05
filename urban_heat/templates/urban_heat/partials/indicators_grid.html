@@ -1,3 +1,4 @@
+{% load indicator_help %}
 {% comment %} indicators_grid.html — Urban Heat {% endcomment %}
 <div class="grid">
 
@@ -8,7 +9,7 @@
     <div class="gauge-header">
       <div class="card-icon">{{ indicators.weather_icon }}</div>
       <div class="card-label">{% if indicators.weather_whatif %}Weather what-if{% else %}Current Weather{% endif %}</div>
-      {% include 'partials/_info_btn.html' with title="Weather" text="Live conditions from Open-Meteo at a point of the area (a model nowcast, refreshed every 15 minutes), or the latest stored station reading when live data is unavailable. Change the weather sliders above to explore a what-if: the heat-stress estimates below are recomputed from the weather alone (Steadman apparent temperature, BoM approximate WBGT) and nothing is stored. The PET/UTCI rasters are not recomputed: run the Thermal Comfort tool for those." %}
+      {% info_help "heat.weather" %}
     </div>
     <div class="heat-weather-source">
       {% if indicators.weather_whatif %}<span class="threshold-tag warn">What-if</span>{% endif %}
@@ -68,7 +69,7 @@
     <div class="gauge-header">
       <div class="card-icon">🌡️</div>
       <div class="card-label">Land Surface Temp</div>
-      {% include 'partials/_info_btn.html' with title="Land Surface Temp (LST)" text="Mean land surface temperature from the most recent LST raster covering the area, with Min/Max from the same raster. The gauge scales this against a 50°C display ceiling." %}
+      {% info_help "heat.lst" %}
     </div>
     <div class="gauge-body bottom">
       <svg viewBox="0 0 120 70" width="160" height="95" aria-hidden="true">
@@ -101,7 +102,7 @@
     <div class="gauge-header">
       <div class="card-icon">🧍</div>
       <div class="card-label">PET</div>
-      {% include 'partials/_info_btn.html' with title="PET (Physiological Equivalent Temperature)" text="Mean value from the latest PET raster — an outdoor thermal-comfort index (in °C) accounting for radiation, wind and humidity, not just air temperature. The category label follows the standard PET stress scale, from 'Extreme Cold Stress' to 'Extreme Heat Stress'. Gauge is scaled against a 41°C extreme-heat ceiling." %}
+      {% info_help "heat.pet" %}
     </div>
     <div class="gauge-body bottom">
       <svg viewBox="0 0 120 70" width="160" height="95" aria-hidden="true">
@@ -138,7 +139,7 @@
     <div class="gauge-header">
       <div class="card-icon">🌤️</div>
       <div class="card-label">UTCI</div>
-      {% include 'partials/_info_btn.html' with title="UTCI (Universal Thermal Climate Index)" text="Mean value from the latest UTCI raster — a thermal-comfort index similar to PET but calibrated to a reference person, with its own stress bands from 'Extreme Cold Stress' to 'Extreme Heat Stress'. Gauge is scaled against a 46°C extreme-heat ceiling." %}
+      {% info_help "heat.utci" %}
     </div>
     <div class="gauge-body bottom">
       <svg viewBox="0 0 120 70" width="160" height="95" aria-hidden="true">
@@ -175,7 +176,7 @@
     <div class="gauge-header">
       <div class="card-icon">🌡️</div>
       <div class="card-label">WBGT</div>
-      {% include 'partials/_info_btn.html' with title="WBGT (Wet Bulb Globe Temperature)" text="Mean value from the latest WBGT raster imported from the KNMI Data Platform — a heat-stress measure that combines air temperature, humidity, wind and radiation. Categories use provisional bands at 25/28/30/33°C; the gauge is scaled against 35°C." %}
+      {% info_help "heat.wbgt" %}
     </div>
     <div class="gauge-body bottom">
       <svg viewBox="0 0 120 70" width="160" height="95" aria-hidden="true">
@@ -212,7 +213,7 @@
     <div class="gauge-header">
       <div class="card-icon">🔭</div>
       <div class="card-label">Sky View Factor</div>
-      {% include 'partials/_info_btn.html' with title="Sky View Factor (SVF)" text="Mean value (0–1) from the latest SVF raster — the fraction of sky visible from ground level. Lower values mean more enclosed streets and rooftops, which trap more heat at night. Shown here as a %." %}
+      {% info_help "heat.svf" %}
     </div>
     <div class="gauge-body" style="flex:1;display:flex;justify-content:center;align-items:center;">
       <svg viewBox="0 0 100 100" width="110" height="110" aria-hidden="true">
@@ -239,11 +240,11 @@
     <div class="gauge-header">
       <div class="card-icon">🌿</div>
       <div class="card-label">Vegetation Coverage</div>
-      {% include 'partials/_info_btn.html' with title="Vegetation Coverage" text="Green area — parks plus green land-cover classes (forest, grass, tree, nature, etc.) — as a % of the province's total area. Note: the slider above only overrides this display value for what-if exploration; it does not currently recalculate LST/PET/UTCI below, since that derivation isn't implemented yet." %}
+      {% info_help "heat.vegetation" %}
     </div>
     <div style="display:flex; align-items:baseline; gap:8px;">
       <div class="card-value">{{ indicators.vegetation_pct }}%</div>
-      <div class="card-unit">of province area</div>
+      <div class="card-unit">of unit area</div>
     </div>
     <div style="position:relative;">
       <div class="bar-track" style="height:8px;">
@@ -259,7 +260,7 @@
         <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.park_area_km2 }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">km²</span></div>
       </div>
       <div>
-        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Green Land Cover</div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Other Green</div>
         <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.green_lc_km2 }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">km²</span></div>
       </div>
       <div>
@@ -274,7 +275,7 @@
     <div class="gauge-header">
       <div class="card-icon">🏗️</div>
       <div class="card-label">Urban Morphology</div>
-      {% include 'partials/_info_btn.html' with title="Urban Morphology" text="Building and street statistics used as a proxy for street-canyon geometry. Aspect Ratio (H/W) is average building height ÷ average street width — higher values mean narrower, more enclosed canyons that trap more heat." %}
+      {% info_help "heat.morphology" %}
     </div>
     <div style="display:flex; gap:16px; flex-wrap:wrap;">
       <div>
@@ -309,7 +310,7 @@
     <div class="gauge-header">
       <div class="card-icon">🏙️</div>
       <div class="card-label">Heat Island (SUHII)</div>
-      {% include 'partials/_info_btn.html' with title="Heat Island (SUHII)" text="Mean Surface Urban Heat Island Intensity from the latest SUHII raster — how many °C hotter the urban surface is than its rural/reference surroundings. Min/Max come from the same raster." %}
+      {% info_help "heat.suhii" %}
     </div>
     <div>
       <div class="card-value">
@@ -334,7 +335,7 @@
     <div class="gauge-header">
       <div class="card-icon">🌳</div>
       <div class="card-label">Nature-Based Solutions</div>
-      {% include 'partials/_info_btn.html' with title="Nature-Based Solutions (NBS)" text="Count and total area of recorded NBS interventions (e.g. green roofs, bioswales, pocket parks) within the area, as polygon and point features. This tracks the response in place — it isn't yet linked back to a measured cooling effect on PET/UTCI." %}
+      {% info_help "heat.nbs" %}
     </div>
     <div>
       <div class="card-value">{{ indicators.nbs_count }}</div>
