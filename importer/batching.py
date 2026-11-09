@@ -139,6 +139,22 @@ def _finalize_landcover(rows):
     _refresh_freshwater_over(rows)       # replays watersupply/signals.py
 
 
+def _fill_tree_heights(rows):
+    """Measures the height of bulk-written trees that have none from the DSM (it scales the 3D tree model)."""
+    from django.db.models import Q
+
+    from nature.models import Tree
+    from physicalEnv.tree_heights import fill_from_dsm
+
+    pks = [row.pk for row in rows if row.pk is not None]
+    keys = [row.sourceID for row in rows if row.pk is None and row.sourceID]
+    try:
+        fill_from_dsm(Tree.objects.filter(Q(pk__in=pks) | Q(sourceID__in=keys)))
+    except Exception:
+        # never fail an import over a visualisation parameter
+        logger.exception("Tree heights from the DSM failed; the imported trees keep the default height")
+
+
 # Models the importer may write with bulk_create. bulk_create skips save()
 # and post_save/post_delete, so a model belongs here only when it has no
 # save() override (checked again at runtime) and when every post_save
@@ -155,7 +171,7 @@ BULK_IMPORT_MODELS = {
     "nature.WaterWaysPG": None,
     "nature.WaterBodies": None,
     "nature.Forests": None,
-    "nature.Tree": None,
+    "nature.Tree": _fill_tree_heights,                    # height_m from the DSM (physicalEnv/tree_heights.py)
 }
 
 

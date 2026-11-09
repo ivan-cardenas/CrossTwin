@@ -142,7 +142,7 @@ Collected from `#TODO` comments across the codebase:
   > * PDOK publishes the Dutch planned land-use data (where the HILUCS land-use links come from) as a single 28.7 GB GML file (a large XML map file). There are no regional pieces.
   > * The current importer goes through that file from top to bottom and keeps only the plans inside your chosen area. Picking a small area does not cut the download.
 
-- [ ] Add 3D models for trees and ammenities. threes can get height from DSM. 
+- [ ] Add 3D models for trees and ammenities. trees can get height from DSM. 
 
 **HTMX indicator dashboards**
 Existing three-layer pattern (`calculations.py` + `views.py` + templates, see CLAUDE.md) is built for `watersupply`, `housing`, `urban_heat` and `builtup` so far.

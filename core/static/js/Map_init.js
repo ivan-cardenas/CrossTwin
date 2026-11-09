@@ -163,6 +163,10 @@ function initializeUrbanTwinMap(config) {
     ),
   });
 
+  // Every style (the first one and each basemap switch) starts with its own
+  // 3D trees visible; hide them again if the active tool needs it.
+  map.on('style.load', syncBasemapTrees);
+
   map.addControl(new mapboxgl.NavigationControl(), 'top-right');
   map.addControl(new mapboxgl.FullscreenControl(), 'top-right');
   
@@ -253,6 +257,52 @@ function buildingColorForTool() {
 function sync3DBuildingColor() {
   if (map.getLayer('3d-buildings')) {
     map.setPaintProperty('3d-buildings', 'fill-extrusion-color', buildingColorForTool());
+  }
+}
+
+/**
+ * Tools that show the database's own trees (nature.Tree, a 3D model per row,
+ * mainMap/styles/treeStyles.py): the basemap's generic 3D trees are hidden
+ * while one of them is active, so every tree on screen is a stored one.
+ */
+const TOOLS_WITHOUT_BASEMAP_TREES = new Set(['green']);
+const BASEMAP_TREE_PATTERN = /tree/i;
+
+/**
+ * Show or hide the basemap's own 3D trees for the active tool. Covers both
+ * ways a Mapbox style can carry them:
+ *  - an imported Mapbox Standard style: its `show3dTrees` config property
+ *    (left alone when the import has no such property: `show3dObjects`
+ *    would also take the 3D buildings away);
+ *  - a classic style: `model` layers whose id or source layer names trees,
+ *    and that are not one of our own layers (sources of loadedLayers).
+ * Re-run after every tool click and every style.load (a basemap switch
+ * recreates the style).
+ */
+function syncBasemapTrees() {
+  // Not isStyleLoaded(): that is also false while tiles load. A style that is
+  // not parsed yet is caught by the style.load listener instead.
+  let style;
+  try { style = map && map.getStyle(); } catch (_) { return; }
+  if (!style) return;
+  const tool = document.querySelector('.tool-button.active')?.dataset.tool;
+  const show = !TOOLS_WITHOUT_BASEMAP_TREES.has(tool);
+
+  for (const imp of style.imports || []) {
+    try {
+      if (map.getConfigProperty(imp.id, 'show3dTrees') != null) {
+        map.setConfigProperty(imp.id, 'show3dTrees', show);
+      }
+    } catch (err) {
+      console.warn(`Basemap import "${imp.id}": cannot toggle 3D trees`, err);
+    }
+  }
+
+  const ownSources = new Set(Object.keys(typeof loadedLayers !== 'undefined' ? loadedLayers : {}));
+  for (const layer of style.layers || []) {
+    if (layer.type !== 'model' || ownSources.has(layer.source)) continue;
+    if (!BASEMAP_TREE_PATTERN.test(layer.id) && !BASEMAP_TREE_PATTERN.test(layer['source-layer'] || '')) continue;
+    map.setLayoutProperty(layer.id, 'visibility', show ? 'visible' : 'none');
   }
 }
 

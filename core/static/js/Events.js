@@ -25,6 +25,7 @@ function initializeUI() {
       b.classList.toggle('active', b === btn)
     );
     sync3DBuildingColor();
+    syncBasemapTrees();     // 'green' shows only the database's trees
 
     if (hint) hint.remove();
 
