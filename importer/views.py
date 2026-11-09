@@ -381,6 +381,11 @@ def _resolve_fk(model, field_name, raw, prefer_name=True):
     if raw is None:
         return None
 
+    # Models that know how to read an imported value (e.g. SurfaceMaterialProperties: code or name)
+    lookup = getattr(rel_model, "lookup", None)
+    if callable(lookup):
+        return lookup(raw)
+
     # Try by name (string)
     if isinstance(raw, str):
         candidates = ['name', f'{rel_model.__name__.lower()}Name', f'{rel_model.__name__}Name']

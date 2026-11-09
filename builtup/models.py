@@ -3,7 +3,7 @@ from django.contrib.gis.db import models
 from django.contrib.postgres.fields import ArrayField
 from django.db.models import Sum
 from administrative.models import City, Neighborhood
-from physicalEnv.models import HILUCSLandUse, SurfaceMaterialProperties, WallMaterialProperties
+from physicalEnv.models import HILUCSLandUse, SurfaceMaterialProperties, WallMaterialProperties, roof_materials, street_materials
 from Energy.models import EnergyEfficiencyLabels
 
 from django.conf import settings
@@ -44,7 +44,9 @@ class Street(models.Model):
     id = models.AutoField(primary_key=True)
     inspireID = models.CharField(max_length=100, unique=True, help_text="Unique identifier for the street from INSPIRE dataset", null=True, blank=True)
     name = models.CharField(max_length=100, help_text="Name of the street")
-    surfaceMaterial = models.ForeignKey(SurfaceMaterialProperties, verbose_name="Surface Material", on_delete=models.DO_NOTHING, null=True, blank=True)
+    surfaceMaterial = models.ForeignKey(SurfaceMaterialProperties, verbose_name="Surface Material", on_delete=models.DO_NOTHING, null=True, blank=True,
+                                        limit_choices_to=street_materials,
+                                        help_text="Road surface (Oke et al. 2017 Table 5.1)")
     classification = models.CharField(max_length=50, choices=[('primary', 'Primary'), ('secondary', 'Secondary'), ('residential', 'Residential')], help_text="Street classification (e.g., primary, secondary, residential)")
     width = models.FloatField(null=True, blank=True, help_text="Width of the street in meters. Leave empty to let the canyon aspect ratio use the measured facade-to-facade distance (builtup.StreetCanyon); a value typed here overrides it")
     geom = models.MultiLineStringField(srid=CoordinateSystem)
@@ -201,7 +203,9 @@ class Building(models.Model):
         help_text="BAG gebruiksdoel (usage function(s)) of the building, where known, stored as human-readable labels; a Pand can have more than one, or 'Undefined' when BAG reports no usage function",
     )
     buildingType = models.CharField(max_length=100, choices=[('residential', 'Residential'), ('commercial', 'Commercial'), ('industrial', 'Industrial'), ('institutional', 'Institutional'), ('mixed', 'Mixed Use')], help_text="Coarse building category, derived from usageFunction when set; use 'mixed' for buildings combining multiple usage functions (e.g. a Pand with several Verblijfsobjecten)")
-    roofMaterial = models.ForeignKey(SurfaceMaterialProperties, verbose_name="Roof Material", on_delete=models.DO_NOTHING, null=True, blank=True)
+    roofMaterial = models.ForeignKey(SurfaceMaterialProperties, verbose_name="Roof Material", on_delete=models.DO_NOTHING, null=True, blank=True,
+                                     limit_choices_to=roof_materials,
+                                     help_text="Roof covering (Oke et al. 2017 Table 5.1); its albedo sets the roof share of the urban-fabric ring of a drawn building")
     wallMaterial = models.ForeignKey(WallMaterialProperties, verbose_name="Wall Material", on_delete=models.DO_NOTHING, null=True, blank=True)
     # Matches EnergyEfficiencyLabels.label's own choices so the two stay in sync;
     # plain CharFields (not FKs) because these are populated straight from WFS

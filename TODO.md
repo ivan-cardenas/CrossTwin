@@ -7,7 +7,10 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 ## Import bugs
 
 - [X] `uv run` / `uv sync` fail on this machine: the `crosstwin[graphify]` extra asks for `graphify>=0.8.0`, which has no resolvable version, so only `uv run --no-sync` works. Fix the extra's pin in `pyproject.toml` (or drop it) and re-lock.
-- [ ] GEE importer needs to be verified against the actual configuration of each layer in the catalog see https://developers.google.com/earth-engine/datasets/catalog 
+- [x] GEE importer verified against the actual configuration of each layer in the catalog (https://developers.google.com/earth-engine/datasets/catalog), 2026-11-09, retrieval tested over Enschede: SMAP moved to `/008`; CHIRPS (50°S–50°N only, all zeros over NL) replaced by ERA5-Land `DAILY_AGGR` precipitation in mm/day; MODIS LST scaled to °C (`scale_factor`/`offset`); wind is √(u²+v²) per hour (`expression`); Dynamic World uses the most frequent class (`reducer: mode`) at 10 m with nearest resampling (`categorical`); downloads use each entry's `resolution_m` (default 30 m); JRC surface water entries and Hansen forest gain (2000–2012 only) removed; Hansen moved to `2025_v1_13`
+- [x] GEE single-image assets (Hansen forest cover / loss) failed: `GEEImporter.export_raster` wrapped every asset in `ee.ImageCollection`, which is lazy and never raises, so the `ee.Image` fallback never ran. It now branches on `ee.data.getAsset(asset_id)["type"]`
+- [x] GEE downloads carried masked pixels as 0, so missing data read as a valid value (and Dynamic World's class 0 = water looked like no data). Now `toFloat().unmask(-9999)` before download and the GeoTIFF is tagged with nodata -9999; `clip()` dropped (the download region already crops, and clip masked coarse ERA5 cells whose centre lies outside the bbox)
+- [ ] Coarse GEE layers (ERA5 precipitation/wind, SMAP) come back as ~2×2 px over a city bbox at their native resolution; check that loading such a raster into the DB/COG works end to end from the importer UI
 
 ## administrative
 
@@ -78,7 +81,7 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 Collected from `#TODO` comments across the codebase:
 
 **physicalEnv**
-- Auto-calculate `LandCoverVector.percentage` from geom area vs. Province total area (`physicalEnv/models.py`)
+- [x] Auto-calculate `LandCoverVector.percentage` — now polygon area / City `area_km2` x 100 on every save (`physicalEnv/signals.py::landcover_percentage`, pre_save) and set-based for bulk imports and changed city boundaries (`physicalEnv/landcover.py::refresh_percentages`); null without a city
 - Add Vegetation Coverage and Builtup Coverage as additional fields on `LandCoverVector` (`physicalEnv/models.py`)
 
 **builtup**
@@ -125,7 +128,10 @@ Collected from `#TODO` comments across the codebase:
 - [ ] `nature.Park` — no import path exists yet; decide the source dataset (e.g. PDOK) and confirm the storage model before building an importer for it.
 - [ ] `builtup.Facility` — no import path exists yet; design how to source facilities from OpenStreetMap or Google Places/Maps.
 - [ ] Confirm where zoning data should live and how additional sources should import into it — `builtup.ZoningArea` already receives INSPIRE spatial-plan data via the `pdok_landcover_kadaster` import, but zone *type* classification still has no source (see the existing `plu:ZoningElement` note in `importer/external_catalog.py`).
-- [ ] Design how surface albedo could be derived for `LandCoverVector.material` from satellite band math (e.g. shortwave broadband albedo formulas over Sentinel-2/Landsat bands), instead of leaving `material` unset for WFS-sourced rows.
+- [x] Design how surface albedo could be derived for `LandCoverVector.material` from satellite band math — `LandCoverVector.albedo` is the zonal mean of a Sentinel-2 broadband albedo raster (`sentinel2_albedo_raster`, Bonafoni & Sekertekin 2020, `physicalEnv/albedo.py::measure`; DAG `RS_Imagery -> LandCover`, partial); polygons without one use `material`, set from the class's `default_material` (Oke et al. 2017 Table 5.1, 45 surfaces, offered as the material options in the importer and the map editor); editor building rings get a roof + paving estimate; a park drawn in the editor becomes *Green urban areas* land cover (`New_Green_Area -> LandCover`, `landcover.green_area`)
+- [ ] Verify the Sentinel-2 albedo coefficients against Bonafoni & Sekertekin (2020) Table I, and run `sentinel2_albedo_raster` end to end for Enschede (check per-class ranges: water < 0.1, urban 0.1–0.2, grass ~0.2)
+- [ ] Nothing reads albedo yet: feed `LandCoverVector.effective_albedo` into SOLWEIG (per-cell albedo instead of the UMEP class value) or a SUHII calculation
+- [ ] `albedo.measure` clips the whole raster once per polygon; check its run time on a city-sized raster (tile the raster in PostGIS if it is slow)
 - [ ] Design how land-cover *changes between survey years* should propagate to dependent calculations — e.g. surface reflection/albedo — rather than each being a flat, independently-set field (`AvailableFreshWater` infiltration now follows the latest land-cover year by signal).
 - [ ] Link `builtup.Building`/`builtup.Property` to `housing` models via the BAG `woonfunctie` (residential-use) classification — partly done: `housing.ResidentialProperty` (proxy on dwellings) and `Property.residents` (set from `HouseholdSize`) connect them by signal; there is still no FK from `HousingSupplyDemand`/`HousingProject` to buildings.
 - [ ] Decide whether the admin-hierarchy layer (Province/City/District/Neighborhood) should always stay available in `Config.js`'s `TOOL_CATEGORIES` for indicator grouping, given that makes map-click popup queries harder to disambiguate against other layers.

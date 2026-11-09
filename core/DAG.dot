@@ -138,6 +138,7 @@ digraph CrossTwin {
     node [fillcolor="#0097A7", fontcolor="white", color="#00838F"];
     
     New_Units           [label="New Units Completed"];
+    New_Green_Area      [label="Green Space\nCreated"];
     WT_Efficiency       [label="Water Treatment Efficiency"];
     Zoning_Status       [label="Zoning Status"];
     Property            [label="Property"];
@@ -227,6 +228,7 @@ digraph CrossTwin {
 
     New_Units           -> Housing_Supply;
     New_Units           -> LandCover;
+    New_Green_Area      -> LandCover;   // park drawn in the map editor (physicalEnv/landcover.py::green_area)
     
     Property            -> Affordability_Stress;
     Property            -> Rent;

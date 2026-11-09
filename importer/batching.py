@@ -134,7 +134,13 @@ def _refresh_canyons_over(rows):
 
 
 def _finalize_landcover(rows):
+    from physicalEnv.albedo import measure_missing, set_default_materials
+    from physicalEnv.landcover import refresh_percentages
+
     for city_id in {row.city_id for row in rows if row.city_id}:
+        refresh_percentages(city_id)      # replays the percentage pre_save
+        set_default_materials(city_id)    # replays the material part of the albedo pre_save
+        measure_missing(city_id)          # RS_Imagery -> LandCover for an albedo raster imported earlier
         schedule_urban_area_recompute(city_id)
     _refresh_freshwater_over(rows)       # replays watersupply/signals.py
 

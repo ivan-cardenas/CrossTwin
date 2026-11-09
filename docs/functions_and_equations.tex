@@ -169,6 +169,33 @@ Only the area $R_b$ still holds is given back, so what a later ring $b'$ took fr
 
 \textbf{DAG edge:} \dagedge{New\_Units $\rightarrow$ LandCover} --- \statusdone{} (stored for map-editor buildings; the housing pipeline's land take is a dashboard statistic, \S\ref{sec:pipeline-land-take})
 
+\subsection{Green area of new parks --- \code{green\_area()}, \code{release\_green\_area()}}
+A park $k$ drawn or reshaped in the map editor (\code{park\_saved}, only inside \code{core.editing.editor\_change()}) turns its outline, clipped to the city, into green urban area with the same cut / give-back mechanics as the building ring, without a buffer:
+\begin{align}
+  G_k &= \text{park}_k \cap \text{city} \
+  \mathcal{L}' &= \{\, P \setminus G_k : P \in \mathcal{L},\ P \setminus G_k \neq \emptyset \,\} \cup \{ G_k \text{ as green urban areas} \}
+\end{align}
+The new polygon has class \emph{Green urban areas} (CORINE 1.4.1 \cite{CORINE}), is tagged with \code{source\_park}, and takes the material \emph{Grass}, or \emph{Deciduous trees} when the park's \code{vegetationType} mentions trees. Its cut pieces are \code{UrbanFabricCut} rows with \code{owner\_park} (exactly one of \code{owner\_building}/\code{owner\_park} is set), so a park and a building ring overlapping each other release in either order. Moving or deleting the park runs \code{release\_green\_area(k)}, the release equations above with $R_k = G_k$. Imported parks (OpenStreetMap) never trigger either step. Downstream, the change reaches the urban-area cascade, the stored recharge of \code{AvailableFreshWater} and the SOLWEIG land-cover grid like any other land-cover edit.
+
+\textbf{DAG edge:} \dagedge{New\_Green\_Area $\rightarrow$ LandCover} --- \statusdone{} (map-editor parks; a separate Response node, since \dagedge{LandCover $\rightarrow$ Green\_Area} already exists and the reverse edge would close a cycle)
+
+\subsection{Surface albedo --- \code{physicalEnv/albedo.py}}
+Every land-cover polygon has an effective albedo
+\begin{equation}
+  \alpha_P = \begin{cases} \alpha_P^{\text{meas}} & \text{measured or estimated albedo stored on } P \ \alpha(\text{material}_P) & \text{otherwise} \end{cases}
+\end{equation}
+where $\text{material}_P$ defaults to the class's \code{default\_material}, chosen by keywords in the class name (water, trees, cropland, grass, sand, bare soil, asphalt for roads and rail, mixed urban fabric). The materials are Table 5.1 of Oke et al.\ \cite{Oke2017} (45 natural and urban surfaces with their albedo range); a material's typical albedo is the table's average where it gives one (urban 0.14, suburban 0.15), else the midpoint of the range (e.g.\ asphalt 0.16, grass 0.21, deciduous forest 0.165, water at high sun 0.065). The material fields of land cover, roofs and streets offer only the categories that fit them.
+
+\textbf{Measured.} A Sentinel-2 L2A composite (\code{sentinel2\_albedo\_raster}, openEO) gives the shortwave broadband albedo by narrow-to-broadband conversion \cite{Bonafoni2020}:
+\begin{equation}
+  \alpha = 0.2266\,\rho_{B2} + 0.1236\,\rho_{B3} + 0.1573\,\rho_{B4} + 0.3417\,\rho_{B8} + 0.1170\,\rho_{B11} + 0.0338\,\rho_{B12}
+\end{equation}
+with $\rho$ the surface reflectance (DN / \num{10000}). Saving the raster (\code{albedo\_imagery\_saved}) stores the zonal mean $\alpha_P^{\text{meas}} = \overline{\alpha(x)}_{x \in P}$ (\code{ST\_SummaryStats(ST\_Clip(\ldots))}) on every latest-year polygon it covers with at least 3 valid pixels and $0 \le \alpha \le 1$, skipping editor polygons and polygons measured on a newer scene. Bulk land-cover imports measure their new polygons against albedo rasters imported earlier. A geometry change drops the measured value.
+
+\textbf{Estimated (editor building ring).} With footprint $F$ and ring $R_b$: $\alpha_{R_b} = \big(|F|\,\alpha_{\text{roof}} + (|R_b| - |F|)\,\alpha_{\text{paving}}\big) / |R_b|$, the roof being the building's \code{roofMaterial} or \emph{tar and gravel, bitumen} (0.13), the paving \emph{concrete} road (0.225).
+
+\textbf{DAG edge:} \dagedge{RS\_Imagery $\rightarrow$ LandCover} --- \statuspartial{} (albedo attribute of the land cover; the classification itself still comes from the land-cover import). No model reads the albedo yet.
+
 \subsection{Building changes on the DSM --- \code{dsm\_patches.record\_change()}, \code{apply\_patches()}}
 \label{sec:dsm-patches}
 Source: \code{physicalEnv/dsm\_patches.py}, receivers \code{building\_dsm\_saved}/\code{building\_dsm\_deleted} in \code{physicalEnv/signals.py}. A building created, reshaped, re-heighted or deleted in the map editor (\code{core.editing.is\_editor\_change()}; imports never) is stored as one \code{DSMBuildingPatch} row: its footprint before the first edit $F_0$ (none for a drawn building), its current footprint $F$ (none when deleted) and its height above ground
@@ -937,6 +964,12 @@ Beyond the CBS 85173NED forecasts used for the \texttt{Population\_Growth}$\to$\
 \bibitem{NEH630ch10} USDA Natural Resources Conservation Service (2004). \textit{National Engineering Handbook, Part 630 Hydrology, Chapter 10: Estimation of Direct Runoff from Storm Rainfall}. (Runoff equation, $I_a = 0.2S$.)
 
 \bibitem{BISNederland} Wageningen Environmental Research. \textit{Bodemkundig Informatie Systeem (BIS Nederland)}: Bodemkaart 1:50\,000 (2025) and groundwater-level grids (GHG, GLG, GVG). \url{https://bodemdata.nl/}.
+
+\bibitem{Bonafoni2020} Bonafoni, S., Sekertekin, A. (2020). Albedo retrieval from Sentinel-2 by new narrow-to-broadband conversion coefficients. \textit{IEEE Geoscience and Remote Sensing Letters}, 17(9), 1618--1622.
+
+\bibitem{Oke1987} Oke, T.R. (1987). \textit{Boundary Layer Climates}, 2nd ed. Routledge. (Table 1.1 albedo ranges, Table 2.1 thermal properties.)
+
+\bibitem{Oke2017} Oke, T.R., Mills, G., Christen, A., Voogt, J.A. (2017). \textit{Urban Climates}. Cambridge University Press.
 
 \bibitem{CORINE} European Environment Agency. \textit{CORINE Land Cover nomenclature}. \url{https://land.copernicus.eu/}.
 

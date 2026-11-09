@@ -1,6 +1,13 @@
 """
 Land-cover overlay edits driven by other layers.
 
+Two owners rewrite land cover from the map editor, with the same cut /
+give-back mechanics (convert_area / release_owner):
+- a building: a 10 m buffer becomes "urban fabric" (urbanize_around,
+  DAG edge New_Units -> LandCover);
+- a park: its outline becomes "green urban areas" (green_area,
+  DAG edge New_Green_Area -> LandCover).
+
 urbanize_around() turns a buffer around a new building into "urban fabric":
 the buffer is cut out of every land-cover polygon of the city's latest year
 and inserted as one new polygon, so the layer keeps covering the city without
@@ -16,6 +23,8 @@ insert. `sender` is the model (LandCoverVector or UrbanFabricCut).
 mainMap/signals.py journals them so the map editor's backup restore puts the
 original land cover back.
 """
+from typing import NamedTuple
+
 from django.contrib.gis.geos import GEOSGeometry, MultiPolygon
 from django.db import connection, transaction
 from django.db.models import Max
@@ -27,6 +36,26 @@ from .models import LandCoverClasses, LandCoverVector, UrbanFabricCut
 
 BUILDING_BUFFER_M = 10
 URBAN_FABRIC_CLASS = "urban fabric"
+GREEN_AREA_CLASS = "Green urban areas"   # CORINE 1.4.1
+
+
+class Owner(NamedTuple):
+    """The editor object a converted polygon belongs to."""
+    kind: str   # "building" | "park"
+    id: int
+
+    @property
+    def ring_field(self):
+        """LandCoverVector / UrbanFabricCut column holding the owner of a converted polygon."""
+        return f"source_{self.kind}"
+
+    @property
+    def cut_field(self):
+        """UrbanFabricCut column holding the owner that took the piece."""
+        return f"owner_{self.kind}"
+
+    def label(self):
+        return f"editor: {self.kind} {self.id}"
 
 # Sent with sender=<model>, pks=[...] before those rows are changed or deleted.
 landcover_rewriting = Signal()
@@ -36,44 +65,66 @@ landcover_created = Signal()
 _POLYGONS = "ST_Multi(ST_CollectionExtract({}, 3))"
 
 
-def _urban_fabric_class():
-    """The 'urban fabric' class, matched case-insensitively like the PDOK BRT import's lookup."""
-    existing = LandCoverClasses.objects.filter(class_name__iexact=URBAN_FABRIC_CLASS).order_by("pk").first()
+def _land_cover_class(name, description):
+    """The class of that name, matched case-insensitively like the PDOK BRT import's lookup; created when missing."""
+    existing = LandCoverClasses.objects.filter(class_name__iexact=name).order_by("pk").first()
     if existing:
         return existing
-    return LandCoverClasses.objects.create(
-        class_name=URBAN_FABRIC_CLASS,
-        description="Auto-created for the urban-fabric buffer around buildings drawn in the map editor.",
-    )
+    return LandCoverClasses.objects.create(class_name=name, description=description)
 
 
-def _buffer_sql(expr):
-    """ST_Buffer of BUILDING_BUFFER_M metres: planar in RD New, through geography for a geodetic CRS."""
+def _urban_fabric_class():
+    return _land_cover_class(
+        URBAN_FABRIC_CLASS, "Auto-created for the urban-fabric buffer around buildings drawn in the map editor.")
+
+
+def _green_area_class():
+    return _land_cover_class(
+        GREEN_AREA_CLASS, "Auto-created for parks drawn in the map editor (CORINE 1.4.1 Green urban areas).")
+
+
+def _buffer_sql(expr, metres=BUILDING_BUFFER_M):
+    """ST_Buffer of `metres`: planar in RD New, through geography for a geodetic CRS; none for 0."""
+    if not metres:
+        return expr
     if LandCoverVector._meta.get_field("geom").geodetic(connection):
-        return f"ST_Buffer(({expr})::geography, {BUILDING_BUFFER_M})::geometry"
-    return f"ST_Buffer({expr}, {BUILDING_BUFFER_M})"
+        return f"ST_Buffer(({expr})::geography, {metres})::geometry"
+    return f"ST_Buffer({expr}, {metres})"
 
 
-def _refresh_percentages(pks, city_id):
-    """percentage = polygon area / city area_km2 * 100 for the given rows."""
+def refresh_percentages(city_id, pks=None):
+    """
+    percentage = polygon area / city area_km2 * 100, in one UPDATE: for the
+    given rows of the city, or for all its rows when pks is None (bulk
+    imports, a changed city boundary). Rows whose value is already right are
+    not rewritten. Returns the number of rows changed; bumps the layer cache
+    when there are any (an UPDATE fires no post_save).
+    """
     from administrative.models import City
     from .signals import _area_sql
 
-    if not pks or not city_id:
-        return
+    if not city_id or (pks is not None and not pks):
+        return 0
+    new = f'{_area_sql("l.geom")} / 1e6 / c.area_km2 * 100'
     with connection.cursor() as cursor:
         cursor.execute(
             f"""
             UPDATE "{LandCoverVector._meta.db_table}" l
-            SET percentage = {_area_sql("l.geom")} / 1e6 / c.area_km2 * 100
+            SET percentage = {new}
             FROM "{City._meta.db_table}" c
-            WHERE c.id = %(city)s AND c.area_km2 > 0 AND l.id = ANY(%(ids)s)
+            WHERE c.id = %(city)s AND c.area_km2 > 0 AND l.city_id = c.id
+              AND (%(all)s OR l.id = ANY(%(ids)s))
+              AND (l.percentage IS NULL OR abs(l.percentage - {new}) > 1e-9)
             """,
-            {"city": city_id, "ids": list(pks)},
+            {"city": city_id, "all": pks is None, "ids": list(pks or [])},
         )
+        changed = cursor.rowcount
+    if changed:
+        bump_layer_version(LandCoverVector)
+    return changed
 
 
-def urbanize_around(geom, city_id, land_use, building_id=None):
+def urbanize_around(geom, city_id, land_use, building_id=None, roof_material=None):
     """
     Make a BUILDING_BUFFER_M buffer around `geom` (clipped to the city)
     urban fabric in the city's latest land-cover year:
@@ -82,12 +133,56 @@ def urbanize_around(geom, city_id, land_use, building_id=None):
         LC' = { P \\ B : P ∈ LC, P \\ B ≠ ∅ } ∪ { B as urban fabric }
 
     With `building_id`, the ring is tagged with it and each P ∩ B is stored as
-    an UrbanFabricCut (with P's attributes), for release_ring().
-    `percentage` of the clipped and new rows is recomputed from the city's
-    area_km2. Returns the new LandCoverVector, or None when the city has no
-    land cover (there is no layer to update) or the buffer misses the city.
+    an UrbanFabricCut (with P's attributes), for release_ring(). The ring's
+    albedo is estimated from the roof (footprint) and paving (rest),
+    albedo.ring_albedo. Returns the new LandCoverVector, or None when the city
+    has no land cover (there is no layer to update) or the buffer misses the city.
 
     DAG edge: New_Units -> LandCover
+    """
+    from .albedo import ring_albedo
+
+    estimate = None
+    if not geom.srs or not geom.srs.geographic:
+        estimate = ring_albedo(geom.buffer(BUILDING_BUFFER_M).area, geom.area, roof_material)
+    owner = Owner("building", building_id) if building_id is not None else None
+    source = (owner.label() if owner else "editor: building") if estimate is not None else None
+    return convert_area(geom, city_id, _urban_fabric_class(), land_use, owner=owner,
+                        buffer_m=BUILDING_BUFFER_M, albedo=estimate, albedo_source=source)
+
+
+def green_area(geom, city_id, park_id, name="Park", vegetation_type=None):
+    """
+    Make a park's outline (clipped to the city) green urban area in the
+    city's latest land-cover year, cutting it out of what lay there:
+
+        G   = park ∩ city
+        LC' = { P \\ G : P ∈ LC, P \\ G ≠ ∅ } ∪ { G as green urban areas }
+
+    Material: trees when the vegetation type mentions them, else grass (its
+    albedo is the polygon's default). Released by release_green_area().
+
+    DAG edge: New_Green_Area -> LandCover
+    """
+    from .albedo import DECIDUOUS, GRASS, material
+
+    trees = bool(vegetation_type) and any(w in vegetation_type.lower() for w in ("tree", "wood", "forest"))
+    return convert_area(geom, city_id, _green_area_class(), name or "Park", owner=Owner("park", park_id),
+                        buffer_m=0, material=material(DECIDUOUS if trees else GRASS))
+
+
+def convert_area(geom, city_id, land_cover_class, land_use, owner=None, buffer_m=0,
+                 material=None, albedo=None, albedo_source=None):
+    """
+    Cut buffer(geom, buffer_m) ∩ city out of the city's latest land-cover
+    year and insert it as one polygon of `land_cover_class`. With `owner`,
+    the new polygon is tagged with it and each piece it cut is stored as an
+    UrbanFabricCut (with the cut polygon's attributes), for release_owner().
+    `percentage` of the clipped rows is recomputed from the city's area_km2
+    (the new row's by its pre_save receiver); without `material` the
+    class's default material applies. Returns the new LandCoverVector, or
+    None when the city has no land cover (there is no layer to update) or
+    the area misses the city.
     """
     from .signals import _area_sql
 
@@ -101,7 +196,7 @@ def urbanize_around(geom, city_id, land_use, building_id=None):
         cursor.execute(
             f"""
             WITH b AS (
-                SELECT {_POLYGONS.format(f'ST_Intersection({_buffer_sql("ST_GeomFromEWKT(%(geom)s)")}, c.geom)')} AS geom,
+                SELECT {_POLYGONS.format(f'ST_Intersection({_buffer_sql("ST_GeomFromEWKT(%(geom)s)", buffer_m)}, c.geom)')} AS geom,
                        c.area_km2
                 FROM "{city_table}" c WHERE c.id = %(city)s
             )
@@ -129,11 +224,12 @@ def urbanize_around(geom, city_id, land_use, building_id=None):
             clipped = _POLYGONS.format("ST_Difference(geom, ST_GeomFromEWKT(%(buffer)s))")
             params = {"buffer": buffer.ewkt, "city_km2": city_km2, "now": timezone.now(), "ids": affected}
             with connection.cursor() as cursor:
-                if building_id is not None:
+                if owner is not None:
                     # What each polygon is about to lose, with what it takes to recreate it
                     cursor.execute(
                         f"""
-                        SELECT id, land_cover_type_id, land_use, material_id, source_building,
+                        SELECT id, land_cover_type_id, land_use, material_id, source_building, source_park,
+                               albedo, albedo_source, albedo_date,
                                ST_AsEWKT({_POLYGONS.format("ST_Intersection(geom, ST_GeomFromEWKT(%(buffer)s))")})
                         FROM "{table}" WHERE id = ANY(%(ids)s)
                         """,
@@ -162,26 +258,33 @@ def urbanize_around(geom, city_id, land_use, building_id=None):
             buffer = MultiPolygon(buffer, srid=buffer.srid)
         # post_save of this row runs the neighborhood urban-area recompute
         # (signals.landcover_changed), which also covers the clipped rows.
+        owner_fields = {owner.ring_field: owner.id} if owner is not None else {}
         created = LandCoverVector.objects.create(
             city_id=city_id,
             year=year,
-            land_cover_type=_urban_fabric_class(),
+            land_cover_type=land_cover_class,
             land_use=land_use[:100],
             geom=buffer,
             percentage=(buffer_km2 / city_km2 * 100) if city_km2 else 0.0,
-            source_building=building_id,
+            material=material,
+            albedo=albedo,
+            albedo_source=albedo_source,
+            **owner_fields,
         )
         landcover_created.send(sender=LandCoverVector, pks=[created.pk])
 
         cuts = []
-        for target, class_id, target_use, material_id, target_source, piece in pieces:
+        for (target, class_id, target_use, material_id, target_building, target_park,
+             target_albedo, target_albedo_source, target_albedo_date, piece) in pieces:
             piece = GEOSGeometry(piece) if piece else None
             if piece is None or piece.empty:
                 continue
             cuts.append(UrbanFabricCut.objects.create(
-                owner_building=building_id, target=target, city_id=city_id, year=year,
+                **{owner.cut_field: owner.id}, target=target, city_id=city_id, year=year,
                 land_cover_type_id=class_id, land_use=target_use, material_id=material_id,
-                source_building=target_source, geom=piece,
+                source_building=target_building, source_park=target_park,
+                albedo=target_albedo, albedo_source=target_albedo_source, albedo_date=target_albedo_date,
+                geom=piece,
             ).pk)
         if cuts:
             landcover_created.send(sender=UrbanFabricCut, pks=cuts)
@@ -189,8 +292,22 @@ def urbanize_around(geom, city_id, land_use, building_id=None):
 
 
 def release_ring(building_id):
+    """Undo urbanize_around() for an editor building that moved or was deleted (release_owner)."""
+    return release_owner(Owner("building", building_id))
+
+
+def release_green_area(park_id):
     """
-    Undo urbanize_around() for an editor building that moved or was deleted:
+    Undo green_area() for an editor park that moved or was deleted (release_owner).
+
+    DAG edge: New_Green_Area -> LandCover (the inverse step)
+    """
+    return release_owner(Owner("park", park_id))
+
+
+def release_owner(owner):
+    """
+    Undo convert_area() for an editor object that moved or was deleted:
     every piece its ring R took goes back to the polygon it came from,
 
         T' = T ∪ (cut_T ∩ R)        (T recreated from the cut when it is gone)
@@ -205,10 +322,10 @@ def release_ring(building_id):
     """
     from .signals import deferred_urban_area
 
-    ring = LandCoverVector.objects.filter(source_building=building_id).first()
-    own = list(UrbanFabricCut.objects.filter(owner_building=building_id))
+    ring = LandCoverVector.objects.filter(**{owner.ring_field: owner.id}).first()
+    own = list(UrbanFabricCut.objects.filter(**{owner.cut_field: owner.id}))
     taken_from_ring = list(
-        UrbanFabricCut.objects.filter(source_building=building_id).exclude(owner_building=building_id)
+        UrbanFabricCut.objects.filter(**{owner.ring_field: owner.id}).exclude(**{owner.cut_field: owner.id})
     )
     if ring is None and not own and not taken_from_ring:
         return False
@@ -227,10 +344,10 @@ def release_ring(building_id):
                     SELECT c.target,
                            ST_AsEWKT({_POLYGONS.format("ST_Union(ST_Intersection(c.geom, r.geom))")})
                     FROM "{cut_table}" c JOIN "{lcv_table}" r ON r.id = %(ring)s
-                    WHERE c.owner_building = %(b)s
+                    WHERE c.{owner.cut_field} = %(b)s
                     GROUP BY c.target
                     """,
-                    {"ring": ring.pk, "b": building_id},
+                    {"ring": ring.pk, "b": owner.id},
                 )
                 returned = [(t, GEOSGeometry(g)) for t, g in cursor.fetchall() if g]
             returned = [(t, g) for t, g in returned if not g.empty]
@@ -263,13 +380,14 @@ def release_ring(building_id):
                     id=target, city_id=cut.city_id, year=cut.year,
                     land_cover_type_id=cut.land_cover_type_id, land_use=cut.land_use,
                     material_id=cut.material_id, source_building=cut.source_building,
-                    geom=piece, percentage=0.0,
+                    source_park=cut.source_park, albedo=cut.albedo, albedo_source=cut.albedo_source,
+                    albedo_date=cut.albedo_date, geom=piece, percentage=0.0,
                 )
                 recreated.append(target)
         if recreated:
             landcover_created.send(sender=LandCoverVector, pks=recreated)
         city_id = ring.city_id if ring is not None else next((c.city_id for c in own), None)
-        _refresh_percentages([t for t, _ in returned], city_id)
+        refresh_percentages(city_id, [t for t, _ in returned])
         if returned:
             bump_layer_version(LandCoverVector)
 
@@ -279,26 +397,29 @@ def release_ring(building_id):
             with connection.cursor() as cursor:
                 cursor.execute(
                     f"""
-                    SELECT o.owner_building, c.id,
+                    SELECT o.owner_building, o.owner_park, c.id,
                            ST_AsEWKT({_POLYGONS.format("ST_Intersection(o.geom, c.geom)")})
                     FROM "{cut_table}" o
-                    JOIN "{cut_table}" c ON c.owner_building = %(b)s
+                    JOIN "{cut_table}" c ON c.{owner.cut_field} = %(b)s
                          AND o.geom && c.geom AND ST_Intersects(o.geom, c.geom)
                     WHERE o.id = ANY(%(others)s)
                     """,
-                    {"b": building_id, "others": [o.pk for o in taken_from_ring]},
+                    {"b": owner.id, "others": [o.pk for o in taken_from_ring]},
                 )
                 overlaps = cursor.fetchall()
             by_pk = {c.pk: c for c in own}
-            for owner, cut_pk, piece in overlaps:
+            for owner_building, owner_park, cut_pk, piece in overlaps:
                 piece = GEOSGeometry(piece) if piece else None
                 if piece is None or piece.empty:
                     continue
                 c = by_pk[cut_pk]
                 new_cuts.append(UrbanFabricCut(
-                    owner_building=owner, target=c.target, city_id=c.city_id, year=c.year,
+                    owner_building=owner_building, owner_park=owner_park, target=c.target,
+                    city_id=c.city_id, year=c.year,
                     land_cover_type_id=c.land_cover_type_id, land_use=c.land_use,
-                    material_id=c.material_id, source_building=c.source_building, geom=piece,
+                    material_id=c.material_id, source_building=c.source_building,
+                    source_park=c.source_park, albedo=c.albedo, albedo_source=c.albedo_source,
+                    albedo_date=c.albedo_date, geom=piece,
                 ))
 
         # 3. Drop the ring and every cut that referred to it.

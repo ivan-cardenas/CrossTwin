@@ -11,9 +11,10 @@ from django.utils import timezone
 from core.cache import bump_layer_version
 from .dsm_patches import (DEFAULT_FOREST_CANOPY_M, building_height, record_change,
                           record_vegetation_change, tree_crown, tree_height)
-from .landcover import release_ring, urbanize_around
-from .models import DSMBuildingPatch, DSMEdit, DSMVegetationPatch, LandCoverClasses, LandCoverVector
-from builtup.models import Building
+from .landcover import green_area, refresh_percentages, release_green_area, release_ring, urbanize_around
+from .models import (DSMBuildingPatch, DSMEdit, DSMVegetationPatch, LandCoverClasses, LandCoverVector,
+                     SatelliteImagery)
+from builtup.models import Building, Park
 from nature.models import Forests, Tree
 from administrative.models import Neighborhood, District, City, Province
 # Reused from administrative's own population cascade rather than
@@ -177,6 +178,78 @@ def schedule_urban_area_recompute(city_id):
         _recompute_neighborhood_urban_area(city_id)
 
 
+@receiver(pre_save, sender=LandCoverVector, dispatch_uid="physicalEnv_landcover_percentage")
+def landcover_percentage(sender, instance, raw=False, **kwargs):
+    """
+    percentage = polygon area / its City's area_km2 * 100, for every save
+    (file upload, admin, map editor), so it no longer depends on the import
+    path setting it. A pre_save receiver rather than a save() override:
+    LandCoverVector is bulk-written (importer/batching.py), and the bulk
+    finalizer refreshes the same value set-based (refresh_percentages).
+    Without a city (or a city without area) the given value is kept.
+    Raw saves (fixtures, map-editing Restore) keep the stored value.
+    """
+    if raw or instance.geom is None or not instance.city_id:
+        return
+    city_km2 = City.objects.filter(pk=instance.city_id).values_list("area_km2", flat=True).first()
+    if city_km2:
+        if instance.geom.srid != City._meta.get_field("geom").srid:
+            geom = instance.geom.transform(City._meta.get_field("geom").srid, clone=True)
+        else:
+            geom = instance.geom
+        # Same planar area as City.area_km2 (geom.area in the storage CRS)
+        instance.percentage = geom.area / 1e6 / city_km2 * 100
+
+
+@receiver(pre_save, sender=LandCoverVector, dispatch_uid="physicalEnv_landcover_albedo")
+def landcover_albedo(sender, instance, raw=False, **kwargs):
+    """
+    Albedo bookkeeping on every save (physicalEnv/albedo.py):
+    - no material: the class's default material (its albedo is the polygon's
+      default, LandCoverVector.effective_albedo);
+    - a changed geometry drops a measured albedo: the satellite saw the old
+      shape, so the class default applies until the next measurement.
+    Raw saves (fixtures, map-editing Restore) keep the stored values.
+    """
+    if raw:
+        return
+    if instance.material_id is None and instance.land_cover_type_id:
+        instance.material_id = (LandCoverClasses.objects.filter(pk=instance.land_cover_type_id)
+                                .values_list("default_material_id", flat=True).first())
+    if instance.pk is not None and instance.albedo is not None and instance.geom is not None:
+        stored = LandCoverVector.objects.filter(pk=instance.pk).values_list("geom", flat=True).first()
+        if stored is not None and not stored.equals_exact(instance.geom, tolerance=1e-6):
+            instance.albedo = instance.albedo_source = instance.albedo_date = None
+
+
+@receiver(post_save, sender=SatelliteImagery, dispatch_uid="physicalEnv_albedo_imagery_saved")
+def albedo_imagery_saved(sender, instance, raw=False, **kwargs):
+    """
+    DAG edge: RS_Imagery -> LandCover (albedo attribute). A saved Sentinel-2
+    ALBEDO raster writes its zonal mean onto the land-cover polygons it
+    covers (albedo.measure). A failure never blocks the import.
+    """
+    from .albedo import ALBEDO_INDEX, measure
+    if raw or (instance.index or "").upper() != ALBEDO_INDEX or instance.raster is None:
+        return
+    _guarded(lambda: measure(instance), f"Albedo from imagery {instance.pk}")
+
+
+@receiver(pre_save, sender=City, dispatch_uid="physicalEnv_city_area_presave")
+def city_area_presave(sender, instance, raw=False, **kwargs):
+    """Remember the stored area so city_area_saved only refreshes when the boundary changed."""
+    instance._old_area_km2 = (None if raw or instance.pk is None else
+                              City.objects.filter(pk=instance.pk).values_list("area_km2", flat=True).first())
+
+
+@receiver(post_save, sender=City, dispatch_uid="physicalEnv_city_area_saved")
+def city_area_saved(sender, instance, created, raw=False, **kwargs):
+    """A changed city area changes every land-cover percentage of the city."""
+    if raw or created or getattr(instance, "_old_area_km2", None) == instance.area_km2:
+        return
+    refresh_percentages(instance.pk)
+
+
 @receiver(post_save, sender=LandCoverVector, dispatch_uid="landcover_save_to_neighborhood_urban_area")
 @receiver(post_delete, sender=LandCoverVector, dispatch_uid="landcover_delete_to_neighborhood_urban_area")
 def landcover_changed(sender, instance, **kwargs):
@@ -206,7 +279,8 @@ def _urbanize(instance):
     if not city_id:
         return
     land_use = instance.get_buildingType_display() if instance.buildingType else "Built-up"
-    urbanize_around(instance.geom, city_id, land_use=land_use, building_id=instance.pk)
+    roof = instance.roofMaterial if instance.roofMaterial_id else None
+    urbanize_around(instance.geom, city_id, land_use=land_use, building_id=instance.pk, roof_material=roof)
 
 
 def _guarded(step, what):
@@ -273,6 +347,59 @@ def building_deleted(sender, instance, **kwargs):
     if not _is_editor_building(instance) or is_restoring():
         return
     _land_cover_step(instance, lambda: release_ring(instance.pk), "release")
+
+
+@receiver(pre_save, sender=Park, dispatch_uid="physicalEnv_park_presave")
+def park_presave(sender, instance, raw=False, **kwargs):
+    """Remember the stored outline of a park the editor changes, so post_save can tell a move from an attribute edit."""
+    from core.editing import is_editor_change
+    if raw or not is_editor_change() or instance.pk is None:
+        return
+    instance._stored_geom = Park.objects.filter(pk=instance.pk).values_list("geom", flat=True).first()
+
+
+def _green(instance):
+    city_id = _city_of(instance)
+    if city_id:
+        green_area(instance.geom, city_id, instance.pk, name=instance.name, vegetation_type=instance.vegetationType)
+
+
+@receiver(post_save, sender=Park, dispatch_uid="physicalEnv_park_saved")
+def park_saved(sender, instance, created, raw=False, **kwargs):
+    """
+    DAG edge: New_Green_Area -> LandCover. A park drawn or reshaped in the
+    map editor turns its outline into green urban area in the city's latest
+    land cover (landcover.green_area); a move first gives the old area back
+    (release_green_area). Imports and raw saves are skipped, and an
+    attribute-only edit leaves the land cover alone.
+    """
+    from core.editing import is_editor_change
+    if raw or not is_editor_change() or not instance.geom:
+        return
+    if created:
+        _guarded(lambda: _green(instance), f"Green area for park {instance.pk}")
+        return
+    stored = getattr(instance, "_stored_geom", None)
+    if stored is not None and stored.equals_exact(instance.geom, tolerance=1e-6):
+        return
+
+    def move():
+        release_green_area(instance.pk)
+        _green(instance)
+    _guarded(move, f"Green area move for park {instance.pk}")
+
+
+@receiver(post_delete, sender=Park, dispatch_uid="physicalEnv_park_deleted")
+def park_deleted(sender, instance, **kwargs):
+    """
+    DAG edge: New_Green_Area -> LandCover (inverse). Deleting a park in the
+    editor gives its green area back to the polygons it was cut from.
+    Skipped while the editor's backup restore runs (it restores the rows).
+    """
+    from core.editing import is_editor_change, is_restoring
+    if not is_editor_change() or is_restoring():
+        return
+    _guarded(lambda: release_green_area(instance.pk), f"Green area release for park {instance.pk}")
 
 
 @receiver(post_save, sender=Building, dispatch_uid="physicalEnv_building_dsm_saved")

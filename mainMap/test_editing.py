@@ -367,6 +367,25 @@ class LandCoverBufferRestoreTests(EditingTestCase):
                 self.assertSnapshotEqual(baseline, self._snapshot())
                 self.assertTrue(Building.objects.filter(pk=-1).exists())
 
+    def test_a_new_park_becomes_green_area_and_restore_reverts_it(self):
+        from builtup.models import Park
+        self.client.post(BACKUP_URL)
+        self.client.post(reverse('map:feature_new', args=['builtup', 'Park']),
+                         {'name': 'New park', 'geom': _wgs84_geojson(make_polygon(x=257300, half_size_m=20))})
+        park = Park.objects.get(name='New park')
+        green = self.LandCoverVector.objects.get(source_park=park.pk)
+        self.assertEqual(green.land_cover_type.class_name, 'Green urban areas')
+        self.assertFalse(self.LandCoverVector.objects.filter(pk=self.cell.pk).exists())   # swallowed
+
+        response = self.client.post(RESTORE_URL)
+        self.assertEqual(json.loads(response['HX-Trigger'])['backup-restored']['layers'],
+                         ['builtup.Park', 'physicalEnv.LandCoverVector'])
+        restored = {lc.pk: lc.geom for lc in self.LandCoverVector.objects.all()}
+        self.assertEqual(restored.keys(), self.original.keys())
+        for pk, geom in self.original.items():
+            self.assertTrue(restored[pk].equals_exact(geom, tolerance=1e-6), pk)
+        self.assertFalse(Park.objects.filter(pk=park.pk).exists())
+
 
 
 class EditableLayersConfigTests(SimpleTestCase):

@@ -858,3 +858,270 @@ class DsmBuildingPatchOverlayTests(TestCase):
 
         grid = np.ones((4, 4), dtype="float32")
         self.assertIs(apply_patches(grid, (0.0, 4.0), 1.0, 28992), grid)
+
+
+class LandCoverPercentageTests(TestCase):
+    """LandCoverVector.percentage = polygon area / City.area_km2 * 100 (pre_save + set-based refresh)."""
+
+    def setUp(self):
+        square = _square(0, 0, 1000, 1000)  # 1 km^2
+        self.province = Province.objects.create(ProvinceName="P", geom=square)
+        self.city = City.objects.create(cityName="C", province=self.province, geom=square)
+        self.cls = LandCoverClasses.objects.create(class_name="Arable land", description="test")
+
+    def _create(self, geom, **kw):
+        return LandCoverVector.objects.create(
+            city=self.city, year=2024, land_cover_type=self.cls, land_use="x", geom=geom, **kw)
+
+    def test_save_derives_percentage_of_city_area(self):
+        row = self._create(_square(0, 0, 250, 1000), percentage=99.0)  # a given value is overwritten
+        self.assertAlmostEqual(row.percentage, 25.0)
+        row.geom = _square(0, 0, 500, 1000)
+        row.save()
+        row.refresh_from_db()
+        self.assertAlmostEqual(row.percentage, 50.0)
+
+    def test_without_city_the_value_stays_unset(self):
+        row = LandCoverVector.objects.create(year=2024, land_cover_type=self.cls, land_use="x",
+                                             geom=_square(0, 0, 250, 1000))
+        self.assertIsNone(row.percentage)
+
+    def test_changed_city_boundary_refreshes_percentages(self):
+        row = self._create(_square(0, 0, 250, 1000))
+        self.city.geom = _square(0, 0, 2000, 1000)  # 2 km^2
+        self.city.save()
+        row.refresh_from_db()
+        self.assertAlmostEqual(row.percentage, 12.5)
+
+    def test_bulk_finalizer_sets_percentages(self):
+        from importer.batching import _finalize_landcover
+
+        rows = LandCoverVector.objects.bulk_create([
+            LandCoverVector(city=self.city, year=2024, land_cover_type=self.cls, land_use="x",
+                            geom=_square(0, 0, 100, 1000)),
+        ])
+        self.assertIsNone(LandCoverVector.objects.get(pk=rows[0].pk).percentage)
+        _finalize_landcover(rows)
+        self.assertAlmostEqual(LandCoverVector.objects.get(pk=rows[0].pk).percentage, 10.0)
+
+
+class AlbedoClassDefaultTests(TestCase):
+    """physicalEnv/albedo.py: class -> default material; LandCoverVector.effective_albedo."""
+
+    def setUp(self):
+        square = _square(0, 0, 1000, 1000)
+        self.province = Province.objects.create(ProvinceName="P", geom=square)
+        self.city = City.objects.create(cityName="C", province=self.province, geom=square)
+
+    def test_class_names_map_to_materials(self):
+        from .albedo import material_code_for
+        cases = {
+            "Broad-leaved forest": "forest_deciduous", "Coniferous forest": "forest_coniferous",
+            "Road and rail networks and associated land": "road_asphalt",
+            "Continuous urban fabric": "urban_snow_free", "Discontinuous urban fabric": "suburban_snow_free",
+            "Water bodies": "water_high_sun", "Green urban areas": "grass", "Non-irrigated arable land": "crops",
+            "Fruit trees and berry plantations": "orchards", "Inland marshes": "wetlands",
+            "Beaches, dunes, sands": "desert_sands", "Something unknown": None,
+        }
+        for name, expected in cases.items():
+            with self.subTest(name):
+                self.assertEqual(material_code_for(name), expected)
+
+    def test_the_class_default_material_gives_the_polygon_its_albedo(self):
+        cls = LandCoverClasses.objects.create(class_name="pastures", description="t")
+        self.assertEqual(cls.default_material.material_name, "Grass")
+        row = LandCoverVector.objects.create(city=self.city, year=2024, land_cover_type=cls, land_use="x",
+                                             geom=_square(0, 0, 100, 100))
+        self.assertEqual(row.material_id, cls.default_material_id)
+        self.assertAlmostEqual(row.effective_albedo, cls.default_material.albedo)
+        row.albedo = 0.3
+        self.assertEqual(row.effective_albedo, 0.3)
+
+    def test_a_geometry_change_drops_the_measured_albedo(self):
+        cls = LandCoverClasses.objects.create(class_name="pastures", description="t")
+        row = LandCoverVector.objects.create(city=self.city, year=2024, land_cover_type=cls, land_use="x",
+                                             geom=_square(0, 0, 100, 100), albedo=0.3, albedo_source="Sentinel-2")
+        row.land_use = "y"
+        row.save()
+        row.refresh_from_db()
+        self.assertEqual(row.albedo, 0.3)          # attribute edit keeps it
+        row.geom = _square(0, 0, 200, 100)
+        row.save()
+        row.refresh_from_db()
+        self.assertIsNone(row.albedo)
+        self.assertIsNone(row.albedo_source)
+
+    def test_bulk_finalizer_sets_default_materials(self):
+        from importer.batching import _finalize_landcover
+        cls = LandCoverClasses.objects.create(class_name="Water bodies", description="t")
+        rows = LandCoverVector.objects.bulk_create([LandCoverVector(
+            city=self.city, year=2024, land_cover_type=cls, land_use="x", geom=_square(0, 0, 100, 100))])
+        _finalize_landcover(rows)
+        self.assertEqual(LandCoverVector.objects.get(pk=rows[0].pk).material.code, "water_high_sun")
+
+
+class AlbedoMeasureTests(_UrbanFabricTestCase):
+    """albedo.measure: zonal mean of an ALBEDO raster (DAG edge RS_Imagery -> LandCover)."""
+
+    def _albedo_raster(self, west=0.1, east=0.3, date=None):
+        from datetime import datetime, timezone as tz
+        from django.contrib.gis.gdal import GDALRaster
+        from .models import SatelliteImagery
+        row = [west] * 50 + [east] * 50
+        raster = GDALRaster({
+            "srid": 28992, "width": 100, "height": 100, "origin": (0, 1000), "scale": (10, -10),
+            "datatype": 6, "bands": [{"data": row * 100, "nodata_value": -9999}],
+        })
+        with mock.patch("core.rasterOperations.export_raster_to_cog"):
+            return SatelliteImagery.objects.create(
+                year=2025, index="ALBEDO", satellite_type="Sentinel-2", raster=raster,
+                date=date or datetime(2025, 7, 14, tzinfo=tz.utc))
+
+    def test_saving_an_albedo_raster_measures_the_land_cover(self):
+        self._albedo_raster()
+        self.pasture.refresh_from_db()
+        self.assertAlmostEqual(self.pasture.albedo, 0.2, places=4)
+        self.assertEqual(self.pasture.albedo_source, "Sentinel-2 2025-07-14")
+        self.assertEqual(str(self.pasture.albedo_date), "2025-07-14")
+
+    def test_editor_polygons_and_newer_measurements_are_kept(self):
+        from datetime import datetime, timezone as tz
+        from .albedo import measure
+        self._building()
+        ring = self._urban_fabric().get()
+        estimate = ring.albedo
+        self._albedo_raster(date=datetime(2025, 8, 1, tzinfo=tz.utc))
+        ring.refresh_from_db()
+        self.assertEqual(ring.albedo, estimate)    # the scene never saw the drawn building
+
+        older = self._albedo_raster(west=0.5, east=0.5, date=datetime(2024, 8, 1, tzinfo=tz.utc))
+        self.pasture.refresh_from_db()
+        self.assertAlmostEqual(self.pasture.albedo, 0.2, places=2)   # the 2025 value stays
+        self.assertEqual(measure(older), 0)
+
+    def test_bulk_imported_land_cover_takes_an_earlier_albedo_raster(self):
+        from importer.batching import _finalize_landcover
+        self._albedo_raster()
+        rows = LandCoverVector.objects.bulk_create([LandCoverVector(
+            city=self.city, year=2024, land_cover_type=self.pasture_class, land_use="x",
+            geom=_square(600, 0, 1000, 400))])
+        _finalize_landcover(rows)
+        self.assertAlmostEqual(LandCoverVector.objects.get(pk=rows[0].pk).albedo, 0.3, places=4)
+
+
+class BuildingRingAlbedoTests(_UrbanFabricTestCase):
+    def test_the_ring_albedo_weights_roof_and_paving(self):
+        from .albedo import BITUMEN_ROOF, CONCRETE, material
+        self._building()
+        ring = self._urban_fabric().get()
+        roof, paving = material(BITUMEN_ROOF).albedo, material(CONCRETE).albedo
+        area = _square(490, 490, 510, 510).buffer(10).area
+        self.assertAlmostEqual(ring.albedo, (400 * roof + (area - 400) * paving) / area, places=6)
+        self.assertEqual(ring.albedo_source, "editor: building -1")
+        self.assertEqual(ring.material.code, "urban_snow_free")
+
+
+class ParkGreenAreaTests(_UrbanFabricTestCase):
+    """physicalEnv.signals.park_saved/park_deleted -> landcover.green_area (DAG edge New_Green_Area -> LandCover)."""
+
+    def _park(self, x0=100, y0=100, x1=300, y1=300, **kwargs):
+        from builtup.models import Park
+        from core.editing import editor_change
+        with editor_change():
+            return Park.objects.create(name="New park", geom=_square(x0, y0, x1, y1), area=0, **kwargs)
+
+    def _green(self):
+        return LandCoverVector.objects.filter(source_park__isnull=False)
+
+    def test_a_drawn_park_becomes_green_urban_area(self):
+        park = self._park()
+        green = self._green().get()
+        self.assertEqual(green.source_park, park.pk)
+        self.assertEqual(green.land_cover_type.class_name, "Green urban areas")
+        self.assertEqual(green.material.material_name, "Grass")
+        self.assertAlmostEqual(green.geom.area, 40_000, delta=0.01)
+        self.pasture.refresh_from_db()
+        self.assertAlmostEqual(self.pasture.geom.area + green.geom.area, 1e6, delta=0.01)
+
+    def test_trees_in_the_vegetation_type_give_a_tree_material(self):
+        self._park(vegetationType="Trees and grass")
+        self.assertEqual(self._green().get().material.code, "forest_deciduous")
+
+    def test_moving_and_deleting_the_park(self):
+        from core.editing import editor_change
+        park = self._park()
+        with editor_change():
+            park.geom = _square(500, 500, 700, 700)
+            park.save()
+        green = self._green().get()
+        self.assertTrue(green.geom.intersects(_square(600, 600, 601, 601)))
+        self.assertFalse(green.geom.intersects(_square(200, 200, 201, 201)))
+        with editor_change():
+            park.delete()
+        self.assertFalse(self._green().exists())
+        self.pasture.refresh_from_db()
+        self.assertAlmostEqual(self.pasture.geom.area, 1e6, delta=0.01)
+
+    def test_imported_parks_leave_the_land_cover_alone(self):
+        from builtup.models import Park
+        park = Park.objects.create(name="OSM park", geom=_square(100, 100, 300, 300), area=0)
+        park.delete()
+        self.assertFalse(self._green().exists())
+        self.pasture.refresh_from_db()
+        self.assertAlmostEqual(self.pasture.geom.area, 1e6, delta=0.01)
+
+    def test_a_park_and_a_building_ring_released_in_either_order(self):
+        from core.editing import editor_change
+        from .models import UrbanFabricCut
+        for first in ("park", "building"):
+            with self.subTest(first):
+                park = self._park(480, 480, 600, 600)          # overlaps the building ring
+                building = self._building()
+                objects = [park, building] if first == "park" else [building, park]
+                for obj in objects:
+                    with editor_change():
+                        obj.delete()
+                self.assertFalse(self._green().exists())
+                self.assertFalse(self._urban_fabric().exists())
+                self.pasture.refresh_from_db()
+                self.assertAlmostEqual(self.pasture.geom.area, 1e6, delta=0.05)
+                self.assertFalse(UrbanFabricCut.objects.exists())
+
+
+class OkeMaterialTableTests(TestCase):
+    """SurfaceMaterialProperties holds Oke et al. (2017) Table 5.1; fields offer the fitting categories."""
+
+    def test_the_table_is_seeded_with_ranges_and_typical_values(self):
+        from .models import SurfaceMaterialProperties as M
+        self.assertEqual(M.objects.filter(source__startswith="Oke et al. (2017)").count(), 45)
+        asphalt = M.objects.get(code="road_asphalt")
+        self.assertEqual((asphalt.albedo_min, asphalt.albedo_max, asphalt.albedo), (0.05, 0.27, 0.16))
+        self.assertEqual(M.objects.get(code="urban_snow_free").albedo, 0.14)   # the table's average, not the midpoint
+        self.assertEqual(M.objects.get(code="wall_wood").albedo, 0.22)
+        self.assertEqual(str(asphalt), "Roads: Asphalt (α 0.05–0.27)")
+
+    def test_imports_resolve_codes_names_and_category_names(self):
+        from .models import SurfaceMaterialProperties as M
+        self.assertEqual(M.lookup("roof_slate").code, "roof_slate")
+        self.assertEqual(M.lookup("slate").code, "roof_slate")
+        self.assertEqual(M.lookup("Walls: Concrete").code, "wall_concrete")
+        self.assertEqual(M.lookup("Roads: concrete").code, "road_concrete")
+        self.assertIsNone(M.lookup("unobtainium"))
+
+    def test_material_fields_offer_the_categories_that_fit(self):
+        from django.forms import modelform_factory
+        from builtup.models import Building, Street
+
+        def codes(model, field):
+            form = modelform_factory(model, fields=[field])()
+            return {m.code for m in form.fields[field].queryset}
+
+        roof = codes(Building, "roofMaterial")
+        self.assertIn("roof_tile_clay", roof)
+        self.assertIn("paint_white", roof)
+        self.assertNotIn("road_asphalt", roof)
+        self.assertEqual(codes(Street, "surfaceMaterial"), {"road_asphalt", "road_concrete"})
+        land = codes(LandCoverVector, "material")
+        self.assertIn("grass", land)
+        self.assertIn("urban_snow_free", land)
+        self.assertNotIn("roof_slate", land)

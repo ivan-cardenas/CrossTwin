@@ -52,6 +52,7 @@ INDEX_STYLES = {
     "POPULATION": ("ylorrd", None, "Population Density", "people/ha"),
     "HRSL_POP": ("reds", None, "Population Density (HRSL)", "people/pixel (30m)"),
     "AVG_RAD": ("inferno", None, "Nighttime Lights", "nW/cm²/sr"),
+    "ALBEDO": ("greys_r", (0, 0.5), "Surface Albedo", ""),
 }
 
 # Categorical products: legend still shows a gradient over the value range,

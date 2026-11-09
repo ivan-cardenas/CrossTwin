@@ -520,7 +520,9 @@ def load_raster_into_target_model(
 
             raster_to_load = filepath
             if src_epsg and src_epsg != model_srid:
-                say("raster", f"Reprojecting EPSG:{src_epsg} -> EPSG:{model_srid} (bilinear) ...")
+                # Class labels must not be blended into classes that don't exist.
+                resampling = Resampling.nearest if dataset.get("categorical") else Resampling.bilinear
+                say("raster", f"Reprojecting EPSG:{src_epsg} -> EPSG:{model_srid} ({resampling.name}) ...")
                 fd, temp_reprojected = tempfile.mkstemp(suffix=".tif")
                 os.close(fd)
                 with rasterio.open(filepath) as src:
@@ -539,7 +541,7 @@ def load_raster_into_target_model(
                                 src_crs=src.crs,
                                 dst_transform=transform,
                                 dst_crs=dst_crs,
-                                resampling=Resampling.bilinear,
+                                resampling=resampling,
                             )
                 raster_to_load = temp_reprojected
 
@@ -1975,6 +1977,8 @@ class Sentinel2Importer:
         "NDWI": ["B03", "B08"],
         "MOISTURE_INDEX": ["B8A", "B11"],
         "TRUE_COLOR": ["B04", "B03", "B02"],
+        # Shortwave broadband albedo: physicalEnv/albedo.py::ALBEDO_COEFFICIENTS
+        "ALBEDO": ["B02", "B03", "B04", "B08", "B11", "B12"],
          ## -------- CONSIDER ADDING MORE INDICES HERE --------
                     ## -------- CONSIDER ADDING FUNCTIONS OF EXTERNAL PROCESSING LIBRARIES (e.g., scikit-image, landcover ML, RF, etc) --------
     }
@@ -2154,6 +2158,15 @@ class Sentinel2Importer:
             elif index_key == "MOISTURE_INDEX":
                 nir_narrow, swir = datacube.band("B8A"), datacube.band("B11")
                 result_cube = (nir_narrow - swir) / (nir_narrow + swir)
+            elif index_key == "ALBEDO":
+                # Narrow-to-broadband conversion over L2A surface reflectance
+                # (DN / 10000), Bonafoni & Sekertekin 2020; the weights live in
+                # physicalEnv/albedo.py so the stored value and this agree.
+                from physicalEnv.albedo import ALBEDO_COEFFICIENTS
+                result_cube = None
+                for band_name, weight in ALBEDO_COEFFICIENTS.items():
+                    term = datacube.band(band_name) * (weight / 10000.0)
+                    result_cube = term if result_cube is None else result_cube + term
             ## -------- CONSIDER ADDING MORE INDICES HERE --------
             ## -------- CONSIDER ADDING FUNCTIONS OF EXTERNAL PROCESSING LIBRARIES (e.g., scikit-image, landcover ML, RF, etc) --------
             else:  # TRUE_COLOR
@@ -2235,8 +2248,41 @@ class Sentinel2Importer:
 
 
 class GEEImporter:
-    """Import handler for Google Earth Engine datasets."""
-    
+    """Import handler for Google Earth Engine datasets.
+
+    Optional catalog keys on a GEE entry:
+    - ``reducer``: how an ImageCollection is composited, one of REDUCERS
+      (default ``mean``; ``mode`` for class labels such as Dynamic World).
+    - ``expression`` + ``expression_bands``: derive ``band`` per image with
+      ``ee.Image.expression``, e.g. wind speed from its u/v components.
+    - ``scale_factor`` / ``offset``: applied after compositing (value * scale + offset).
+    - ``resolution_m``: download scale in metres (default 30).
+    """
+
+    REDUCERS = ("mean", "median", "mode", "min", "max", "sum")
+    NODATA = -9999.0
+
+    @staticmethod
+    def _band_preparer(dataset: Dict):
+        """Function Image -> Image selecting (or deriving) the entry's band."""
+        import ee
+
+        band = dataset.get("band")
+        expression = dataset.get("expression")
+        if expression:
+            variables = dataset.get("expression_bands") or {}
+
+            def prepare(img):
+                img = ee.Image(img)
+                return img.expression(
+                    expression, {name: img.select(src) for name, src in variables.items()}
+                ).rename(band or "value")
+            return prepare
+
+        if band:
+            return lambda img: ee.Image(img).select(band)
+        return lambda img: ee.Image(img)
+
     @staticmethod
     def export_raster(
         dataset: Dict,
@@ -2255,17 +2301,30 @@ class GEEImporter:
             
             asset_id = dataset.get("asset_id")
             band = dataset.get("band")
-            
+            # Download at the product's own resolution: a fixed 30 m upsampled
+            # 1-11 km products and coarsened 10 m Dynamic World.
+            scale = dataset.get("resolution_m") or 30
+            reducer_name = dataset.get("reducer", "mean")
+            if reducer_name not in GEEImporter.REDUCERS:
+                return ImportResult("error", f"Unknown GEE reducer '{reducer_name}' for {dataset['key']}.")
+
             if not asset_id:
                 return ImportResult("error", "No asset_id specified for GEE dataset.")
-            
+
+            prepare = GEEImporter._band_preparer(dataset)
+
             # Define region
             region = ee.Geometry.Rectangle(bbox)
             
-            # Load image or image collection
+            # Load image or image collection. Ask the catalog which one it is:
+            # ee.ImageCollection(asset_id) is lazy and never raises for an
+            # Image asset (JRC, Hansen), so a try/except fallback never ran
+            # and the failure only surfaced at getDownloadURL.
             acquisition_date = None
-            try:
-                # Try as ImageCollection first
+            asset_type = ee.data.getAsset(asset_id).get("type")
+            if asset_type == "IMAGE":
+                image = prepare(ee.Image(asset_id))
+            elif asset_type == "IMAGE_COLLECTION":
                 collection = ee.ImageCollection(asset_id)
 
                 # Apply date filter if needed. Only for datasets that actually
@@ -2301,31 +2360,45 @@ class GEEImporter:
                 # band-mismatched features silently yields a 0-band Image
                 # that fails downstream. Selecting per-image also fails fast
                 # here if a feature is missing the band, instead of later.
-                if band:
-                    collection = collection.select(band)
+                # A derived band (e.g. wind speed from its u/v components) is
+                # computed per image too, so the composite is the mean of the
+                # hourly speeds rather than the speed of the mean vector.
+                collection = collection.map(prepare)
 
-                # Composite (mean)
-                image = collection.mean()
+                # Composite: mean by default, mode for class labels
+                image = getattr(collection, reducer_name)()
 
-            except Exception:
-                # Fall back to single Image
-                image = ee.Image(asset_id)
-                if band:
-                    image = image.select(band)
+            else:
+                return ImportResult("error", f"GEE asset {asset_id} is a {asset_type}, not an image or image collection.")
 
-            # Clip to region
-            image = image.clip(region)
-            
+            # Raw values -> physical units (e.g. MODIS LST DN * 0.02 - 273.15 = °C)
+            scale_factor = dataset.get("scale_factor")
+            offset = dataset.get("offset")
+            if scale_factor is not None:
+                image = image.multiply(scale_factor)
+            if offset is not None:
+                image = image.add(offset)
+
+            # Give masked pixels (clouds, sea, no data, outside a product's
+            # coverage) an explicit nodata value. Without it GEE writes them
+            # as 0, which reads as a valid measurement (0 mm rain, Dynamic
+            # World class 0 = water). Float so -9999 fits every band.
+            # No clip(): getDownloadURL's region already crops, and clip()
+            # masks every coarse cell (ERA5 0.1°) whose centre lies outside
+            # the bbox, which for a city-sized bbox can be all of them.
+            image = image.toFloat().unmask(GEEImporter.NODATA, False)
+
             # Get download URL
             url = image.getDownloadURL({
-                'scale': 30,
+                'scale': scale,
                 'region': region,
                 'format': 'GEO_TIFF',
                 'crs': 'EPSG:4326'
             })
-            
+
             logger.info(f"Downloading GEE raster from: {url[:100]}...")
-            say("gee", f"Earth Engine prepared {asset_id}{f' band {band}' if band else ''} at 30 m; downloading ...")
+            say("gee", f"Earth Engine prepared {asset_id}{f' band {band}' if band else ''} "
+                       f"({reducer_name}) at {scale:g} m; downloading ...")
             response = requests.get(url, timeout=300)
             response.raise_for_status()
             say("gee", f"  received {len(response.content) / 1e6:.1f} MB")
@@ -2340,6 +2413,12 @@ class GEEImporter:
             
             with open(filepath, 'wb') as f:
                 f.write(response.content)
+
+            # GEE does not tag the GeoTIFF's nodata value; set it so the
+            # reprojection, PostGIS and the COG/TiTiler all skip those cells.
+            import rasterio
+            with rasterio.open(filepath, "r+") as dst:
+                dst.nodata = GEEImporter.NODATA
 
             loaded, load_msg = load_raster_into_target_model(
                 str(filepath), dataset, bbox, date_to, acquisition_date=acquisition_date

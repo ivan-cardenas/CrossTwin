@@ -26,5 +26,11 @@ exclude = ["area"]            # save() sets it from geom
 
 ["builtup.Facility"]
 
+["physicalEnv.LandCoverVector"]
+# percentage: pre_save from geom / city area; albedo*: measured from Sentinel-2
+# (physicalEnv/albedo.py), so the editor picks a material (Oke Table 5.1) instead
+exclude = ["percentage", "last_updated", "source_building", "source_park",
+           "albedo", "albedo_source", "albedo_date"]
+
 ["builtup.ZoningArea"]
 exclude = ["area"]            # save() sets it from geom

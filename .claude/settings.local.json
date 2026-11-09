@@ -20,5 +20,5 @@
     "anthropic-skills:docs": "off",
     "graphify": "user-invocable-only"
   },
-  "outputStyle": "Explanatory"
+  "outputStyle": "Concise"
 }
