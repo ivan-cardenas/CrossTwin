@@ -297,6 +297,9 @@
             {{ indicators.aspect_ratio }}
           </span>
         </div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45);">
+          {% if indicators.aspect_ratio_source == "stored" %}{{ indicators.canyon_streets }} street canyons · {{ indicators.canyon_open_pct }}% open · {{ indicators.canyon_deep_pct }}% deep{% else %}proxy: avg height / avg width{% endif %}
+        </div>
       </div>
       <div>
         <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Footprint</div>

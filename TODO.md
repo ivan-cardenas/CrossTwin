@@ -35,7 +35,11 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 - [x] `Tmrt -> UTCI` — computed by solweig-gpu in the same run (`run_solweig`), stored as `UTCI`
 - [x] `LST -> PET` — removed from `core/DAG.dot`: PET comes from `Tmrt -> PET` (SOLWEIG Tmrt + air temperature with the Koopmans urban heat island + 1.2 m wind), the Landsat LST (`urban_heat/lst/`) is a separate surface temperature and not a PET input
 - [X] Thermal comfort meteorology is uniform over the view for Tmrt/UTCI, and PET's wind/UHI source areas are cut at the 50 m halo
-- [ ] `Canyon_Aspect -> DSM`, `Vegetation_Coverage -> DSM`, `Streets -> Canyon_Aspect` — unimplemented (expected to arrive pre-computed from SOLWEIG externally)
+- [x] `Buildings -> Canyon_Aspect`, `Streets -> Canyon_Aspect` — stored per street in `builtup.StreetCanyon` (H = mean of the area-weighted building heights within 30 m left/right, open side 0; W = typed `Street.width`, else facade-to-facade distance, else a class default; `builtup/chain.py`, inputs `builtup/canyon.py`), refreshed by `builtup/signals.py` when a street or a nearby building changes (deferred in imports, bulk Street finalizer, journalled for Restore). The heat dashboard's morphology card shows the length-weighted stored H/W
+- [x] `Vegetation_Coverage -> DSM` — editor changes of `nature.Tree` (paraboloid crown) and `nature.Forests` (flat 15 m on the gained area, cleared on the lost area) as `DSMVegetationPatch`, applied by `dsm_patches.apply_patches`; parks and green spaces are not sources (their outlines don't record trees)
+- [x] `Canyon_Aspect -> DSM` — removed from `core/DAG.dot`: H/W is derived from the buildings, which already reach the DSM through `Buildings -> DSM`
+- [ ] Canyon: dual-carriageway NWB links see buildings on one side only (H halved, default W); buildings without `height_m`/`numberFloors` are skipped
+- [ ] `Canyon_Aspect -> Meteorology` — the stored H/W is not yet used by SOLWEIG's PET (UHI / 1.2 m wind)
 - [ ] `calculate_urban_morphology()` / `get_thermal_indices()` — only compute statistics *over* existing rasters, don't derive one raster from another
 - [ ] `PET -> NBS` — `calculate_nbs_coverage()` counts NBS geometries but never reads PET values
 

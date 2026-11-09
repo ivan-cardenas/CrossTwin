@@ -116,8 +116,13 @@ def calculate_vegetation_coverage(adminUnit):
 def calculate_urban_morphology(adminUnit):
     """Building and street statistics relevant to canyon geometry.
 
-    DAG edges:  Buildings → DSM, Canyon_Aspect
-                Streets   → Canyon_Aspect
+    DAG edges:  Buildings → Canyon_Aspect, Streets → Canyon_Aspect (read from
+                the stored builtup.StreetCanyon rows, builtup/signals.py)
+
+    The aspect ratio is the mean H/W of the stored street canyons inside the
+    unit, each weighted by the length of its street inside the unit. Without
+    stored canyons it falls back to the old proxy
+    avg building height / avg street width (aspect_ratio_source = 'proxy').
     """
     buildings = Building.objects.filter(geom__intersects=adminUnit.geom)
     streets = Street.objects.filter(geom__intersects=adminUnit.geom)
@@ -134,17 +139,69 @@ def calculate_urban_morphology(adminUnit):
         avg_width=Avg('width'),
     )
 
+    canyons = calculate_canyon_aspect(adminUnit)
+    if canyons['canyon_streets']:
+        aspect, source = canyons['aspect_ratio'], 'stored'
+    else:
+        aspect = round((bldg_agg['avg_height'] or 0) / (street_agg['avg_width'] or 1), 2)
+        source = 'proxy'
+
     return {
         'building_count': bldg_agg['count'] or 0,
         'avg_building_height_m': round(bldg_agg['avg_height'] or 0, 1),
         'max_building_height_m': round(bldg_agg['max_height'] or 0, 1),
         'total_footprint_km2': round((bldg_agg['total_footprint'] or 0) / 1e6, 3),
         'street_count': street_agg['count'] or 0,
-        'avg_street_width_m': round(street_agg['avg_width'] or 0, 1),
-        # Aspect ratio proxy: avg_height / avg_width (H/W)
-        'aspect_ratio': round(
-            (bldg_agg['avg_height'] or 0) / (street_agg['avg_width'] or 1), 2
-        ),
+        'avg_street_width_m': canyons['avg_width_m'] if source == 'stored' else round(street_agg['avg_width'] or 0, 1),
+        'aspect_ratio': aspect,
+        'aspect_ratio_source': source,
+        **{k: v for k, v in canyons.items() if k != 'aspect_ratio'},
+    }
+
+
+def calculate_canyon_aspect(adminUnit):
+    """Length-weighted H/W of the stored street canyons inside the unit.
+
+    DAG edges:  Buildings → Canyon_Aspect, Streets → Canyon_Aspect
+
+        H/W(unit) = Σ (H/W_i × L_i) / Σ L_i     L_i = length of street i inside the unit
+
+    plus the share of that length in Oke's classes: open (< 0.5),
+    regular (0.5–2) and deep (≥ 2). Canyons without a ratio are left out.
+    """
+    from builtup.models import StreetCanyon
+
+    empty = {'canyon_streets': 0, 'aspect_ratio': 0, 'avg_width_m': 0,
+             'canyon_open_pct': 0, 'canyon_deep_pct': 0}
+    geom = adminUnit.geom
+    if geom is None:
+        return empty
+    table = StreetCanyon._meta.db_table
+    sql = f"""
+        WITH unit AS (SELECT ST_GeomFromEWKB(%(geom)s) AS geom),
+        c AS (
+            SELECT k.aspect_ratio AS r, k.width_m AS w,
+                   CASE WHEN ST_Within(k.geom, u.geom) THEN ST_Length(k.geom)
+                        ELSE ST_Length(ST_Intersection(k.geom, u.geom)) END AS l
+            FROM "{table}" k, unit u
+            WHERE k.geom && u.geom AND ST_Intersects(k.geom, u.geom) AND k.aspect_ratio IS NOT NULL
+        )
+        SELECT COUNT(*), SUM(r * l) / NULLIF(SUM(l), 0), SUM(w * l) / NULLIF(SUM(l), 0),
+               SUM(l) FILTER (WHERE r < 0.5) / NULLIF(SUM(l), 0),
+               SUM(l) FILTER (WHERE r >= 2) / NULLIF(SUM(l), 0)
+        FROM c WHERE l > 0
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(sql, {'geom': bytes(geom.ewkb)})
+        n, ratio, width, open_share, deep_share = cursor.fetchone()
+    if not n:
+        return empty
+    return {
+        'canyon_streets': n,
+        'aspect_ratio': round(ratio or 0, 2),
+        'avg_width_m': round(width or 0, 1),
+        'canyon_open_pct': round((open_share or 0) * 100, 1),
+        'canyon_deep_pct': round((deep_share or 0) * 100, 1),
     }
 
 

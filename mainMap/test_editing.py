@@ -459,3 +459,69 @@ class BuildingDsmPatchTests(EditingTestCase):
         self.client.post(RESTORE_URL)
         self.assertIsNone(self.patch())
         self.assertGreater(DSMEdit.objects.count(), edits)   # results calculated before Restore are stale too
+
+
+class TreeDsmPatchTests(EditingTestCase):
+    """DAG edge Vegetation_Coverage -> DSM through the map editor (physicalEnv/dsm_patches.py)."""
+
+    def setUp(self):
+        super().setUp()
+        from nature.models import Tree
+        from .models import EditableLayer
+
+        EditableLayer.objects.create(key='nature.Tree')
+        self.tree = Tree.objects.create(height_m=12, crownDiameter_m=8,
+                                        geom=Point(257000.0, 470000.0, srid=settings.COORDINATE_SYSTEM))
+        self.url = reverse('map:feature_edit', args=['nature', 'Tree', self.tree.pk])
+
+    def patch(self):
+        from physicalEnv.models import DSMVegetationPatch
+        return DSMVegetationPatch.objects.filter(source='nature.Tree', source_id=self.tree.pk).first()
+
+    def post_tree(self, x, **fields):
+        data = {'height_m': 12, 'crownDiameter_m': 8, 'last_updated': '2026-11-05 12:00',
+                'geom': _wgs84_geojson(Point(x, 470000.0, srid=settings.COORDINATE_SYSTEM))}
+        data.update(fields)
+        return self.client.post(self.url, data)
+
+    def test_moving_a_tree_in_the_editor_patches_the_dsm(self):
+        response = self.post_tree(257020.0)
+        self.assertIn('feature-saved', response['HX-Trigger'])
+        self.assertAlmostEqual(self.patch().geom.centroid.x, 257020.0, delta=0.05)
+
+    def test_restore_reverts_the_vegetation_patch(self):
+        self.client.post(BACKUP_URL)
+        self.post_tree(257020.0)
+        self.assertIsNotNone(self.patch())
+        self.client.post(RESTORE_URL)
+        self.assertIsNone(self.patch())
+        self.tree.refresh_from_db()
+        self.assertAlmostEqual(self.tree.geom.x, 257000.0, delta=0.01)
+
+
+class StreetCanyonEditingTests(EditingTestCase):
+    """DAG edge Buildings -> Canyon_Aspect: an editor building change refreshes and journals the canyon."""
+
+    def setUp(self):
+        super().setUp()
+        from django.contrib.gis.geos import LineString, MultiLineString
+        from builtup.models import Street
+
+        # make_polygon(half_size_m=10) is centred on the default x/y: run the street 15 m south of it
+        centre = self.building.geom.centroid
+        self.street = Street.objects.create(
+            name='Langs', classification='residential',
+            geom=MultiLineString(LineString((centre.x - 50, centre.y - 15), (centre.x + 50, centre.y - 15)),
+                                 srid=settings.COORDINATE_SYSTEM))
+
+    def canyon(self):
+        from builtup.models import StreetCanyon
+        return StreetCanyon.objects.get(street=self.street)
+
+    def test_raising_a_building_in_the_editor_deepens_the_canyon_and_restore_reverts_it(self):
+        before = self.canyon().height_m
+        self.client.post(BACKUP_URL)
+        self.post_building(_edit_url(1234), height_m=30)
+        self.assertGreater(self.canyon().height_m, before)
+        self.client.post(RESTORE_URL)
+        self.assertAlmostEqual(self.canyon().height_m, before)

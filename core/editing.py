@@ -142,10 +142,34 @@ def _build_form(key, model, data=None, instance=None):
     exclude = [model._meta.pk.name, *cfg.get('exclude', [])]
     form_class = modelform_factory(model, exclude=exclude, widgets={geom.name: forms.HiddenInput})
     form = form_class(data=data, instance=instance)
+    _fit_drawn_geometry(form.fields[geom.name], geom)
     for name in cfg.get('optional', []):
         if name in form.fields:
             form.fields[name].required = False
     return form
+
+
+def _fit_drawn_geometry(form_field, model_field):
+    """
+    Mapbox GL Draw draws a single LineString: wrap it into a MultiLineString
+    when the model field is one (builtup.Street) before the form field checks
+    the type. The form field parses the GeoJSON in to_python() and compares
+    types in clean(). Other mismatches (e.g. a Polygon for a MultiPolygonField)
+    stay form errors.
+    """
+    from core.geoFunctions import fit_geometry_type
+
+    if model_field.geom_type.upper() != 'MULTILINESTRING':
+        return
+    parse = form_field.to_python
+
+    def to_python(value):
+        geom = parse(value)
+        if geom is not None and geom.geom_type == 'LineString':
+            return fit_geometry_type(geom, model_field)
+        return geom
+
+    form_field.to_python = to_python
 
 
 def _next_negative_pk(model):

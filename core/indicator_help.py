@@ -192,8 +192,12 @@ HELP = {
     "heat.morphology": {
         "title": "Urban Morphology",
         "what": "Building and street statistics that describe the street canyons, which shape how heat and wind behave.",
-        "how": "Averages over the buildings and streets intersecting the area: building height and footprint from BAG/3D data, street width from the street layer.",
-        "eq": ["Aspect ratio H/W = {average building height | average street width}"],
+        "how": "Each street has a stored canyon (Street Canyons layer), refreshed when the street or a building near it changes. Its height H is the mean of the building heights on the left and on the right within 30 m of the street, and an open side counts as 0. Its width W is the street width when one is typed in, else the distance between the nearest facades on both sides, else a default for the street class. The area value weights each street by its length inside the area. Without stored canyons it shows the proxy average height / average street width.",
+        "eq": [
+            "H = {H left + H right | 2}",
+            "Street H/W = {H | W}",
+            "Area H/W = {Σ (H/W × street length) | Σ street length}",
+        ],
         "note": "Higher ratios mean narrower, more enclosed canyons that trap more heat. As a rule of thumb (Oke): below 0.5 is an open street, around 1 a regular canyon, above 2 a deep one.",
     },
     "heat.suhii": {

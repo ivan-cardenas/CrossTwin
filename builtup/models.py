@@ -46,16 +46,76 @@ class Street(models.Model):
     name = models.CharField(max_length=100, help_text="Name of the street")
     surfaceMaterial = models.ForeignKey(SurfaceMaterialProperties, verbose_name="Surface Material", on_delete=models.DO_NOTHING, null=True, blank=True)
     classification = models.CharField(max_length=50, choices=[('primary', 'Primary'), ('secondary', 'Secondary'), ('residential', 'Residential')], help_text="Street classification (e.g., primary, secondary, residential)")
-    width = models.FloatField(help_text="Width of the street in meters")
+    width = models.FloatField(null=True, blank=True, help_text="Width of the street in meters. Leave empty to let the canyon aspect ratio use the measured facade-to-facade distance (builtup.StreetCanyon); a value typed here overrides it")
     geom = models.MultiLineStringField(srid=CoordinateSystem)
-    
+
     def __str__(self):
         return self.name
-    
+
     class Meta:
         verbose_name = "Street"
         verbose_name_plural = "Streets"
-        
+
+
+class StreetCanyon(models.Model):
+    """
+    The urban canyon of one street: height-to-width ratio H/W.
+
+        H = mean of the building heights on the left and right of the street
+            (area-weighted within builtup/canyon.py::SEARCH_M; open side = 0)
+        W = Street.width when set, else the facade-to-facade distance,
+            else a default per street classification
+
+    Inputs from builtup/canyon.py::street_inputs, equations in builtup/chain.py.
+    Refreshed by builtup/signals.py when the street or a building near it
+    changes. Shown on the map along the street line.
+
+    DAG edges: Buildings -> Canyon_Aspect, Streets -> Canyon_Aspect.
+    """
+    WIDTH_SOURCES = [("street", "Street width"), ("facade", "Facade-to-facade distance"), ("default", "Default for the street class")]
+
+    street = models.OneToOneField(Street, on_delete=models.DO_NOTHING, related_name="canyon", help_text="The street this canyon belongs to")
+    h_left_m = models.FloatField(default=0, help_text="Mean building height on the left of the street, m (0: no buildings)")
+    h_right_m = models.FloatField(default=0, help_text="Mean building height on the right of the street, m (0: no buildings)")
+    w_facade_m = models.FloatField(null=True, blank=True, help_text="Distance between the nearest facades on both sides, m (None: buildings on one side or none)")
+    n_left = models.IntegerField(default=0, help_text="Buildings found on the left")
+    n_right = models.IntegerField(default=0, help_text="Buildings found on the right")
+    height_m = models.FloatField(default=0, help_text="Canyon height H, m")
+    width_m = models.FloatField(null=True, blank=True, help_text="Canyon width W, m")
+    width_source = models.CharField(max_length=10, choices=WIDTH_SOURCES, default="default", help_text="Where W comes from")
+    aspect_ratio = models.FloatField(null=True, blank=True, help_text="H/W")
+    updated = models.DateTimeField(auto_now=True)
+    geom = models.MultiLineStringField(srid=CoordinateSystem, help_text="Copy of the street line")
+
+    def __str__(self):
+        ratio = f"{self.aspect_ratio:.2f}" if self.aspect_ratio is not None else "-"
+        return f"Canyon of street {self.street_id} (H/W {ratio})"
+
+    def apply(self, street, inputs):
+        """Set every field from the street and its street_inputs() row (builtup/chain.py::canyon)."""
+        from . import chain
+
+        for name in ("h_left_m", "h_right_m", "w_facade_m", "n_left", "n_right"):
+            setattr(self, name, inputs[name])
+        for name, value in chain.canyon(inputs, street.width, street.classification).items():
+            setattr(self, name, value)
+        self.geom = street.geom
+
+    def save(self, *args, **kwargs):
+        """
+        DAG edges: Buildings -> Canyon_Aspect, Streets -> Canyon_Aspect.
+        Re-reads the street and the buildings around it every save.
+        """
+        from .canyon import street_inputs
+
+        street = Street.objects.only("width", "classification", "geom").get(pk=self.street_id)
+        self.apply(street, street_inputs([self.street_id])[self.street_id])
+        super().save(*args, **kwargs)
+
+    class Meta:
+        verbose_name = "Street Canyon"
+        verbose_name_plural = "Street Canyons"
+
 class Park(models.Model):
     id = models.AutoField(primary_key=True)
     sourceID = models.CharField(max_length=100, unique=True, null=True, blank=True, help_text="Identifier in the source dataset, e.g. 'osm:way/123' for OpenStreetMap")

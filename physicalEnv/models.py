@@ -201,6 +201,39 @@ class DSMBuildingPatch(models.Model):
         return f"DSM patch for building {self.building_id}"
 
 
+class DSMVegetationPatch(models.Model):
+    """
+    A map-editor change of one tree (nature.Tree: its crown disc) or forest
+    (nature.Forests: its polygon), applied on top of every DSM when it is read
+    for analysis (physicalEnv/dsm_patches.py::apply_patches):
+
+        tree    original crown -> tall vegetation cleared to ground, then the
+                current crown is raised to ground + a paraboloid of canopy_m
+        forest  original minus current polygon -> tall vegetation cleared,
+                current minus original polygon -> ground + canopy_m (flat)
+
+    Building footprints are never cleared. The DSM COG itself is never
+    rewritten. Not a map layer (registry_hidden).
+
+    DAG edge: Vegetation_Coverage -> DSM.
+    """
+    registry_hidden = True
+    SOURCES = [("nature.Tree", "Tree"), ("nature.Forests", "Forest")]
+
+    source = models.CharField(max_length=40, choices=SOURCES, help_text="Model of the edited vegetation")
+    source_id = models.BigIntegerField(help_text="Id of the edited tree or forest")
+    original_geom = models.MultiPolygonField(srid=CoordinateSystem, null=True, blank=True, help_text="Crown disc or polygon before the first edit (None: drawn in the editor)")
+    geom = models.MultiPolygonField(srid=CoordinateSystem, null=True, blank=True, help_text="Current crown disc or polygon (None: deleted)")
+    canopy_m = models.FloatField(null=True, blank=True, help_text="Canopy height above ground; None: only cleared")
+    updated = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["source", "source_id"], name="unique_vegetation_patch")]
+
+    def __str__(self):
+        return f"DSM patch for {self.source} {self.source_id}"
+
+
 class DSMEdit(models.Model):
     """
     Append-only log of the areas where the DSM overlay changed (a patch saved,

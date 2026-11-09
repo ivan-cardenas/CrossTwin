@@ -22,6 +22,7 @@ from core.cache import bump_layer_version
 from physicalEnv.signals import deferred_urban_area, schedule_urban_area_recompute
 from watersupply.signals import deferred_water_refresh, refresh_freshwater
 from housing.signals import deferred_housing_refresh
+from builtup.signals import deferred_canyon_refresh, schedule_streets, streets_in_extent
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +102,8 @@ def deferred_cascades():
         # population cascade directly), then the deferred population cascade
         # (which announces city_population_changed), and the water and housing
         # refreshes last, so they collect the cities of both and run once per city.
+        # The canyon refresh depends on no other cascade: its place is free.
+        stack.enter_context(deferred_canyon_refresh())
         stack.enter_context(deferred_housing_refresh())
         stack.enter_context(deferred_water_refresh())
         stack.enter_context(deferred_population_cascade())
@@ -121,6 +124,15 @@ def _refresh_freshwater_over(rows):
         refresh_freshwater(GeometryCollection(*geoms, srid=geoms[0].srid).envelope)
 
 
+def _refresh_canyons_over(rows):
+    """Replays builtup's street_saved (Streets -> Canyon_Aspect) for bulk-written streets."""
+    schedule_streets([row.pk for row in rows if row.pk is not None])
+    # rows whose pk the INSERT did not hand back: find them again by extent
+    extents = [row.geom.extent for row in rows if row.pk is None and getattr(row, "geom", None) is not None]
+    if extents:
+        schedule_streets(streets_in_extent(extents))
+
+
 def _finalize_landcover(rows):
     for city_id in {row.city_id for row in rows if row.city_id}:
         schedule_urban_area_recompute(city_id)
@@ -135,7 +147,7 @@ def _finalize_landcover(rows):
 # these models means adding it to the finalizer, or removing the model.
 BULK_IMPORT_MODELS = {
     "physicalEnv.LandCoverVector": _finalize_landcover,   # replays physicalEnv/signals.py
-    "builtup.Street": None,
+    "builtup.Street": _refresh_canyons_over,              # replays builtup/signals.py
     "builtup.Facility": None,
     "physicalEnv.SoilArea": _refresh_freshwater_over,     # replays watersupply/signals.py
     "nature.ProtectedArea": None,

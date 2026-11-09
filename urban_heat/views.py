@@ -114,6 +114,7 @@ MOCK_DATA = {
         'street_count': 3_200,
         'avg_street_width_m': 8.5,
         'aspect_ratio': 1.08,
+        'aspect_ratio_source': 'proxy',
     },
     'thermal': {
         'lst':   {'min': 22.1, 'max': 38.5, 'mean': 30.2, 'stddev': 3.1, 'count': 48000},
@@ -254,6 +255,10 @@ def _build_indicators(data, weather_override=None):
         'footprint_km2':      morphology.get('total_footprint_km2', 0),
         'avg_street_width_m': morphology.get('avg_street_width_m', 0),
         'aspect_ratio':       morphology.get('aspect_ratio', 0),
+        'aspect_ratio_source': morphology.get('aspect_ratio_source', 'proxy'),
+        'canyon_streets':     morphology.get('canyon_streets', 0),
+        'canyon_open_pct':    morphology.get('canyon_open_pct', 0),
+        'canyon_deep_pct':    morphology.get('canyon_deep_pct', 0),
 
         # ── NBS (response) ──
         'nbs_count':          nbs.get('total_count', 0),

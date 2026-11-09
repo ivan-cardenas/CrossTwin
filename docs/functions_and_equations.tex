@@ -185,6 +185,22 @@ where $z$ is the DSM and $g$ the ground: the DEM read on the same grid, or witho
 
 \textbf{DAG edge:} \dagedge{Buildings $\rightarrow$ DSM} --- \statusdone{} (editor changes as an overlay on the DSM; flat roofs)
 
+\subsection{Vegetation changes on the DSM --- \code{dsm\_patches.record\_vegetation\_change()}}
+\label{sec:dsm-vegetation}
+Source: \code{physicalEnv/dsm\_patches.py}, receivers \code{tree\_dsm\_saved}/\code{tree\_dsm\_deleted} and \code{forest\_dsm\_saved}/\code{forest\_dsm\_deleted} in \code{physicalEnv/signals.py}. A \code{nature.Tree} or \code{nature.Forests} row created, moved, resized or deleted in the map editor (imports never: AHN already measured it) is stored as one \code{DSMVegetationPatch}: the geometry before the first edit $V_0$, the current one $V$ and a canopy height $c$. Parks and green spaces are not sources (their outlines do not record trees). A tree's geometry is its crown disc of radius
+\begin{equation}
+  R = \tfrac{1}{2}\,\begin{cases} \code{crownDiameter\_m} & \text{if set} \\ 0.6 \times h_t & \text{otherwise} \end{cases}, \qquad c = h_t = \begin{cases} \code{height\_m} & \text{if set} \\ 10\,\si{m} & \text{otherwise} \end{cases}
+\end{equation}
+and a forest's is its polygon with $c = 15\,\si{m}$. With $B$ the stored building footprints and $\tau = 2.5\,\si{m}$ (also SOLWEIG's tree threshold), the overlay is applied after the building originals are cleared and before the current buildings are raised:
+\begin{align}
+  z'(x) &= g(x) && x \in C,\; z(x) - g(x) > \tau,\; x \notin B \\
+  z'(x) &= \max\!\big(z(x),\; g(x) + c \cdot \max(1 - r^2/R^2,\; 0.5)\big) && x \in V \quad \text{(tree)} \\
+  z'(x) &= \max\big(z(x),\; g(x) + c\big) && x \in V \setminus V_0 \quad \text{(forest)}
+\end{align}
+with $C = V_0$ for a tree (its whole old crown) and $C = V_0 \setminus V$ for a forest (only the area it gave up; the area it kept keeps the measured canopy), and $r$ the distance of the cell centre to the crown's centre. A new roof is applied after the crown, so it always wins. Patches are journalled like building patches and append a \code{DSMEdit}, so SVF and SOLWEIG results over them are flagged as stale.
+
+\textbf{DAG edge:} \dagedge{Vegetation\_Coverage $\rightarrow$ DSM} --- \statusdone{} (editor trees and forests as an overlay on the DSM)
+
 \section{Physical environment app --- soil hydrology and infiltration}
 \label{sec:physicalenv}
 
@@ -611,14 +627,28 @@ Source: \code{urban\_heat/calculations.py}. Thermal-comfort rasters (SVF, $T_{mr
   A_{\text{green,lc}} &= A_{\text{green,total}} - A_{\text{parks}} \\
   \text{VegCov\%} &= \frac{A_{\text{green,total}}}{A_{\text{unit}}} \times 100
 \end{align}
-with $U$ the unit's geometry and $|\cdot|$ the area in m$^2$ (a polygon lying entirely within $U$ contributes $|l|$ without being clipped). Green classes are those whose name contains one of \code{GREEN\_LANDCOVER\_KEYWORDS}; only each city's most recent land-cover year $y_{\max}$ counts. The stored \code{percentage} (a share of the province) is no longer used, so the result is valid for any unit level. Parks and green land cover are merged (\code{ST\_UnaryUnion}) after clipping and before measuring, so ground under both, or under two overlapping parks, counts once; $A_{\text{green,lc}}$ is the green land cover outside the parks, and $A_{\text{parks}} + A_{\text{green,lc}} = A_{\text{green,total}}$.\textbf{DAG edges:} \dagedge{LandCover $\rightarrow$ Green\_Area}, \dagedge{Green\_Area $\rightarrow$ Vegetation\_Coverage} --- \statuspartial{}; \dagedge{Vegetation\_Coverage $\rightarrow$ DSM} --- \statusgap{}
+with $U$ the unit's geometry and $|\cdot|$ the area in m$^2$ (a polygon lying entirely within $U$ contributes $|l|$ without being clipped). Green classes are those whose name contains one of \code{GREEN\_LANDCOVER\_KEYWORDS}; only each city's most recent land-cover year $y_{\max}$ counts. The stored \code{percentage} (a share of the province) is no longer used, so the result is valid for any unit level. Parks and green land cover are merged (\code{ST\_UnaryUnion}) after clipping and before measuring, so ground under both, or under two overlapping parks, counts once; $A_{\text{green,lc}}$ is the green land cover outside the parks, and $A_{\text{parks}} + A_{\text{green,lc}} = A_{\text{green,total}}$.\textbf{DAG edges:} \dagedge{LandCover $\rightarrow$ Green\_Area}, \dagedge{Green\_Area $\rightarrow$ Vegetation\_Coverage} --- \statuspartial{}; \dagedge{Vegetation\_Coverage $\rightarrow$ DSM} --- \statusdone{} (Section~\ref{sec:dsm-vegetation})
 
-\subsection{Urban morphology / canyon aspect proxy --- \code{calculate\_urban\_morphology()}}
-\textbf{Location:} \code{urban\_heat/calculations.py:75}
+\subsection{Street canyon aspect ratio --- \code{builtup.StreetCanyon}, \code{calculate\_canyon\_aspect()}}
+\label{sec:canyon}
+\textbf{Location:} \code{builtup/chain.py} (equations), \code{builtup/canyon.py::street\_inputs} (inputs, one SQL statement for many streets), \code{builtup/signals.py} (receivers), \code{urban\_heat/calculations.py::calculate\_canyon\_aspect} (dashboard).
+Each street line is trimmed by \SI{10}{m} at both ends of every part (the buildings of a crossing street do not count) and cut into pieces $s$ of at most \SI{100}{m}. Each piece gets a single-sided buffer $L_s$, $R_s$ of \SI{30}{m} on its left and right. With $b$ the buildings, $h_b$ = \code{height\_m}, else $3\,\si{m} \times$ \code{numberFloors} (buildings with neither are skipped):
+\begin{align}
+  H_{s}^{\text{side}} &= \frac{\sum_b |b \cap \text{side}_s|\, h_b}{\sum_b |b \cap \text{side}_s|} \quad (0 \text{ without buildings}), &
+  d_s &= \operatorname{dist}(s, \text{nearest } b \text{ left}) + \operatorname{dist}(s, \text{nearest } b \text{ right})
+\end{align}
+and per street, with $\ell_s$ the piece lengths,
+\begin{align}
+  H &= \frac{1}{2}\left(\frac{\sum_s \ell_s H_s^{L}}{\sum_s \ell_s} + \frac{\sum_s \ell_s H_s^{R}}{\sum_s \ell_s}\right), &
+  W &= \begin{cases} \code{Street.width} & \text{if set} \\ \frac{\sum_{s: d_s} \ell_s d_s}{\sum_{s: d_s} \ell_s} & \text{if some piece has buildings on both sides} \\ 8 / 12 / 20\,\si{m} & \text{residential / secondary / primary} \end{cases}, &
+  \frac{H}{W}
+\end{align}
+An open side counts as height 0 (Oke's symmetric canyon \cite{Oke1987}). The result is stored per street (\code{StreetCanyon}, a map layer along the street line). A saved or deleted street refreshes its own canyon; a building created, moved, reshaped, re-heighted or deleted refreshes the canyons of the streets within \SI{30}{m} of its old and new footprint (one set-based upsert, deferred to the end of an import, replayed by the bulk \code{Street} finalizer). Editor changes are journalled, so Restore reverts them. The dashboard's unit value weights each canyon by the length of its street inside the unit $U$:
 \begin{equation}
-  \text{Aspect ratio} \equiv \frac{H}{W} = \frac{\overline{\texttt{height\_m}}_{\,\text{buildings}}}{\overline{\texttt{width}}_{\,\text{streets}}}
+  \left.\frac{H}{W}\right|_U = \frac{\sum_i (H/W)_i\, |l_i \cap U|}{\sum_i |l_i \cap U|}
 \end{equation}
-The height-to-width ($H/W$) canyon aspect ratio is the standard urban-canyon geometry descriptor used in urban climatology \cite{Oke1987}. \textbf{DAG edges:} \dagedge{Buildings $\rightarrow$ DSM, Canyon\_Aspect}, \dagedge{Streets $\rightarrow$ Canyon\_Aspect} --- \statuspartial{} ($H/W$ is computed as a scalar proxy over the whole admin unit, not written back onto a \code{Canyon\_Aspect} or \code{DSM} model)
+with the shares of that length below 0.5 (open) and at or above 2 (deep). Without stored canyons it falls back to $\overline{h}_{\text{buildings}} / \overline{\code{width}}_{\text{streets}}$.
+\textbf{DAG edges:} \dagedge{Buildings $\rightarrow$ Canyon\_Aspect}, \dagedge{Streets $\rightarrow$ Canyon\_Aspect} --- \statusdone{}. \dagedge{Canyon\_Aspect $\rightarrow$ DSM} was removed from the DAG: $H/W$ is read off the buildings, which reach the DSM through \dagedge{Buildings $\rightarrow$ DSM}.
 
 \subsection{Raster statistics --- \code{\_raster\_stats\_sql()}, \code{get\_thermal\_indices()}}
 \textbf{Location:} \code{urban\_heat/calculations.py:112, 145}
@@ -819,6 +849,8 @@ administrative & \code{annual\_growth\_rate()} & Population\_Growth$\to$Total\_P
 administrative & \code{City.save()} / \code{Province.save()} & (population cascade) & \statusdone{} \\
 physicalEnv & \code{urbanize\_around()} / \code{release\_ring()} & New\_Units$\to$LandCover (editor buildings) & \statusdone{} \\
 physicalEnv & \code{dsm\_patches.record\_change()} / \code{apply\_patches()} & Buildings$\to$DSM (editor buildings) & \statusdone{} \\
+physicalEnv & \code{dsm\_patches.record\_vegetation\_change()} & Vegetation\_Coverage$\to$DSM (editor trees, forests) & \statusdone{} \\
+builtup & \code{StreetCanyon.save()} / \code{signals.refresh\_canyons()} & Buildings/Streets$\to$Canyon\_Aspect & \statusdone{} \\
 watersupply & \code{calculate\_total\_demand()} / \code{TotalWaterDemand.save()} & Total\_Pop$\to$Total\_Water\_Demand & \statusdone{} \\
 watersupply & \code{ConsumptionCapita.save()} & Total\_Pop$\to$Total\_Consumption & \statusdone{} \\
 watersupply & \code{calculate\_total\_extraction()} & Available\_FW$\to$Total\_Extraction & \statusdone{} \\
@@ -850,7 +882,7 @@ housing & \code{HousingAffordability.save()} & Rent/Mortgage/Water\_Tariff$\to$I
 housing & \code{calculate\_zoning()} & Zoning\_Status$\to$Property/New\_Units & \statusgap{} \\
 housing & \code{calculate\_property\_indicators()} & Housing\_Supply/Accessibility$\to$Property & \statusgap{} \\
 urban\_heat & \code{calculate\_green\_area()} / \code{calculate\_vegetation\_coverage()} & LandCover$\to$Green\_Area$\to$Vegetation\_Coverage & \statuspartial{} \\
-urban\_heat & \code{calculate\_urban\_morphology()} & Buildings/Streets$\to$Canyon\_Aspect & \statuspartial{} \\
+urban\_heat & \code{calculate\_urban\_morphology()} & reads stored Canyon\_Aspect & \statusdone{} \\
 urban\_heat & \code{get\_thermal\_indices()} & DSM$\to$SVF$\to$Tmrt/PET$\to$UTCI & \statusgap{} \\
 urban\_heat & \code{lst.pipeline.calculate\_lst()} / \code{lst.smw} & RS\_Imagery/LandCover$\to$LST & \statusdone{} \\
 urban\_heat & \code{solweig.pipeline.calculate()} & DSM$\to$SVF$\to$Tmrt$\to$UTCI/PET; Meteorology$\to$Tmrt/PET/UTCI & \statusdone{} \\

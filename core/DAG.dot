@@ -207,12 +207,12 @@ digraph CrossTwin {
     
     
     Green_Area          -> Vegetation_Coverage;
-    Vegetation_Coverage -> DSM;
+    Vegetation_Coverage -> DSM;   // editor tree / forest changes (physicalEnv/dsm_patches.py)
 
     // Streets 
     Streets             -> Canyon_Aspect;
-    
-    Canyon_Aspect       -> DSM;
+    // Canyon_Aspect -> DSM dropped (2026-11-05): H/W is read off the buildings,
+    // which already reach the DSM through Buildings -> DSM.
 
     // Accessibility
     Facilities          -> Accessibility;

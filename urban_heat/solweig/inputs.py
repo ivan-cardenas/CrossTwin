@@ -4,8 +4,9 @@ CrossTwin layers -> the SOLWEIG input rasters of one view, on one grid.
     window   = the view + HALO_M on every side (shadows of buildings just
                outside the view still fall into it); cropped off afterwards
     DSM      = physicalEnv.DigitalSurfaceModel over the window, with the map
-               editor's building changes applied (svf.load_dsm ->
-               dsm_patches.apply_patches; DAG edge Buildings -> DSM)
+               editor's building and tree/forest changes applied (svf.load_dsm ->
+               dsm_patches.apply_patches; DAG edges Buildings -> DSM,
+               Vegetation_Coverage -> DSM)
     ground   = DEM on the same grid, else a minimum filter of the DSM
     Building_DSM = DSM inside builtup.Building footprints, ground elsewhere
     Trees        = DSM - ground outside buildings where above MIN_CANOPY_M
@@ -30,7 +31,6 @@ DEFAULT_CELL_M = 1.0
 # matrices of 1 M cells take ~2 GB of GPU memory.
 MAX_CELLS = 1_000_000
 MS_PER_CELL = {"cuda": 1.2, "cpu": 12.0}
-MIN_CANOPY_M = 2.5
 
 PAVED, BUILDING, GRASS, BARE, WATER = 1, 2, 5, 6, 7
 # Land-cover class name keywords (matched at word starts, physicalEnv/soil.py::_matches)
@@ -139,6 +139,7 @@ def build(p):
     import numpy as np
 
     from physicalEnv import dsm_patches, svf
+    from physicalEnv.dsm_patches import MIN_CANOPY_M
 
     height, origin, cell, srid = svf.load_dsm(p["dsm"], p["window"], resolution=p["cell"])
     ground, ground_label = dsm_patches.ground_grid(height, origin, cell, srid)

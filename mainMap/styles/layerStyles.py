@@ -118,6 +118,25 @@ LAYER_STYLES = {
             {'type': 'line', 'paint': {'line-color': '#8d6e63', 'line-width': 2}},
         ],
     },
+    # Street canyon H/W (builtup.StreetCanyon): open < 0.5 <= regular < 1 <= deep < 2 <= very deep
+    'builtup.StreetCanyon': {
+        'color': '#fb8c00',
+        'legend': [
+            {'label': 'H/W < 0.5 (open)', 'color': '#ffe082'},
+            {'label': 'H/W 0.5 – 1', 'color': '#fb8c00'},
+            {'label': 'H/W 1 – 2', 'color': '#d84315'},
+            {'label': 'H/W ≥ 2 (deep)', 'color': '#6a1b9a'},
+            {'label': 'no width', 'color': '#bdbdbd'},
+        ],
+        'layers': [
+            {'type': 'line', 'paint': {
+                'line-color': ['case', ['==', ['get', 'aspect_ratio'], None], '#bdbdbd',
+                               ['step', ['to-number', ['get', 'aspect_ratio']],
+                                '#ffe082', 0.5, '#fb8c00', 1, '#d84315', 2, '#6a1b9a']],
+                'line-width': 3,
+            }},
+        ],
+    },
     'builtup.Park': {
         'color': '#66bb6a',
         'layers': [

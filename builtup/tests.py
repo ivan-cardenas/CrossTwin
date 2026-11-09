@@ -71,7 +71,7 @@ class BuildingDerivedFieldsTests(TestCase):
 
 # -- Indicator dashboard ------------------------------------------------------
 
-from django.contrib.gis.geos import LineString, Point
+from django.contrib.gis.geos import LineString, MultiLineString, Point
 from django.urls import reverse
 
 from builtup.models import Facility, Park, Property, Street
@@ -95,7 +95,7 @@ class BuiltupDashboardTests(TestCase):
                                 constructionYear=1980, geom=_square(X0 + 100, Y0, size=20))
         # 1 km of street, 600 m of it inside the unit (its east edge is at X0 + 500)
         Street.objects.create(name="Hoofdweg", classification="primary", width=8,
-                              geom=LineString((X0 - 100, Y0), (X0 + 900, Y0), srid=settings.COORDINATE_SYSTEM))
+                              geom=MultiLineString(LineString((X0 - 100, Y0), (X0 + 900, Y0)), srid=settings.COORDINATE_SYSTEM))
         # Park.save() derives area from geom: a 5 000 m² square
         Park.objects.create(name="Park", vegetationType="grass",
                             neighborhood=self.hood, geom=make_polygon(X0, Y0, 5000 ** 0.5 / 2))

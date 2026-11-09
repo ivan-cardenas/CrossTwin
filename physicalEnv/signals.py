@@ -9,10 +9,12 @@ from django.db.models import Max, Q
 from django.utils import timezone
 
 from core.cache import bump_layer_version
-from .dsm_patches import building_height, record_change
+from .dsm_patches import (DEFAULT_FOREST_CANOPY_M, building_height, record_change,
+                          record_vegetation_change, tree_crown, tree_height)
 from .landcover import release_ring, urbanize_around
-from .models import DSMBuildingPatch, DSMEdit, LandCoverClasses, LandCoverVector
+from .models import DSMBuildingPatch, DSMEdit, DSMVegetationPatch, LandCoverClasses, LandCoverVector
 from builtup.models import Building
+from nature.models import Forests, Tree
 from administrative.models import Neighborhood, District, City, Province
 # Reused from administrative's own population cascade rather than
 # duplicated -- see administrative/signals.py for the shared aggregation
@@ -307,24 +309,34 @@ def building_dsm_deleted(sender, instance, **kwargs):
              f"DSM patch for deleted building {instance.pk}")
 
 
+# Geometry fields of each DSM overlay model: (original, current).
+_PATCH_GEOMS = {DSMBuildingPatch: ("original_footprint", "footprint"),
+                DSMVegetationPatch: ("original_geom", "geom")}
+
+
 @receiver(pre_save, sender=DSMBuildingPatch, dispatch_uid="physicalEnv_dsm_patch_presave")
+@receiver(pre_save, sender=DSMVegetationPatch, dispatch_uid="physicalEnv_veg_patch_presave")
 def dsm_patch_presave(sender, instance, **kwargs):
-    """The footprint the overlay held before this save (raw saves too: Restore moves it back)."""
-    instance._stored_footprint = (DSMBuildingPatch.objects.filter(pk=instance.pk)
-                                  .values_list("footprint", flat=True).first() if instance.pk else None)
+    """The geometry the overlay held before this save (raw saves too: Restore moves it back)."""
+    current = _PATCH_GEOMS[sender][1]
+    instance._stored_footprint = (sender.objects.filter(pk=instance.pk)
+                                  .values_list(current, flat=True).first() if instance.pk else None)
 
 
 @receiver(post_save, sender=DSMBuildingPatch, dispatch_uid="physicalEnv_dsm_patch_saved")
 @receiver(post_delete, sender=DSMBuildingPatch, dispatch_uid="physicalEnv_dsm_patch_deleted")
+@receiver(post_save, sender=DSMVegetationPatch, dispatch_uid="physicalEnv_veg_patch_saved")
+@receiver(post_delete, sender=DSMVegetationPatch, dispatch_uid="physicalEnv_veg_patch_deleted")
 def dsm_patch_changed(sender, instance, **kwargs):
     """
     Log the area where the DSM overlay changed (DSMEdit), raw saves and
     Restore's deletes included, so results calculated before it are flagged
-    as stale.
+    as stale. Building and vegetation patches alike.
     """
     from django.contrib.gis.geos import Polygon
 
-    geoms = [g for g in (instance.original_footprint, instance.footprint,
+    original, current = _PATCH_GEOMS[sender]
+    geoms = [g for g in (getattr(instance, original), getattr(instance, current),
                          getattr(instance, "_stored_footprint", None)) if g is not None and not g.empty]
     if not geoms:
         return
@@ -333,3 +345,90 @@ def dsm_patch_changed(sender, instance, **kwargs):
                               max(e[2] for e in extents), max(e[3] for e in extents)))
     area.srid = geoms[0].srid
     DSMEdit.objects.create(area=area)
+
+
+# ── Vegetation_Coverage -> DSM ───────────────────────────────────────
+# Editor changes only (core.editing.is_editor_change): imported trees and
+# forests are already in AHN's DSM. Tree and Forests are bulk-imported
+# (importer/batching.py::BULK_IMPORT_MODELS) without a finalizer for these
+# receivers on purpose: an import never patches the DSM.
+
+def _tree_crown(values):
+    return tree_crown(values["geom"], values["height_m"], values["crownDiameter_m"])
+
+
+@receiver(pre_save, sender=Tree, dispatch_uid="physicalEnv_tree_presave")
+@receiver(pre_save, sender=Forests, dispatch_uid="physicalEnv_forest_presave")
+def vegetation_presave(sender, instance, raw=False, **kwargs):
+    """Remember the stored tree / forest, so post_save can tell a move or resize from an attribute edit."""
+    from core.editing import is_editor_change
+    if raw or not is_editor_change() or instance.pk is None:
+        return
+    fields = ("geom", "height_m", "crownDiameter_m") if sender is Tree else ("geom",)
+    instance._veg_stored = sender.objects.filter(pk=instance.pk).values(*fields).first()
+
+
+def _veg_label(sender):
+    return f"{sender._meta.app_label}.{sender.__name__}"
+
+
+@receiver(post_save, sender=Tree, dispatch_uid="physicalEnv_tree_dsm_saved")
+def tree_dsm_saved(sender, instance, created, raw=False, **kwargs):
+    """
+    DAG edge: Vegetation_Coverage -> DSM. A tree planted, moved or resized in
+    the map editor clears its old crown and raises its new one
+    (dsm_patches.record_vegetation_change).
+    """
+    from core.editing import is_editor_change
+    if raw or not is_editor_change() or not instance.geom:
+        return
+    stored = getattr(instance, "_veg_stored", None)
+    current = {"geom": instance.geom, "height_m": instance.height_m, "crownDiameter_m": instance.crownDiameter_m}
+    if (stored and stored["geom"] is not None and stored["geom"].equals_exact(instance.geom, tolerance=0.01)
+            and stored["height_m"] == instance.height_m and stored["crownDiameter_m"] == instance.crownDiameter_m):
+        return
+    before = _tree_crown(stored) if stored and stored["geom"] is not None else None
+    _guarded(lambda: record_vegetation_change(_veg_label(sender), instance.pk, before,
+                                              _tree_crown(current), tree_height(instance)),
+             f"DSM patch for tree {instance.pk}")
+
+
+@receiver(post_delete, sender=Tree, dispatch_uid="physicalEnv_tree_dsm_deleted")
+def tree_dsm_deleted(sender, instance, **kwargs):
+    """DAG edge: Vegetation_Coverage -> DSM. A tree felled in the editor clears its crown."""
+    from core.editing import is_editor_change
+    if not is_editor_change() or not instance.geom:
+        return
+    crown = _tree_crown({"geom": instance.geom, "height_m": instance.height_m,
+                         "crownDiameter_m": instance.crownDiameter_m})
+    _guarded(lambda: record_vegetation_change(_veg_label(sender), instance.pk, crown, None, None),
+             f"DSM patch for deleted tree {instance.pk}")
+
+
+@receiver(post_save, sender=Forests, dispatch_uid="physicalEnv_forest_dsm_saved")
+def forest_dsm_saved(sender, instance, created, raw=False, **kwargs):
+    """
+    DAG edge: Vegetation_Coverage -> DSM. A forest drawn or reshaped in the
+    map editor clears the tall vegetation of the area it gave up and plants
+    DEFAULT_FOREST_CANOPY_M on the area it gained.
+    """
+    from core.editing import is_editor_change
+    if raw or not is_editor_change() or not instance.geom:
+        return
+    stored = getattr(instance, "_veg_stored", None)
+    before = stored["geom"] if stored else None
+    if before is not None and before.equals_exact(instance.geom, tolerance=0.01):
+        return
+    _guarded(lambda: record_vegetation_change(_veg_label(sender), instance.pk, before, instance.geom,
+                                              DEFAULT_FOREST_CANOPY_M),
+             f"DSM patch for forest {instance.pk}")
+
+
+@receiver(post_delete, sender=Forests, dispatch_uid="physicalEnv_forest_dsm_deleted")
+def forest_dsm_deleted(sender, instance, **kwargs):
+    """DAG edge: Vegetation_Coverage -> DSM. A forest deleted in the editor clears its tall vegetation."""
+    from core.editing import is_editor_change
+    if not is_editor_change() or not instance.geom:
+        return
+    _guarded(lambda: record_vegetation_change(_veg_label(sender), instance.pk, instance.geom, None, None),
+             f"DSM patch for deleted forest {instance.pk}")
