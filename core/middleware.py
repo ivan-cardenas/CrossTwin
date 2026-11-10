@@ -54,6 +54,8 @@ class QueryStatsMiddleware:
         response["Server-Timing"] = timing
         response["X-DB-Queries"] = str(stats["count"])
 
+        if request.path == "/api/console/":   # the map polls it while busy
+            return response
         level = logging.WARNING if total_ms > self.slow_ms else logging.INFO
         logger.log(level, "%s %s -> %s | %d queries, db %.1f ms, total %.1f ms",
                    request.method, request.get_full_path(), response.status_code,

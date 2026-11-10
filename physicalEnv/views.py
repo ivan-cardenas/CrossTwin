@@ -140,3 +140,15 @@ def svf_calculate(request):
         })
 
     return _run(view)
+
+
+@require_GET
+def dsm_edited_status(request):
+    """
+    GET /physicalEnv/dsm/edited/status/ -> {"busy": bool}: whether map edits
+    are still being written into the edited DSM COG (physicalEnv/dsm_edited.py,
+    a background thread). The map reloads the DSM tiles once it reads false.
+    """
+    from .dsm_edited import busy
+
+    return JsonResponse({"busy": busy()})

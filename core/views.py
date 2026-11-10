@@ -6,6 +6,18 @@ from urllib.parse import quote
 import requests
 
 
+def displayed_cog_path(instance):
+    """
+    The COG the map shows for a raster row: a DSM's edited copy (the map
+    editor's building/vegetation changes burnt in, physicalEnv/dsm_edited.py)
+    when it exists, else cog_path.
+    """
+    import os
+
+    edited = getattr(instance, "edited_cog_path", None)
+    return edited if edited and os.path.exists(edited) else instance.cog_path
+
+
 def get_raster_info(request, app_label, layer_name):
     """Return raster metadata including bounds."""
     
@@ -26,7 +38,7 @@ def get_raster_info(request, app_label, layer_name):
         return JsonResponse({"error": "No raster data found"}, status=404)
    
     
-    cog_url = f"file://{instance.cog_path}"
+    cog_url = f"file://{displayed_cog_path(instance)}"
     encoded_url = quote(cog_url, safe="/:")
     
     try:
@@ -70,7 +82,7 @@ def get_raster_tiles(request, app_label, layer_name):
         return JsonResponse({"error": "COG not generated yet"}, status=404)
     
     # Step 3: Build the TiTiler tile URL
-    cog_url = f"file://{instance.cog_path}"
+    cog_url = f"file://{displayed_cog_path(instance)}"
     encoded_url = quote(cog_url, safe="/:")
 
     style = resolve_raster_style(instance, registry_key)
@@ -100,8 +112,6 @@ def get_raster_tiles(request, app_label, layer_name):
     legend = None
     if style.get("discrete"):
         # Fixed colour per class value (e.g. GHSL GHS-SMOD): no rescale, no named colormap.
-        from urllib.parse import quote
-
         classes = style["discrete"]
         tile_url += f"&colormap={quote(discrete_colormap_param(classes))}"
         legend = {
@@ -130,3 +140,22 @@ def get_raster_tiles(request, app_label, layer_name):
 
 
 
+
+
+def console_feed(request):
+    """
+    The server's recent console lines for the map loader (core/console.py).
+    `?after=<seq>` returns the lines after that seq; without it only the seq
+    to start from. Lines can hold paths and URLs, so only in DEBUG or for staff.
+    """
+    from . import console
+
+    if not (settings.DEBUG or request.user.is_staff):
+        return JsonResponse({"error": "forbidden"}, status=403)
+    after = request.GET.get("after")
+    try:
+        after = int(after) if after not in (None, "") else None
+    except ValueError:
+        return JsonResponse({"error": "after must be an integer"}, status=400)
+    lines, last = console.since(after)
+    return JsonResponse({"lines": lines, "last": last})

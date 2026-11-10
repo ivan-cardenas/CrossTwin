@@ -336,7 +336,8 @@ class DSMBuildingPatch(models.Model):
     A map-editor change of one building, applied on top of every DSM when it is
     read for analysis (physicalEnv/dsm_patches.py::apply_patches): the original
     footprint goes back to ground level, then the current footprint is raised
-    to ground + height_m. The DSM COG itself is never rewritten. Not a map
+    to ground + height_m. The measured DSM COG is never rewritten; the map
+    shows a patched copy (dsm_edited.py, DigitalSurfaceModel.edited_cog_path). Not a map
     layer (registry_hidden).
 
     DAG edge: Buildings -> DSM.
@@ -532,6 +533,11 @@ class DigitalSurfaceModel(models.Model):
     resolution = models.FloatField(null=True, blank=True, help_text="Spatial resolution of the raster in meters")
     dsm_raster = models.RasterField(srid=CoordinateSystem, null=True, blank=True, help_text="Raster file containing surface elevation values")
     cog_path = models.CharField(max_length=500, null=True, blank=True, help_text="Path to the exported Cloud-Optimized GeoTIFF served by TiTiler")
+    # Buildings -> DSM, Vegetation_Coverage -> DSM: the map editor's patches
+    # written into a copy of the COG (physicalEnv/dsm_edited.py). The map shows
+    # it; cog_path stays the measured surface, which analyses read + patches.
+    edited_cog_path = models.CharField(max_length=500, null=True, blank=True, help_text="COG with the map editor's building and vegetation changes burnt in (shown on the map)")
+    edited_upto = models.BigIntegerField(null=True, blank=True, help_text="Last DSMEdit id written into edited_cog_path")
     last_updated = models.DateTimeField(default=timezone.now)
 
     def __str__(self):

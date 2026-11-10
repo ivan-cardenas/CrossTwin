@@ -254,6 +254,9 @@ def _rewrite_cog_paths():
             relative = _relative_cog(path or "")
             if relative:
                 model.objects.filter(pk=pk).update(cog_path=f"{base}/{relative}")
+        if "edited_cog_path" in {f.name for f in model._meta.fields}:
+            # A DSM's edited copy is rebuilt from the patches at the next map edit.
+            model.objects.update(edited_cog_path=None, edited_upto=None)
 
 
 def main():

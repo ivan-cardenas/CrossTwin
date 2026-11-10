@@ -136,6 +136,15 @@ class FeatureFormTests(EditingTestCase):
         self.assertFalse(Building.objects.filter(pk=1234).exists())
         self.assertIn('feature-saved', response['HX-Trigger'])
 
+    def test_delete_a_building_created_in_the_editor(self):
+        self.post_building(NEW_URL, name='New')
+        created = Building.objects.get(name='New')
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(reverse('map:feature_delete', args=['builtup', 'Building', created.pk]))
+        self.assertEqual(response.status_code, 200, response.content[:500])
+        self.assertIn('feature-saved', response['HX-Trigger'])
+        self.assertFalse(Building.objects.filter(pk=created.pk).exists())
+
     def test_delete_of_a_referenced_building_is_a_message_not_a_500(self):
         Property.objects.create(name='Flat', grossArea=80, geom=self._inside_building())
         response = self.client.post(reverse('map:feature_delete', args=['builtup', 'Building', 1234]))

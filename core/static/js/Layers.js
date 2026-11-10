@@ -389,15 +389,18 @@ async function addAnimatedWmsLayer(layerConfig) {
   const times = timeData.times;
   const startIndex = times.length - 1;  // most recent frame first
 
+  const maxzoom = layerConfig.max_zoom || WMS_TIME_MAX_ZOOM;
   map.addSource(key, {
     type: 'raster',
     tiles: [wmsTileUrlForTime(wms_url, wms_layers, times[startIndex])],
     tileSize: WMS_TILE_SIZE,
+    maxzoom,
   });
   map.addLayer({
     id: key, type: 'raster', source: key,
     layout: { visibility: 'visible' },
-    paint: { 'raster-opacity': opacity || 0.7 },
+    // Overzoomed radar cells stay crisp blocks instead of a blur.
+    paint: { 'raster-opacity': opacity || 0.7, 'raster-resampling': 'nearest' },
   });
 
   loadedLayers[key] = {
@@ -406,10 +409,18 @@ async function addAnimatedWmsLayer(layerConfig) {
     config: layerConfig,
   };
 
-  wmsAnimations[key] = { times, index: startIndex, refreshTimer: null, debounceTimer: null };
+  wmsAnimations[key] = {
+    times, index: startIndex, maxzoom,
+    refreshTimer: null, debounceTimer: null, prefetchRun: 0,
+  };
   updateWmsTimeLabel(key);
   renderWmsScrubberDock(key, layerConfig);
   scheduleWmsTimeRefresh(key, layerConfig);
+
+  // Warm the other frames for the visible tiles once the shown frame has
+  // loaded, and again after each map move, so scrubbing reads from cache.
+  map.once('idle', () => prefetchWmsFrames(key));
+  map.on('moveend', () => prefetchWmsFrames(key));
 
   if (layerConfig.legend_url) addWmsLegend(key, display_name, layerConfig.legend_url);
   console.log(`Time-dimension WMS layer "${key}" added with ${times.length} time steps`);
@@ -446,7 +457,79 @@ function scheduleWmsTimeRefresh(key, layerConfig) {
     current.times = timeData.times;
     current.index = current.times.length - 1;
     applyWmsFrame(key);
+    prefetchWmsFrames(key);
   }, refreshMs);
+}
+
+// Tile bbox exactly as Mapbox GL fills {bbox-epsg-3857} (its getTileBBox),
+// so a prefetched URL (after roundBboxInUrl) is byte-identical to the one
+// the map asks for later and hits the browser cache as well as the server's.
+function mercatorTileBbox(x, y, z) {
+  const extent = 2 * Math.PI * 6378137;
+  const resolution = (extent / 256) / Math.pow(2, z);
+  const flippedY = Math.pow(2, z) - y - 1;
+  const merc = (px, py) => [px * resolution - extent / 2, py * resolution - extent / 2];
+  const min = merc(x * 256, flippedY * 256);
+  const max = merc((x + 1) * 256, (flippedY + 1) * 256);
+  return [min[0], min[1], max[0], max[1]].join(',');
+}
+
+// Bboxes of the tiles a raster source with 512 px tiles shows for the
+// current view (Mapbox rounds the zoom for raster sources).
+function visibleWmsTileBboxes(maxzoom) {
+  const z = Math.max(0, Math.min(Math.round(map.getZoom()), maxzoom));
+  const n = Math.pow(2, z);
+  const bounds = map.getBounds();
+  const tileX = lng => Math.floor((lng + 180) / 360 * n);
+  const tileY = lat => {
+    const r = Math.max(-85.0511, Math.min(85.0511, lat)) * Math.PI / 180;
+    return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n);
+  };
+  const clamp = v => Math.max(0, Math.min(n - 1, v));
+  const bboxes = [];
+  for (let x = clamp(tileX(bounds.getWest())); x <= clamp(tileX(bounds.getEast())); x++) {
+    for (let y = clamp(tileY(bounds.getNorth())); y <= clamp(tileY(bounds.getSouth())); y++) {
+      bboxes.push(mercatorTileBbox(x, y, z));
+    }
+  }
+  return bboxes;
+}
+
+// Fetch the visible tiles of every other frame, nearest frames first, one
+// request at a time. A new call (map moved, frames refreshed) supersedes the
+// running one. Hidden layers and very wide views (> 16 tiles) are skipped.
+async function prefetchWmsFrames(key) {
+  const state = wmsAnimations[key];
+  const config = loadedLayers[key] && loadedLayers[key].config;
+  if (!state || !config || !map.getLayer(key)) return;
+  const run = ++state.prefetchRun;
+  if (map.getLayoutProperty(key, 'visibility') === 'none') return;
+
+  const bboxes = visibleWmsTileBboxes(state.maxzoom);
+  if (!bboxes.length || bboxes.length > 16) return;
+
+  const frames = state.times
+    .map((time, i) => ({ time, distance: Math.abs(i - state.index) }))
+    .filter(f => f.distance > 0)
+    .sort((a, b) => a.distance - b.distance);
+
+  for (const { time } of frames) {
+    const template = wmsTileUrlForTime(config.wms_url, config.wms_layers, time);
+    for (const bbox of bboxes) {
+      if (state.prefetchRun !== run || !wmsAnimations[key]) return;
+      const started = performance.now();
+      let missed = true;
+      try {
+        // Same rounding as Map_init.js's transformRequest applies to the map's tiles.
+        const url = roundBboxInUrl(template.replace('{bbox-epsg-3857}', bbox));
+        const response = await fetch(url, { priority: 'low' });
+        missed = !(response.headers.get('Server-Timing') || '').includes('hit');
+        await response.arrayBuffer();
+      } catch (_) { /* a missing frame tile is not fatal */ }
+      const wait = WMS_PREFETCH_INTERVAL_MS - (performance.now() - started);
+      if (missed && wait > 0) await new Promise(resolve => setTimeout(resolve, wait));
+    }
+  }
 }
 
 function applyWmsFrame(key) {
@@ -578,6 +661,58 @@ async function addRasterLayer(map, appLabel, modelName, rasterID, opacity = 0.7,
   } finally {
     showLoader(false);
   }
+}
+
+function _loadedRasters(appLabel, modelName) {
+  return Object.values(loadedLayers).filter(e =>
+    e.config?.layer_type === 'raster' && e.config.app_label === appLabel && e.config.model_name === modelName);
+}
+
+/**
+ * Point the loaded raster layers of one model at a fresh tile URL. A DSM's
+ * edited COG gets a new file name after every map edit
+ * (physicalEnv/dsm_edited.py), so its tiles reload instead of coming from the
+ * browser cache.
+ */
+async function refreshRasterTiles(appLabel, modelName) {
+  const entries = _loadedRasters(appLabel, modelName);
+  for (const entry of entries) {
+    const { raster_id } = entry.config;
+    try {
+      const response = await fetch(`/api/raster/${appLabel}/${modelName}/tiles/?id=${raster_id}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const { tile_url } = await response.json();
+      map.getSource(`raster-source-${modelName}-${raster_id}`)?.setTiles([tile_url]);
+    } catch (error) {
+      console.error(`Error refreshing raster ${appLabel}.${modelName} ${raster_id}:`, error);
+    }
+  }
+}
+
+let _dsmRefreshToken = 0;
+
+/**
+ * After a map edit: wait until the background worker has written the edit
+ * into the edited DSM COG (/physicalEnv/dsm/edited/status/), then reload the
+ * shown DSM layers. Only polls while a DSM layer is on the map; a newer edit
+ * supersedes the wait.
+ */
+async function refreshDsmAfterEdit() {
+  if (!_loadedRasters('physicalEnv', 'DigitalSurfaceModel').length) return;
+  const token = ++_dsmRefreshToken;
+  const deadline = Date.now() + DSM_EDIT_POLL_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch('/physicalEnv/dsm/edited/status/');
+      if (response.ok && !(await response.json()).busy) break;
+    } catch (error) {
+      console.error('Edited DSM status failed:', error);
+      break;
+    }
+    await new Promise(resolve => setTimeout(resolve, DSM_EDIT_POLL_MS));
+    if (token !== _dsmRefreshToken) return;
+  }
+  if (token === _dsmRefreshToken) refreshRasterTiles('physicalEnv', 'DigitalSurfaceModel');
 }
 
 // ---- Raster legend ------------------------------------------------------
@@ -732,6 +867,7 @@ function toggleLayerVisibility(key, visible) {
     if (wmsAnimations[key]) {
       const scrubber = document.getElementById(`scrubber-${key}`);
       if (scrubber) scrubber.style.display = 'flex';
+      prefetchWmsFrames(key);
     }
   }
 

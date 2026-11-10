@@ -46,8 +46,9 @@
     {% if delete_url %}
     <div class="feature-editor-confirm" hidden>
       <span>Are you sure?</span>
-      <button type="button" class="fe-btn fe-btn-danger"
-              hx-post="{{ delete_url }}" hx-target="#panel-body" hx-swap="innerHTML">Yes, delete</button>
+      <button type="button" class="fe-btn fe-btn-danger fe-btn-busy"
+              hx-post="{{ delete_url }}" hx-target="#panel-body" hx-swap="innerHTML"
+              hx-disabled-elt="this">Yes, delete</button>
       <button type="button" class="fe-btn" data-editor-action="keep">No</button>
     </div>
     {% endif %}

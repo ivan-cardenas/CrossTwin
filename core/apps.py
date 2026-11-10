@@ -9,6 +9,11 @@ class CoreConfig(AppConfig):
     def ready(self):
         import core.signals  # activates the auto-export
 
+        # Keep the server's print() lines for the map's console feed
+        # (core/console.py, shown under the map loader).
+        from core import console
+        console.install()
+
         # The footer's version label runs `git` three times (~0.25 s on
         # Windows). Fetch it in the background when a server starts, so the
         # first page doesn't wait for it. Not for tests or other commands.

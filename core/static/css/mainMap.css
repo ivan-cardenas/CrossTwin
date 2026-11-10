@@ -1405,11 +1405,21 @@
    MAP LOADER
    ============================================================ */
 
-.map-loader {
+.map-loader-wrap {
     position: absolute;
     top: 12px;
     left: 50%;
     transform: translateX(-50%);
+    z-index: 15;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    pointer-events: none;
+    width: min(560px, calc(100vw - 32px));
+}
+
+.map-loader {
     display: none;
     align-items: center;
     gap: 7px;
@@ -1427,10 +1437,42 @@
     letter-spacing: 0.06em;
 }
 
-.map-loader.visible { display: flex; }
+.map-loader.visible,
+.map-loader.htmx-request,
+.map-loader-wrap.busy .map-loader { display: flex; }
 
 /* Below the weather pill, which owns the top centre */
-.map-loader { top: 52px; }
+.map-loader-wrap { top: 52px; }
+
+/* Server console lines (core/console.py) under the loader while it works */
+.map-loader-log {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 10px;
+    background: var(--overlay-bg);
+    backdrop-filter: var(--overlay-blur);
+    -webkit-backdrop-filter: var(--overlay-blur);
+    box-shadow: var(--overlay-shadow);
+    border: 1px solid var(--border-ui);
+    border-radius: 8px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    pointer-events: auto;
+    transition: opacity 0.4s ease;
+}
+.map-loader-log[hidden] { display: none; }
+.map-loader-log.fading { opacity: 0; }
+.map-loader-log .log-line {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.map-loader-log .log-line:not(:last-child) { opacity: 0.6; }
+.map-loader-log .log-line.warning { color: #b7791f; }
+.map-loader-log .log-line.error,
+.map-loader-log .log-line.critical { color: #c53030; }
 
 /* ============================================================
    WEATHER PILL (top centre; WeatherPill.js)
@@ -2106,6 +2148,10 @@
 .feature-editor-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
 .edit-backup-confirm[hidden],
 .feature-editor-confirm[hidden] { display: none; }
+/* Delete in flight (htmx adds .htmx-request; the cascades take a few seconds) */
+.fe-btn-busy.htmx-request { font-size: 0; }
+.fe-btn-busy.htmx-request::after { content: "Deleting…"; font-size: 12px; }
+.fe-btn:disabled { opacity: 0.6; cursor: progress; }
 .edit-backup-msg { margin-top: 6px; color: var(--text-tertiary); }
 
 .fe-btn {

@@ -11,8 +11,9 @@ from django.utils import timezone
 from core.cache import bump_layer_version
 from .dsm_patches import (DEFAULT_FOREST_CANOPY_M, building_height, record_change,
                           record_vegetation_change, tree_crown, tree_height)
+from .dsm_edited import schedule_refresh as schedule_dsm_refresh
 from .landcover import green_area, refresh_percentages, release_green_area, release_ring, urbanize_around
-from .models import (DSMBuildingPatch, DSMEdit, DSMVegetationPatch, LandCoverClasses, LandCoverVector,
+from .models import (DigitalSurfaceModel, DSMBuildingPatch, DSMEdit, DSMVegetationPatch, LandCoverClasses, LandCoverVector,
                      SatelliteImagery)
 from builtup.models import Building, Park
 from nature.models import Forests, Tree
@@ -472,6 +473,29 @@ def dsm_patch_changed(sender, instance, **kwargs):
                               max(e[2] for e in extents), max(e[3] for e in extents)))
     area.srid = geoms[0].srid
     DSMEdit.objects.create(area=area)
+    # Burn the change into the DSM the map shows once the edit commits
+    # (dsm_edited.py; analyses already read the patches).
+    schedule_dsm_refresh()
+
+
+@receiver(pre_save, sender=DigitalSurfaceModel, dispatch_uid="physicalEnv_dsm_cog_presave")
+def dsm_cog_presave(sender, instance, raw=False, **kwargs):
+    """Remember the stored COG path: a new one (re-import) invalidates the edited copy."""
+    instance._stored_cog_path = (sender.objects.filter(pk=instance.pk).values_list("cog_path", flat=True).first()
+                                 if instance.pk and not raw else None)
+
+
+@receiver(post_save, sender=DigitalSurfaceModel, dispatch_uid="physicalEnv_dsm_cog_saved")
+def dsm_cog_saved(sender, instance, created, raw=False, **kwargs):
+    """
+    DAG edges: Buildings -> DSM, Vegetation_Coverage -> DSM. A DSM whose COG
+    was (re)exported gets its edited copy rebuilt from all stored patches.
+    """
+    if raw or not instance.cog_path or getattr(instance, "_stored_cog_path", None) == instance.cog_path:
+        return
+    if instance.edited_cog_path or instance.edited_upto is not None:
+        sender.objects.filter(pk=instance.pk).update(edited_cog_path=None, edited_upto=None)
+    schedule_dsm_refresh(instance.pk)
 
 
 # ── Vegetation_Coverage -> DSM ───────────────────────────────────────

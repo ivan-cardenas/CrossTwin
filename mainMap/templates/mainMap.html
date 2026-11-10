@@ -23,6 +23,7 @@
 <script src="{% static 'js/MapUI.js' %}"></script>
 <script src="{% static 'js/Panels.js' %}"></script>
 <script src="{% static 'js/Layers.js' %}"></script>
+<script src="{% static 'js/ConsoleFeed.js' %}"></script>
 <script src="{% static 'js/Editing.js' %}"></script>
 <script src="{% static 'js/LstTool.js' %}"></script>
 <script src="{% static 'js/SvfTool.js' %}"></script>
@@ -86,7 +87,7 @@
 
       <button class="tool-button" data-tool="temperature"
         data-panel-title="URBAN HEAT"
-        hx-get="{% url 'urban_heat:heat_indicators' level='province' location='Demo' %}"
+        hx-get="{% url 'urban_heat:heat_indicators' level='province' location='Demo'%}"
         hx-target="#panel-body"
         hx-indicator="#map-loader"
         hx-swap="innerHTML">
@@ -94,7 +95,7 @@
         <div class="tool-tooltip">Heat</div>
       </button>
       <button class="tool-button" data-tool="green">
-        <span style="font-size: 1em;">🌳💧</span>
+        <span style="font-size: 1em;">🌳</span>
         <div class="tool-tooltip">Green and Blue Space</div>
       </button>
       <button class="tool-button" data-tool="water"
@@ -106,9 +107,9 @@
   <span>🚰</span>
   <div class="tool-tooltip">Water Supply</div>
 </button>
-      <button class="tool-button" data-tool="groundwater">
-        <spanstyle="font-size: 1em;">🪨💧</span>
-        <div class="tool-tooltip">Groundwater</div>
+      <button class="tool-button" data-tool="physicalEnv">
+        <spanstyle="font-size: 1em;">🪨</span>
+        <div class="tool-tooltip">Physical Environment</div>
       </button>
       {% comment %}
       <button class="tool-button" data-tool="satellite">
@@ -429,10 +430,13 @@
               aria-pressed="false" title="Show the KNMI rain radar">🌧 Radar</button>
     </div>
 
-    <!-- MAP LOADER -->
-    <div class="map-loader" id="map-loader">
-      <div class="loading-spinner"></div>
-      <span>Loading features...</span>
+    <!-- MAP LOADER + the server's console lines while it works (ConsoleFeed.js) -->
+    <div class="map-loader-wrap" id="map-loader-wrap">
+      <div class="map-loader" id="map-loader">
+        <div class="loading-spinner"></div>
+        <span id="map-loader-text">Loading features...</span>
+      </div>
+      <div class="map-loader-log" id="map-loader-log" role="log" aria-live="polite" hidden></div>
     </div>
 
     <!-- WMS TIME SCRUBBER DOCK -->

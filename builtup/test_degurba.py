@@ -323,3 +323,41 @@ class UrbanisationViewTests(_Fixture):
         by_class, _ = urbanisation.whatif_unit(self.city, {self.city.pk: 2.0}, 2025)
         self.assertAlmostEqual(sum(by_class.values()), 300)
         self.assertEqual(list(UrbanisationCell.objects.order_by("pk").values_list("population", "l2")), before)
+
+
+
+class UrbanisationBackgroundRefreshTests(TestCase):
+    """urbanisation.schedule(): outside an import, the refresh runs after the commit in a worker thread."""
+
+    def test_schedule_returns_at_once_and_merges_queued_changes(self):
+        import threading
+        from unittest import mock
+
+        from django.test import override_settings
+
+        from builtup import urbanisation
+
+        started, release = threading.Event(), threading.Event()
+        calls = []
+
+        def slow_refresh(ids=(), landcover=False, **kwargs):
+            calls.append(set(ids))
+            started.set()
+            release.wait(5)
+
+        with override_settings(DEGURBA_BACKGROUND=True),                 mock.patch.object(urbanisation, "is_built", return_value=True),                 mock.patch.object(urbanisation, "refresh", side_effect=slow_refresh),                 mock.patch("django.db.connection.close"):
+            with self.captureOnCommitCallbacks(execute=True):
+                urbanisation.schedule([1])
+                self.assertEqual(calls, [])          # nothing before the commit
+            self.assertTrue(started.wait(5))
+            self.assertTrue(urbanisation.refreshing())
+            with self.captureOnCommitCallbacks(execute=True):
+                urbanisation.schedule([2])           # while the first refresh runs
+                urbanisation.schedule([3])
+            release.set()
+            for _ in range(100):
+                if not urbanisation.refreshing():
+                    break
+                threading.Event().wait(0.05)
+        self.assertFalse(urbanisation.refreshing())
+        self.assertEqual(calls, [{1}, {2, 3}])       # the two later edits in one refresh

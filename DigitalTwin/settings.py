@@ -157,11 +157,36 @@ if QUERY_STATS:
     # Outermost, so its timing covers the whole request
     MIDDLEWARE.insert(0, "core.middleware.QueryStatsMiddleware")
 
+# The project's own loggers log at INFO; their records (and every WARNING of
+# other libraries) go to the terminal and to the map's console feed
+# (core/console.py, shown under the map loader together with print() lines).
+_APP_LOGGERS = ("administrative", "physicalEnv", "urban_heat", "watersupply", "weather",
+                "builtup", "Energy", "housing", "nature", "importer", "core", "mainMap")
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
-    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "filters": {"skip_console_feed": {"()": "core.console.SkipFeedRequests"},
+                # Django's loggers keep their own handlers (no duplicate lines)
+                "not_django": {"()": "core.console.NotDjango"}},
+    "formatters": {
+        "app": {"format": "%(levelname)s %(name)s: %(message)s"},
+        "django.server": {"()": "django.utils.log.ServerFormatter",
+                          "format": "[{server_time}] {message}", "style": "{"},
+    },
+    "handlers": {
+        "console": {"class": "logging.StreamHandler"},
+        "app_console": {"class": "logging.StreamHandler", "formatter": "app",
+                        "filters": ["not_django"]},
+        "feed": {"class": "core.console.FeedHandler", "filters": ["not_django"]},
+        # Django's own runserver access log, minus the map polling the feed
+        "django.server": {"class": "logging.StreamHandler", "formatter": "django.server",
+                          "filters": ["skip_console_feed"]},
+    },
+    "root": {"level": "WARNING", "handlers": ["app_console", "feed"]},
     "loggers": {
+        **{name: {"level": "INFO"} for name in _APP_LOGGERS},
+        "django.server": {"level": "INFO", "handlers": ["django.server"], "propagate": False},
         "crosstwin.querystats": {"level": "INFO", "handlers": ["console"], "propagate": False},
         **({"django.db.backends": {"level": "DEBUG", "handlers": ["console"], "propagate": False}}
            if SQL_LOG else {}),

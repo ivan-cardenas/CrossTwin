@@ -142,6 +142,14 @@ function stopEdit() {
   editState = null;
 }
 
+/** Reveal a confirm row (it sits under a long form) and focus its confirming button. */
+function _showConfirm(confirm) {
+  if (!confirm) return;
+  confirm.hidden = false;
+  confirm.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  confirm.querySelector('[hx-post]')?.focus({ preventScroll: true });
+}
+
 function _cancelEdit() {
   stopEdit();
   document.getElementById('panel-body').innerHTML = '<p class="feature-editor-msg">Edit cancelled. Nothing was saved.</p>';
@@ -170,15 +178,33 @@ document.addEventListener('DOMContentLoaded', () => {
     switch (btn.dataset.editorAction) {
       case 'cancel': _cancelEdit(); break;
       case 'ask-delete':
-      case 'ask-restore': if (confirm) confirm.hidden = false; break;
+      case 'ask-restore': _showConfirm(confirm); break;
       case 'keep': if (confirm) confirm.hidden = true; break;
     }
   });
+
+  // Delete / Backspace on the map asks to delete the object being edited.
+  // Capture phase, so Mapbox Draw's own trash binding (which would only drop
+  // the drawn shape from the form) doesn't see it. A selected vertex is still
+  // deleted by Draw; typing in a form field is left alone.
+  window.addEventListener('keydown', (evt) => {
+    if (evt.key !== 'Delete' && evt.key !== 'Backspace') return;
+    if (!editState || editState.pk === null) return;
+    if (evt.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+    if (draw && draw.getSelectedPoints().features.length) return;
+    const confirm = editState.editor.querySelector('.feature-editor-confirm');
+    if (!confirm) return;
+    evt.preventDefault();
+    evt.stopPropagation();
+    _showConfirm(confirm);
+  }, true);
 
   // HX-Trigger events from core/editing.py
   document.body.addEventListener('feature-saved', (evt) => {
     const key = evt.detail?.layer;
     if (!key) return;
+    // The edit may change the DSM: reload it once the background rewrite is done (physicalEnv/dsm_edited.py)
+    refreshDsmAfterEdit();
     if (loadedLayers[key]) {
       reloadLayer(key);
     } else if (!evt.detail.deleted) {
@@ -192,6 +218,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // The object in the form may have just been reverted or deleted
     if (editState) _cancelEdit();
     (evt.detail?.layers || []).forEach(reloadLayer);
+    refreshDsmAfterEdit();
   });
 });
 

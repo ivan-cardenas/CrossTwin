@@ -13,3 +13,6 @@ DATABASES = {
 LOGGING["loggers"]["crosstwin.querystats"]["level"] = "WARNING"
 # No calls to Open-Meteo from tests (weather/live.py); tests that need it mock it.
 LIVE_WEATHER = False
+# Edited DSM COGs are written synchronously: a worker thread cannot see a TestCase transaction.
+DSM_EDIT_BACKGROUND = False
+DEGURBA_BACKGROUND = False

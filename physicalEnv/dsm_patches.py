@@ -5,7 +5,8 @@ A DSM is a city-wide COG (AHN, 0.5 m); rewriting it for every edited building
 would be slow and could not be undone. Instead each building the editor
 creates, reshapes, re-heights or deletes gets one DSMBuildingPatch row, and
 every analysis that reads the DSM (svf.load_dsm: the SVF tool and the SOLWEIG
-thermal-comfort tool) applies the patches inside its window:
+thermal-comfort tool) applies the patches inside its window (the map's DSM
+layer shows them through dsm_edited.py, a patched copy of the COG):
 
     1. original footprint (before the first edit)  -> ground level
     2. current footprint                           -> ground + height_m

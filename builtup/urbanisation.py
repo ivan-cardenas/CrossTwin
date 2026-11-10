@@ -22,7 +22,9 @@ Both resolutions run every time: 100 m (CrossTwin's local variant) and 1 km
 (the original method on the same data), for the sensitivity comparison.
 
 Automatic upkeep: builtup/signals.py schedules neighborhoods (population,
-dwellings, buildings) and land-cover changes here. Nothing runs before the grid
+dwellings, buildings) and land-cover changes here; outside an import's
+deferral they are refreshed after the commit by a background worker
+(core/background.py), so a map edit does not wait several seconds for it. Nothing runs before the grid
 was built once from the map's Degree of Urbanisation card (rebuild()), so
 imports and tests that never use it pay nothing.
 """
@@ -34,6 +36,8 @@ from contextlib import contextmanager
 from django.conf import settings
 from django.db import connection, transaction
 from django.dispatch import Signal
+
+from core.background import BackgroundWorker
 
 logger = logging.getLogger(__name__)
 
@@ -647,7 +651,38 @@ def schedule(neighborhood_ids=(), landcover=()):
         return
     _log(f"change detected: neighborhood(s) {sorted(ids) or '-'}"
          + (f", {len(landcover)} land-cover area(s)" if landcover else ""))
-    refresh(ids, landcover=landcover)
+    if not _background():
+        refresh(ids, landcover=landcover)
+        return
+    # After the commit, in the background worker: a map edit returns at once
+    # and edits made while a refresh runs are merged into the next one.
+    landcover = [g.clone() for g in landcover]
+    transaction.on_commit(lambda: _worker.submit((ids, landcover)))
+
+
+def _background():
+    return getattr(settings, "DEGURBA_BACKGROUND", True)
+
+
+def _background_job(items):
+    """One worker pass: every neighborhood and land-cover change queued since the last one."""
+    ids, landcover = set(), []
+    for item_ids, item_landcover in items:
+        ids |= item_ids
+        landcover.extend(item_landcover)
+    if len(items) > 1:
+        _log(f"background: {len(items)} change(s) merged into one refresh")
+    refresh(ids, landcover=True if len(landcover) > 50 else landcover)
+
+
+# core/background.py: one coalescing thread per process (DEGURBA_BACKGROUND,
+# off in settings_test: a thread cannot see a TestCase's transaction).
+_worker = BackgroundWorker("degurba", lambda items: _background_job(items))
+
+
+def refreshing():
+    """True while a background refresh is queued or running (this process)."""
+    return _worker.busy()
 
 
 def neighborhoods_at(geoms):
@@ -676,6 +711,7 @@ def status():
     year = current_year()
     stored = UrbanisationCell.objects.filter(current=True).aggregate(y=Max("year"), t=Max("updated"))
     out = {"built": built, "population_year": year, "year": stored["y"], "updated": stored["t"],
+           "refreshing": refreshing(),
            "stale_year": bool(built and stored["y"] and stored["y"] != year), "resolutions": {}}
     if not built:
         return out

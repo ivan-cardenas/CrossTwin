@@ -174,3 +174,4 @@ Existing three-layer pattern (`calculations.py` + `views.py` + templates, see CL
 ## OTHERS
 
 - [ ] Add "Various Forest Assets Pack" (https://skfb.ly/pCEzX) by Dari is licensed under Creative Commons Attribution (http://creativecommons.org/licenses/by/4.0/). to reference in the map for 3D model
+- [ ] Add "Gymnasium" (https://skfb.ly/ovNSH) by generalsnake82 is licensed under Creative Commons Attribution (http://creativecommons.org/licenses/by/4.0/). refrence to schools 3D Model

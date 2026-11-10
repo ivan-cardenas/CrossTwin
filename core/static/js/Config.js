@@ -28,6 +28,12 @@ let CONFIG = {
 // whole: their click handlers and the admin-unit panels need every unit.
 // See docs/PERFORMANCE.md §1.
 const VIEWPORT_LOAD_MIN_FEATURES = 5000;
+// Edited DSM (physicalEnv/dsm_edited.py): status poll interval and give-up time after a map edit.
+const DSM_EDIT_POLL_MS = 1000;
+const DSM_EDIT_POLL_TIMEOUT_MS = 5 * 60 * 1000;
+// Degree of Urbanisation card: poll while the grid refreshes after a map edit (builtup/urbanisation.py).
+const DEGURBA_POLL_MS = 1500;
+const DEGURBA_POLL_TIMEOUT_MS = 5 * 60 * 1000;
 const VIEWPORT_RELOAD_DELAY_MS = 350;
 
 
@@ -42,6 +48,17 @@ const COORD_DECIMALS = 4;
 // request to a remote WMS (KNMI's radar through our proxy) costs ~2 s and
 // counts against its rate limit, so the number of requests is what matters.
 const WMS_TILE_SIZE = 512;
+
+// Highest tile zoom requested from a time-dimension WMS (the KNMI radar).
+// The radar grid is ~1 km; a 512 px tile at zoom 8 has ~190 m pixels at
+// 52° N, still five per radar cell. Mapbox overzooms beyond it, so a city
+// view needs 1–4 tiles per frame instead of ~12, and panning or zooming
+// inside the city reuses them instead of asking KNMI again.
+const WMS_TIME_MAX_ZOOM = 8;
+
+// Minimum time between two prefetch requests that reach the remote WMS
+// (cache hits are not throttled). One request is in flight at a time.
+const WMS_PREFETCH_INTERVAL_MS = 500;
 
 function roundCoord(value) {
   return Number(value.toFixed(COORD_DECIMALS));
@@ -81,9 +98,10 @@ const TOOL_CATEGORIES = {
   builtup:       ['administrative', 'builtup'],
   energy:        ['administrative', 'Energy'],
   housing:       ['administrative', 'housing'],
-  green:         ['administrative', 'physicalEnv', 'nature', 'green', 'vegetation', 'trees', 'Park', 'LandCover'],
+  green:         ['administrative', 'nature', 'green', 'vegetation', 'trees', 'Park', 'LandCover'],
+  physicalEnv:   ['administrative', 'physicalEnv'],
   water:         ['administrative', 'watersupply'],
-  groundwater:   ['administrative', 'groundwater'],
+  // groundwater:   ['administrative', 'groundwater'],
   satellite:     null,
 };
 
@@ -119,7 +137,7 @@ const TOOL_CONTENT = {
   }
 };
 
-const LOADER_SHOW_DELAY_MS = 5000;  // only surface it for genuinely slow loads
+const LOADER_SHOW_DELAY_MS = 8000;  // only surface it for genuinely slow loads
 
 const HIDES_3D_BUILDINGS_APPS = new Set(['builtup']); // app to hide 3D buildings when any of its layers is visible
 const HIDES_3D_BUILDINGS_KEYS = new Set(['physicalEnv.DSM']);

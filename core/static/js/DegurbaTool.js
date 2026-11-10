@@ -154,13 +154,34 @@
       if (state) render(state);
       if (state?.built) showLayer();
     });
-    // Edits on the map change the grid on the server: re-read it.
-    ['feature-saved', 'backup-restored'].forEach(name => document.body.addEventListener(name, () => {
-      if (!card.classList.contains('visible')) return;
-      loadInfo();
-      const key = LAYERS[el.resolution.value];
-      if (layerVisibility[key] && typeof reloadLayer === 'function') reloadLayer(key);
-    }));
+    // Edits on the map change the grid on the server, in a background worker
+    // (builtup/urbanisation.py): poll the info until it is no longer
+    // refreshing, then show the new grid. A newer edit supersedes the wait.
+    let editToken = 0;
+    async function afterEdit() {
+      const shown = Object.values(LAYERS).filter(key => layerVisibility[key]);
+      if (!card.classList.contains('visible') && !shown.length) return;
+      const token = ++editToken;
+      const deadline = Date.now() + DEGURBA_POLL_TIMEOUT_MS;
+      let info = null;
+      while (Date.now() < deadline) {
+        try {
+          info = await readJson(await fetch(card.dataset.infoUrl));
+        } catch (error) {
+          setStatus(error.message, 'error');
+          return;
+        }
+        if (token !== editToken) return;
+        if (!info.refreshing) break;
+        setStatus('Updating the grid after the edit…');
+        await new Promise(resolve => setTimeout(resolve, DEGURBA_POLL_MS));
+      }
+      if (token !== editToken) return;
+      if (info && !info.refreshing) setStatus('');
+      if (info && card.classList.contains('visible')) render(info);
+      if (typeof reloadLayer === 'function') shown.forEach(key => reloadLayer(key));
+    }
+    ['feature-saved', 'backup-restored'].forEach(name => document.body.addEventListener(name, afterEdit));
 
     if (typeof makeDraggable === 'function' && window.matchMedia('(min-width: 769px)').matches) {
       makeDraggable(card, '.lst-card-header');
