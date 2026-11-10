@@ -31,6 +31,24 @@ BUILDING_FLOOR_HEIGHT_M = 3
 BUILDING_DEFAULT_HEIGHT_M = 10
 
 
+# Degree of Urbanisation level-2 classes (GHSL GHS-SMOD legend), builtup/degurba.py.
+DEGURBA_COLORS = {30: '#FF0000', 23: '#A87000', 22: '#732600', 21: '#FFFF00',
+                  13: '#375623', 12: '#ABCD66', 11: '#CDF57A', 10: '#7AB6F5'}
+DEGURBA_LABELS = {30: 'Urban centre', 23: 'Dense urban cluster', 22: 'Semi-dense urban cluster',
+                  21: 'Suburban or peri-urban', 13: 'Rural cluster', 12: 'Low density rural',
+                  11: 'Very low density rural', 10: 'Water'}
+DEGURBA_LEGEND = [{'label': f'{code} {DEGURBA_LABELS[code]}', 'color': color, 'value': code}
+                  for code, color in DEGURBA_COLORS.items()]
+DEGURBA_LAYERS = [
+    {'type': 'fill', 'paint': {
+        'fill-color': ['match', ['to-number', ['get', 'l2']],
+                       *[v for code, color in DEGURBA_COLORS.items() for v in (code, color)], '#e0e0e0'],
+        'fill-opacity': 0.55,
+    }},
+    {'type': 'line', 'paint': {'line-color': '#ffffff', 'line-width': 0.3, 'line-opacity': 0.6}},
+]
+
+
 LAYER_STYLES = {
     # ── administrative hierarchy ────────────────────────────────────────────
     'administrative.Province': {
@@ -136,6 +154,18 @@ LAYER_STYLES = {
                 'line-width': 3,
             }},
         ],
+    },
+    # Degree of Urbanisation (builtup.UrbanisationCell proxies): GHSL GHS-SMOD level 2 colours,
+    # also used by the GHSL_SMOD reference raster (rasterStyles.py), for side-by-side comparison.
+    'builtup.UrbanisationCellLocal': {
+        'color': DEGURBA_COLORS[30],
+        'legend': DEGURBA_LEGEND,
+        'layers': DEGURBA_LAYERS,
+    },
+    'builtup.UrbanisationCellOriginal': {
+        'color': DEGURBA_COLORS[30],
+        'legend': DEGURBA_LEGEND,
+        'layers': DEGURBA_LAYERS,
     },
     'builtup.Park': {
         'color': '#66bb6a',

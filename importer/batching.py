@@ -23,6 +23,7 @@ from physicalEnv.signals import deferred_urban_area, schedule_urban_area_recompu
 from watersupply.signals import deferred_water_refresh, refresh_freshwater
 from housing.signals import deferred_housing_refresh
 from builtup.signals import deferred_canyon_refresh, schedule_streets, streets_in_extent
+from builtup.urbanisation import deferred_urbanisation_refresh
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +104,10 @@ def deferred_cascades():
         # (which announces city_population_changed), and the water and housing
         # refreshes last, so they collect the cities of both and run once per city.
         # The canyon refresh depends on no other cascade: its place is free.
+        # The Degree of Urbanisation refresh reads the neighborhoods' own
+        # population and land cover; entered first, it exits last, after every
+        # other cascade has settled.
+        stack.enter_context(deferred_urbanisation_refresh())
         stack.enter_context(deferred_canyon_refresh())
         stack.enter_context(deferred_housing_refresh())
         stack.enter_context(deferred_water_refresh())

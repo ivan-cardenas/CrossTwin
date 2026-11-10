@@ -1,6 +1,6 @@
 from django.http import JsonResponse
 from .utils import RASTER_REGISTRY
-from mainMap.styles.rasterStyles import resolve_raster_style, colormap_legend_stops
+from mainMap.styles.rasterStyles import resolve_raster_style, colormap_legend_stops, discrete_colormap_param
 from django.conf import settings
 from urllib.parse import quote
 import requests
@@ -98,7 +98,18 @@ def get_raster_tiles(request, app_label, layer_name):
         tile_url += f"&rescale={vmin},{vmax}"
 
     legend = None
-    if style["colormap"]:
+    if style.get("discrete"):
+        # Fixed colour per class value (e.g. GHSL GHS-SMOD): no rescale, no named colormap.
+        from urllib.parse import quote
+
+        classes = style["discrete"]
+        tile_url += f"&colormap={quote(discrete_colormap_param(classes))}"
+        legend = {
+            "label": style["label"], "unit": style["unit"],
+            "min": min(classes), "max": max(classes), "categorical": True,
+            "stops": [{"value": value, "color": color} for value, color in sorted(classes.items())],
+        }
+    elif style["colormap"]:
         tile_url += f"&colormap_name={style['colormap']}"
         if style["rescale"]:
             legend = {

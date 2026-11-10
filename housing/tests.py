@@ -35,7 +35,7 @@ class ZoningGroupsTests(TestCase):
 
 
 class PipelineLandTakeTests(TestCase):
-    """calculate_pipeline_land_take: DAG edge New_Units -> LandCover, dashboard only."""
+    """calculate_pipeline_land_take: DAG path New_Units -> Buildings -> LandCover, dashboard only."""
 
     def setUp(self):
         from physicalEnv.models import LandCoverClasses, LandCoverVector

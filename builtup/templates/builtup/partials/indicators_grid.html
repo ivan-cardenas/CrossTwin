@@ -111,6 +111,45 @@
     </div>
   </div>
 
+  <!-- Degree of Urbanisation (builtup/urbanisation.py::dashboard, docs/DEGREE_OF_URBANISATION.md) -->
+  {% if indicators.degurba %}{% with d=indicators.degurba %}
+  <div class="card wide">
+    <div class="gauge-header">
+      <div class="card-icon">🏘️</div>
+      <div class="card-label">Degree of Urbanisation</div>
+      {% info_help "builtup.degurba" %}
+    </div>
+    <div style="display:flex; align-items:baseline; gap:10px; margin-top:4px;">
+      <div style="font-family:var(--font-base); font-size:1.05rem; font-weight:700; color:{{ d.color }};">{{ d.label }}</div>
+      {% if d.whatif %}<span class="threshold-tag warn">What-if {{ d.year }}</span>{% endif %}
+      {% if d.original_label and not d.whatif %}<span style="font-size:9px; color:rgba(232,244,255,0.45);">1 km original: {{ d.original_label }}</span>{% endif %}
+    </div>
+    <div class="bar-track" style="height:10px; display:flex; margin-top:8px;">
+      {% for seg in d.segments %}
+      <div style="width:{{ seg.pct|unlocalize }}%; background:{{ seg.color }};" title="{{ seg.label }} {{ seg.pct }}%"></div>
+      {% endfor %}
+    </div>
+    <div style="display:flex; gap:14px; margin-top:10px; flex-wrap:wrap;">
+      {% for seg in d.segments %}
+      <div>
+        <div style="font-size:9px; color:{{ seg.color }}; text-transform:uppercase; letter-spacing:0.1em;">{{ seg.label }}</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ seg.pct }}%</div>
+      </div>
+      {% endfor %}
+    </div>
+    <div style="margin-top:6px; font-size:9px; color:rgba(232,244,255,0.35);">
+      {{ d.urban_area_km2 }} km² urban (classes 21–30) · {{ d.urban_cluster_pct|default:"–" }}% of people in urban clusters ·
+      {% if d.rate is not None %}{{ d.rate|floatformat:2 }} %/yr urban-area growth since {{ d.rate_base_year|unlocalize }}{% else %}rate needs a second stored year{% endif %}
+      · 100 m grid, population {{ d.stored_year|unlocalize }}
+    </div>
+    {% if d.series|length > 1 %}
+    <div style="display:flex; gap:10px; margin-top:6px; font-size:9px; font-family:var(--font-mono); color:rgba(232,244,255,0.5);">
+      {% for point in d.series %}<span>{{ point.year|unlocalize }}: {{ point.urban_area_km2|floatformat:2 }} km²</span>{% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endwith %}{% endif %}
+
   <!-- Building Type Mix -->
   <div class="card wide">
     <div class="gauge-header">

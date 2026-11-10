@@ -148,7 +148,7 @@ Density $\rho$ in people$/\mathrm{km^2}$. The Neighbourhood $\rightarrow$ Distri
 \end{align}
 A \code{physicalEnv.LandCoverVector} polygon qualifies if its \code{land\_cover\_type.class\_name} case-insensitively contains any of \emph{urban fabric}, \emph{road}, \emph{rail}, \emph{transport}, restricted to the most recent \code{year} present for that city (older survey years are not summed, to avoid double-counting repeat surveys). The intersection area is computed in PostGIS via \code{ST\_Intersection} (Django's \code{Intersection}/\code{Area} functions). Neighbourhood $\rightarrow$ District $\rightarrow$ City $\rightarrow$ Province propagation reuses the same \code{\_recompute\_population()} helper as the population cascade above, generalised to sum \code{urban\_area} alongside \code{currentPopulation} in one aggregate; both use \code{QuerySet.update()}, not \code{.save()}. Unlike population, an aggregate with no children reporting a value is left \code{None} (unknown) rather than coerced to \num{0}. Because a \code{LandCoverVector} write only fires \code{post\_save} on itself (not on \code{Neighborhood}), the \code{physicalEnv} signal re-enters the \code{administrative} cascade manually after writing each affected Neighbourhood's \code{urban\_area}.
 
-\textbf{DAG edge:} \code{LandCover -> Urbanization} is the closest existing edge in \code{core/DAG.dot}, but it runs in the opposite direction of what this computes (LandCover only feeds a not-yet-modelled \code{Urbanization} node, per \code{TODO.md}), and no Neighbourhood/District/City/Province/LandCoverVector nodes exist in the DAG at all --- \statuspartial{} (cascade and source computation fully implemented; no \code{Urbanization} model backs a DAG edge for it)
+\textbf{DAG edge:} \dagedge{LandCover $\rightarrow$ CityArea} --- \statusdone{} (added on 2026-11-10 when the \code{Urbanization} node was removed, \code{docs/DAG\_REVISIONS.md}; the neighbourhood \code{urban\_area} is the urban extent that \code{CityArea} stands for)
 
 \subsection{Urban-fabric buffer around new buildings --- \code{urbanize\_around()}, \code{release\_ring()}}
 \label{sec:urban-fabric-buffer}
@@ -167,7 +167,7 @@ where $\mathcal{L}$ is the set of \code{LandCoverVector} polygons of the city's 
 \end{align}
 Only the area $R_b$ still holds is given back, so what a later ring $b'$ took from it stays urban; $P$ is recreated with its original id and attributes when it was swallowed whole. The second line re-targets $b'$'s cuts onto the polygons that lay under $R_b$, so releasing $b'$ later returns its land to them rather than to the deleted ring. Then $R_b$ and its cuts are deleted and \code{percentage} is recomputed for the rows given land back. Rings, cuts and recreated rows are journalled like the buffer itself; during a backup restore (\code{core.editing.is\_restoring()}) the delete receiver is skipped, since the restore puts the rows back itself. Imported (BAG, positive id) buildings never trigger either step; rings created before \code{source\_building} existed cannot be released.
 
-\textbf{DAG edge:} \dagedge{New\_Units $\rightarrow$ LandCover} --- \statusdone{} (stored for map-editor buildings; the housing pipeline's land take is a dashboard statistic, \S\ref{sec:pipeline-land-take})
+\textbf{DAG edge:} \dagedge{Buildings $\rightarrow$ LandCover} --- \statusdone{} (cited as \code{New\_Units $\rightarrow$ LandCover} before 2026-11-10; stored for map-editor buildings; the housing pipeline's land take is a dashboard statistic, \S\ref{sec:pipeline-land-take})
 
 \subsection{Green area of new parks --- \code{green\_area()}, \code{release\_green\_area()}}
 A park $k$ drawn or reshaped in the map editor (\code{park\_saved}, only inside \code{core.editing.editor\_change()}) turns its outline, clipped to the city, into green urban area with the same cut / give-back mechanics as the building ring, without a buffer:
@@ -182,7 +182,7 @@ The new polygon has class \emph{Green urban areas} (CORINE 1.4.1 \cite{CORINE}),
 \subsection{Surface albedo --- \code{physicalEnv/albedo.py}}
 Every land-cover polygon has an effective albedo
 \begin{equation}
-  \alpha_P = \begin{cases} \alpha_P^{\text{meas}} & \text{measured or estimated albedo stored on } P \ \alpha(\text{material}_P) & \text{otherwise} \end{cases}
+  \alpha_P = \begin{cases} \alpha_P^{\text{meas}} & \text{measured or estimated albedo stored on } P \\ \alpha(\text{material}_P) & \text{otherwise} \end{cases}
 \end{equation}
 where $\text{material}_P$ defaults to the class's \code{default\_material}, chosen by keywords in the class name (water, trees, cropland, grass, sand, bare soil, asphalt for roads and rail, mixed urban fabric). The materials are Table 5.1 of Oke et al.\ \cite{Oke2017} (45 natural and urban surfaces with their albedo range); a material's typical albedo is the table's average where it gives one (urban 0.14, suburban 0.15), else the midpoint of the range (e.g.\ asphalt 0.16, grass 0.21, deciduous forest 0.165, water at high sun 0.065). The material fields of land cover, roofs and streets offer only the categories that fit them.
 
@@ -361,6 +361,40 @@ Zoning elements of the INSPIRE Planned Land Use feed reference their land use as
 \begin{equation}
   \operatorname{sel}(k) = \{\, k' : k' = k \ \lor\ k' \text{ starts with } k. \,\}
 \end{equation}
+
+\section{Built-up app --- Degree of Urbanisation}
+\label{sec:degurba}
+Source: \code{builtup/degurba.py} (grid rules), \code{builtup/urbanisation.py} (allocation, refresh, what-if), \code{builtup/chain.py} (unit class, rate), \code{builtup.Urbanisation.save()}. Method, deviations and decision log: \code{docs/DEGREE\_OF\_URBANISATION.md}. Replaces the former \code{Urbanization} node (\code{docs/DAG\_REVISIONS.md}).
+
+\subsection{Allocation: people $\rightarrow$ residential properties $\rightarrow$ cells --- \code{allocate()}}
+\begin{align}
+  p_d &= \frac{P_n}{N_n} && d \in \text{residential properties of neighbourhood } n \\
+  P_c &= \sum_{d \in c} p_d \qquad\text{or, if } N_n = 0:\quad P_c = P_n \frac{|n \cap c|}{|n|} \\
+  B_c &= \sum_{b} |b \cap c| && \text{building footprints, } b \text{ assigned to } n \text{ by point on surface}
+\end{align}
+$P_n$ = \code{Neighborhood.currentPopulation}, $N_n$ = \code{builtup.Property} rows with \emph{Residential function}; cells $c$ of $r = 100$ m and $1000$ m aligned to the EPSG:28992 origin (CBS square grid). Settlement share $s_c$ and water share $w_c$ from the latest \code{LandCoverVector} year; a cell is settlement land if $s_c \ge 0.5$ or $P_c > 0$.
+
+\subsection{Cell density --- \code{density()}}
+\begin{align}
+  \rho^{1\,\text{km}}_c &= \frac{P_c}{r^2 (1 - w_c)} \\
+  \rho^{100\,\text{m}}_c &= \begin{cases}
+    \dfrac{\sum_{k \in W_3(c)} P_k}{\sum_{k \in W_3(c),\ k\ \text{settlement}} r^2} & c \text{ settlement land} \\[2ex]
+    \dfrac{\sum_{k \in W_3(c)} P_k}{\sum_{k \in W_3(c)} r^2 (1 - w_k)} & \text{otherwise}
+  \end{cases}
+\end{align}
+$W_3(c)$ = the $3 \times 3$ window around $c$ (300 m). Built-up share $\beta_c = \sum_{W} B_k / \sum_{W} r^2$ (window 1 at 1 km, 3 at 100 m). Worked example: three dwelling cells of 60 people and one street cell in a window of five fields give $\rho^{100\,\text{m}} = 180 / 0.04 = 4\,500$ inh./km$^2$, against $2\,000$ over the whole window and about $800$ over a 1 km window.
+
+\subsection{Grid classes --- \code{classify()}}
+Urban centre (30): components of $\{\rho \ge 1500 \lor \beta \ge 0.5\}$ (4-connected; settlement cells only at 100 m) with $\sum P \ge 50\,000$; holes $< 15$ km$^2$ filled (at 100 m only holes made of settlement cells); cells with $\ge 5$ of their 8 neighbours in the centre added until stable (settlement cells only at 100 m). Dense urban cluster (23): the same cells, 4-connected, $5\,000 \le \sum P < 50\,000$, not in a centre. Urban cluster: $\rho \ge 300$, 8-connected, $\sum P \ge 5\,000$; semi-dense (22) if it has no centre or dense cell and lies $> 2$ km from one, otherwise its remaining cells are suburban (21). Rural cluster (13): $\rho \ge 300$, 8-connected, $500 \le \sum P < 5\,000$. Otherwise 12 ($\rho \ge 50$), 10 ($w \ge 0.5$, $P = 0$) or 11.
+
+\subsection{Unit class and urbanisation rate --- \code{classify\_unit()}, \code{urbanization\_rate()}}
+\begin{align}
+  L1 &= \begin{cases} 3\ \text{(city)} & P_{30}/P \ge 0.5 \\ 2\ \text{(town)} & (P_{30}+P_{23}+P_{22}+P_{21})/P \ge 0.5 \\ 1\ \text{(rural)} & \text{otherwise} \end{cases} \\
+  \text{rate} &= \left(\frac{A_{t_1}}{A_{t_0}}\right)^{1/(t_1 - t_0)} - 1, \qquad A = \sum_{c:\ L2_c \in \{21,22,23,30\}} |\text{unit} \cap c|
+\end{align}
+$P_k$ from the unit's allocation rows; $t_0$ the earliest stored CrossTwin year (GHSL epochs are reference layers only). \code{City.urbanizationRate} mirrors the 100 m city rate. What-if (dashboard): every allocation scaled by $f = P(\text{city}, y, \text{scenario}, g) / P(\text{city}, y_0, \text{median}, 0)$ and the grid reclassified in memory, without writing.
+
+\textbf{DAG edges:} \dagedge{Total\_Population $\rightarrow$ Degree\_Urbanisation}, \dagedge{Buildings $\rightarrow$ Degree\_Urbanisation}, \dagedge{LandCover $\rightarrow$ Degree\_Urbanisation} --- \statusdone{} (receivers in \code{builtup/signals.py}, deferred by \code{deferred\_urbanisation\_refresh})
 
 \section{Water supply app}
 \label{sec:watersupply}
@@ -567,7 +601,7 @@ Source: \code{housing/calculations.py}, \code{housing/models.py}.
   \text{Deficit} &= D - S \\
   \text{Deficit\%} &= \frac{D - S}{D} \times 100
 \end{align}
-where $S = \texttt{supply\_units}$ (CBS housing stock, 86098NED) and $D = \texttt{demand\_units}$ (derived, below). \textbf{DAG edges:} \dagedge{Urbanization $\rightarrow$ Housing\_Demand}, \dagedge{New\_Units $\rightarrow$ Housing\_Supply}, \dagedge{Housing\_Demand $\rightarrow$ House\_Price\_Index} --- \statusgap{} (no \code{Urbanization} model exists; \code{Housing\_Demand $\rightarrow$ House\_Price\_Index} is not implemented)
+where $S = \texttt{supply\_units}$ (CBS housing stock, 86098NED) and $D = \texttt{demand\_units}$ (derived, below). \textbf{DAG edges:} \dagedge{Total\_Population $\rightarrow$ Housing\_Demand}, \dagedge{New\_Units $\rightarrow$ Housing\_Supply}, \dagedge{Housing\_Demand $\rightarrow$ House\_Price\_Index} --- \statuspartial{} (demand is derived, below; \code{Housing\_Demand $\rightarrow$ House\_Price\_Index} is not implemented; the former \code{Urbanization $\rightarrow$ Housing\_Demand} edge was removed on 2026-11-10)
 
 \subsubsection{Household size and housing demand --- \code{HouseholdSize.save()}, \code{HousingSupplyDemand.save()}}
 \label{sec:household-size}
@@ -878,6 +912,10 @@ physicalEnv & \code{urbanize\_around()} / \code{release\_ring()} & New\_Units$\t
 physicalEnv & \code{dsm\_patches.record\_change()} / \code{apply\_patches()} & Buildings$\to$DSM (editor buildings) & \statusdone{} \\
 physicalEnv & \code{dsm\_patches.record\_vegetation\_change()} & Vegetation\_Coverage$\to$DSM (editor trees, forests) & \statusdone{} \\
 builtup & \code{StreetCanyon.save()} / \code{signals.refresh\_canyons()} & Buildings/Streets$\to$Canyon\_Aspect & \statusdone{} \\
+builtup & \code{degurba.classify()} / \code{Urbanisation.save()} & Total\_Population/Buildings/LandCover$\to$Degree\_Urbanisation & \statusdone{} \\
+physicalEnv & \code{urbanize\_around()} & Buildings$\to$LandCover & \statusdone{} \\
+physicalEnv & \code{\_recompute\_neighborhood\_urban\_area()} & LandCover$\to$CityArea & \statusdone{} \\
+--- & --- & New\_Units$\to$Buildings, Buildings$\to$Streets, Streets$\to$LandCover & \statusgap{} \\
 watersupply & \code{calculate\_total\_demand()} / \code{TotalWaterDemand.save()} & Total\_Pop$\to$Total\_Water\_Demand & \statusdone{} \\
 watersupply & \code{ConsumptionCapita.save()} & Total\_Pop$\to$Total\_Consumption & \statusdone{} \\
 watersupply & \code{calculate\_total\_extraction()} & Available\_FW$\to$Total\_Extraction & \statusdone{} \\
@@ -893,16 +931,16 @@ watersupply & \code{calculate\_coverage()} / \code{CoverageWaterSupply.save()} &
 watersupply & \code{calculate\_nrw()} / \code{NonRevenueWater.save()} & Real/Apparent\_Losses$\to$NRW, ILI & \statuspartial{} \\
 watersupply & \code{NonRevenueWater.pipe} / \code{calculate\_nrw()} & Network$\to$Real\_Losses & \statusdone{} \\
 watersupply & \code{calculate\_water\_quality()} & Samples\_WQ$\to$User\_Acceptance\_WS & \statusgap{} \\
-watersupply & \code{calculate\_available\_freshwater()} & Infiltration/Meteorology$\to$Available\_FW & \statusgap{} \
-physicalEnv & \code{weighted\_infiltration\_rate\_mm\_h()} / \code{AvailableFreshWater.save()} & LandCover/Soil\_Type$\to$Infiltration (stored) & \statusdone{} \
+watersupply & \code{calculate\_available\_freshwater()} & Infiltration/Meteorology$\to$Available\_FW & \statusgap{} \\
+physicalEnv & \code{weighted\_infiltration\_rate\_mm\_h()} / \code{AvailableFreshWater.save()} & LandCover/Soil\_Type$\to$Infiltration (stored) & \statusdone{} \\
 watersupply & \code{recharge\_depth\_cm\_yr()} / \code{AvailableFreshWater.save()} & Infiltration/Meteorology$\to$Available\_FW & \statusdone{} \\
 physicalEnv & \code{classify\_soil\_group()} / \code{SoilType.save()} & Soil\_Type$\to$Infiltration & \statusdone{} \\
 physicalEnv & \code{soil\_landcover\_composition()} & LandCover/Soil\_Type (+ groundwater)$\to$Infiltration & \statusdone{} \\
 physicalEnv & \code{scs\_runoff\_mm()} / \code{summarize\_infiltration()} & LandCover/Soil\_Type$\to$Infiltration & \statusdone{} \\
 watersupply & \code{calculate\_infiltration()} (dashboard) & LandCover/Soil\_Type$\to$Infiltration & \statusdone{} \\
-housing & \code{calculate\_supply\_demand()} & Urbanization$\to$Housing\_Demand & \statusgap{} \\
+housing & \code{calculate\_supply\_demand()} & Total\_Population$\to$Housing\_Demand & \statusdone{} \\
 housing & \code{calculate\_new\_units()} & New\_Units$\to$Housing\_Supply & \statuspartial{} \\
-housing & \code{calculate\_pipeline\_land\_take()} (dashboard) & New\_Units$\to$LandCover & \statusdone{} \\
+housing & \code{calculate\_pipeline\_land\_take()} (dashboard) & New\_Units$\to$Buildings$\to$LandCover & \statusdone{} \\
 housing & \code{calculate\_mortgage\_indicators()} & Central\_Bank/Credit\_Supply$\to$Mortgage & \statuspartial{} \\
 housing & \code{calculate\_house\_price\_index()} & Housing\_Demand/Property$\to$HPI & \statusgap{} \\
 housing & \code{HousingAffordability.save()} & Rent/Mortgage/Water\_Tariff$\to$Income\_Expenses$\to$Affordability\_Stress & \statusgap{} \\

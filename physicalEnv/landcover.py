@@ -4,7 +4,7 @@ Land-cover overlay edits driven by other layers.
 Two owners rewrite land cover from the map editor, with the same cut /
 give-back mechanics (convert_area / release_owner):
 - a building: a 10 m buffer becomes "urban fabric" (urbanize_around,
-  DAG edge New_Units -> LandCover);
+  DAG edge Buildings -> LandCover);
 - a park: its outline becomes "green urban areas" (green_area,
   DAG edge New_Green_Area -> LandCover).
 
@@ -138,7 +138,7 @@ def urbanize_around(geom, city_id, land_use, building_id=None, roof_material=Non
     albedo.ring_albedo. Returns the new LandCoverVector, or None when the city
     has no land cover (there is no layer to update) or the buffer misses the city.
 
-    DAG edge: New_Units -> LandCover
+    DAG edge: Buildings -> LandCover
     """
     from .albedo import ring_albedo
 
@@ -318,7 +318,7 @@ def release_owner(owner):
     rings later returns their land to what lay under R. Then R and its cuts
     are deleted. Returns True when anything changed.
 
-    DAG edge: New_Units -> LandCover (the inverse step)
+    DAG edge: Buildings -> LandCover (the inverse step)
     """
     from .signals import deferred_urban_area
 

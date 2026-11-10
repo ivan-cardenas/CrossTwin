@@ -3,7 +3,8 @@ from django.http import JsonResponse
 
 from administrative.admin_units import resolve_admin_unit, ADMIN_LEVELS
 from administrative.population import DEFAULT_SCENARIO, get_population, population_params
-from mainMap.styles.layerStyles import BUILDING_TYPE_COLORS, BUILDING_TYPE_LABELS, LAYER_STYLES
+from mainMap.styles.layerStyles import (BUILDING_TYPE_COLORS, BUILDING_TYPE_LABELS, DEGURBA_COLORS,
+                                       DEGURBA_LABELS, LAYER_STYLES)
 from .calculations import (
     calculate_building_stock,
     calculate_building_mix,
@@ -53,7 +54,25 @@ def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, po
         'streets': calculate_street_network(adminUnit),
         'green': calculate_green_space(adminUnit, population),
         'facilities': calculate_facilities(adminUnit, population),
+        'urbanisation': _urbanisation(adminUnit, year, pop_scenario, pop_growth),
     }
+
+
+def _urbanisation(adminUnit, year, pop_scenario, pop_growth):
+    """
+    Degree of Urbanisation card (builtup/urbanisation.py::dashboard): stored rows,
+    or the in-memory what-if when the population dock moves away from the baseline.
+    DAG edges: Total_Population -> Degree_Urbanisation, Buildings -> Degree_Urbanisation.
+    """
+    import logging
+
+    from .urbanisation import dashboard
+
+    try:
+        return dashboard(adminUnit, year, pop_scenario, pop_growth)
+    except Exception:
+        logging.getLogger(__name__).exception("Degree of Urbanisation card failed")
+        return None
 
 
 MOCK_DATA = {
@@ -106,6 +125,7 @@ MOCK_DATA = {
         'by_type': {'school': 72, 'hospital': 3, 'fire_station': 6,
                     'police_station': 4, 'market': 95, 'transportNode': 30},
     },
+    'urbanisation': None,
 }
 
 
@@ -159,8 +179,18 @@ def _build_indicators(data, green_added_ha=None):
         }
         for key, label in BUILDING_TYPE_LABELS
     ]
+    degurba = data.get('urbanisation')
+    if degurba:
+        degurba = dict(degurba)
+        degurba['segments'] = [
+            {**share, 'label': DEGURBA_LABELS[share['l2']], 'color': DEGURBA_COLORS[share['l2']]}
+            for share in degurba['shares'] if share['pct'] > 0
+        ]
+        degurba['color'] = DEGURBA_COLORS.get(degurba.get('l2'), '#9e9e9e')
+
     return {
         'population': population,
+        'degurba': degurba,
 
         # -- Building stock --
         'total_buildings': stock['total_buildings'],

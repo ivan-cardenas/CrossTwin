@@ -15,7 +15,7 @@ from physicalEnv.hilucs import hilucs_q
 def calculate_supply_demand(city, year):
     """Housing supply vs demand for a city and year.
 
-    DAG edges:  Urbanization     -> Housing_Demand
+    DAG edges:  Total_Population -> Housing_Demand
                 New_Units        -> Housing_Supply
                 Housing_Demand   -> House_Price_Index
     """
@@ -109,7 +109,7 @@ def calculate_new_units(city, year):
     DAG edges:  Zoning_Status -> New_Units
                 Network       -> New_Units
                 New_Units     -> Housing_Supply
-                New_Units     -> LandCover
+                New_Units     -> Buildings
     """
     projects = HousingProject.objects.filter(
         neighborhood__district__city=city,
@@ -172,7 +172,7 @@ def calculate_pipeline_land_take(adminBund, year):
     greenfield, i.e. land the New_Units would turn into urban fabric.
     `uncovered_ha` is footprint area outside any land-cover polygon.
 
-    DAG edges:  New_Units -> LandCover
+    DAG edges:  New_Units -> Buildings -> LandCover (planned footprints)
     """
     from django.db import connection
     from administrative.models import District, Neighborhood

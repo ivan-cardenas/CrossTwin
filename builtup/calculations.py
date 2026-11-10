@@ -35,7 +35,7 @@ def calculate_building_stock(adminBund):
     = Σ footprint × floors ÷ unit area, falling back to height ÷ 3 m per
     storey for buildings without a floor count.
 
-    DAG edges:  Urbanization -> Buildings
+    DAG edges:  New_Units    -> Buildings      (the stock new units add to)
                 Buildings    -> DSM            (height, the input SOLWEIG needs)
                 Buildings    -> Canyon_Aspect  (height feeds the H/W ratio)
     """
@@ -81,7 +81,7 @@ def calculate_building_stock(adminBund):
 def calculate_building_mix(adminBund):
     """Share of buildings and footprint per coarse building type (from BAG usage).
 
-    DAG edges:  Urbanization -> Buildings
+    DAG edges:  New_Units -> Buildings
     """
     buildings = Building.objects.filter(neighborhood__in=neighborhoods_within(adminBund))
     rows = {
@@ -143,7 +143,7 @@ def calculate_street_network(adminBund):
     intersection with the unit — a street crossing a boundary is split,
     never duplicated.
 
-    DAG edges:  Urbanization -> Streets
+    DAG edges:  Buildings    -> Streets
                 Streets      -> Accessibility   (density, as its first input)
     """
     streets = Street.objects.filter(geom__intersects=adminBund.geom)

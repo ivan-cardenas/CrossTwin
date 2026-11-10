@@ -379,3 +379,224 @@ class NeighborhoodClimateRisk(models.Model):
     class Meta:
         verbose_name = "Neighborhood Climate Risk"
         verbose_name_plural = "Neighborhood Climate Risks"
+
+
+# ── Degree of Urbanisation (DAG node Degree_Urbanisation) ──────────────
+# Method: docs/DEGREE_OF_URBANISATION.md. Grid classification: builtup/degurba.py;
+# allocation and refresh: builtup/urbanisation.py; unit equations: builtup/chain.py.
+
+RESOLUTION_CHOICES = [(100, "100 m (CrossTwin, local)"), (1000, "1 km (original DEGURBA)")]
+L2_CHOICES = [(30, "Urban centre"), (23, "Dense urban cluster"), (22, "Semi-dense urban cluster"),
+              (21, "Suburban or peri-urban"), (13, "Rural cluster"), (12, "Low density rural"),
+              (11, "Very low density rural"), (10, "Water"), (0, "Outside the grid")]
+L1_CHOICES = [(3, "Urban centre"), (2, "Urban cluster"), (1, "Rural"), (0, "Outside the grid")]
+
+
+class PopulationAllocation(models.Model):
+    """
+    One neighborhood's share of one grid cell: the bookkeeping of the
+    dasymetric allocation (people -> residential properties -> cells).
+
+        p_d = P_n / N_n          every dwelling d of neighborhood n
+                                 (P_n = currentPopulation, N_n = dwellings:
+                                 builtup.Property with 'Residential function')
+        P_cell = sum of p_d      dwellings whose point lies in the cell
+        no dwellings, P_n > 0:   P_n x (area of n in the cell / area of n)
+
+    Rows are replaced per neighborhood, so a change re-allocates only the
+    neighborhoods it touches. Not a map layer (registry_hidden).
+    """
+    registry_hidden = True
+
+    neighborhood = models.ForeignKey(Neighborhood, on_delete=models.CASCADE, related_name="population_allocation")
+    resolution_m = models.IntegerField(choices=RESOLUTION_CHOICES)
+    year = models.IntegerField()
+    ix = models.IntegerField(help_text="Cell column: floor(x / resolution) in the grid CRS")
+    iy = models.IntegerField(help_text="Cell row: floor(y / resolution) in the grid CRS")
+    population = models.FloatField(default=0)
+    dwellings = models.IntegerField(default=0)
+    built_up_m2 = models.FloatField(default=0, help_text="Footprint area of the neighborhood's buildings inside the cell, m²")
+    area_m2 = models.FloatField(default=0, help_text="Area of the neighborhood inside the cell, m²")
+    by_area = models.BooleanField(default=False, help_text="Population spread by area (the neighborhood has no dwellings)")
+
+    def __str__(self):
+        return f"{self.neighborhood_id} {self.year} {self.resolution_m} m ({self.ix}, {self.iy}): {self.population:.1f}"
+
+    class Meta:
+        verbose_name = "Population Allocation"
+        verbose_name_plural = "Population Allocations"
+        constraints = [models.UniqueConstraint(fields=["neighborhood", "resolution_m", "year", "ix", "iy"],
+                                               name="unique_population_allocation")]
+        indexes = [models.Index(fields=["resolution_m", "year", "ix", "iy"])]
+
+
+class UrbanisationCell(models.Model):
+    """
+    One grid cell of the Degree of Urbanisation, at 100 m (CrossTwin's local
+    variant) or 1 km (the original method), for one population year.
+
+    The map shows the current year through the proxies UrbanisationCellLocal
+    (100 m) and UrbanisationCellOriginal (1 km); this concrete table is hidden.
+
+    DAG edges: Total_Population -> Degree_Urbanisation,
+               Buildings -> Degree_Urbanisation,
+               LandCover -> Degree_Urbanisation.
+    """
+    registry_hidden = True
+
+    resolution_m = models.IntegerField(choices=RESOLUTION_CHOICES)
+    year = models.IntegerField()
+    current = models.BooleanField(default=True, help_text="Cell of the latest classified year (the map layer)")
+    ix = models.IntegerField()
+    iy = models.IntegerField()
+    cell_code = models.CharField(max_length=40, help_text="E<x>N<y> of the lower-left corner, in hm (100 m) or km (1 km), as the CBS square statistics")
+    population = models.FloatField(default=0, help_text="People allocated to the cell")
+    dwellings = models.IntegerField(default=0, help_text="Residential properties in the cell")
+    density = models.FloatField(default=0, help_text="Density used by the classification, inh./km² (100 m: 3 x 3 window over settlement land; 1 km: cell land)")
+    built_up_m2 = models.FloatField(default=0, help_text="Building footprint area inside the cell, m²")
+    built_up_share = models.FloatField(default=0, help_text="Building footprint share of the density window")
+    water_share = models.FloatField(default=0, help_text="Permanent water share of the cell (latest land cover)")
+    settlement_share = models.FloatField(default=0, help_text="Settlement land-cover share of the cell (urban fabric, industry, roads, construction, urban green)")
+    coverage = models.FloatField(default=1, help_text="Share of the cell inside imported neighborhoods")
+    by_area = models.BooleanField(default=False, help_text="Part of the population was spread by area (a neighborhood without dwellings)")
+    l2 = models.IntegerField(choices=L2_CHOICES, default=0, verbose_name="Class (level 2)")
+    l1 = models.IntegerField(choices=L1_CHOICES, default=0, verbose_name="Class (level 1)")
+    cluster_id = models.IntegerField(default=0, help_text="Centre / cluster this cell belongs to (0: none)")
+    cluster_population = models.FloatField(default=0, help_text="Population of that centre / cluster")
+    edge_effect = models.BooleanField(default=False, help_text="The cluster touches the edge of the imported area: its population may be understated")
+    updated = models.DateTimeField(auto_now=True)
+    geom = models.PolygonField(srid=CoordinateSystem)
+
+    def __str__(self):
+        return f"{self.cell_code} {self.year} ({self.resolution_m} m): {self.get_l2_display()}"
+
+    class Meta:
+        verbose_name = "Degree of Urbanisation Cell"
+        verbose_name_plural = "Degree of Urbanisation Cells"
+        constraints = [models.UniqueConstraint(fields=["resolution_m", "year", "ix", "iy"],
+                                               name="unique_urbanisation_cell")]
+        indexes = [models.Index(fields=["resolution_m", "current"])]
+
+
+class _CurrentCells(models.Manager):
+    resolution_m = None
+
+    def get_queryset(self):
+        return super().get_queryset().filter(current=True, resolution_m=self.resolution_m)
+
+
+class _LocalCells(_CurrentCells):
+    resolution_m = 100
+
+
+class _OriginalCells(_CurrentCells):
+    resolution_m = 1000
+
+
+class UrbanisationCellLocal(UrbanisationCell):
+    """Map layer: Degree of Urbanisation on 100 m cells (CrossTwin's local variant), latest year."""
+    registry_hidden = False
+    objects = _LocalCells()
+
+    class Meta:
+        proxy = True
+        verbose_name = "Degree of Urbanisation (100 m)"
+        verbose_name_plural = "Degree of Urbanisation (100 m)"
+
+
+class UrbanisationCellOriginal(UrbanisationCell):
+    """Map layer: Degree of Urbanisation on 1 km cells (original method, same data), latest year."""
+    registry_hidden = False
+    objects = _OriginalCells()
+
+    class Meta:
+        proxy = True
+        verbose_name = "Degree of Urbanisation (1 km, original)"
+        verbose_name_plural = "Degree of Urbanisation (1 km, original)"
+
+
+class Urbanisation(models.Model):
+    """
+    Degree of Urbanisation of an admin unit (DAG node Degree_Urbanisation):
+    its population per grid class, the share in urban centres / clusters, its
+    level 1 / level 2 class and, for cities, the urbanisation rate.
+
+    `unit_id` is the pk of the Neighborhood, District or City (`level`). The
+    population per class comes from PopulationAllocation (exact per dwelling),
+    so a District or City is the sum of its neighborhoods.
+    """
+    LEVELS = [("neighborhood", "Neighborhood"), ("district", "District"), ("city", "City")]
+    UNIT_L1 = [(3, "City"), (2, "Town or semi-dense area"), (1, "Rural area")]
+    UNIT_L2 = [(30, "City"), (23, "Dense town"), (22, "Semi-dense town"), (21, "Suburban or peri-urban area"),
+               (13, "Village"), (12, "Dispersed rural area"), (11, "Mostly uninhabited area")]
+
+    level = models.CharField(max_length=20, choices=LEVELS)
+    unit_id = models.CharField(max_length=50)
+    unit_name = models.CharField(max_length=100, blank=True, default="")
+    resolution_m = models.IntegerField(choices=RESOLUTION_CHOICES)
+    year = models.IntegerField()
+    population = models.FloatField(default=0)
+    pop_30 = models.FloatField(default=0, verbose_name="Population in urban centres")
+    pop_23 = models.FloatField(default=0, verbose_name="Population in dense urban clusters")
+    pop_22 = models.FloatField(default=0, verbose_name="Population in semi-dense urban clusters")
+    pop_21 = models.FloatField(default=0, verbose_name="Population in suburban cells")
+    pop_13 = models.FloatField(default=0, verbose_name="Population in rural clusters")
+    pop_12 = models.FloatField(default=0, verbose_name="Population in low density rural cells")
+    pop_11 = models.FloatField(default=0, verbose_name="Population in very low density rural cells")
+    urban_centre_share = models.FloatField(null=True, blank=True, help_text="Share of the population in urban centres")
+    urban_cluster_share = models.FloatField(null=True, blank=True, help_text="Share of the population in urban centres and clusters")
+    urban_area_km2 = models.FloatField(default=0, help_text="Area of the unit in cells of class 21-30, km²")
+    degurba_l1 = models.IntegerField(null=True, blank=True, choices=UNIT_L1)
+    degurba_l2 = models.IntegerField(null=True, blank=True, choices=UNIT_L2)
+    urbanization_rate_pct_yr = models.FloatField(null=True, blank=True, help_text="Growth of the urban area (cells 21-30) since the earliest stored year, %/yr (cities)")
+    rate_base_year = models.IntegerField(null=True, blank=True)
+    last_updated = models.DateTimeField(default=timezone.now)
+
+    def save(self, *args, by_class=None, urban_area_m2=None, **kwargs):
+        """
+        DAG edges: Total_Population -> Degree_Urbanisation,
+                   Buildings -> Degree_Urbanisation,
+                   LandCover -> Degree_Urbanisation.
+        Population per class from the unit's PopulationAllocation rows joined to
+        the classified cells (builtup/urbanisation.py::unit_class_population);
+        classes and rate from builtup/chain.py. The grid refresh passes
+        `by_class` / `urban_area_m2` it already read for all units at once.
+        """
+        if by_class is None:
+            from .urbanisation import unit_class_population
+
+            by_class, urban_area_m2 = unit_class_population(self.level, self.unit_id, self.resolution_m, self.year)
+        self.apply(by_class, urban_area_m2 or 0.0)
+        super().save(*args, **kwargs)
+
+    def apply(self, by_class, urban_area_m2):
+        """Set every derived field from the population per class and the urban area (m²)."""
+        from . import chain
+
+        for code in (30, 23, 22, 21, 13, 12, 11):
+            setattr(self, f"pop_{code}", by_class.get(code, 0.0))
+        self.population = sum(by_class.values())
+        l1, l2, shares = chain.classify_unit(by_class)
+        self.degurba_l1, self.degurba_l2 = l1, l2
+        self.urban_centre_share = shares.get(30, 0.0) if shares else None
+        self.urban_cluster_share = sum(shares.get(k, 0.0) for k in chain.URBAN_L2) if shares else None
+        self.urban_area_km2 = urban_area_m2 / 1e6
+        self.urbanization_rate_pct_yr = self.rate_base_year = None
+        if self.level == "city":
+            base = (Urbanisation.objects.filter(level=self.level, unit_id=self.unit_id,
+                                                resolution_m=self.resolution_m, year__lt=self.year)
+                    .order_by("year").values("year", "urban_area_km2").first())
+            if base:
+                self.urbanization_rate_pct_yr = chain.urbanization_rate(
+                    base["urban_area_km2"], base["year"], self.urban_area_km2, self.year)
+                self.rate_base_year = base["year"]
+        self.last_updated = timezone.now()
+
+    def __str__(self):
+        return f"{self.unit_name or self.unit_id} {self.year} ({self.resolution_m} m): {self.get_degurba_l2_display()}"
+
+    class Meta:
+        verbose_name = "Degree of Urbanisation"
+        verbose_name_plural = "Degree of Urbanisation"
+        constraints = [models.UniqueConstraint(fields=["level", "unit_id", "resolution_m", "year"],
+                                               name="unique_urbanisation")]

@@ -336,6 +336,18 @@ HELP = {
         "how": "Each building's coarse type comes from its BAG usage function(s) (gebruiksdoel). A building with functions of more than one type counts as Mixed; buildings without a recorded function show as Unknown. Colours match the Buildings layer on the map.",
         "eq": ["Share of a type = {buildings of that type | all buildings} × 100 %"],
     },
+    "builtup.degurba": {
+        "title": "Degree of Urbanisation",
+        "what": "How urban the unit is by the GHSL / Eurostat Degree of Urbanisation: city, town (dense, semi-dense, suburban) or rural (village, dispersed, mostly uninhabited), and how fast its urban area grows.",
+        "how": "Each neighborhood's population is shared equally over its residential properties (dwellings, never buildings), summed per 100 m cell and classified with the GHSL rules. At 100 m, density uses a 300 m window over settlement land only, so edge cells next to fields keep their density. The 1 km figure is the original method on the same data. The unit's class follows where most of its people live. The population dock's scenario reclassifies the whole grid in memory as a what-if.",
+        "eq": [
+            "Person share of a dwelling = {neighborhood population | dwellings in the neighborhood}",
+            "Cell density = {people in the 3 × 3 window | settlement land of the window (km²)}",
+            "City if {people in urban centres | people} ≥ 50 %; town if {people in centres + clusters | people} ≥ 50 %",
+            "Rate = ({urban area now | urban area in the first year})^(1 / years) − 1",
+        ],
+        "note": "Urban centre: ≥ 1 500 inh./km² (or ≥ 50 % built-up), 4-connected, ≥ 50 000 people. Urban cluster: ≥ 300 inh./km², 8-connected, ≥ 5 000 people. GHSL's own grid can be imported as a reference layer; it is never used in these numbers. Method: docs/DEGREE_OF_URBANISATION.md.",
+    },
     "builtup.age": {
         "title": "Construction Period",
         "what": "When the buildings were built, grouped in the periods of the Dutch housing-stock typology (RVO reference dwellings).",

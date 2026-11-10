@@ -30,7 +30,7 @@ from contextlib import contextmanager
 from django.db.models.signals import post_delete, post_save, pre_delete, pre_save
 from django.dispatch import Signal, receiver
 
-from .models import Building, Street, StreetCanyon
+from .models import Building, Property, Street, StreetCanyon
 
 logger = logging.getLogger(__name__)
 
@@ -229,3 +229,163 @@ def building_canyon_saved(sender, instance, created, raw=False, **kwargs):
 def building_canyon_deleted(sender, instance, **kwargs):
     """DAG edge: Buildings -> Canyon_Aspect. A deleted building opens up the canyons around it."""
     schedule_footprints([instance.geom])
+
+
+# ── Degree of Urbanisation ───────────────────────────────────────────
+#
+# DAG edges: Total_Population -> Degree_Urbanisation (neighborhood population,
+#            residential properties), Buildings -> Degree_Urbanisation
+#            (built-up share), LandCover -> Degree_Urbanisation (settlement
+#            mask, water). The receivers only schedule the neighborhoods to
+#            re-allocate; builtup/urbanisation.py::refresh does the work (once
+#            per deferred_cascades() block) and Urbanisation.save() holds the
+#            unit equations. Nothing runs until the grid was built from the map.
+#
+# Restore (core.editing.restore_backup) re-saves rows raw. These rows are a
+# pure derivation of their sources, so instead of journalling them the
+# receivers also react to raw saves while a restore runs: the refresh then
+# recomputes the restored state once, when restore's deferred_cascades() ends.
+
+def _skip_raw(raw):
+    from core.editing import is_restoring
+
+    return raw and not is_restoring()
+
+
+def _schedule_hoods(ids=(), geoms=(), landcover=()):
+    """Schedule the neighborhoods `ids` + those under `geoms`, and the land cover over the `landcover` geometries."""
+    from .urbanisation import neighborhoods_at, schedule
+
+    try:
+        schedule(set(ids) | neighborhoods_at(geoms), landcover=[g for g in landcover if g is not None])
+    except Exception:
+        logger.exception("Degree of Urbanisation scheduling failed")
+
+
+@receiver(pre_save, sender="administrative.Neighborhood", dispatch_uid="builtup_neighborhood_urbanisation_presave")
+def neighborhood_urbanisation_presave(sender, instance, raw=False, **kwargs):
+    if instance.pk is None:
+        return
+    instance._urbanisation_stored = (sender.objects.filter(pk=instance.pk)
+                                     .values("currentPopulation", "geom").first())
+
+
+@receiver(post_save, sender="administrative.Neighborhood", dispatch_uid="builtup_neighborhood_urbanisation_saved")
+def neighborhood_urbanisation_saved(sender, instance, created, raw=False, **kwargs):
+    """DAG edge: Total_Population -> Degree_Urbanisation. New population or outline -> re-allocate it."""
+    if _skip_raw(raw):
+        return
+    stored = getattr(instance, "_urbanisation_stored", None)
+    if stored and not created:
+        same_geom = (stored["geom"] is not None and instance.geom is not None
+                     and stored["geom"].equals_exact(instance.geom, tolerance=0.01))
+        if same_geom and stored["currentPopulation"] == instance.currentPopulation:
+            return
+    _schedule_hoods([instance.pk])
+
+
+@receiver(post_delete, sender="administrative.Neighborhood", dispatch_uid="builtup_neighborhood_urbanisation_deleted")
+def neighborhood_urbanisation_deleted(sender, instance, **kwargs):
+    """DAG edge: Total_Population -> Degree_Urbanisation. Its allocation rows go with it (CASCADE)."""
+    _schedule_hoods([instance.pk])
+
+
+def _is_property(sender):
+    return isinstance(sender, type) and issubclass(sender, Property)
+
+
+@receiver(pre_save, dispatch_uid="builtup_property_urbanisation_presave")
+def property_urbanisation_presave(sender, instance, raw=False, **kwargs):
+    if not _is_property(sender) or instance.pk is None:
+        return
+    instance._urbanisation_stored = (Property.objects.filter(pk=instance.pk)
+                                     .values("geom", "usageFunction").first())
+
+
+def _residential(usage):
+    return bool(usage) and "Residential function" in usage
+
+
+@receiver(post_save, dispatch_uid="builtup_property_urbanisation_saved")
+def property_urbanisation_saved(sender, instance, created, raw=False, **kwargs):
+    """
+    DAG edge: Total_Population -> Degree_Urbanisation. A dwelling added, moved
+    or (un)made residential changes how its neighborhood's people are spread.
+    Sender is Property or a proxy (housing.ResidentialProperty), which builtup
+    cannot import, hence the subclass test.
+    """
+    if not _is_property(sender) or _skip_raw(raw):
+        return
+    stored = getattr(instance, "_urbanisation_stored", None)
+    was = bool(stored) and _residential(stored["usageFunction"])
+    now = _residential(instance.usageFunction)
+    if not was and not now:
+        return
+    if stored and not created and was == now and stored["geom"] is not None and instance.geom is not None \
+            and stored["geom"].equals_exact(instance.geom, tolerance=0.01):
+        return
+    _schedule_hoods(geoms=[instance.geom, stored["geom"] if stored else None])
+
+
+@receiver(post_delete, dispatch_uid="builtup_property_urbanisation_deleted")
+def property_urbanisation_deleted(sender, instance, **kwargs):
+    """DAG edge: Total_Population -> Degree_Urbanisation. A dwelling removed."""
+    if _is_property(sender) and _residential(instance.usageFunction):
+        _schedule_hoods(geoms=[instance.geom])
+
+
+@receiver(pre_save, sender=Building, dispatch_uid="builtup_building_urbanisation_presave")
+def building_urbanisation_presave(sender, instance, raw=False, **kwargs):
+    if instance.pk is None:
+        return
+    instance._urbanisation_geom = Building.objects.filter(pk=instance.pk).values_list("geom", flat=True).first()
+
+
+@receiver(post_save, sender=Building, dispatch_uid="builtup_building_urbanisation_saved")
+def building_urbanisation_saved(sender, instance, created, raw=False, **kwargs):
+    """DAG edge: Buildings -> Degree_Urbanisation. A footprint drawn or moved changes the built-up share."""
+    if _skip_raw(raw):
+        return
+    old = getattr(instance, "_urbanisation_geom", None)
+    if not created and old is not None and instance.geom is not None \
+            and old.equals_exact(instance.geom, tolerance=0.01):
+        return
+    _schedule_hoods(geoms=[instance.geom, old])
+
+
+@receiver(post_delete, sender=Building, dispatch_uid="builtup_building_urbanisation_deleted")
+def building_urbanisation_deleted(sender, instance, **kwargs):
+    """DAG edge: Buildings -> Degree_Urbanisation."""
+    _schedule_hoods(geoms=[instance.geom])
+
+
+@receiver(post_save, sender="physicalEnv.LandCoverVector", dispatch_uid="builtup_landcover_urbanisation_saved")
+def landcover_urbanisation_saved(sender, instance, raw=False, **kwargs):
+    """DAG edge: LandCover -> Degree_Urbanisation. Settlement mask and water shares are re-read."""
+    if _skip_raw(raw):
+        return
+    _schedule_hoods(landcover=[instance.geom])
+
+
+@receiver(post_delete, sender="physicalEnv.LandCoverVector", dispatch_uid="builtup_landcover_urbanisation_deleted")
+def landcover_urbanisation_deleted(sender, instance, **kwargs):
+    """DAG edge: LandCover -> Degree_Urbanisation."""
+    _schedule_hoods(landcover=[instance.geom])
+
+
+def _landcover_rows_created(sender, pks=(), **kwargs):
+    """DAG edge: LandCover -> Degree_Urbanisation. Rows the editor's rings insert with raw SQL / create()."""
+    from physicalEnv.models import LandCoverVector
+
+    if sender is not LandCoverVector:
+        return
+    _schedule_hoods(landcover=list(LandCoverVector.objects.filter(pk__in=list(pks)).values_list("geom", flat=True)))
+
+
+def _connect_landcover_created():
+    from physicalEnv.landcover import landcover_created
+
+    landcover_created.connect(_landcover_rows_created, dispatch_uid="builtup_landcover_urbanisation_created")
+
+
+_connect_landcover_created()

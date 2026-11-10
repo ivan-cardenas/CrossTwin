@@ -53,11 +53,23 @@ INDEX_STYLES = {
     "HRSL_POP": ("reds", None, "Population Density (HRSL)", "people/pixel (30m)"),
     "AVG_RAD": ("inferno", None, "Nighttime Lights", "nW/cm²/sr"),
     "ALBEDO": ("greys_r", (0, 0.5), "Surface Albedo", ""),
+    # GHSL reference layers (importer catalog gee_ghsl_*): shown next to CrossTwin's own
+    # Degree of Urbanisation, never read by any calculation (docs/DEGREE_OF_URBANISATION.md).
+    "GHSL_SMOD": (None, None, "Degree of Urbanisation (GHSL GHS-SMOD, 1 km)", ""),
+    "GHSL_POP": ("ylorrd", None, "Population (GHSL GHS-POP, 100 m)", "people/cell"),
+}
+
+# Class rasters painted with fixed colours per value (TiTiler `colormap=` JSON)
+# instead of a named, rescaled colormap. GHS-SMOD uses the same colours as the
+# builtup.UrbanisationCell* layers (mainMap/styles/layerStyles.py DEGURBA_COLORS).
+DISCRETE_COLORMAPS = {
+    "GHSL_SMOD": {30: "#FF0000", 23: "#A87000", 22: "#732600", 21: "#FFFF00",
+                  13: "#375623", 12: "#ABCD66", 11: "#CDF57A", 10: "#7AB6F5"},
 }
 
 # Categorical products: legend still shows a gradient over the value range,
 # but callers can use this to skip drawing a continuous scale if desired.
-CATEGORICAL_INDICES = {"LGN2021", "WORLDCOVER_2021_MAP", "LABEL"}
+CATEGORICAL_INDICES = {"LGN2021", "WORLDCOVER_2021_MAP", "LABEL", "GHSL_SMOD"}
 
 # TiTiler's tile endpoint defaults to nearest-neighbour resampling, which is
 # correct for categorical rasters (land cover classes, forest loss year)
@@ -207,7 +219,19 @@ def resolve_raster_style(instance, registry_key):
         "unit": unit,
         "categorical": categorical,
         "resampling": RESAMPLING_OVERRIDES.get(index_value),
+        "discrete": DISCRETE_COLORMAPS.get(index_value),
     }
+
+
+def discrete_colormap_param(classes):
+    """TiTiler `colormap=` JSON for {value: '#rrggbb'}: {"value": [r, g, b, 255]}."""
+    import json
+
+    def rgba(hex_color):
+        h = hex_color.lstrip("#")
+        return [int(h[i:i + 2], 16) for i in (0, 2, 4)] + [255]
+
+    return json.dumps({str(value): rgba(color) for value, color in classes.items()}, separators=(",", ":"))
 
 
 def colormap_legend_stops(colormap_name, rescale, steps=6):

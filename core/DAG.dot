@@ -87,6 +87,9 @@ digraph CrossTwin {
     Facilities          [label="Urban Facilities"]
     
     CityArea            [label="CityArea"];
+    // Degree of Urbanisation (GHSL/Eurostat rules on 100 m cells, builtup.Urbanisation).
+    // Replaces the former Urbanization node (2026-11-10, docs/DAG_REVISIONS.md).
+    Degree_Urbanisation [label="Degree of\nUrbanisation"];
     Canyon_Aspect       [label="Canyon Aspect"];
     DSM                 [label="DSM \nDigital Surface Model"];
     Tmrt                [label="Tmrt\n Mean Radiant Temp"];
@@ -119,7 +122,6 @@ digraph CrossTwin {
     // ─── PRESSURE (Purple) ───────────────────────────────────────────────────────
     node [fillcolor="#8E24AA", fontcolor="white", color="#6A1B7A"];
     Anthropogenic_Heat  [label="Anthropogenic Heat"];
-    Urbanization        [label="Urbanization"];
     Total_Population    [label="Total Population"];
     Housing_Demand      [label="Housing Demand"];
     Household_Size      [label="Household Size"];
@@ -152,7 +154,6 @@ digraph CrossTwin {
     // ─── EDGES ──────────────────────────────────────────────────────────────────
     // Population
     Population_Growth   -> Total_Population;
-    Population_Growth   -> Urbanization;
 
     Total_Population    -> Total_Water_Demand;
     Total_Population    -> Anthropogenic_Heat;
@@ -160,13 +161,21 @@ digraph CrossTwin {
     Total_Population    -> NumberUsers;
     NumberUsers         -> Water_Tariff_Afford;
 
-    // Urbanization / Land
-    Urbanization        -> CityArea;
-    Urbanization        -> Buildings;
-    Urbanization        -> Streets;
-    Urbanization        -> LandCover;
-    Urbanization        -> Housing_Demand;
+    // Urban growth (2026-11-10, docs/DAG_REVISIONS.md): the former Urbanization
+    // node is gone. More people need more homes, homes are buildings, buildings
+    // need streets, both change the land cover, and the urban area grows:
+    //   Total_Population -> Housing_Demand -> Zoning_Status -> New_Units
+    //   -> Buildings -> Streets -> LandCover -> CityArea
+    // Degree_Urbanisation measures the result; it causes nothing (no out-edges).
     Total_Population    -> Housing_Demand;
+    New_Units           -> Buildings;
+    Buildings           -> Streets;
+    Buildings           -> LandCover;   // 10 m urban-fabric ring of an editor building (physicalEnv/landcover.py::urbanize_around)
+    Streets             -> LandCover;
+    LandCover           -> CityArea;    // neighborhood urban_area (physicalEnv/signals.py::_recompute_neighborhood_urban_area)
+    Total_Population    -> Degree_Urbanisation;
+    Buildings           -> Degree_Urbanisation;
+    LandCover           -> Degree_Urbanisation;   // settlement mask + water share of the 100 m cells
     Household_Size      -> Housing_Demand;
     Household_Size      -> Property;
 
@@ -227,7 +236,6 @@ digraph CrossTwin {
     Zoning_Status       -> New_Units;
 
     New_Units           -> Housing_Supply;
-    New_Units           -> LandCover;
     New_Green_Area      -> LandCover;   // park drawn in the map editor (physicalEnv/landcover.py::green_area)
     
     Property            -> Affordability_Stress;
@@ -260,7 +268,11 @@ digraph CrossTwin {
 
     Network             -> Coverage_WS_Area;
     Network             -> Coverage_WS;
-    Network             -> New_Units;
+    // Feedback, lagged one planning step (lag=1): network capacity enables new
+    // units, which (via Buildings -> LandCover -> CityArea) extend the network.
+    // A DAG cannot hold the loop; lagged edges are left out of the acyclicity
+    // check (core/test_dag.py) and are never implemented by a receiver.
+    Network             -> New_Units [lag=1, style=dashed];
     Network             -> Real_Losses;
     
     Total_Water_Prod    -> Energy_Consumption;

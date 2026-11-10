@@ -34,3 +34,17 @@ exclude = ["percentage", "last_updated", "source_building", "source_park",
 
 ["builtup.ZoningArea"]
 exclude = ["area"]            # save() sets it from geom
+
+# Dwellings and people, so the Degree of Urbanisation can be tried out on the map
+# (builtup/signals.py re-allocates the neighborhood; docs/DEGREE_OF_URBANISATION.md).
+["housing.ResidentialProperty"]
+# building: save() finds the footprint holding the point; residents: housing/signals.py;
+# unitaryPrice_EUR_per_sqm: save() from the price and area
+exclude = ["building", "residents", "unitaryPrice_EUR_per_sqm", "last_updated"]
+
+["builtup.Property"]
+exclude = ["building", "residents", "unitaryPrice_EUR_per_sqm", "last_updated"]
+
+["administrative.Neighborhood"]
+# area and density come from geom and population in save(); urban_area from the land cover
+exclude = ["area_km2", "populationDensity", "urban_area", "last_updated"]

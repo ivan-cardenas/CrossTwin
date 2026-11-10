@@ -314,7 +314,7 @@ def building_presave(sender, instance, raw=False, **kwargs):
 @receiver(post_save, sender=Building, dispatch_uid="physicalEnv_building_saved")
 def building_created(sender, instance, created, raw=False, **kwargs):
     """
-    DAG edge: New_Units -> LandCover. A building drawn in the map editor
+    DAG edge: Buildings -> LandCover. A building drawn in the map editor
     turns a BUILDING_BUFFER_M buffer around it into urban fabric
     (landcover.urbanize_around); moving it gives the old ring's land back
     (landcover.release_ring) and urbanizes around the new footprint. Only
@@ -339,7 +339,7 @@ def building_created(sender, instance, created, raw=False, **kwargs):
 @receiver(post_delete, sender=Building, dispatch_uid="physicalEnv_building_deleted")
 def building_deleted(sender, instance, **kwargs):
     """
-    DAG edge: New_Units -> LandCover (inverse). Deleting an editor building
+    DAG edge: Buildings -> LandCover (inverse). Deleting an editor building
     gives its ring's land back to the polygons it was cut from. Skipped while
     the editor's backup restore runs: it puts the land-cover rows back itself.
     """

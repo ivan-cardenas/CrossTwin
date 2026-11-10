@@ -27,6 +27,7 @@
 <script src="{% static 'js/LstTool.js' %}"></script>
 <script src="{% static 'js/SvfTool.js' %}"></script>
 <script src="{% static 'js/SolweigTool.js' %}"></script>
+<script src="{% static 'js/DegurbaTool.js' %}"></script>
 <script src="{% static 'js/WeatherPill.js' %}"></script>
 <script src="{% static 'js/info_popover.js' %}"></script>
 <script src="{% static 'js/MapSettings.js' %}"></script>
@@ -298,6 +299,34 @@
       <div class="lst-status" id="svf-status" role="status"></div>
     </div>
 
+    <!-- DEGREE OF URBANISATION — GHSL/Eurostat classes on 100 m cells (local
+         variant) and 1 km cells (original method) from neighborhood population
+         spread over residential properties (core/static/js/DegurbaTool.js,
+         builtup/views_degurba.py, docs/DEGREE_OF_URBANISATION.md). -->
+    <div class="lst-card" id="degurba-card"
+         data-info-url="{% url 'builtup:degurba_info' %}"
+         data-calculate-url="{% url 'builtup:degurba_calculate' %}"
+         data-can-calculate="{{ user.is_staff|yesno:'1,0' }}">
+      {% csrf_token %}
+      <div class="lst-card-header">
+        <div class="lst-card-title">DEGREE OF URBANISATION</div>
+        <button class="lst-card-close" id="degurba-card-close" aria-label="Close Degree of Urbanisation tool">✕</button>
+      </div>
+      <p class="lst-card-hint">Neighborhood population spread over residential properties, classified with the GHSL rules. 100 m uses a 300 m window over settlement land so city edges stay sharp; 1 km is the original method on the same data.</p>
+      <div class="lst-card-fields">
+        <label>Grid
+          <select id="degurba-resolution">
+            <option value="100" selected>100 m (local)</option>
+            <option value="1000">1 km (original)</option>
+          </select>
+        </label>
+      </div>
+      <div class="lst-view-info" id="degurba-view-info"></div>
+      <div class="lst-view-info" id="degurba-cities"></div>
+      <button class="lst-btn lst-btn-primary" id="degurba-calculate" disabled>Build the grid</button>
+      <div class="lst-status" id="degurba-status" role="status"></div>
+    </div>
+
     <!-- THERMAL COMFORT TOOL — SOLWEIG Tmrt, UTCI and PET for the area in view
          and one hour (core/static/js/SolweigTool.js, urban_heat/solweig/,
          docs/THERMAL_COMFORT.md). Reuses the LST card's lst-* classes. -->
@@ -515,6 +544,12 @@
           <span class="bi bi-person-walking"></span>
           <span class="action-btn-text">Thermal Comfort (SOLWEIG)</span>
           <span class="stale-dot" hidden title="Buildings changed here since thermal comfort was calculated: run it again"></span>
+        </button>
+      </div>
+      <div class="actions-menu-row">
+        <button class="action-panel-btn" id="degurbaToolBtn">
+          <span class="bi bi-buildings"></span>
+          <span class="action-btn-text">Degree of Urbanisation</span>
         </button>
       </div>
 

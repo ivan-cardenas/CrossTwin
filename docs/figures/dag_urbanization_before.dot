@@ -1,0 +1,17 @@
+// Urban-growth part of core/DAG.dot before 2026-11-10 (docs/DAG_REVISIONS.md).
+digraph before {
+    rankdir=TB; fontname="Lato"; nodesep=0.5; ranksep=0.6;
+    node [fontname="Lato", fontsize=12, style="filled,rounded", shape=box, color="#44444480", fontcolor="white"];
+    edge [color="#78909C", penwidth=1.4, arrowsize=0.7, arrowhead=vee];
+    Population_Growth [label="Population\nGrowth Rate", fillcolor="#EF8C1A"];
+    Buildings [fillcolor="#EF8C1A"]; Streets [label="Streets", fillcolor="#EF8C1A"];
+    Urbanization [fillcolor="#8E24AA"]; Total_Population [label="Total Population", fillcolor="#8E24AA"];
+    Housing_Demand [label="Housing Demand", fillcolor="#8E24AA"];
+    LandCover [fillcolor="#C62828"]; CityArea [fillcolor="#00897B"]; Network [label="Water Supply\nNetwork", fillcolor="#00897B"];
+    Zoning_Status [label="Zoning Status", fillcolor="#0097A7"]; New_Units [label="New Units\nCompleted", fillcolor="#0097A7"];
+    Population_Growth -> Total_Population; Population_Growth -> Urbanization;
+    Urbanization -> CityArea; Urbanization -> Buildings; Urbanization -> Streets;
+    Urbanization -> LandCover; Urbanization -> Housing_Demand;
+    Total_Population -> Housing_Demand; Housing_Demand -> Zoning_Status; Zoning_Status -> New_Units;
+    New_Units -> LandCover; CityArea -> Network; Network -> New_Units;
+}

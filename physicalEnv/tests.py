@@ -359,7 +359,7 @@ class _UrbanFabricTestCase(TestCase):
 
 
 class BuildingUrbanFabricBufferTests(_UrbanFabricTestCase):
-    """physicalEnv.signals.building_created -> landcover.urbanize_around (DAG edge New_Units -> LandCover)."""
+    """physicalEnv.signals.building_created -> landcover.urbanize_around (DAG edge Buildings -> LandCover)."""
 
     def test_buffer_is_cut_out_and_inserted_as_urban_fabric(self):
         self._building()

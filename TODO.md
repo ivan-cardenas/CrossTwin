@@ -1,6 +1,6 @@
 # TODO — Unimplemented DAG Edges
 
-The DPSIR causal graph in [`core/DAG.dot`](core/DAG.dot) defines 105 distinct edges (106 edge lines; `Total_Water_Prod -> OPEX` is listed twice). **Only 47 are backed by real derivation logic** (count as in `CLAUDE.md` › DAG Edge Coverage Gaps) — a `save()` method or a `calculations.py` function that actually reads the source field, not just a docstring claiming the edge. The rest are either flat stored fields with no computation, or `calculations.py` functions whose docstring claims an edge the code doesn't implement.
+The DPSIR causal graph in [`core/DAG.dot`](core/DAG.dot) defines 105 distinct edges (106 edge lines; `Total_Water_Prod -> OPEX` is listed twice; recount 2026-11-10, `core/test_dag.py::parse_dag`). **55 are backed by real derivation logic** (4 partial, 46 gaps) (count as in `CLAUDE.md` › DAG Edge Coverage Gaps) — a `save()` method or a `calculations.py` function that actually reads the source field, not just a docstring claiming the edge. The rest are either flat stored fields with no computation, or `calculations.py` functions whose docstring claims an edge the code doesn't implement.
 
 This file tracks the gaps, grouped by app. When one is closed, move it to the "Done" note at the bottom (or delete the line) and add the `# DAG edges:` comment to the implementing function per the convention in `CLAUDE.md`.
 
@@ -16,11 +16,15 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 
 - [x] `City.popGrowthRate` — now derived in `City.save()` from `population.annual_growth_rate()` (CBS compound annual growth rate over the city's imported projection years)
 - [x] Population curve moves with change, it should be a static curve for bounds and the change can move, the bounds work as comparative 
-- [ ] `urbanizationRate` — still a flat field, never consumed by function. This should be calculated from historical remote sensing imagery. This would be time consuming and memory intensive, so it should be a `calculations.py` function that reads a raster and averages over a time period.
+- [x] `urbanizationRate` — now the growth of the Degree of Urbanisation urban area (classes 21–30, 100 m grid) between stored CrossTwin population years (`builtup.Urbanisation`, mirrored to `City.urbanizationRate`). GHSL GHS-SMOD / GHS-POP epochs are importable as reference layers only (scales do not match), never used in the rate. `docs/DEGREE_OF_URBANISATION.md`
+- [ ] Second population year: the rate needs two stored years (import a newer CBS neighborhood population, then rebuild from the map card)
+- [ ] Check the DEGURBA semi-dense distance (2 km) and the unit level-2 tie rule against the Eurostat 2021 manual (marked † in `builtup/degurba.py`)
+- [ ] Calibrate the 100 m thresholds: compare 100 m vs 1 km on the same data and window 1/3/5, masked vs unmasked (`docs/DEGREE_OF_URBANISATION.md` §8)
 - [x] Housing demand depends on the projected population — `HousingSupplyDemand.demand_units` is derived in `save()` (baseline population ÷ CBS persons per home, `housing/chain.py`) and refreshed by `housing/signals.py` when the city population, the median `PopulationProjection` or the `HouseholdSize` changes (see builtup / housing)
 - [ ] Urban heat does not depend on the projected population
 - [x] `urban_area` — now cascades Neighborhood → District → City → Province via `administrative/signals.py::_recompute_population()` (generalized to also sum `urban_area`), sourced at the Neighborhood level from `physicalEnv.LandCoverVector` spatial intersection area (`physicalEnv/signals.py`)
-- [ ] No `Urbanization` model exists — `Urbanization -> CityArea/Buildings/Streets/LandCover` has nowhere to live (the new `urban_area` cascade computes a *result* consistent with what an `Urbanization` node would represent, but does not create the node or its DAG edges)
+- [x] `Urbanization` node removed from `core/DAG.dot` (2026-11-10, `docs/DAG_REVISIONS.md`): urbanisation is measured as the State node `Degree_Urbanisation` (`Total_Population/Buildings/LandCover -> Degree_Urbanisation`, implemented) and the growth chain is explicit: `New_Units -> Buildings -> Streets -> LandCover -> CityArea` (`Buildings -> LandCover` and `LandCover -> CityArea` implemented)
+- [ ] `New_Units -> Buildings` (completed housing projects become buildings/dwellings), `Buildings -> Streets` (access streets for new buildings), `Streets -> LandCover` (editor streets as road land cover) are gaps
 
 
 
