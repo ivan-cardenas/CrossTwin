@@ -45,8 +45,11 @@ def get_external_data(request):
     # to be a separate per-source sub-section; now it's just a line on the
     # dataset row — see the template) rather than mutating the catalog's own
     # dicts, which are shared module-level state reused across requests.
+    first = _import_first_status()
+
     def with_source_info(ds):
-        return {**ds, "source_label": SOURCE_INFO[ds["source"]]["name"], "source_icon": SOURCE_INFO[ds["source"]]["icon"]}
+        return {**ds, "source_label": SOURCE_INFO[ds["source"]]["name"], "source_icon": SOURCE_INFO[ds["source"]]["icon"],
+                "import_first_missing": first.get(ds["key"], {}).get("present") is False}
 
     categories = []
     for cat_name in sorted(catalog_grouped.keys()):
@@ -78,12 +81,47 @@ def get_external_data(request):
                 "enabled": d.get("enabled", True),
                 "slow": d.get("slow", False),
                 "slow_reason": d.get("slow_reason", ""),
+                "import_first": first.get(d["key"]),
             } for d in EXTERNAL_DATA_CATALOG}
         ),
     }
     say("catalog", f"Catalog page: {len(EXTERNAL_DATA_CATALOG)} dataset(s) in {len(categories)} "
                     f"categories from {len(all_sources)} source(s)")
     return render(request, "importer/external_data.html", context)
+
+
+def _import_first_status():
+    """
+    {dataset key: {dataset, name, reason, present}} for catalog entries with an
+    `import_first` dataset; `present` = its target model already has rows.
+    The page uses it to ask for that dataset before importing (e.g. the DSM
+    before BAG buildings, whose heights are measured from it).
+    """
+    out = {}
+    for d in EXTERNAL_DATA_CATALOG:
+        conf = d.get("import_first")
+        if not conf:
+            continue
+        try:
+            present = apps.get_model(conf["model"]).objects.exists()
+        except LookupError:
+            present = False
+        first = CATALOG_BY_KEY.get(conf["dataset"], {})
+        out[d["key"]] = {"dataset": conf["dataset"], "name": first.get("name", conf["dataset"]),
+                         "reason": conf["reason"], "present": present}
+    return out
+
+
+def _order_import_first(keys):
+    """Selected keys with each `import_first` dataset moved before the datasets that need it."""
+    ordered = []
+    for key in keys:
+        before = CATALOG_BY_KEY[key].get("import_first", {}).get("dataset")
+        if before in keys and before not in ordered:
+            ordered.append(before)
+        if key not in ordered:
+            ordered.append(key)
+    return ordered
 
 
 # Administrative levels the import map can pick an area of interest from:
@@ -171,6 +209,7 @@ def start_external_import(request):
     if invalid:
         say("ERROR", f"External import: unknown dataset(s) {', '.join(invalid)}")
         return JsonResponse({"error": f"Unknown datasets: {', '.join(invalid)}"}, status=400)
+    selected_keys = _order_import_first(selected_keys)   # e.g. the DSM before the buildings
 
     say("fetch", f"External import of {len(selected_keys)} dataset(s): {', '.join(selected_keys)}")
     say("fetch", f"  area: {f'bbox {bbox}' if bbox else 'none (whole source)'}"

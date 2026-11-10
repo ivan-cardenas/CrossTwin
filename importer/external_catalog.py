@@ -564,6 +564,14 @@ EXTERNAL_DATA_CATALOG = [
         "requires_bbox": True,
         "slow": True,
         "slow_reason": "BAG Panden is a very large dataset; even with a bounding box, it may take several minutes to load.",
+        # BAG has no heights: they are measured from the DSM during the import
+        # (physicalEnv/building_heights.py), so the import page asks for the DSM first.
+        "import_first": {
+            "dataset": "pdok_dsm_ahn_raster",
+            "model": "physicalEnv.DigitalSurfaceModel",
+            "reason": "BAG has no building heights. They are measured from the Digital Surface Model (AHN4 DSM) "
+                      "while the buildings are imported, so import the DSM for this area first.",
+        },
         "enabled": True,
     },
     {

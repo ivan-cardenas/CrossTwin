@@ -636,7 +636,10 @@ def load_raster_into_target_model(
             say("raster", "Building the map image (COG) straight from the downloaded file ...")
             export_geotiff_to_cog(filepath, obj)
 
-        return True, f"Loaded into {model_path} ({'created' if created else 'updated'} id={obj.id})."
+        message = f"Loaded into {model_path} ({'created' if created else 'updated'} id={obj.id})."
+        if model_path == "physicalEnv.DigitalSurfaceModel":
+            message += _heights_after_dsm(obj)
+        return True, message
 
     except Exception as e:
         logger.exception(f"Failed to load raster '{filepath}' into {model_path}")
@@ -943,11 +946,72 @@ def _import_geojson_features(features: List[Dict], dataset: Dict, Model, mapping
             created_count += bulk_created
             updated_count += bulk_updated
             errors.extend(bulk_errors)
+        if target == "builtup.Building" and unique_wfs_prop:
+            # inside the deferral: the canyon refresh at its end reads the new heights
+            _fill_building_heights(features, unique_wfs_prop, notes)
         # Leaving deferred_cascades() runs the postponed population/land-cover/water refresh
         say("write", f"{target}: {created_count} created, {updated_count} updated, {len(errors)} error(s) "
                      f"in {time.perf_counter() - started:.1f} s; refreshing dependent values ...")
 
     return created_count, updated_count, errors
+
+
+def _heights_after_dsm(dsm):
+    """
+    After a DSM import: measure the stored buildings under it that have no
+    height yet (imported before the DSM). Returns a sentence for the result
+    message ("" when there was nothing to fill).
+    """
+    from physicalEnv.building_heights import fill_under_dsm
+
+    say("raster", "Measuring heights of stored buildings without one under this DSM ...")
+    try:
+        with deferred_cascades():   # one canyon refresh for all of them
+            filled = fill_under_dsm(dsm)
+    except Exception:
+        # never fail the DSM import over a derived attribute
+        logger.exception("Building heights after the DSM import failed")
+        return " Measuring building heights from it failed (see the server log)."
+    say("raster", f"Building heights: {filled} building(s) measured from the new DSM")
+    return f" {filled} building height(s) measured from it." if filled else ""
+
+
+def _fill_building_heights(features, unique_wfs_prop, notes):
+    """
+    Measure height_m of the imported buildings that have none from the DSM
+    (physicalEnv/building_heights.py). BAG has no heights; without a DSM the
+    buildings keep none and a note asks to import the DSM first.
+    """
+    from builtup.models import Building
+    from core.cache import bump_layer_version
+    from physicalEnv.building_heights import fill_from_dsm
+    from physicalEnv.models import DigitalSurfaceModel
+
+    ids = []
+    for feat in features:
+        try:
+            ids.append(int(feat.get("properties", {}).get(unique_wfs_prop)))
+        except (TypeError, ValueError):
+            continue
+    if not ids:
+        return
+    if not DigitalSurfaceModel.objects.exists():
+        notes.append("no Digital Surface Model stored, so buildings were imported without heights. "
+                     "importing the DSM (AHN4) will measure them")
+        say("WARNING", "Building heights: no DSM stored, buildings keep no height")
+        return
+    say("write", f"Measuring heights of up to {len(ids)} building(s) from the DSM ...")
+    try:
+        filled = fill_from_dsm(Building.objects.filter(pk__in=ids))
+    except Exception:
+        # never fail an import over a derived attribute
+        logger.exception("Building heights from the DSM failed; the imported buildings keep no height")
+        notes.append("measuring building heights from the DSM failed (see the server log)")
+        return
+    if filled:
+        bump_layer_version(Building)
+    say("write", f"Building heights: {filled} building(s) measured from the DSM")
+    notes.append(f"{filled} building height(s) measured from the DSM")
 
 
 def _import_feature_rows(features, dataset, Model, mapping, geom_field, unique_wfs_prop, unique_model_field,

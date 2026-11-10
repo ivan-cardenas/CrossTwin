@@ -273,6 +273,14 @@
                             <span><strong class="font-semibold">Slow:</strong> {{ ds.slow_reason|default:"This import can take several minutes." }}</span>
                         </div>
                         {% endif %}
+                        {% if ds.import_first_missing %}
+                        <div class="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/40 text-amber-300 text-[11px] leading-relaxed">
+                            <svg class="w-3.5 h-3.5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <span><strong class="font-semibold">Import first:</strong> {{ ds.import_first.reason }}</span>
+                        </div>
+                        {% endif %}
                         <div class="flex items-center gap-3 text-[11px] text-slate-250">
                             <span>Source: {{ ds.source_label }}</span>
                             <span>Target: <code class="px-1 py-0.5 rounded bg-white/5 text-slate-400">{{ ds.target_model }}</code></span>
@@ -778,6 +786,21 @@ document.addEventListener('DOMContentLoaded', function () {
             alert('Please enter both the openEO client ID and client secret, or leave both blank to use the server default.');
             (openeoClientIdInput.value.trim() ? openeoClientSecretInput : openeoClientIdInput).focus();
             return;
+        }
+
+        // Datasets that need another one imported first (BAG buildings take
+        // their heights from the DSM): ask before starting. OK adds it to this
+        // run (the server runs it first); Cancel asks whether to go on without.
+        for (const key of [...selected]) {
+            const first = catalog[key]?.import_first;
+            if (!first || first.present || selected.includes(first.dataset)) continue;
+            if (confirm(`${catalog[key].name}: ${first.reason}\n\nOK: also import "${first.name}" now (it runs first).\nCancel: choose otherwise.`)) {
+                const box = document.querySelector(`.dataset-checkbox[value="${first.dataset}"]`);
+                if (box) { box.checked = true; box.dispatchEvent(new Event('change', {bubbles: true})); }
+                selected.push(first.dataset);
+            } else if (!confirm(`Import "${catalog[key].name}" without "${first.name}"? Its values stay empty until you import "${first.name}", which fills them in.`)) {
+                return;
+            }
         }
 
         // Clear any stale credentials-failure notice from a previous attempt
