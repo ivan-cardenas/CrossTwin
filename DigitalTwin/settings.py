@@ -79,6 +79,13 @@ KNMI_API_KEY = os.environ.get("KNMI_API_KEY")
 # Overpass API instance for the OpenStreetMap importer (osm_* catalog
 # entries). Unset = the URL in each catalog entry (the public overpass-api.de).
 OVERPASS_URL = os.environ.get("OVERPASS_URL")
+# Public Overpass instances tried in turn when the first one answers
+# 429/502/503/504 or cannot be reached (comma-separated; empty = no fallback).
+OVERPASS_MIRRORS = [u.strip() for u in os.environ.get(
+    "OVERPASS_MIRRORS",
+    "https://overpass.private.coffee/api/interpreter,"
+    "https://overpass.kumi.systems/api/interpreter",
+).split(",") if u.strip()]
 
 # Google Earth Engine project used for `ee.Initialize(project=...)`.
 # Authentication itself is a one-time `ee.Authenticate()` run per machine

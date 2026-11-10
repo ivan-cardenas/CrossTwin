@@ -3,7 +3,7 @@ from unittest import mock
 import geopandas as gpd
 from django.conf import settings
 from django.contrib.gis.geos import GEOSGeometry, MultiPolygon, Polygon
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from shapely.geometry import Polygon as ShapelyPolygon
 
@@ -973,6 +973,33 @@ class OSMImportTests(TestCase):
         result, _ = self._fetch("osm_trees", [], remark="runtime error: Query timed out at line 3")
         self.assertEqual(result.status, "error")
         self.assertIn("smaller area", result.message)
+
+    @override_settings(OVERPASS_URL=None, OVERPASS_MIRRORS=["https://mirror.example/api/interpreter"])
+    def test_bad_gateway_falls_back_to_the_next_instance(self):
+        from builtup.models import Facility
+        from .external_data import OSMImporter
+        node = {"type": "node", "id": 1, "lat": 52.37, "lon": 4.90, "tags": {"amenity": "police"}}
+        with mock.patch("importer.external_data.requests.post", side_effect=[
+            _FakeResponse(status_code=502),
+            _FakeResponse(json_data={"elements": [node]}),
+        ]) as post:
+            result = OSMImporter.fetch(CATALOG_BY_KEY["osm_amenities"], AMS_BBOX)
+        self.assertEqual(result.records_created, 1, result.message)
+        self.assertEqual([c.args[0] for c in post.call_args_list],
+                         [CATALOG_BY_KEY["osm_amenities"]["url"], "https://mirror.example/api/interpreter"])
+        self.assertEqual(Facility.objects.count(), 1)
+
+    @override_settings(OVERPASS_URL=None, OVERPASS_MIRRORS=["https://mirror.example/api/interpreter"])
+    def test_error_lists_every_failed_instance(self):
+        import requests
+        from .external_data import OSMImporter
+        with mock.patch("importer.external_data.requests.post", side_effect=[
+            _FakeResponse(status_code=502), requests.ConnectionError("down"),
+        ]):
+            result = OSMImporter.fetch(CATALOG_BY_KEY["osm_amenities"], AMS_BBOX)
+        self.assertEqual(result.status, "error")
+        self.assertIn("HTTP 502", result.message)
+        self.assertIn("mirror.example/api/interpreter: ConnectionError", result.message)
 
     def test_dispatcher_routes_osm_datasets(self):
         from .external_data import ImportResult, import_dataset

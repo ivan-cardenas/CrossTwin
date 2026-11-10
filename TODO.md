@@ -32,8 +32,6 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 
 - [X] `RS_Imagery -> LandCover/LST` — raster models are plain imports, no ingestion/derivation code
 - [x] `LandCover/Soil_Type -> Infiltration -> Available_FW`, `Meteorology -> Available_FW` — the dashboard card computes event infiltration (SCS); `AvailableFreshWater.save()` now stores `infiltrationRate_cm_h` (soil group x unsealed share) and, with a year of daily KNMI rain + Makkink ET (catalog `knmi_daily_water_balance`), `infiltrationDepth_cm` and the yield; receivers on soil, land cover, groundwater and daily meteorology refresh it
-- [ ] Recharge simplifications to revisit: crop factor 1 for every surface (Makkink reference ET, no land-cover crop factors), no soil-moisture store between days, roads/rail sealed share 0.6 is an estimate
-- [ ] Run `knmi_daily_water_balance` end to end from the importer UI (tested with a mocked KNMI answer only)
 - [x] `New_Units -> LandCover` — a building drawn in the map editor turns a 10 m buffer into urban fabric (`physicalEnv/landcover.py::urbanize_around`); moving or deleting it gives the land back (`release_ring`, cut pieces kept in `UrbanFabricCut`). The housing pipeline's land take (greenfield vs infill) is a dashboard statistic (`housing/calculations.py::calculate_pipeline_land_take`)
 
 ## urban_heat
@@ -174,4 +172,3 @@ Existing three-layer pattern (`calculations.py` + `views.py` + templates, see CL
 ## OTHERS
 
 - [ ] Add "Various Forest Assets Pack" (https://skfb.ly/pCEzX) by Dari is licensed under Creative Commons Attribution (http://creativecommons.org/licenses/by/4.0/). to reference in the map for 3D model
-- [ ] Add "Gymnasium" (https://skfb.ly/ovNSH) by generalsnake82 is licensed under Creative Commons Attribution (http://creativecommons.org/licenses/by/4.0/). refrence to schools 3D Model

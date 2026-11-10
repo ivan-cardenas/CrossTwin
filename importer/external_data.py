@@ -2826,6 +2826,51 @@ class OSMImporter:
             for prop in numeric & props.keys():
                 props[prop] = OSMImporter.parse_number(props[prop])
 
+    # Statuses that mean "this instance can't serve now", not "bad query":
+    # the next instance is tried.
+    TRANSIENT_STATUS = (429, 502, 503, 504)
+
+    @staticmethod
+    def instances(dataset: Dict) -> List[str]:
+        """OVERPASS_URL (else the catalog URL), then OVERPASS_MIRRORS, without duplicates."""
+        urls = [getattr(settings, "OVERPASS_URL", None) or dataset["url"]]
+        urls += list(getattr(settings, "OVERPASS_MIRRORS", []) or [])
+        return list(dict.fromkeys(urls))
+
+    @staticmethod
+    def _post(query: str, dataset: Dict):
+        """
+        POST the query to each Overpass instance in turn until one answers.
+        Returns the response, or an ImportResult error when every instance
+        failed with a transient status or could not be reached.
+        """
+        failures = []
+        for url in OSMImporter.instances(dataset):
+            logger.info(f"Fetching Overpass: {url} dataset={dataset['key']}")
+            say("osm", f"Fetching Overpass: {url} dataset={dataset['key']}")
+            try:
+                response = requests.post(
+                    url, data={"data": query},
+                    headers={"User-Agent": OSMImporter.USER_AGENT},
+                    timeout=OSMImporter.TIMEOUT_S + 30,
+                )
+            except (requests.ConnectionError, requests.Timeout) as e:
+                failures.append(f"{url}: {type(e).__name__}")
+                say("osm", f"Overpass {url} unreachable ({type(e).__name__}), trying the next instance")
+                continue
+            if response.status_code in OSMImporter.TRANSIENT_STATUS:
+                failures.append(f"{url}: HTTP {response.status_code}")
+                say("osm", f"Overpass {url} answered HTTP {response.status_code}, trying the next instance")
+                continue
+            response.raise_for_status()
+            return response
+        return ImportResult(
+            "error",
+            "No Overpass server could answer (" + "; ".join(failures) + "). "
+            "They may be busy or rate limiting: try again later or a smaller area, "
+            "or set OVERPASS_URL / OVERPASS_MIRRORS in .env.",
+        )
+
     @staticmethod
     def fetch(dataset: Dict, bbox: list) -> ImportResult:
         """
@@ -2845,20 +2890,9 @@ class OSMImporter:
             geom_type = Model._meta.get_field(mapping.get("__geometry__", "geom")).geom_type
             as_points = geom_type in ("POINT", "MULTIPOINT")
             query = OSMImporter.build_query(dataset, bbox, as_points)
-            url = getattr(settings, "OVERPASS_URL", None) or dataset["url"]
-
-            logger.info(f"Fetching Overpass: {url} dataset={dataset_key}")
-            say("osm", f"Fetching Overpass: {url} dataset={dataset_key}")
-            response = requests.post(
-                url, data={"data": query},
-                headers={"User-Agent": OSMImporter.USER_AGENT},
-                timeout=OSMImporter.TIMEOUT_S + 30,
-            )
-            if response.status_code == 429:
-                return ImportResult("error", "The Overpass server is rate limiting requests. Wait a minute and try again.")
-            if response.status_code == 504:
-                return ImportResult("error", "The Overpass server is busy or the query timed out. Try a smaller area or try again later.")
-            response.raise_for_status()
+            response = OSMImporter._post(query, dataset)
+            if isinstance(response, ImportResult):
+                return response
             body = response.json()
 
             # Overpass reports a timeout or memory limit with HTTP 200 and a
