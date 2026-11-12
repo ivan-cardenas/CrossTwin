@@ -671,7 +671,7 @@ function _loadedRasters(appLabel, modelName) {
 /**
  * Point the loaded raster layers of one model at a fresh tile URL. A DSM's
  * edited COG gets a new file name after every map edit
- * (physicalEnv/dsm_edited.py), so its tiles reload instead of coming from the
+ * (physicalEnv/calculations/dsm_edited.py), so its tiles reload instead of coming from the
  * browser cache.
  */
 async function refreshRasterTiles(appLabel, modelName) {

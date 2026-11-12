@@ -41,9 +41,9 @@ from django.dispatch import receiver
 from django.utils import timezone
 
 from administrative.models import City, PopulationProjection
-from administrative.population import DEFAULT_SCENARIO
+from administrative.calculations.population import DEFAULT_SCENARIO
 from administrative.signals import city_population_changed
-from physicalEnv.landcover import landcover_created
+from physicalEnv.calculations.landcover import landcover_created
 from physicalEnv.models import GroundwaterDepth, LandCoverVector, SoilArea, SoilType
 from weather.knmi import daily_water_balance_changed
 from weather.models import Meteorology
@@ -199,7 +199,7 @@ def city_population_cascaded(sender, city_id, **kwargs):
 def projection_changed(sender, instance, raw=False, **kwargs):
     """
     The stored chain uses the median forecast of each record's year as its
-    population (watersupply/chain.py::baseline_population), so a new or
+    population (watersupply/calculations/chain.py::baseline_population), so a new or
     corrected forecast is a population change. The low/high variants only feed
     the dashboard's what-if, which is computed per request.
 
@@ -446,7 +446,7 @@ def groundwater_changed(sender, instance, raw=False, **kwargs):
 
 @receiver(landcover_created, sender=LandCoverVector, dispatch_uid="water_landcover_created")
 def landcover_rows_created(sender, pks, **kwargs):
-    """Land cover inserted with raw SQL by the map editor (physicalEnv/landcover.py). DAG edge: LandCover -> Infiltration"""
+    """Land cover inserted with raw SQL by the map editor (physicalEnv/calculations/landcover.py). DAG edge: LandCover -> Infiltration"""
     from django.contrib.gis.db.models import Extent
 
     box = LandCoverVector.objects.filter(pk__in=pks).aggregate(e=Extent('geom'))['e']
@@ -456,12 +456,12 @@ def landcover_rows_created(sender, pks, **kwargs):
 def _sources_near_stations(station_ids):
     """
     Sources that may take their meteorology from one of these stations: those
-    with one of them among the stations weather.water_balance would try.
+    with one of them among the stations weather.calculations.water_balance would try.
     """
     from django.contrib.gis.db.models.functions import Distance
 
     from weather.models import WeatherStation
-    from weather.water_balance import MAX_STATIONS
+    from weather.calculations.water_balance import MAX_STATIONS
 
     station_ids = set(station_ids)
     daily = Meteorology.objects.filter(reference_et_mm__isnull=False).values('station_id')

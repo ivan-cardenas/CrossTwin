@@ -4,7 +4,7 @@ from django.core.exceptions import ValidationError
 from django.conf import settings
 
 from builtup.models import Property
-from . import chain
+from .calculations import chain
 
 COORDINATE_SYSTEM = settings.COORDINATE_SYSTEM
 AFFORDABILITY_STRESS_LEVELS = [('low', 'Low'), ('moderate', 'Moderate'), ('high', 'High')] #TODO: check if these are the right thresholds for the affordability stress levels,
@@ -44,7 +44,7 @@ class HouseholdSize(models.Model):
     def derive(self):
         """(population, average_size) from the stored forecast; the current values where it has none."""
         from administrative.models import PopulationProjection
-        from administrative.population import DEFAULT_SCENARIO
+        from administrative.calculations.population import DEFAULT_SCENARIO
 
         projected = PopulationProjection.objects.filter(
             city_id=self.city_id, year=self.year, scenario=DEFAULT_SCENARIO,

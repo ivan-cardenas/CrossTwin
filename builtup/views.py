@@ -2,10 +2,10 @@ from django.shortcuts import render
 from django.http import JsonResponse
 
 from administrative.admin_units import resolve_admin_unit, ADMIN_LEVELS
-from administrative.population import DEFAULT_SCENARIO, get_population, population_params
+from administrative.calculations.population import DEFAULT_SCENARIO, get_population, population_params
 from mainMap.styles.layerStyles import (BUILDING_TYPE_COLORS, BUILDING_TYPE_LABELS, DEGURBA_COLORS,
                                        DEGURBA_LABELS, LAYER_STYLES)
-from .calculations import (
+from .calculations.indicators import (
     calculate_building_stock,
     calculate_building_mix,
     calculate_building_age,
@@ -60,13 +60,13 @@ def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, po
 
 def _urbanisation(adminUnit, year, pop_scenario, pop_growth):
     """
-    Degree of Urbanisation card (builtup/urbanisation.py::dashboard): stored rows,
+    Degree of Urbanisation card (builtup/calculations/urbanisation.py::dashboard): stored rows,
     or the in-memory what-if when the population dock moves away from the baseline.
     DAG edges: Total_Population -> Degree_Urbanisation, Buildings -> Degree_Urbanisation.
     """
     import logging
 
-    from .urbanisation import dashboard
+    from .calculations.urbanisation import dashboard
 
     try:
         return dashboard(adminUnit, year, pop_scenario, pop_growth)

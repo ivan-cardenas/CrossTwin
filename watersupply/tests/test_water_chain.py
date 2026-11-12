@@ -16,7 +16,7 @@ from watersupply.models import (
     ImportedWater, NonRevenueWater, OPEX, PipeNetwork, SupplySecurity, TotalWaterDemand,
     TotalWaterProduction,
 )
-from watersupply.calculations import calculate_nrw
+from watersupply.calculations.indicators import calculate_nrw
 
 from .factories import (
     make_city, make_consumption_capita, make_district, make_neighborhood, make_polygon,

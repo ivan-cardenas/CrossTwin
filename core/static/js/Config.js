@@ -28,10 +28,10 @@ let CONFIG = {
 // whole: their click handlers and the admin-unit panels need every unit.
 // See docs/PERFORMANCE.md §1.
 const VIEWPORT_LOAD_MIN_FEATURES = 5000;
-// Edited DSM (physicalEnv/dsm_edited.py): status poll interval and give-up time after a map edit.
+// Edited DSM (physicalEnv/calculations/dsm_edited.py): status poll interval and give-up time after a map edit.
 const DSM_EDIT_POLL_MS = 1000;
 const DSM_EDIT_POLL_TIMEOUT_MS = 5 * 60 * 1000;
-// Degree of Urbanisation card: poll while the grid refreshes after a map edit (builtup/urbanisation.py).
+// Degree of Urbanisation card: poll while the grid refreshes after a map edit (builtup/calculations/urbanisation.py).
 const DEGURBA_POLL_MS = 1500;
 const DEGURBA_POLL_TIMEOUT_MS = 5 * 60 * 1000;
 const VIEWPORT_RELOAD_DELAY_MS = 350;

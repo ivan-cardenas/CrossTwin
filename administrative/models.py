@@ -57,7 +57,7 @@ class City(models.Model):
     populationDensity = models.FloatField(null=True, help_text="Population density in people per square kilometer", verbose_name="Population Density") # people/km2
     populationDate = models.DateField(null=True)
     popGrowthRate = models.FloatField(null=True , help_text="Growth rate in % per year") # %
-    urbanizationRate = models.FloatField(null=True, help_text="Growth of the urban area (Degree of Urbanisation classes 21-30, 100 m grid) in % per year, between the earliest and latest stored CrossTwin years; written by builtup/urbanisation.py::mirror_city_rates") # %
+    urbanizationRate = models.FloatField(null=True, help_text="Growth of the urban area (Degree of Urbanisation classes 21-30, 100 m grid) in % per year, between the earliest and latest stored CrossTwin years; written by builtup/calculations/urbanisation.py::mirror_city_rates") # %
     urban_area = models.FloatField(null=True, help_text="Urban area in square kilometers")
     geom = models.MultiPolygonField(srid=CoordinateSystem)
     last_updated = models.DateTimeField(default=timezone.now)
@@ -83,7 +83,7 @@ class City(models.Model):
 
         if self.pk:
             # Local import: population.py imports City from this module.
-            from .population import annual_growth_rate
+            from .calculations.population import annual_growth_rate
             rate = annual_growth_rate(self)
             if rate is not None:
                 self.popGrowthRate = rate
@@ -158,7 +158,7 @@ class PopulationProjection(models.Model):
     Loaded from CBS table 85173NED ("Regionale prognose 2023-2050"), which is
     published per gemeente; City.pk is the gemeente number. Districts,
     Neighborhoods and the Province are derived from these city values (see
-    administrative/population.py), so nothing is stored below or above the city.
+    administrative/calculations/population.py), so nothing is stored below or above the city.
 
     DAG edge: Population_Growth -> Total_Population
     """

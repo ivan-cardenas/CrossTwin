@@ -226,7 +226,7 @@ def _raster(array, origin, cell, srid):
 
 def replace_covered(model, record, when_local, area, cell):
     """Delete the other SOLWEIG rows of `model` for the same hour inside `area`, with their COGs."""
-    from physicalEnv.svf import _storage_box
+    from physicalEnv.calculations.svf import _storage_box
 
     replaced = []
     inside = (model.objects.filter(source__startswith=SOURCE_PREFIX, date_time=when_local,
@@ -259,7 +259,7 @@ def calculate(run):
     from django.contrib.gis.geos import Polygon
     from django.db import transaction
 
-    from physicalEnv import svf
+    from physicalEnv.calculations import svf
 
     from urban_heat.models import PET, UTCI, MeanRadiantTemperature
 
@@ -368,7 +368,7 @@ def stale_results(view):
     Returns {"svf": [ids], "thermal": [run ids]}.
     """
     from physicalEnv.models import DSMEdit
-    from physicalEnv.svf import _storage_box
+    from physicalEnv.calculations.svf import _storage_box
 
     from urban_heat.models import SkyViewFactor, ThermalComfortRun
 

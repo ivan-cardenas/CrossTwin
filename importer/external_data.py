@@ -962,7 +962,7 @@ def _heights_after_dsm(dsm):
     height yet (imported before the DSM). Returns a sentence for the result
     message ("" when there was nothing to fill).
     """
-    from physicalEnv.building_heights import fill_under_dsm
+    from physicalEnv.calculations.building_heights import fill_under_dsm
 
     say("raster", "Measuring heights of stored buildings without one under this DSM ...")
     try:
@@ -979,12 +979,12 @@ def _heights_after_dsm(dsm):
 def _fill_building_heights(features, unique_wfs_prop, notes):
     """
     Measure height_m of the imported buildings that have none from the DSM
-    (physicalEnv/building_heights.py). BAG has no heights; without a DSM the
+    (physicalEnv/calculations/building_heights.py). BAG has no heights; without a DSM the
     buildings keep none and a note asks to import the DSM first.
     """
     from builtup.models import Building
     from core.cache import bump_layer_version
-    from physicalEnv.building_heights import fill_from_dsm
+    from physicalEnv.calculations.building_heights import fill_from_dsm
     from physicalEnv.models import DigitalSurfaceModel
 
     ids = []
@@ -2041,7 +2041,7 @@ class Sentinel2Importer:
         "NDWI": ["B03", "B08"],
         "MOISTURE_INDEX": ["B8A", "B11"],
         "TRUE_COLOR": ["B04", "B03", "B02"],
-        # Shortwave broadband albedo: physicalEnv/albedo.py::ALBEDO_COEFFICIENTS
+        # Shortwave broadband albedo: physicalEnv/calculations/albedo.py::ALBEDO_COEFFICIENTS
         "ALBEDO": ["B02", "B03", "B04", "B08", "B11", "B12"],
          ## -------- CONSIDER ADDING MORE INDICES HERE --------
                     ## -------- CONSIDER ADDING FUNCTIONS OF EXTERNAL PROCESSING LIBRARIES (e.g., scikit-image, landcover ML, RF, etc) --------
@@ -2225,8 +2225,8 @@ class Sentinel2Importer:
             elif index_key == "ALBEDO":
                 # Narrow-to-broadband conversion over L2A surface reflectance
                 # (DN / 10000), Bonafoni & Sekertekin 2020; the weights live in
-                # physicalEnv/albedo.py so the stored value and this agree.
-                from physicalEnv.albedo import ALBEDO_COEFFICIENTS
+                # physicalEnv/calculations/albedo.py so the stored value and this agree.
+                from physicalEnv.calculations.albedo import ALBEDO_COEFFICIENTS
                 result_cube = None
                 for band_name, weight in ALBEDO_COEFFICIENTS.items():
                     term = datacube.band(band_name) * (weight / 10000.0)

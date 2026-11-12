@@ -9,7 +9,7 @@ import requests
 def displayed_cog_path(instance):
     """
     The COG the map shows for a raster row: a DSM's edited copy (the map
-    editor's building/vegetation changes burnt in, physicalEnv/dsm_edited.py)
+    editor's building/vegetation changes burnt in, physicalEnv/calculations/dsm_edited.py)
     when it exists, else cog_path.
     """
     import os

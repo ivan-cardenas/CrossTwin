@@ -254,7 +254,7 @@ def population_panel(request):
     open next to it.
     URL: /api/population/panel/?level=&location=&lng=&lat=&year=&pop_scenario=&pop_growth=
     """
-    from administrative.population import population_params
+    from administrative.calculations.population import population_params
     from .charts import build_population_chart, build_population_stats
 
     level, unit, is_selection = _resolve_summary_unit(request)

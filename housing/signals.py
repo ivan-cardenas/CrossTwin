@@ -27,7 +27,7 @@ from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 
 from administrative.models import City, PopulationProjection
-from administrative.population import DEFAULT_SCENARIO
+from administrative.calculations.population import DEFAULT_SCENARIO
 from administrative.signals import city_population_changed
 from builtup.models import Property
 from core.cache import bump_layer_version
@@ -157,7 +157,7 @@ def city_population_cascaded(sender, city_id, **kwargs):
 def projection_changed(sender, instance, raw=False, **kwargs):
     """
     The stored demand uses the median forecast of each record's year
-    (housing/chain.py::baseline_population); low/high only feed the dashboard's what-if.
+    (housing/calculations/chain.py::baseline_population); low/high only feed the dashboard's what-if.
 
     DAG edges: Population_Growth -> Total_Population -> Housing_Demand
     """

@@ -4,8 +4,8 @@ backup restore (core.editing.restore_backup) reverts them with the edit itself.
 """
 from django.dispatch import receiver
 
-from physicalEnv.landcover import landcover_created, landcover_rewriting
-from physicalEnv.dsm_patches import dsm_patch_created, dsm_patch_rewriting
+from physicalEnv.calculations.landcover import landcover_created, landcover_rewriting
+from physicalEnv.calculations.dsm_patches import dsm_patch_created, dsm_patch_rewriting
 from builtup.signals import canyon_created, canyon_rewriting
 
 from core.editing import journal

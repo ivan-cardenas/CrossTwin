@@ -7,10 +7,10 @@ from django.db.models import Sum, Avg
 from django.apps import apps
 
 from .models import *
-from . import chain
+from .calculations import chain
 from administrative.admin_units import resolve_admin_unit
-from administrative.population import DEFAULT_SCENARIO, get_population, population_params
-from .calculations import (
+from administrative.calculations.population import DEFAULT_SCENARIO, get_population, population_params
+from .calculations.indicators import (
     _get_consumption_capita,
     consumption_data_years,
     calculate_supply_security,
@@ -27,7 +27,7 @@ from .calculations import (
     calculate_drought_area,
     calculate_infiltration,
 )
-from physicalEnv.soil import DEFAULT_SEASON, SEASONS, SOIL_GROUP_ORDER, SOIL_GROUPS, summarize_infiltration
+from physicalEnv.calculations.soil import DEFAULT_SEASON, SEASONS, SOIL_GROUP_ORDER, SOIL_GROUPS, summarize_infiltration
 from django.contrib.gis.db.models.functions import Intersection, Length
 from django.contrib.gis.measure import D
 
@@ -264,7 +264,7 @@ def _infiltration_indicators(infiltration, rain_mm):
 def _build_indicators(data, consumption_override=None, rain_mm=RAIN_MM_DEFAULT):
     """Pure function: takes DB data dict, returns indicators dict."""
     consumption  = (consumption_override or data['consumption_capita'])
-    # Same chain as the stored records (watersupply/chain.py), fed with the
+    # Same chain as the stored records (watersupply/calculations/chain.py), fed with the
     # request's population what-if instead of the baseline projection.
     demand_m3_d  = chain.demand_m3_d(consumption, data['population'])
     supply_m3_d  = data['supply_m3_d']

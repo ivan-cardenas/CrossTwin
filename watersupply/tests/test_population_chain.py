@@ -1,6 +1,6 @@
 """
 The stored water chain and the dashboard's population what-if share one
-implementation (watersupply/chain.py): stored records use the baseline
+implementation (watersupply/calculations/chain.py): stored records use the baseline
 population of their year (CBS median forecast, no extra growth), a new or
 corrected forecast propagates through the signals, and the dashboard runs the
 same functions with the request's what-if without writing anything.
@@ -12,7 +12,8 @@ from django.urls import reverse
 
 from administrative.models import PopulationProjection
 from importer.batching import deferred_cascades
-from watersupply import chain, signals
+from watersupply import signals
+from watersupply.calculations import chain
 from watersupply.models import ConsumptionCapita, ImportedWater, SupplySecurity, TotalWaterDemand
 
 from .factories import make_city, make_consumption_capita

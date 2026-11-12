@@ -10,7 +10,7 @@ per-year `points` list.
 import json
 import math
 
-from administrative.population import (
+from administrative.calculations.population import (
     REFERENCE_YEAR, population_by_year, population_curve, projection_years,
 )
 

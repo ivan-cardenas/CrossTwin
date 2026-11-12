@@ -121,7 +121,7 @@ def _resolution(data):
 @require_GET
 def solweig_info(request):
     def view():
-        from physicalEnv.svf import wgs84_to_storage
+        from physicalEnv.calculations.svf import wgs84_to_storage
 
         from . import inputs, pipeline
 
@@ -197,7 +197,7 @@ def solweig_calculate(request):
     def view():
         from django.db import transaction
 
-        from physicalEnv.svf import _storage_box, wgs84_to_storage
+        from physicalEnv.calculations.svf import _storage_box, wgs84_to_storage
 
         from urban_heat.models import ThermalComfortRun
 
@@ -240,7 +240,7 @@ def solweig_run(request, run_id):
 @require_GET
 def solweig_stale(request):
     def view():
-        from physicalEnv.svf import wgs84_to_storage
+        from physicalEnv.calculations.svf import wgs84_to_storage
 
         from .pipeline import stale_results
 

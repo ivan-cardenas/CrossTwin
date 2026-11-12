@@ -14,8 +14,8 @@ Each entry:
     where  optional (symbol, meaning) pairs explaining the equation's terms
     note   optional caveat, threshold or reading guide
 
-Keep the equations in step with the code they describe (watersupply/chain.py,
-urban_heat/chain.py, housing/chain.py, the apps' views/calculations); the
+Keep the equations in step with the code they describe (watersupply/calculations/chain.py,
+urban_heat/calculations/chain.py, housing/calculations/chain.py, the apps' views/calculations); the
 docstring next to each equation in the code is the reference.
 """
 
@@ -336,7 +336,7 @@ HELP = {
         "how": "Each building's coarse type comes from its BAG usage function(s) (gebruiksdoel). A building with functions of more than one type counts as Mixed; buildings without a recorded function show as Unknown. Colours match the Buildings layer on the map.",
         "eq": ["Share of a type = {buildings of that type | all buildings} × 100 %"],
     },
-    "builtup.degurba": {
+    "builtup.calculations.degurba": {
         "title": "Degree of Urbanisation",
         "what": "How urban the unit is by the GHSL / Eurostat Degree of Urbanisation: city, town (dense, semi-dense, suburban) or rural (village, dispersed, mostly uninhabited), and how fast its urban area grows.",
         "how": "Each neighborhood's population is shared equally over its residential properties (dwellings, never buildings), summed per 100 m cell and classified with the GHSL rules. At 100 m, density uses a 300 m window over settlement land only, so edge cells next to fields keep their density. The 1 km figure is the original method on the same data. The unit's class follows where most of its people live. The population dock's scenario reclassifies the whole grid in memory as a what-if.",

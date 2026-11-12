@@ -23,7 +23,7 @@ from physicalEnv.signals import deferred_urban_area, schedule_urban_area_recompu
 from watersupply.signals import deferred_water_refresh, refresh_freshwater
 from housing.signals import deferred_housing_refresh
 from builtup.signals import deferred_canyon_refresh, schedule_streets, streets_in_extent
-from builtup.urbanisation import deferred_urbanisation_refresh
+from builtup.calculations.urbanisation import deferred_urbanisation_refresh
 
 logger = logging.getLogger(__name__)
 
@@ -139,8 +139,8 @@ def _refresh_canyons_over(rows):
 
 
 def _finalize_landcover(rows):
-    from physicalEnv.albedo import measure_missing, set_default_materials
-    from physicalEnv.landcover import refresh_percentages
+    from physicalEnv.calculations.albedo import measure_missing, set_default_materials
+    from physicalEnv.calculations.landcover import refresh_percentages
 
     for city_id in {row.city_id for row in rows if row.city_id}:
         refresh_percentages(city_id)      # replays the percentage pre_save
@@ -155,7 +155,7 @@ def _fill_tree_heights(rows):
     from django.db.models import Q
 
     from nature.models import Tree
-    from physicalEnv.tree_heights import fill_from_dsm
+    from physicalEnv.calculations.tree_heights import fill_from_dsm
 
     pks = [row.pk for row in rows if row.pk is not None]
     keys = [row.sourceID for row in rows if row.pk is None and row.sourceID]
@@ -182,7 +182,7 @@ BULK_IMPORT_MODELS = {
     "nature.WaterWaysPG": None,
     "nature.WaterBodies": None,
     "nature.Forests": None,
-    "nature.Tree": _fill_tree_heights,                    # height_m from the DSM (physicalEnv/tree_heights.py)
+    "nature.Tree": _fill_tree_heights,                    # height_m from the DSM (physicalEnv/calculations/tree_heights.py)
 }
 
 

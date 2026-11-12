@@ -41,9 +41,9 @@ class ConsumptionCapita(models.Model):
         DAG edges: Total_Population, ConsumptionCapita -> Total_Water_Demand
                    (yearly consumption is an intermediate, not a DAG node)
         total_consumption_m3_yr = L/person/day / 1000 * population * 365, with
-        the baseline population of `year` (watersupply/chain.py).
+        the baseline population of `year` (watersupply/calculations/chain.py).
         """
-        from .chain import baseline_population, consumption_m3_yr
+        from .calculations.chain import baseline_population, consumption_m3_yr
 
         if self.consumption_capita_L_d < 0:
             raise ValidationError("Consumption Capita cannot be negative")
@@ -89,11 +89,11 @@ class TotalWaterDemand(models.Model):
         DAG edges: Total_Population -> Total_Water_Demand
                    ConsumptionCapita -> Total_Water_Demand
         demandDay [Mm3/day] = population * L/person/day / 1e9   (L -> Mm3), with
-        the baseline population of `year` (watersupply/chain.py) and the
+        the baseline population of `year` (watersupply/calculations/chain.py) and the
         consumption of `year` or the closest year before it
         (ConsumptionCapita.for_year).
         """
-        from .chain import baseline_population, demand_m3_d
+        from .calculations.chain import baseline_population, demand_m3_d
 
         consumption = ConsumptionCapita.for_year(self.city, self.year)
         if consumption is None:
@@ -127,14 +127,14 @@ class SupplySecurity(models.Model):
         DAG edges: Total_Water_Demand -> Supply_Security
                    Total_Water_Prod   -> Supply_Security
                    Supply_Security    -> Service_Time
-        Same functions as watersupply.views._build_indicators (watersupply/chain.py):
+        Same functions as watersupply.views._build_indicators (watersupply/calculations/chain.py):
           supply_security_pct = production / demand * 100
           service_time_hours  = 24 if production >= demand else 24 * production / demand
         Only recalculated when both demand (TotalWaterDemand for this city/year)
         and production are known; otherwise the supplied values are kept.
         """
-        from .calculations import calculate_total_production_day  # avoid circular import
-        from .chain import service_time_hours, supply_security_pct
+        from .calculations.indicators import calculate_total_production_day  # avoid circular import
+        from .calculations.chain import service_time_hours, supply_security_pct
 
         demand = TotalWaterDemand.objects.filter(city=self.city, year=self.year).first()
         demand_m3_d = demand.demandDay * 1e6 if demand else 0       # Mm3/day -> m3/day
@@ -260,18 +260,18 @@ class AvailableFreshWater(models.Model):
                     Meteorology -> Available_FW
 
         With soil-map x land-cover pieces over the polygon
-        (physicalEnv.soil.soil_landcover_composition, wet-season groundwater):
+        (physicalEnv.calculations.soil.soil_landcover_composition, wet-season groundwater):
           infiltrationRate_cm_h = soil.weighted_infiltration_rate_mm_h / 10
           infiltrationDepth_cm  = chain.recharge_depth_cm_yr(daily rain, ET_ref, pieces),
                                   when a station has a complete year (recharge_year,
-                                  else its latest; weather.water_balance)
+                                  else its latest; weather.calculations.water_balance)
         Then yield_Mm3_year = infiltrationDepth_cm / 100 * area_m2 / 1e6
         (chain.recharge_Mm3_yr), whenever the depth is known.
         A missing input keeps the stored (or supplied) value instead of
         writing None. The rate is a capacity during rain, not a yearly amount,
         so it does not enter the yield. Area in the storage CRS's metres.
         """
-        from .chain import recharge_Mm3_yr
+        from .calculations.chain import recharge_Mm3_yr
 
         if self.geom is not None:
             self._derive_infiltration()
@@ -285,10 +285,10 @@ class AvailableFreshWater(models.Model):
 
     def _derive_infiltration(self):
         """Fill the rate and the yearly depth from soil, land cover and meteorology (see save())."""
-        from physicalEnv.soil import SEASONS, soil_landcover_composition, weighted_infiltration_rate_mm_h
-        from weather.water_balance import yearly_water_balance
+        from physicalEnv.calculations.soil import SEASONS, soil_landcover_composition, weighted_infiltration_rate_mm_h
+        from weather.calculations.water_balance import yearly_water_balance
 
-        from .chain import recharge_depth_cm_yr
+        from .calculations.chain import recharge_depth_cm_yr
 
         composition = soil_landcover_composition(self.geom, SEASONS['wet']['statistic'])[0]
         if not composition:

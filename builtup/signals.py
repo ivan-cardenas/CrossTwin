@@ -8,7 +8,7 @@ DAG edges:
                                  and new footprint
 
 Every refresh goes through refresh_canyons(): one SQL statement for the inputs
-(builtup/canyon.py), the equations of builtup/chain.py applied per row by
+(builtup/calculations/canyon.py), the equations of builtup/calculations/chain.py applied per row by
 StreetCanyon.apply() (the same code StreetCanyon.save() runs), then one
 bulk upsert. bulk_create fires no post_save, so the layer cache is bumped here
 and canyons_changed announces the refreshed streets to downstream apps.
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 # Sent with street_ids=[...] after canyons were refreshed (bulk upsert, no post_save).
 canyons_changed = Signal()
-# Same contract as physicalEnv.dsm_patches.dsm_patch_rewriting / dsm_patch_created.
+# Same contract as physicalEnv.calculations.dsm_patches.dsm_patch_rewriting / dsm_patch_created.
 canyon_rewriting = Signal()
 canyon_created = Signal()
 
@@ -85,7 +85,7 @@ def streets_in_extent(extents):
     from django.conf import settings
     from django.contrib.gis.geos import Polygon
 
-    from .canyon import SEARCH_M
+    from .calculations.canyon import SEARCH_M
 
     box = Polygon.from_bbox((min(e[0] for e in extents) - SEARCH_M, min(e[1] for e in extents) - SEARCH_M,
                              max(e[2] for e in extents) + SEARCH_M, max(e[3] for e in extents) + SEARCH_M))
@@ -109,7 +109,7 @@ def schedule_footprints(geoms):
     if getattr(_deferred, "extents", None) is not None:
         _deferred.extents.extend(g.extent for g in geoms)
         return
-    from .canyon import streets_near
+    from .calculations.canyon import streets_near
     refresh_canyons(streets_near(geoms))
 
 
@@ -132,7 +132,7 @@ def _refresh(ids):
     from core.cache import bump_layer_version
     from core.editing import is_editor_change
 
-    from .canyon import street_inputs
+    from .calculations.canyon import street_inputs
 
     if not ids:
         return 0
@@ -237,7 +237,7 @@ def building_canyon_deleted(sender, instance, **kwargs):
 #            residential properties), Buildings -> Degree_Urbanisation
 #            (built-up share), LandCover -> Degree_Urbanisation (settlement
 #            mask, water). The receivers only schedule the neighborhoods to
-#            re-allocate; builtup/urbanisation.py::refresh does the work (once
+#            re-allocate; builtup/calculations/urbanisation.py::refresh does the work (once
 #            per deferred_cascades() block) and Urbanisation.save() holds the
 #            unit equations. Nothing runs until the grid was built from the map.
 #
@@ -254,7 +254,7 @@ def _skip_raw(raw):
 
 def _schedule_hoods(ids=(), geoms=(), landcover=()):
     """Schedule the neighborhoods `ids` + those under `geoms`, and the land cover over the `landcover` geometries."""
-    from .urbanisation import neighborhoods_at, schedule
+    from .calculations.urbanisation import neighborhoods_at, schedule
 
     try:
         schedule(set(ids) | neighborhoods_at(geoms), landcover=[g for g in landcover if g is not None])
@@ -383,7 +383,7 @@ def _landcover_rows_created(sender, pks=(), **kwargs):
 
 
 def _connect_landcover_created():
-    from physicalEnv.landcover import landcover_created
+    from physicalEnv.calculations.landcover import landcover_created
 
     landcover_created.connect(_landcover_rows_created, dispatch_uid="builtup_landcover_urbanisation_created")
 

@@ -172,7 +172,7 @@ digraph CrossTwin {
     Total_Population    -> Housing_Demand;
     New_Units           -> Buildings;
     Buildings           -> Streets;
-    Buildings           -> LandCover;   // 10 m urban-fabric ring of an editor building (physicalEnv/landcover.py::urbanize_around)
+    Buildings           -> LandCover;   // 10 m urban-fabric ring of an editor building (physicalEnv/calculations/landcover.py::urbanize_around)
     Streets             -> LandCover;
     LandCover           -> CityArea;    // neighborhood urban_area (physicalEnv/signals.py::_recompute_neighborhood_urban_area)
     Total_Population    -> Degree_Urbanisation;
@@ -219,7 +219,7 @@ digraph CrossTwin {
     
     
     Green_Area          -> Vegetation_Coverage;
-    Vegetation_Coverage -> DSM;   // editor tree / forest changes (physicalEnv/dsm_patches.py)
+    Vegetation_Coverage -> DSM;   // editor tree / forest changes (physicalEnv/calculations/dsm_patches.py)
 
     // Streets 
     Streets             -> Canyon_Aspect;
@@ -238,7 +238,7 @@ digraph CrossTwin {
     Zoning_Status       -> New_Units;
 
     New_Units           -> Housing_Supply;
-    New_Green_Area      -> LandCover;   // green space (e.g. park) drawn in the map editor (nature.GreenSpaces, physicalEnv/landcover.py::green_area)
+    New_Green_Area      -> LandCover;   // green space (e.g. park) drawn in the map editor (nature.GreenSpaces, physicalEnv/calculations/landcover.py::green_area)
     
     Property            -> Affordability_Stress;
     Property            -> Rent;

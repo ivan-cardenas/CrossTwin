@@ -2,9 +2,9 @@ from django.shortcuts import render
 from django.http import JsonResponse
 
 from administrative.admin_units import resolve_admin_unit, ADMIN_LEVELS
-from administrative.population import DEFAULT_SCENARIO, get_population, population_params
-from . import chain
-from .calculations import (
+from administrative.calculations.population import DEFAULT_SCENARIO, get_population, population_params
+from .calculations import chain
+from .calculations.indicators import (
     calculate_household_size,
     calculate_dwellings,
     calculate_supply_demand_for_unit,

@@ -155,7 +155,7 @@
       if (state?.built) showLayer();
     });
     // Edits on the map change the grid on the server, in a background worker
-    // (builtup/urbanisation.py): poll the info until it is no longer
+    // (builtup/calculations/urbanisation.py): poll the info until it is no longer
     // refreshing, then show the new grid. A newer edit supersedes the wait.
     let editToken = 0;
     async function afterEdit() {

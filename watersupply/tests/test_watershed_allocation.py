@@ -12,7 +12,7 @@ from django.test import TestCase
 from administrative.models import Neighborhood
 from physicalEnv.models import EnvironmentalCosts
 from watersupply import signals
-from watersupply.calculations import calculate_total_extraction, watershed_share
+from watersupply.calculations.indicators import calculate_total_extraction, watershed_share
 from watersupply.models import AvailableFreshWater, ExtractionWater, SupplySecurity, TotalWaterDemand, Watershed
 
 from .factories import make_city, make_consumption_capita, make_neighborhood, make_polygon

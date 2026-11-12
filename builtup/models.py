@@ -64,11 +64,11 @@ class StreetCanyon(models.Model):
     The urban canyon of one street: height-to-width ratio H/W.
 
         H = mean of the building heights on the left and right of the street
-            (area-weighted within builtup/canyon.py::SEARCH_M; open side = 0)
+            (area-weighted within builtup/calculations/canyon.py::SEARCH_M; open side = 0)
         W = Street.width when set, else the facade-to-facade distance,
             else a default per street classification
 
-    Inputs from builtup/canyon.py::street_inputs, equations in builtup/chain.py.
+    Inputs from builtup/calculations/canyon.py::street_inputs, equations in builtup/calculations/chain.py.
     Refreshed by builtup/signals.py when the street or a building near it
     changes. Shown on the map along the street line.
 
@@ -94,8 +94,8 @@ class StreetCanyon(models.Model):
         return f"Canyon of street {self.street_id} (H/W {ratio})"
 
     def apply(self, street, inputs):
-        """Set every field from the street and its street_inputs() row (builtup/chain.py::canyon)."""
-        from . import chain
+        """Set every field from the street and its street_inputs() row (builtup/calculations/chain.py::canyon)."""
+        from .calculations import chain
 
         for name in ("h_left_m", "h_right_m", "w_facade_m", "n_left", "n_right"):
             setattr(self, name, inputs[name])
@@ -108,7 +108,7 @@ class StreetCanyon(models.Model):
         DAG edges: Buildings -> Canyon_Aspect, Streets -> Canyon_Aspect.
         Re-reads the street and the buildings around it every save.
         """
-        from .canyon import street_inputs
+        from .calculations.canyon import street_inputs
 
         street = Street.objects.only("width", "classification", "geom").get(pk=self.street_id)
         self.apply(street, street_inputs([self.street_id])[self.street_id])
@@ -364,8 +364,8 @@ class NeighborhoodClimateRisk(models.Model):
 
 
 # ── Degree of Urbanisation (DAG node Degree_Urbanisation) ──────────────
-# Method: docs/DEGREE_OF_URBANISATION.md. Grid classification: builtup/degurba.py;
-# allocation and refresh: builtup/urbanisation.py; unit equations: builtup/chain.py.
+# Method: docs/DEGREE_OF_URBANISATION.md. Grid classification: builtup/calculations/degurba.py;
+# allocation and refresh: builtup/calculations/urbanisation.py; unit equations: builtup/calculations/chain.py.
 
 RESOLUTION_CHOICES = [(100, "100 m (CrossTwin, local)"), (1000, "1 km (original DEGURBA)")]
 L2_CHOICES = [(30, "Urban centre"), (23, "Dense urban cluster"), (22, "Semi-dense urban cluster"),
@@ -540,12 +540,12 @@ class Urbanisation(models.Model):
                    Buildings -> Degree_Urbanisation,
                    LandCover -> Degree_Urbanisation.
         Population per class from the unit's PopulationAllocation rows joined to
-        the classified cells (builtup/urbanisation.py::unit_class_population);
-        classes and rate from builtup/chain.py. The grid refresh passes
+        the classified cells (builtup/calculations/urbanisation.py::unit_class_population);
+        classes and rate from builtup/calculations/chain.py. The grid refresh passes
         `by_class` / `urban_area_m2` it already read for all units at once.
         """
         if by_class is None:
-            from .urbanisation import unit_class_population
+            from .calculations.urbanisation import unit_class_population
 
             by_class, urban_area_m2 = unit_class_population(self.level, self.unit_id, self.resolution_m, self.year)
         self.apply(by_class, urban_area_m2 or 0.0)
@@ -553,7 +553,7 @@ class Urbanisation(models.Model):
 
     def apply(self, by_class, urban_area_m2):
         """Set every derived field from the population per class and the urban area (m²)."""
-        from . import chain
+        from .calculations import chain
 
         for code in (30, 23, 22, 21, 13, 12, 11):
             setattr(self, f"pop_{code}", by_class.get(code, 0.0))

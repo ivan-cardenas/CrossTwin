@@ -2,7 +2,7 @@ from django.shortcuts import render
 from django.db.models import Avg
 
 from administrative.admin_units import resolve_admin_unit
-from .calculations import (
+from .calculations.indicators import (
     calculate_vegetation_coverage,
     calculate_urban_morphology,
     get_thermal_indices,
@@ -13,7 +13,7 @@ from .calculations import (
     calculate_nbs_coverage,
     get_latest_meteorology,
 )
-from .chain import WEATHER_LIMITS, clamp_weather, weather_heat_stress
+from .calculations.chain import WEATHER_LIMITS, clamp_weather, weather_heat_stress
 
 
 # ── constants ─────────────────────────────────────────────────────────
@@ -147,7 +147,7 @@ def _weather_indicators(baseline, overrides):
     """
     Weather card + what-if: the values in use (baseline with any override),
     the baseline itself for the panel's reset, and the weather-only heat
-    stress (urban_heat/chain.py). Pure.
+    stress (urban_heat/calculations/chain.py). Pure.
     """
     baseline = baseline or {}
     overrides = overrides or {}

@@ -31,7 +31,7 @@ BUILDING_FLOOR_HEIGHT_M = 3
 BUILDING_DEFAULT_HEIGHT_M = 10
 
 
-# Degree of Urbanisation level-2 classes (GHSL GHS-SMOD legend), builtup/degurba.py.
+# Degree of Urbanisation level-2 classes (GHSL GHS-SMOD legend), builtup/calculations/degurba.py.
 DEGURBA_COLORS = {30: '#FF0000', 23: '#A87000', 22: '#732600', 21: '#FFFF00',
                   13: '#375623', 12: '#ABCD66', 11: '#CDF57A', 10: '#7AB6F5'}
 DEGURBA_LABELS = {30: 'Urban centre', 23: 'Dense urban cluster', 22: 'Semi-dense urban cluster',

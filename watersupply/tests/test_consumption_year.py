@@ -1,7 +1,7 @@
 """ConsumptionCapita.for_year: a year without its own record uses the latest earlier one."""
 from django.test import TestCase
 
-from watersupply.calculations import _get_consumption_capita, consumption_data_years
+from watersupply.calculations.indicators import _get_consumption_capita, consumption_data_years
 from watersupply.models import ConsumptionCapita, TotalWaterDemand
 from watersupply.views import _build_indicators, _get_adminUnit_data
 

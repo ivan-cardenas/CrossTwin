@@ -9,10 +9,10 @@ from django.db.models import Max, Q
 from django.utils import timezone
 
 from core.cache import bump_layer_version
-from .dsm_patches import (DEFAULT_FOREST_CANOPY_M, building_height, record_change,
+from .calculations.dsm_patches import (DEFAULT_FOREST_CANOPY_M, building_height, record_change,
                           record_vegetation_change, tree_crown, tree_height)
-from .dsm_edited import schedule_refresh as schedule_dsm_refresh
-from .landcover import green_area, refresh_percentages, release_green_area, release_ring, urbanize_around
+from .calculations.dsm_edited import schedule_refresh as schedule_dsm_refresh
+from .calculations.landcover import green_area, refresh_percentages, release_green_area, release_ring, urbanize_around
 from .models import (DigitalSurfaceModel, DSMBuildingPatch, DSMEdit, DSMVegetationPatch, LandCoverClasses, LandCoverVector,
                      SatelliteImagery)
 from builtup.models import Building
@@ -205,7 +205,7 @@ def landcover_percentage(sender, instance, raw=False, **kwargs):
 @receiver(pre_save, sender=LandCoverVector, dispatch_uid="physicalEnv_landcover_albedo")
 def landcover_albedo(sender, instance, raw=False, **kwargs):
     """
-    Albedo bookkeeping on every save (physicalEnv/albedo.py):
+    Albedo bookkeeping on every save (physicalEnv/calculations/albedo.py):
     - no material: the class's default material (its albedo is the polygon's
       default, LandCoverVector.effective_albedo);
     - a changed geometry drops a measured albedo: the satellite saw the old
@@ -230,7 +230,7 @@ def albedo_imagery_saved(sender, instance, raw=False, **kwargs):
     ALBEDO raster writes its zonal mean onto the land-cover polygons it
     covers (albedo.measure). A failure never blocks the import.
     """
-    from .albedo import ALBEDO_INDEX, measure
+    from .calculations.albedo import ALBEDO_INDEX, measure
     if raw or (instance.index or "").upper() != ALBEDO_INDEX or instance.raster is None:
         return
     _guarded(lambda: measure(instance), f"Albedo from imagery {instance.pk}")

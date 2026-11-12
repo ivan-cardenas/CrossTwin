@@ -33,7 +33,7 @@ MAX_CELLS = 1_000_000
 MS_PER_CELL = {"cuda": 1.2, "cpu": 12.0}
 
 PAVED, BUILDING, GRASS, BARE, WATER = 1, 2, 5, 6, 7
-# Land-cover class name keywords (matched at word starts, physicalEnv/soil.py::_matches)
+# Land-cover class name keywords (matched at word starts, physicalEnv/calculations/soil.py::_matches)
 # -> SOLWEIG class; anything else is paved.
 LANDCOVER_KEYWORDS = (
     (WATER, ("water", "sea", "lagoon", "estuar", "marsh", "bog", "lake", "river", "canal")),
@@ -48,7 +48,7 @@ class SolweigError(ValueError):
 
 
 def umep_class(land_cover_type):
-    from physicalEnv.soil import _matches
+    from physicalEnv.calculations.soil import _matches
 
     name = (land_cover_type or "").lower()
     for code, keywords in LANDCOVER_KEYWORDS:
@@ -63,7 +63,7 @@ def plan(view, cell=None):
     the window with its halo, the cell size and the cell count. Raises
     SolweigError without a DSM or above MAX_CELLS.
     """
-    from physicalEnv import svf
+    from physicalEnv.calculations import svf
 
     cell = float(cell or DEFAULT_CELL_M)
     try:
@@ -97,7 +97,7 @@ class Inputs:
 
 def _footprints(origin, cell, shape):
     from builtup.models import Building
-    from physicalEnv.dsm_patches import _box
+    from physicalEnv.calculations.dsm_patches import _box
 
     return list(Building.objects.filter(geom__bboverlaps=_box(origin, cell, shape))
                 .values_list("geom", flat=True))
@@ -112,7 +112,7 @@ def landcover_grid(origin, cell, shape, buildings):
     from rasterio.features import rasterize
     from rasterio.transform import from_origin
 
-    from physicalEnv.dsm_patches import _box
+    from physicalEnv.calculations.dsm_patches import _box
     from physicalEnv.models import LandCoverVector
 
     box = _box(origin, cell, shape)
@@ -138,8 +138,8 @@ def build(p):
 
     import numpy as np
 
-    from physicalEnv import dsm_patches, svf
-    from physicalEnv.dsm_patches import MIN_CANOPY_M
+    from physicalEnv.calculations import dsm_patches, svf
+    from physicalEnv.calculations.dsm_patches import MIN_CANOPY_M
 
     height, origin, cell, srid = svf.load_dsm(p["dsm"], p["window"], resolution=p["cell"])
     ground, ground_label = dsm_patches.ground_grid(height, origin, cell, srid)
