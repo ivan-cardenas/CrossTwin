@@ -85,7 +85,7 @@
     position: absolute;
     left: 12px;
     bottom: 52px;               /* above the bottom bar */
-    width: 260px;
+    width: 320px;
     max-width: calc(100% - 16px);
     padding: 10px;
     background: var(--overlay-bg);
@@ -107,6 +107,9 @@
     grid-template-columns: 1fr 1fr;
     gap: 6px;
 }
+
+/* "Calculate for this view": every tool in one two-column grid; an odd last tool spans both columns */
+.actions-menu-grid .action-panel-btn:last-child:nth-child(odd) { grid-column: 1 / -1; }
 
 .actions-menu-caret {
     display: inline-block;
@@ -2443,3 +2446,63 @@
     flex: none;
 }
 .stale-dot[hidden] { display: none; }
+
+
+/* Neighbourhood generator card (core/static/js/GeneratorTool.js): a wrapping flex row of
+   fields (about three per row at full width, fewer as the card narrows), never a horizontal
+   scroll; long selects take two slots; site check and building-rule findings below */
+#generator-card {
+    width: 520px;
+    max-height: min(760px, calc(100% - 80px));
+    overflow-x: hidden;
+}
+#generator-card > * { min-width: 0; overflow-wrap: anywhere; }
+#generator-card .lst-card-fields {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 6px;
+}
+#generator-card .lst-card-fields > * { flex: 1 1 140px; min-width: 0; }
+#generator-card .lst-card-fields > .generator-half { flex: 2 1 286px; }
+#generator-card .lst-card-fields > .generator-wide { flex: 1 1 100%; }
+#generator-card .lst-card-fields input:not([type="checkbox"]),
+#generator-card .lst-card-fields select { width: 100%; box-sizing: border-box; }
+#generator-card .lst-card-fields .lst-check { flex-direction: row; align-self: center; }
+@media (max-width: 768px) {
+    #generator-card { width: auto; }
+}
+.generator-seed-row {
+    display: flex;
+    gap: 6px;
+}
+.generator-seed-row input { flex: 1; min-width: 0; }
+.generator-findings {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 11px;
+    line-height: 1.35;
+}
+.generator-findings:empty { display: none; }
+.generator-findings-title {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-tertiary);
+    font-weight: 600;
+    margin-top: 4px;
+}
+.generator-finding {
+    display: flex;
+    gap: 6px;
+    align-items: baseline;
+    color: var(--text-secondary);
+}
+.generator-finding-icon { flex: 0 0 auto; width: 12px; text-align: center; font-weight: 700; }
+.generator-finding.ok .generator-finding-icon { color: #3fae5a; }
+.generator-finding.info .generator-finding-icon { color: var(--text-tertiary); }
+.generator-finding.warn .generator-finding-icon { color: #e0a100; }
+.generator-finding.excluded .generator-finding-icon { color: #e5484d; }
+.generator-finding.block .generator-finding-icon,
+.generator-finding.block { color: #e5484d; }

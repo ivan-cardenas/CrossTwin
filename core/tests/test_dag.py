@@ -91,7 +91,7 @@ class DagStructureTests(SimpleTestCase):
         self.assertIn("Degree_Urbanisation", self.nodes)
         for edge in [("Total_Population", "Degree_Urbanisation"), ("Buildings", "Degree_Urbanisation"),
                      ("LandCover", "Degree_Urbanisation"), ("New_Units", "Buildings"),
-                     ("Buildings", "Streets"), ("Buildings", "LandCover"),
+                     ("Streets", "Buildings"), ("Buildings", "LandCover"),
                      ("Streets", "LandCover"), ("LandCover", "CityArea")]:
             self.assertIn(edge, self.pairs)
         self.assertNotIn(("New_Units", "LandCover"), self.pairs)
@@ -99,6 +99,28 @@ class DagStructureTests(SimpleTestCase):
     def test_parser_reads_lines_without_semicolon(self):
         nodes, edges = parse_dag('A [label="A"];\nB [label="B"];\nC [label="C"];\nA -> B\nB -> C;\n')
         self.assertEqual({(a, b) for a, b, _ in edges}, {("A", "B"), ("B", "C")})
+
+
+class DagStatusTests(SimpleTestCase):
+    """core/dag_status.py (read by tools/dag_view.py) covers exactly the DAG's edges and nodes."""
+
+    def test_every_edge_has_one_status(self):
+        from core.dag_status import EDGE_STATUS
+        _, edges = parse_dag()
+        pairs = {(a, b) for a, b, _ in edges}
+        self.assertEqual(sorted(pairs - set(EDGE_STATUS)), [])
+        self.assertEqual(sorted(set(EDGE_STATUS) - pairs), [])
+        for edge, (status, _, _) in EDGE_STATUS.items():
+            self.assertIn(status, {"implemented", "partial", "gap", "lagged"}, edge)
+
+    def test_lagged_status_matches_the_graph(self):
+        from core.dag_status import EDGE_STATUS
+        self.assertEqual({e for e, (s, _, _) in EDGE_STATUS.items() if s == "lagged"}, LAGGED_EDGES)
+
+    def test_every_node_has_a_sector(self):
+        from core.dag_status import NODE_SECTOR
+        nodes, _ = parse_dag()
+        self.assertEqual(sorted(nodes - set(NODE_SECTOR)), [])
 
 
 class DagCitationTests(SimpleTestCase):

@@ -23,14 +23,19 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 - [x] Housing demand depends on the projected population — `HousingSupplyDemand.demand_units` is derived in `save()` (baseline population ÷ CBS persons per home, `housing/calculations/chain.py`) and refreshed by `housing/signals.py` when the city population, the median `PopulationProjection` or the `HouseholdSize` changes (see builtup / housing)
 - [ ] Urban heat does not depend on the projected population
 - [x] `urban_area` — now cascades Neighborhood → District → City → Province via `administrative/signals.py::_recompute_population()` (generalized to also sum `urban_area`), sourced at the Neighborhood level from `physicalEnv.LandCoverVector` spatial intersection area (`physicalEnv/signals.py`)
-- [x] `Urbanization` node removed from `core/DAG.dot` (2026-11-10, `docs/DAG_REVISIONS.md`): urbanisation is measured as the State node `Degree_Urbanisation` (`Total_Population/Buildings/LandCover -> Degree_Urbanisation`, implemented) and the growth chain is explicit: `New_Units -> Buildings -> Streets -> LandCover -> CityArea` (`Buildings -> LandCover` and `LandCover -> CityArea` implemented)
-- [ ] `New_Units -> Buildings` (completed housing projects become buildings/dwellings), `Buildings -> Streets` (access streets for new buildings), `Streets -> LandCover` (editor streets as road land cover) are gaps
+- [x] `Urbanization` node removed from `core/DAG.dot` (2026-11-10, `docs/DAG_REVISIONS.md`): urbanisation is measured as the State node `Degree_Urbanisation` (`Total_Population/Buildings/LandCover -> Degree_Urbanisation`, implemented) and the growth chain is explicit: `New_Units -> Buildings -> Streets -> LandCover -> CityArea` (`Buildings -> LandCover` and `LandCover -> CityArea` implemented; `Buildings -> Streets` flipped to `Streets -> Buildings` on 2026-11-12)
+- [x] `New_Units -> Buildings` (a completed housing project with a generated layout becomes streets, buildings and dwellings, `builtup/calculations/materialise.py`), `Streets -> LandCover` (editor streets as road land cover, `landcover.street_area`) — 2026-11-12, map Actions menu → Neighbourhood generator
+- [ ] `Streets -> Buildings` is partial (flipped from `Buildings -> Streets` on 2026-11-12): editing a generated street does not re-place its buildings; `Streets` has no parent (`New_Units -> Streets` not in the DAG)
+- [ ] Generator: connect the generated street grid to the nearest existing streets
+- [ ] `Total_Population -> Anthropogenic_Heat`: no anthropogenic-heat model or calculation exists (feeds `Anthropogenic_Heat -> Meteorology`, see urban_heat)
+- [ ] `Total_Population -> NumberUsers` and `Coverage_WS_Area -> NumberUsers`: there is no `NumberUsers` node model; `UsersLocation.usersTotal`/`populationServed` are flat inputs (see watersupply)
+- [ ] `CityArea -> Network`: urban growth (`LandCover -> CityArea`) does not extend or flag the pipe network; `PipeNetwork.save()` only derives its length and diameter
 
 
 
 ## physicalEnv
 
-- [X] `RS_Imagery -> LandCover/LST` — raster models are plain imports, no ingestion/derivation code
+- [ ] `RS_Imagery -> LandCover` is partial: only the Sentinel-2 albedo attribute is derived (`physicalEnv/calculations/albedo.py::measure`); the land-cover classes are still plain imports. (`RS_Imagery -> LST` is done: `urban_heat/lst/`)
 - [x] `LandCover/Soil_Type -> Infiltration -> Available_FW`, `Meteorology -> Available_FW` — the dashboard card computes event infiltration (SCS); `AvailableFreshWater.save()` now stores `infiltrationRate_cm_h` (soil group x unsealed share) and, with a year of daily KNMI rain + Makkink ET (catalog `knmi_daily_water_balance`), `infiltrationDepth_cm` and the yield; receivers on soil, land cover, groundwater and daily meteorology refresh it
 - [x] `New_Green_Area -> LandCover` — any green space (`nature.GreenSpaces`, parks = type `park`) drawn in the map editor becomes *Green urban areas* (`physicalEnv/calculations/landcover.py::green_area`, receivers `green_space_saved`/`green_space_deleted`)
 - [x] `New_Units -> LandCover` — a building drawn in the map editor turns a 10 m buffer into urban fabric (`physicalEnv/calculations/landcover.py::urbanize_around`); moving or deleting it gives the land back (`release_ring`, cut pieces kept in `UrbanFabricCut`). The housing pipeline's land take (greenfield vs infill) is a dashboard statistic (`housing/calculations/indicators.py::calculate_pipeline_land_take`)
@@ -47,7 +52,8 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 - [ ] Canyon: dual-carriageway NWB links see buildings on one side only (H halved, default W); buildings without `height_m`/`numberFloors` are skipped
 - [ ] `Canyon_Aspect -> Meteorology` — the stored H/W is not yet used by SOLWEIG's PET (UHI / 1.2 m wind)
 - [ ] `calculate_urban_morphology()` / `get_thermal_indices()` — only compute statistics *over* existing rasters, don't derive one raster from another
-- [ ] `PET -> NBS` — `calculate_nbs_coverage()` counts NBS geometries but never reads PET values
+- [ ] `PET -> NBS`, `UTCI -> NBS` — `calculate_nbs_coverage()` counts NBS geometries but reads neither the PET nor the UTCI raster
+- [ ] `Climate_Change -> Meteorology`, `Anthropogenic_Heat -> Meteorology` — `get_latest_meteorology()` (`urban_heat/calculations/indicators.py`) claims both edges but only returns the latest station reading; there is no climate-scenario delta (e.g. KNMI'23 scenarios) and no anthropogenic-heat term
 
 ## builtup / housing
 
@@ -65,6 +71,10 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 - [ ] `Rent/Mortgage/Water_Tariff_Afford -> Income_Expenses -> Affordability_Stress` — `HousingAffordability.save()` computes `affordabilityIndex` only from its own stored fields, never pulls from `Mortgage`, `Rentals`, or watersupply tariffs
 - [ ] `Credit_Supply -> Mortgage` — unimplemented
 - [ ] No `NumberUsers` model — `NumberUsers -> Water_Tariff_Afford` unimplemented (`MeteredResidential.userAffordability_PCT` is a flat input)
+- [ ] `Zoning_Status -> New_Units` — `calculate_new_units()` (`housing/calculations/indicators.py`) sums `HousingProject.project_units` and never reads `ZoningArea` / zoning status
+- [ ] `New_Units -> Housing_Supply` is partial — completed projects are counted on the dashboard but never added to `HousingSupplyDemand.supply_units` (see the supply derivation item above)
+- [ ] `Housing_Supply -> Property`, `Property -> Rent`, `Property -> Affordability_Stress`, `Mortgage -> Affordability_Stress` (direct edge) — `calculate_property_indicators()` / `calculate_rent_indicators()` only average stored `Property` / `Rentals` fields; no `save()` derives rent or stress from property values
+- [ ] `Central_Bank -> Mortgage` — `calculate_mortgage_indicators()` shows `CentralBankPolicy` next to averaged `Mortgage` rows; no payment is derived from the policy rate / LTV / LTI limits (same situation as `Credit_Supply -> Mortgage`)
  - [ ] `Buildings` can get height value from DSM. This needs to be incorporated in the model save() function if  the DSM exists.
 
 ## watersupply
@@ -76,6 +86,10 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 - [ ] `WT_Efficiency -> WT_Cost` — `WaterTreatment` has no `save()`
 - [ ] `Apparent_Losses -> ILI` — `NonRevenueWater` ILI is only defined for real losses
 - [ ] `UsersLocation.usersTotal`/`populationServed` and non-latest-year `SupplySecurity` records aren't refreshed by signals — `OPEX`/`ExtractionWater`/`MeteredResidential`/`ImportedWater` carry no year field, so only the latest `OPEX`/`SupplySecurity` record is refreshed
+- [ ] `Total_Extraction -> Area_Drought` — `calculate_drought_area()` only sums stored `AreaAffectedDrought` polygons; design in `docs/groundwater_drought_damage_plan.md` / `docs/groundwater_drought_damage.md`
+- [ ] `Total_Water_Prod -> Energy_Consumption` is partial — energy is pump rate x operation hours, not derived from the produced volume
+- [ ] `Energy_Consumption -> OPEX` — not a term of `OPEX.save()` (the energy cost is assumed inside each well's `opex_EUR_m3`); decide whether to keep it implicit or derive it from `Energy_Consumption` x `ElectricityCost`
+- [ ] `WT_Efficiency -> Samples_WQ` — `calculate_water_quality()` averages `treatment_efficiency` beside the compliance ratio, but efficiency does not affect it (`Samples_Taken -> Samples_WQ` = ok / taken is fine)
 
 ---
 

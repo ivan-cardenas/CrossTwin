@@ -43,3 +43,14 @@ RASTER_REGISTRY = {
     if value._meta.get_fields() and any(isinstance(f, gis_models.RasterField) for f in value._meta.get_fields())
 }    
 
+
+
+def without_raster_data(queryset):
+    """
+    The queryset with its RasterField columns deferred. The map reads raster rows
+    for their metadata and cog_path only; loading the PostGIS raster itself
+    (the pixels) cost ~0.2 s per row of a 5 m SVF in the layer catalog.
+    """
+    names = [f.name for f in queryset.model._meta.concrete_fields
+             if isinstance(f, gis_models.RasterField)]
+    return queryset.defer(*names) if names else queryset

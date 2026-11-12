@@ -274,6 +274,12 @@ class LandCoverVector(models.Model):
     # (physicalEnv/calculations/landcover.py::green_area); released like a building ring.
     # Name kept from the former builtup.Park; the id is a nature.GreenSpaces id.
     source_park = models.IntegerField(null=True, blank=True, db_index=True, help_text="Editor green space (nature.GreenSpaces id) whose outline this green-area polygon is")
+    # Set on the road polygon of a street drawn or generated in the map editor
+    # (physicalEnv/calculations/landcover.py::street_area, DAG edge Streets -> LandCover).
+    source_street = models.IntegerField(null=True, blank=True, db_index=True, help_text="Editor street (builtup.Street id) whose road surface this polygon is")
+    # Set on the urban-fabric polygon of a generated neighbourhood
+    # (physicalEnv/calculations/landcover.py::project_area): one polygon for all its buildings.
+    source_project = models.IntegerField(null=True, blank=True, db_index=True, help_text="Generated neighbourhood (housing.HousingProject id) whose urban fabric this polygon is")
     # Measured (Sentinel-2 broadband albedo, zonal mean: physicalEnv/calculations/albedo.py::measure)
     # or estimated for editor polygons (building roof + paving). Empty: the
     # class default through `material` applies (effective_albedo).
@@ -293,10 +299,24 @@ class LandCoverVector(models.Model):
         return self.material.albedo if self.material_id else None
 
 
+CUT_OWNER_FIELDS = ("owner_building", "owner_park", "owner_street", "owner_project")
+
+
+def _exactly_one_owner():
+    """Q: exactly one of CUT_OWNER_FIELDS is set (physicalEnv/calculations/landcover.py::OWNER_KINDS)."""
+    condition = None
+    for chosen in CUT_OWNER_FIELDS:
+        q = models.Q(**{f"{f}__isnull": f != chosen for f in CUT_OWNER_FIELDS})
+        condition = q if condition is None else condition | q
+    return condition
+
+
 class UrbanFabricCut(models.Model):
     """
     A piece an editor building's urban-fabric ring (or an editor green space's
-    green area; `owner_park` holds the nature.GreenSpaces id) cut out of another land-cover polygon (physicalEnv/calculations/landcover.py).
+    green area; `owner_park` holds the nature.GreenSpaces id, or an editor
+    street's road surface, `owner_street`, or a generated neighbourhood's urban
+    fabric, `owner_project`) cut out of another land-cover polygon (physicalEnv/calculations/landcover.py).
     Releasing the ring (the building or park moved or was deleted) gives each
     piece back to `target`, or recreates `target` with the attributes copied
     here when it was swallowed whole. Exactly one owner is set. Not a map
@@ -306,6 +326,8 @@ class UrbanFabricCut(models.Model):
 
     owner_building = models.BigIntegerField(null=True, blank=True, db_index=True, help_text="Editor building whose ring took this piece")
     owner_park = models.IntegerField(null=True, blank=True, db_index=True, help_text="Editor green space (nature.GreenSpaces id) whose green area took this piece")
+    owner_street = models.IntegerField(null=True, blank=True, db_index=True, help_text="Editor street (builtup.Street id) whose road surface took this piece")
+    owner_project = models.IntegerField(null=True, blank=True, db_index=True, help_text="Generated neighbourhood (housing.HousingProject id) whose urban fabric took this piece")
     target = models.IntegerField(db_index=True, help_text="Id of the LandCoverVector row the piece was cut from")
     city = models.ForeignKey("administrative.City", on_delete=models.DO_NOTHING, null=True, blank=True)
     year = models.IntegerField()
@@ -314,6 +336,8 @@ class UrbanFabricCut(models.Model):
     material = models.ForeignKey(SurfaceMaterialProperties, on_delete=models.DO_NOTHING, null=True, blank=True)
     source_building = models.BigIntegerField(null=True, blank=True, db_index=True, help_text="The target's own source_building (set when the target is another ring)")
     source_park = models.IntegerField(null=True, blank=True, db_index=True, help_text="The target's own source_park (set when the target is a green space's green area)")
+    source_street = models.IntegerField(null=True, blank=True, db_index=True, help_text="The target's own source_street (set when the target is a street's road surface)")
+    source_project = models.IntegerField(null=True, blank=True, db_index=True, help_text="The target's own source_project (set when the target is a generated neighbourhood's urban fabric)")
     albedo = models.FloatField(null=True, blank=True)
     albedo_source = models.CharField(max_length=100, null=True, blank=True)
     albedo_date = models.DateField(null=True, blank=True)
@@ -322,14 +346,14 @@ class UrbanFabricCut(models.Model):
     class Meta:
         constraints = [
             models.CheckConstraint(
-                condition=(models.Q(owner_building__isnull=False, owner_park__isnull=True)
-                           | models.Q(owner_building__isnull=True, owner_park__isnull=False)),
+                condition=_exactly_one_owner(),
                 name="urbanfabriccut_one_owner",
             ),
         ]
 
     def __str__(self):
-        owner = f"building {self.owner_building}" if self.owner_building is not None else f"park {self.owner_park}"
+        field = next((f for f in CUT_OWNER_FIELDS if getattr(self, f) is not None), CUT_OWNER_FIELDS[0])
+        owner = f"{field.removeprefix('owner_')} {getattr(self, field)}"
         return f"Cut of land cover {self.target} by {owner}"
 
 

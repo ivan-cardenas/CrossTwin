@@ -3052,7 +3052,7 @@ def import_dataset(
 
     say("fetch", f"{dataset_key}: source={source}, format={fmt}, bbox={bbox or '-'}, "
                  f"dates={date_from or '-'} .. {date_to or '-'}")
-    if source in ("pdok", "rivm", "bodemdata", "kea") or (source == "CBS" and fmt == "wfs"):
+    if source in ("pdok", "rivm", "bodemdata", "kea", "bij12") or (source == "CBS" and fmt == "wfs"):
 
         if fmt == "wfs":
             return PDOKImporter.fetch_wfs(dataset, bbox)

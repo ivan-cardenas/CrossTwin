@@ -11,7 +11,7 @@ from django.apps import apps
 from django.conf import settings
 from django.urls import reverse
 
-from core.utils import VECTOR_REGISTRY, WMS_REGISTRY, RASTER_REGISTRY, MODEL_REGISTRY
+from core.utils import VECTOR_REGISTRY, WMS_REGISTRY, RASTER_REGISTRY, MODEL_REGISTRY, without_raster_data
 from .styles.rasterStyles import raster_display_name
 from core.editing import editable_keys, is_editable
 from .styles.layerStyles import FALLBACK_COLORS
@@ -453,6 +453,43 @@ def model_geojson(request, app_label, model_name):
     return response
 
 
+# Above this many rows (planner estimate, pg_class.reltuples) the catalog shows
+# the estimate instead of an exact count(*): the map only uses the count to pick
+# viewport loading (Config.js VIEWPORT_LOAD_MIN_FEATURES, 5 000), and an exact
+# count scans the whole table (~0.1-0.5 s each for land cover, buildings).
+ESTIMATED_COUNT_MIN_ROWS = 50_000
+
+
+def _row_estimates(models):
+    """{db_table: reltuples} for the given models, in one query (-1 = never analysed)."""
+    tables = sorted({m._meta.db_table for m in models})
+    if not tables:
+        return {}
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT t, c.reltuples FROM unnest(%s::text[]) AS t "
+            "JOIN pg_class c ON c.oid = to_regclass(quote_ident(t))",
+            [tables],
+        )
+        return dict(cursor.fetchall())
+
+
+def _layer_count(model, estimates):
+    """
+    (count, estimated). The planner's estimate for big tables of plain models;
+    an exact count for small tables, proxies and models whose default manager
+    filters (e.g. UrbanisationCellLocal), since the estimate covers the whole table.
+    """
+    estimate = estimates.get(model._meta.db_table, -1)
+    if (estimate >= ESTIMATED_COUNT_MIN_ROWS and not model._meta.proxy
+            and not model._default_manager.get_queryset().query.where):
+        return int(estimate), True
+    try:
+        return model.objects.count(), False
+    except Exception:
+        return 0, False
+
+
 def available_layers(request):
     """
     Returns a list of all available layers (models with geometry fields).
@@ -474,9 +511,13 @@ def available_layers(request):
     app_labels_param = request.GET.get('app_labels')
     allowed_app_labels = set(app_labels_param.split(',')) if app_labels_param else None
 
-    for key, model in VECTOR_REGISTRY.items():
-        if allowed_app_labels is not None and key.split('.')[0] not in allowed_app_labels:
-            continue
+    vector_models = {
+        key: model for key, model in VECTOR_REGISTRY.items()
+        if allowed_app_labels is None or key.split('.')[0] in allowed_app_labels
+    }
+    estimates = _row_estimates(vector_models.values())
+
+    for key, model in vector_models.items():
 
         # Find geometry field
         geom_field = None
@@ -498,11 +539,7 @@ def available_layers(request):
         if geom_field:
             app_label, model_name = key.split('.')
 
-            # Get record count
-            try:
-                count = model.objects.count()
-            except Exception:
-                count = 0
+            count, count_estimated = _layer_count(model, estimates)
 
             # Default style + the staff's override (mainMap/styles/overrides.py)
             color, style_layers, legend = vector_style(
@@ -521,6 +558,8 @@ def available_layers(request):
                 'fields': _field_metadata(model),
                 'count': count,
             }
+            if count_estimated:
+                layer_entry['count_estimated'] = True
             if legend:
                 layer_entry['legend'] = legend
             if is_editable(key, request.user, editable):
@@ -596,7 +635,7 @@ def available_layers(request):
         if allowed_app_labels is not None and app_label not in allowed_app_labels:
             continue
 
-        raster_instances = model.objects.all()
+        raster_instances = without_raster_data(model.objects.all())
 
         for raster in raster_instances:
             if not raster.cog_path:

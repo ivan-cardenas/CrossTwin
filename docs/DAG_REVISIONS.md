@@ -11,6 +11,20 @@ A dated log of every change to the DPSIR causal graph: what changed, why, and wh
 - **Lagged edge** `[lag=1, style=dashed]`. The cause acts one planning step later (a feedback). It is left out of the acyclicity check and never implemented by a receiver, because a receiver would close the loop within one save. Each lagged edge is argued here and listed in `core/test_dag.py::LAGGED_EDGES`.
 - **Counting.** Distinct `source -> target` pairs, legend excluded. `core/test_dag.py::parse_dag` is the reference parser.
 
+## 2026-11-12: `Buildings -> Streets` flipped to `Streets -> Buildings`
+
+The edge said that new buildings cause their access streets. The neighbourhood generator (`builtup/calculations/generative.py`), the first code to implement either direction, works the other way round, as urban layout does in practice: the street grid is drawn first, the land it leaves is cut into blocks and plots, and the buildings are placed on them. Counting the edge as implemented while the code runs the opposite way would misstate the mechanism in a coverage figure that is cited, so the edge now follows the code.
+
+| Change | Edge | Status |
+|---|---|---|
+| flipped | `Buildings -> Streets` → `Streets -> Buildings` | partial (footprints fill the blocks of the generated street layout; editing a street later does not re-place them) |
+| implemented | `New_Units -> Buildings` | a completed `HousingProject` with a generated layout becomes streets, buildings and dwellings (`housing/signals.py`, `builtup/calculations/materialise.py`) |
+| implemented | `Streets -> LandCover` | an editor street's surface becomes road land cover (`physicalEnv/calculations/landcover.py::street_area`) |
+
+**Consequences.** `Streets` now has no parent in the graph: the generator creates a project's streets from the project itself, which would be `New_Units -> Streets`. That edge is not added in this revision. The acyclicity check is unaffected (nothing downstream of `Buildings` reaches `Streets`). The loop through the lagged edge is now `CityArea -> Network -> New_Units -> Buildings -> LandCover -> CityArea`.
+
+**Coverage.** 105 distinct edges. Before: 55 implemented, 4 partial, 46 gaps (52 %). After: 57 implemented, 5 partial, 43 gaps (54 %).
+
 ## 2026-11-11: parks stored as green spaces (no graph change)
 
 `builtup.Park` is removed; a park is now a `nature.GreenSpaces` row with `type = 'park'` (OSM `leisure=park` import, parks drawn in the map editor; BGT recreation areas keep their `plus_type`). Existing parks were copied by migration `nature/0004_move_builtup_parks`, which also re-pointed the editor parks' land-cover ownership (`source_park`, `owner_park`) to the new ids.

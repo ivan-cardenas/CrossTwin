@@ -47,7 +47,7 @@ function renderLayerList() {
                    onchange="toggleLayerVisibility('${layer.key}', this.checked)">
             ${legendIcon}
             <span class="layer-name" title="${layer.display_name}">${layer.display_name}</span>
-            <span class="layer-count">${layer.count}</span>
+            <span class="layer-count"${layer.count_estimated ? ' title="Estimate (planner statistics)"' : ''}>${layer.count_estimated ? '~' : ''}${layer.count}</span>
           </div>
           <div class="layer-actions">
             ${layer.editable ? `<button onclick="startCreate('${layer.key}')" title="Draw a new object">＋</button>` : ''}
@@ -107,4 +107,4 @@ function updateIndicators() {
     }
     visibleEl.textContent = count;
   }
-}
+}

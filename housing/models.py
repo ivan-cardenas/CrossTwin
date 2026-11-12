@@ -118,9 +118,15 @@ class HousingProject(models.Model):
     year = models.IntegerField(help_text="Year of the housing project data")
     year_expected_completion = models.IntegerField(help_text="Year of expected completion of the housing project")
     project_name = models.CharField(max_length=100, help_text="Name of the housing project")
-    project_description = models.TextField(help_text="Description of the housing project")
+    project_description = models.TextField(blank=True, default="", help_text="Description of the housing project")
     project_area = models.FloatField(help_text="Area of the housing project in square meters")
     project_units = models.IntegerField(help_text="Number of housing units in the project")
+    STATUS_CHOICES = [("planned", "Planned"), ("completed", "Completed")]
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="planned", help_text="Completed projects with a generated layout become streets, buildings and dwellings (DAG edge New_Units -> Buildings, housing/signals.py)")
+    # Every parameter of the neighbourhood generator (typology, sizes, angle,
+    # generator_version), as resolved by builtup/calculations/generative.py::resolve_params,
+    # so the stored layout can be regenerated exactly.
+    generator_params = models.JSONField(null=True, blank=True, help_text="Neighbourhood generator parameters of the layout (builtup/calculations/generative.py); empty = no generated layout")
     geom = models.MultiPolygonField(srid=COORDINATE_SYSTEM)
     last_updated = models.DateTimeField(default=timezone.now)
     

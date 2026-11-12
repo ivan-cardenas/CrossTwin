@@ -1,5 +1,5 @@
 from django.http import JsonResponse
-from .utils import RASTER_REGISTRY
+from .utils import RASTER_REGISTRY, without_raster_data
 from mainMap.styles.rasterStyles import resolve_raster_style, colormap_legend_stops, discrete_colormap_param
 from django.conf import settings
 from urllib.parse import quote
@@ -18,6 +18,38 @@ def displayed_cog_path(instance):
     return edited if edited and os.path.exists(edited) else instance.cog_path
 
 
+def _cog_version(path):
+    """
+    The COG file's mtime in ms: added to tile URLs as `v=` so the browser may
+    cache tiles for good (tiler.py sends `immutable` for versioned URLs); a
+    rewritten COG gets a new URL. 0 when the file is missing.
+    """
+    import os
+
+    try:
+        return int(os.path.getmtime(path) * 1000)
+    except OSError:
+        return 0
+
+
+def _titiler_info(path):
+    """TiTiler's /cog/info of a COG, cached per file version (it never changes for one)."""
+    from django.core.cache import cache
+
+    key = f"titiler-info:{path}:{_cog_version(path)}"
+    info = cache.get(key)
+    if info is None:
+        encoded_url = quote(f"file://{path}", safe="/:")
+        # info.geojson, not info: its bbox is always WGS84 (what Mapbox needs),
+        # while info's bounds are in the COG's own CRS (EPSG:3857 since COG_CRS).
+        response = requests.get(f"{settings.TITILER_BASE_URL}/cog/info.geojson?url={encoded_url}", timeout=30)
+        response.raise_for_status()
+        feature = response.json()
+        info = {**feature["properties"], "bounds": feature["bbox"]}
+        cache.set(key, info, 24 * 3600)
+    return info
+
+
 def get_raster_info(request, app_label, layer_name):
     """Return raster metadata including bounds."""
     
@@ -30,21 +62,17 @@ def get_raster_info(request, app_label, layer_name):
     raster_id = request.GET.get('id')
     
     if raster_id:
-        instance = model_class.objects.filter(id=raster_id).first()
+        instance = without_raster_data(model_class.objects.filter(id=raster_id)).first()
     else:
-        instance = model_class.objects.first()
+        instance = without_raster_data(model_class.objects.all()).first()
     
     if not instance or not instance.cog_path:
         return JsonResponse({"error": "No raster data found"}, status=404)
    
     
-    cog_url = f"file://{displayed_cog_path(instance)}"
-    encoded_url = quote(cog_url, safe="/:")
-    
     try:
-        info_url = f"{settings.TITILER_BASE_URL}/cog/info?url={encoded_url}"
-        info = requests.get(info_url).json()
-    
+        info = _titiler_info(displayed_cog_path(instance))
+
         return JsonResponse({
             "name": registry_key,
             "bounds": info['bounds'],
@@ -71,9 +99,9 @@ def get_raster_tiles(request, app_label, layer_name):
     raster_id = request.GET.get('id')
     
     if raster_id:
-        instance = model_class.objects.filter(id=raster_id).first()
+        instance = without_raster_data(model_class.objects.filter(id=raster_id)).first()
     else:
-        instance = model_class.objects.first()
+        instance = without_raster_data(model_class.objects.all()).first()
     
     if not instance:
         return JsonResponse({"error": f"No data found for '{registry_key}'"}, status=404)
@@ -82,14 +110,14 @@ def get_raster_tiles(request, app_label, layer_name):
         return JsonResponse({"error": "COG not generated yet"}, status=404)
     
     # Step 3: Build the TiTiler tile URL
-    cog_url = f"file://{displayed_cog_path(instance)}"
-    encoded_url = quote(cog_url, safe="/:")
+    cog_path = displayed_cog_path(instance)
+    encoded_url = quote(f"file://{cog_path}", safe="/:")
 
     style = resolve_raster_style(instance, registry_key)
 
     tile_url = (
         f"{settings.TITILER_BASE_URL}/cog/tiles/WebMercatorQuad/{{z}}/{{x}}/{{y}}.png"
-        f"?url={encoded_url}"
+        f"?url={encoded_url}&v={_cog_version(cog_path)}"
     )
 
     # TiTiler defaults to nearest-neighbour resampling (blocky at high zoom);

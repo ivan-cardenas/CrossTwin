@@ -1443,6 +1443,21 @@ class KeaAreaImportTests(TestCase):
         self.assertEqual((area.inspireID, area.name, area.protection_type),
                          ("totaalkaartklimaatbuffers.5110", "Hoog Nederland", "OTH"))
 
+    def test_nnn_upserts_on_the_feature_id(self):
+        """bij12_nnn (BIJ12 Informatiekaart Natuur WFS) -> ProtectedArea of type NNN, read by the generator's site check."""
+        from nature.models import ProtectedArea
+        from importer.external_catalog import SOURCE_INFO
+        entry = CATALOG_BY_KEY["bij12_nnn"]
+        self.assertEqual((entry["source"], entry["layer"]), ("bij12", "IMNa_IKN:natuur_netwerk_nederland"))
+        self.assertIn("bij12", SOURCE_INFO)
+        feature = _rd_feature(0, 0, 1000, 1000, identificatie="23-1706", beleid_naam_code="NNN")
+        feature["id"] = "natuur_netwerk_nederland.23-1706.2025-05-01.23"
+        _kea_import("bij12_nnn", [feature])
+        _kea_import("bij12_nnn", [feature])
+        area = ProtectedArea.objects.get()
+        self.assertEqual((area.inspireID, area.name, area.protection_type),
+                         ("natuur_netwerk_nederland.23-1706.2025-05-01.23", "23-1706", "NNN"))
+
     def test_drought_sensitivity_letters_map_onto_levels(self):
         from watersupply.models import AreaAffectedDrought
         from watersupply.tests.factories import make_province

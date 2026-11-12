@@ -180,6 +180,40 @@ The new polygon has class \emph{Green urban areas} (CORINE 1.4.1 \cite{CORINE}),
 
 \textbf{DAG edge:} \dagedge{New\_Green\_Area $\rightarrow$ LandCover} --- \statusdone{} (map-editor green spaces; a separate Response node, since \dagedge{LandCover $\rightarrow$ Green\_Area} already exists and the reverse edge would close a cycle)
 
+\subsection{Road surface of editor streets --- \code{street\_area()}, \code{release\_street()}}
+A street $s$ (\code{builtup.Street}) drawn, generated or reshaped in the map editor (\code{street\_landcover\_saved}, only inside \code{core.editing.editor\_change()}) turns its surface into road land cover with the same cut / give-back mechanics as the building ring:
+\begin{align}
+  S_s &= \mathrm{buffer}_{\text{flat}}(\mathrm{line}_s,\ W_s / 2) \cap \text{city}, \qquad
+  W_s = \begin{cases} \code{width}_s & \text{when typed in} \ W_{\text{class}} & \text{otherwise (8 / 12 / 20 m)} \end{cases} \
+  \mathcal{L}' &= \{\, P \setminus S_s : P \in \mathcal{L},\ P \setminus S_s \neq \emptyset \,\} \cup \{ S_s \text{ as road and rail networks} \}
+\end{align}
+The buffer has flat ends and mitred joins; $W_{\text{class}}$ is the canyon default of \code{builtup/calculations/chain.py::DEFAULT\_WIDTH\_M}. The new polygon has class \emph{Road and rail networks and associated land} (CORINE 1.2.2 \cite{CORINE}) and \code{source\_street}; its cuts carry \code{owner\_street}. A changed line, width or class first runs \code{release\_street(s)} (the release equations above), a rename does not. Imported streets never trigger either step.
+
+\textbf{DAG edge:} \dagedge{Streets $\rightarrow$ LandCover} --- \statusdone{} (2026-11-12)
+
+\subsection{Neighbourhood generator --- \code{generative.generate()}, \code{materialise.materialise()}}
+\label{sec:neighbourhood-generator}
+Source: \code{builtup/calculations/generative.py} (pure geometry, shapely), \code{builtup/calculations/materialise.py} (storage), receiver \code{housing/signals.py::project\_saved}. An outline $O$ (a \code{housing.HousingProject}) is laid out in a frame rotated by $\theta$, the angle of the longest edge of $O$'s minimum rotated rectangle (or a given angle), following procedural block subdivision \cite{Vanegas2012}:
+\begin{align}
+  \Sigma &= \partial\big(O \ominus W/2\big) \ \cup\ \{\, x = x_0 + k\,p_x \,\} \cup \{\, y = y_0 + k\,p_y \,\}, \quad p = \frac{\text{span}}{\mathrm{round}\big((\text{span} + W)/(\ell + W)\big)} \
+  \mathcal{B} &= \{\, b \in O \setminus \mathrm{buffer}_{\text{flat}}(\Sigma, W/2) : |b| \geq 400\ \si{m^2} \,\}
+\end{align}
+with $\Sigma$ the street centre lines (ring street on $O$ inset by half the street width $W$, plus a grid of block length $\ell_x$ and depth $\ell_y$, evenly spaced) and $\mathcal{B}$ the blocks. Per typology, plots and footprints fill each block (rows on both long edges when the block is at least $1.6\times$ the plot depth): row houses (plot width $\times$ building depth behind the front setback, a path every \code{row\_length}$+1$ plots, one dwelling each), semi-detached (pairs sharing a wall), detached (plot minus side setbacks), perimeter blocks ($b \setminus (b \ominus d)$, mitred, cut into pieces of at most \SI{30}{m}) and slabs (depth $d$, spaced $H \cdot r$ with $r = 1$ for a \ang{45} daylight angle, split past \SI{60}{m}). Heights are $H = n_{\text{floors}} \times \SI{3}{m}$. Apartments hold $\max(1, \lfloor \mathrm{GFA} / A_{\text{unit}} \rfloor)$ dwellings ($A_{\text{unit}} = \SI{80}{m^2}$); with a target, the fewest floors in $[1, 20]$ whose dwellings reach it are chosen. Metrics (\code{chain.layout\_metrics}, Spacematrix \cite{BerghauserPont2010}):
+\begin{align}
+  \mathrm{FSI} = \frac{\sum \mathrm{GFA}}{|O|}, \qquad \mathrm{GSI} = \frac{\sum |\text{footprint}|}{|O|}, \qquad \text{density} = \frac{\text{dwellings}}{|O| / 10^4}
+\end{align}
+\textbf{Version 2 (2026-11-12).} \emph{Styles} (\code{STYLES}: plain, Vinex, garden city, urban block, modernist) set a typology, a street pattern and shape options; \emph{variation} $v \in [0,1]$ (default $0.5$ for every style) and \emph{seed} drive one \code{random.Random(seed)} drawn in a fixed order, so a layout is reproducible from its stored parameters. Street patterns \cite{ParishMuller2001}: \emph{grid} (above), \emph{curved} (rings $O \ominus (W/2 + k\,p_y)$ with corners rounded at radius $0.6\,p_y$, plus spokes bowed by $\pm 0.12$ of their length that stop at the innermost ring) and \emph{radial} (spokes at equal angles around a central square of one block depth plus mitred rings). Low-rise plots follow the block edges: along every edge (longest first) plots of width $w$ and depth $\min(d_{\text{plot}}, \tfrac12 \text{block depth})$ are laid perpendicular inward and a plot overlapping earlier ones by more than 15\,\% is dropped, which forms the block corners. Shapes: row houses in terraces of 4--8 with fronts staggered by $\pm 1.5\,v$\,m, rear extensions and an occasional extra floor; detached and semi-detached houses L-shaped and turned by up to $\pm v \cdot \theta$; perimeter rings with chamfered corners, taller corners and a courtyard gate; slab rows spaced by the \emph{taller} neighbour, $\Delta y = d + \max(\max(H_i, H_{i+1}) \cdot r, 10\,\si{m})$, point towers ($+4$ floors) spaced along their row by their own height, an L wing on the last row.
+
+\textbf{Dwellings per building.} $n = 1$ when \code{dwelling\_mode} is \emph{single}, or \emph{auto} for row, semi-detached and detached houses of at most two floors; otherwise $n = \max(1, \lfloor |\text{footprint}| \cdot n_{\text{floors}} / A_{\text{unit}} \rfloor)$. $A_{\text{unit}}$ may not be below the Bbl minimum (below).
+
+\textbf{Building rules (indicative, \code{regulations.py}).} $A_{\text{unit,min}} = 18 / 0.55 / 0.8 \approx \SI{41}{m^2}$ gross: \SI{18}{m^2} of living space per dwelling, living space $\geq 55\,\%$ of the usable area (Bbl art.\ 4.163 lid 2), usable area $\approx 0.8 \times$ gross (NEN 2580) \cite{Bbl,IPLOindeelbaarheid,IPLOwoning,NEN2580}. Separate buildings closer than \SI{5}{m} need fire-resistant facades (brandoverslag, NEN 6068) and are reported \cite{IPLObrand,NEN6068}; the daylight check is a rule of thumb, Bbl \S4.3.10 works per room \cite{IPLOdaglicht}; facing slabs and towers closer than their height ($45^\circ$ daylight angle) are reported; the omgevingsplan (heights, building lines, parking) is not checked.
+
+\textbf{Site check (\code{site.py}).} $\text{buildable} = O \setminus \bigcup \{ P \cap O : P \text{ Natura 2000 or NNN} \}$ (\code{nature.ProtectedArea}; catalog \code{pdok\_natura2000}, \code{bij12\_nnn} \cite{BIJ12IKN}); the layout is generated on the buildable part, and nothing buildable blocks Store. Other protected areas, non-residential zoning (HILUCS outside 5) and existing BAG buildings are warnings. The summary (protected-area ids, zoning codes, datasets) is stored in \code{generator\_params["site\_check"]}.
+
+The map's preview is a what-if and writes nothing. When the project is \code{completed} with \code{generator\_params} (all resolved parameters and \code{generator\_version}, so the layout can be regenerated), \code{materialise()} replaces its rows: $O \cap$ city becomes one urban-fabric polygon (\code{project\_area}, owner \code{source\_project}, albedo by \code{ring\_albedo} over the footprints; generated buildings get no ring of their own), then streets (cutting their road surface out of it), buildings (negative ids, \emph{woonfunctie}, floors, height, completion year, \code{source\_project}) and one \code{Property} per dwelling, all as journalled editor changes inside \code{deferred\_cascades()}. Setting the project back to \code{planned} or deleting it removes them and releases the polygon.
+
+\textbf{DAG edges:} \dagedge{New\_Units $\rightarrow$ Buildings} --- \statusdone{}; \dagedge{Streets $\rightarrow$ Buildings} --- \statuspartial{} (footprints fill the blocks of the generated street layout; editing a street afterwards does not re-place the buildings; the edge was \code{Buildings $\rightarrow$ Streets} until 2026-11-12, \code{docs/DAG\_REVISIONS.md}); \dagedge{Buildings $\rightarrow$ LandCover} for the project's buildings at once.
+
 \subsection{Surface albedo --- \code{physicalEnv/calculations/albedo.py}}
 Every land-cover polygon has an effective albedo
 \begin{equation}
@@ -910,14 +944,16 @@ administrative & \code{extrapolate()} & Population\_Growth $\to$ Total\_Pop & \s
 administrative & \code{\_city\_growth\_factor()} & Population\_Growth $\to$ Total\_Pop & \statusdone{} \\
 administrative & \code{annual\_growth\_rate()} & Population\_Growth $\to$ Total\_Pop & \statusdone{} \\
 administrative & \code{City.save()} / \code{Province.save()} & (population cascade) & \statusdone{} \\
-physicalEnv & \code{urbanize\_around()} / \code{release\_ring()} & New\_Units $\to$ LandCover (editor buildings) & \statusdone{} \\
+physicalEnv & \code{urbanize\_around()} / \code{release\_ring()} & Buildings $\to$ LandCover (editor buildings) & \statusdone{} \\
 physicalEnv & \code{dsm\_patches.record\_change()} / \code{apply\_patches()} & Buildings $\to$ DSM (editor buildings) & \statusdone{} \\
 physicalEnv & \code{dsm\_patches.record\_vegetation\_change()} & Vegetation\_Coverage $\to$ DSM (editor trees, forests) & \statusdone{} \\
 builtup & \code{StreetCanyon.save()} / \code{signals.refresh\_canyons()} & Buildings / Streets $\to$ Canyon\_Aspect & \statusdone{} \\
 builtup & \code{degurba.classify()} / \code{Urbanisation.save()} & Total\_Population / Buildings / LandCover $\to$ Degree\_Urbanisation & \statusdone{} \\
 physicalEnv & \code{urbanize\_around()} & Buildings $\to$ LandCover & \statusdone{} \\
 physicalEnv & \code{\_recompute\_neighborhood\_urban\_area()} & LandCover $\to$ CityArea & \statusdone{} \\
---- & --- & New\_Units $\to$ Buildings, Buildings $\to$ Streets, Streets $\to$ LandCover & \statusgap{} \\
+housing / builtup & \code{signals.project\_saved()} / \code{materialise()} & New\_Units $\to$ Buildings & \statusdone{} \\
+builtup & \code{generative.generate()} & Streets $\to$ Buildings (generated layouts) & \statuspartial{} \\
+physicalEnv & \code{street\_area()} / \code{release\_street()} & Streets $\to$ LandCover (editor streets) & \statusdone{} \\
 watersupply & \code{calculate\_total\_demand()} / \code{TotalWaterDemand.save()} & Total\_Pop $\to$ Total\_Water\_Demand & \statusdone{} \\
 watersupply & \code{ConsumptionCapita.save()} & Total\_Pop $\to$ Total\_Consumption & \statusdone{} \\
 watersupply & \code{calculate\_total\_extraction()} & Available\_FW $\to$ Total\_Extraction & \statusdone{} \\
@@ -1011,6 +1047,28 @@ Beyond the CBS 85173NED forecasts used for the \texttt{Population\_Growth} $\to$
 \bibitem{Oke1987} Oke, T.R. (1987). \textit{Boundary Layer Climates}, 2nd ed. Routledge. (Table 1.1 albedo ranges, Table 2.1 thermal properties.)
 
 \bibitem{Oke2017} Oke, T.R., Mills, G., Christen, A., Voogt, J.A. (2017). \textit{Urban Climates}. Cambridge University Press.
+
+\bibitem{ParishMuller2001} Parish, Y.I.H., M\"uller, P. (2001). Procedural modeling of cities. \textit{Proceedings of SIGGRAPH 2001}, 301--308.
+
+\bibitem{Bbl} \textit{Besluit bouwwerken leefomgeving} (Bbl), in force since 1 January 2024, art.\ 4.163 and \S4.3.10. \url{https://wetten.overheid.nl}.
+
+\bibitem{IPLOindeelbaarheid} Informatiepunt Leefomgeving. \textit{Vrije indeelbaarheid: regels bij nieuwbouw}. \url{https://iplo.nl/regelgeving/regels-voor-activiteiten/technische-bouwactiviteit/nieuwbouw/rijksregels/vrije-indeelbaarheid/}.
+
+\bibitem{IPLOwoning} Informatiepunt Leefomgeving (2026). \textit{Besluit bouwwerken leefomgeving en woning} (infoblad, February 2026). \url{https://iplo.nl/publish/pages/228127/infoblad-besluit-bouwwerken-leefomgeving-en-woning_200223-februari-2026.pdf}.
+
+\bibitem{IPLOdaglicht} Informatiepunt Leefomgeving. \textit{Daglichttoetreding: regels bij nieuwbouw} (NEN 2057). \url{https://iplo.nl/regelgeving/regels-voor-activiteiten/technische-bouwactiviteit/nieuwbouw/rijksregels/daglichttoetreding/}.
+
+\bibitem{IPLObrand} Informatiepunt Leefomgeving. \textit{Brandcompartiment: regels bij nieuwbouw}. \url{https://iplo.nl/regelgeving/regels-voor-activiteiten/technische-bouwactiviteit/nieuwbouw/rijksregels/brandcompartiment/}.
+
+\bibitem{NEN2580} NEN 2580:2007. \textit{Oppervlakten en inhouden van gebouwen --- Termen, definities en bepalingsmethoden}. NEN, Delft.
+
+\bibitem{NEN6068} NEN 6068. \textit{Bepaling van de weerstand tegen branddoorslag en brandoverslag tussen ruimten}. NEN, Delft.
+
+\bibitem{BIJ12IKN} BIJ12. \textit{Informatiekaart Natuur} (Natuurnetwerk Nederland, WFS \code{IMNa\_IKN:natuur\_netwerk\_nederland}). \url{https://ogc-geoservices.bij12.nl/geoserver/IMNa_IKN/wfs}.
+
+\bibitem{Vanegas2012} Vanegas, C.A., Kelly, T., Weber, B., Halatsch, J., Aliaga, D.G., M\"uller, P. (2012). Procedural generation of parcels in urban modeling. \textit{Computer Graphics Forum}, 31(2), 681--690.
+
+\bibitem{BerghauserPont2010} Berghauser Pont, M., Haupt, P. (2010). \textit{Spacematrix: Space, Density and Urban Form}. NAi Publishers.
 
 \bibitem{CORINE} European Environment Agency. \textit{CORINE Land Cover nomenclature}. \url{https://land.copernicus.eu/}.
 

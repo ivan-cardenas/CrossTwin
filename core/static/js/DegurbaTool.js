@@ -112,7 +112,7 @@
     }
 
     function open() {
-      ['lst-card', 'svf-card', 'solweig-card'].forEach(id => document.getElementById(id)?.classList.remove('visible'));
+      ['lst-card', 'svf-card', 'solweig-card', 'generator-card'].forEach(id => document.getElementById(id)?.classList.remove('visible'));
       card.classList.add('visible');
       if (typeof setActionsMenuOpen === 'function') setActionsMenuOpen(false);
       loadInfo();

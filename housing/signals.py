@@ -10,6 +10,8 @@ Dependency chain implemented here (source -> dependent):
         -> Property.residents                (every dwelling holds that average)
     Property saved/created (a new dwelling)
         -> its own residents
+    HousingProject completed with a generated layout (New_Units)
+        -> builtup streets, buildings and dwellings (builtup/calculations/materialise.py)
 
 Conventions (see administrative/signals.py and watersupply/signals.py): every
 receiver has a dispatch_uid and skips raw saves, dependents are refreshed by
@@ -23,7 +25,8 @@ import threading
 from contextlib import contextmanager
 
 from django.core.exceptions import ValidationError
-from django.db.models.signals import post_delete, post_save
+from django.db import transaction
+from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
 
 from administrative.models import City, PopulationProjection
@@ -32,7 +35,7 @@ from administrative.signals import city_population_changed
 from builtup.models import Property
 from core.cache import bump_layer_version
 
-from .models import HouseholdSize, HousingSupplyDemand, ResidentialProperty
+from .models import HouseholdSize, HousingProject, HousingSupplyDemand, ResidentialProperty
 
 logger = logging.getLogger(__name__)
 
@@ -208,3 +211,85 @@ def property_saved(sender, instance, raw=False, **kwargs):
         Property.objects.filter(pk=instance.pk).update(residents=residents)
         instance.residents = residents
         bump_layer_version(Property, ResidentialProperty)
+
+
+# ── New_Units -> Buildings ───────────────────────────────────────────
+
+_LAYOUT_FIELDS = ("status", "generator_params", "geom", "project_name", "year_expected_completion")
+
+
+@receiver(pre_save, sender=HousingProject, dispatch_uid="housing_project_presave")
+def project_presave(sender, instance, raw=False, **kwargs):
+    """Remember what the stored project's layout depends on, so post_save rebuilds only when it changed."""
+    if raw or instance.pk is None:
+        return
+    instance._stored_layout = HousingProject.objects.filter(pk=instance.pk).values(*_LAYOUT_FIELDS).first()
+
+
+def _layout_changed(instance):
+    stored = getattr(instance, "_stored_layout", None)
+    if stored is None:
+        return True
+    for name in _LAYOUT_FIELDS:
+        old, new = stored[name], getattr(instance, name)
+        if name == "geom":
+            if (old is None) != (new is None) or (old is not None and not old.equals_exact(new, tolerance=1e-6)):
+                return True
+        elif old != new:
+            return True
+    return False
+
+
+@receiver(post_save, sender=HousingProject, dispatch_uid="housing_project_saved")
+def project_saved(sender, instance, created, raw=False, **kwargs):
+    """
+    DAG edge: New_Units -> Buildings. A completed housing project with a
+    generated layout (generator_params) becomes streets, buildings and
+    dwellings (builtup/calculations/materialise.py::materialise); a changed
+    outline or parameters rebuild them; a project set back to planned, or
+    whose layout was cleared, loses them (materialise.remove). The outcome is
+    left on the instance (`_layout_result` / `_layout_error`) for the
+    generator view; a failure is logged and never blocks the project's save.
+    """
+    from builtup.calculations import materialise
+
+    if raw or not instance.geom:
+        return
+    stored = getattr(instance, "_stored_layout", None)
+    was_built = bool(stored and stored["status"] == "completed" and stored["generator_params"])
+    build = instance.status == "completed" and bool(instance.generator_params)
+    if not build and not was_built:
+        return
+    if build and not created and not _layout_changed(instance):
+        return
+    try:
+        with transaction.atomic():
+            if build:
+                instance._layout_result = materialise.materialise(
+                    instance.pk, instance.geom, instance.generator_params,
+                    name=instance.project_name, completion_year=instance.year_expected_completion)
+            else:
+                materialise.remove(instance.pk)
+                instance._layout_result = None
+    except Exception as exc:   # noqa: BLE001 - never block the project save
+        logger.exception("Generated layout of housing project %s failed", instance.pk)
+        instance._layout_error = str(exc)
+
+
+@receiver(post_delete, sender=HousingProject, dispatch_uid="housing_project_deleted")
+def project_deleted(sender, instance, **kwargs):
+    """
+    DAG edge: New_Units -> Buildings (inverse). Deleting a project deletes its
+    generated streets, buildings and dwellings. Skipped while the editor's
+    backup restore runs: it removes the journalled rows itself.
+    """
+    from builtup.calculations import materialise
+    from core.editing import is_restoring
+
+    if is_restoring():
+        return
+    try:
+        with transaction.atomic():
+            materialise.remove(instance.pk)
+    except Exception:   # noqa: BLE001
+        logger.exception("Removing the generated layout of housing project %s failed", instance.pk)

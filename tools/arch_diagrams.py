@@ -179,7 +179,7 @@ def overview():
 
     # TiTiler + COG
     d.box(1100, 170, 240, 130, "TiTiler", ["FastAPI · tiler.py", "/cog/tiles/{z}/{x}/{y}", "/cog/info"], "raster", tag=":8001")
-    d.box(1100, 436, 240, 130, "COG store", ["cogs/<app_label>/*.tif", "EPSG:4326, rio-cogeo", "written by post_save"], "raster")
+    d.box(1100, 436, 240, 130, "COG store", ["cogs/<app_label>/*.tif", "EPSG:3857, rio-cogeo", "written by post_save"], "raster")
 
     # External
     d.group(1390, 120, 170, 700, "External", "external")
@@ -296,7 +296,7 @@ def raster():
         ("Raster import", ["GEE · Sentinel-2 · KNMI", "upload · LST / SVF tools", "→ RasterField row"], "external"),
         ("post_save", ["core/signals.py", "RASTER_REGISTRY", "receiver"], "signal"),
         ("ST_AsGDALRaster", ["PostGIS → temp", "GeoTIFF (28992)"], "data"),
-        ("Reproject", ["rasterio warp", "→ EPSG:4326"], "raster"),
+        ("Reproject", ["rasterio warp", "→ EPSG:3857"], "raster"),
         ("rio-cogeo", ["Cloud-Optimized", "GeoTIFF, overviews"], "raster"),
         ("COG on disk", ["cogs/<app_label>/", "path → cog_path"], "raster"),
     ]

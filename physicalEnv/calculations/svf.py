@@ -8,7 +8,7 @@ Flow:
         -> the view (map bounds) plus a halo of one search radius, read as an
            elevation grid in the storage CRS (settings.COORDINATE_SYSTEM):
            a window of `dsm_raster` when it is stored in Postgres, otherwise a
-           warped window of the row's COG (EPSG:4326, see
+           warped window of the row's COG (COG_CRS, see
            core/rasterOperations.py::_reproject_and_cog) on a square grid
         -> sky_view_factor(): horizon search in `num_directions` azimuths up to
            `radius_m`, SVF = mean over the azimuths of 1 - sin(horizon angle)
@@ -230,7 +230,7 @@ def dsm_for_view(view, model=None):
 
 
 def source_cell_size(dsm):
-    """The DSM's own cell size in metres (the COG is in degrees)."""
+    """The DSM's own cell size in metres (the COG is in COG_CRS, not the storage CRS)."""
     if _db_raster(dsm) is not None:
         return abs(_db_raster(dsm).scale[0])
     import rasterio

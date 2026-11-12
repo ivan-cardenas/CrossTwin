@@ -32,7 +32,7 @@ def get_external_data(request):
     Users tick datasets they want, then POST to start the import.
     """
     catalog_grouped = get_catalog_grouped()
-    source_order = ["pdok", "CBS", "bodemdata", "osm", "sentinel2", "gee", "knmi", "rivm", "kea"]
+    source_order = ["pdok", "CBS", "bodemdata", "osm", "sentinel2", "gee", "knmi", "rivm", "kea", "bij12"]
 
     sources_present = {ds["source"] for datasets in catalog_grouped.values() for ds in datasets}
     all_sources = [

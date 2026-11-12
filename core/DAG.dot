@@ -164,14 +164,15 @@ digraph CrossTwin {
     NumberUsers         -> Water_Tariff_Afford;
 
     // Urban growth (2026-11-10, docs/DAG_REVISIONS.md): the former Urbanization
-    // node is gone. More people need more homes, homes are buildings, buildings
-    // need streets, both change the land cover, and the urban area grows:
+    // node is gone. More people need more homes, homes are buildings placed on
+    // the plots the streets leave (Streets -> Buildings, flipped 2026-11-12),
+    // both change the land cover, and the urban area grows:
     //   Total_Population -> Housing_Demand -> Zoning_Status -> New_Units
-    //   -> Buildings -> Streets -> LandCover -> CityArea
+    //   -> Buildings -> LandCover -> CityArea;  Streets -> Buildings, Streets -> LandCover
     // Degree_Urbanisation measures the result; it causes nothing (no out-edges).
     Total_Population    -> Housing_Demand;
     New_Units           -> Buildings;
-    Buildings           -> Streets;
+    Streets             -> Buildings;   // plots and footprints fill the blocks the street layout leaves (builtup/calculations/generative.py)
     Buildings           -> LandCover;   // 10 m urban-fabric ring of an editor building (physicalEnv/calculations/landcover.py::urbanize_around)
     Streets             -> LandCover;
     LandCover           -> CityArea;    // neighborhood urban_area (physicalEnv/signals.py::_recompute_neighborhood_urban_area)

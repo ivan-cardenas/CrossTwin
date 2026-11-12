@@ -146,8 +146,7 @@ def calculate_street_network(adminBund):
     intersection with the unit — a street crossing a boundary is split,
     never duplicated.
 
-    DAG edges:  Buildings    -> Streets
-                Streets      -> Accessibility   (density, as its first input)
+    DAG edge:   Streets      -> Accessibility   (density, as its first input)
     """
     streets = Street.objects.filter(geom__intersects=adminBund.geom)
     rows = streets.values('classification').annotate(

@@ -122,7 +122,7 @@ def measure(imagery, city_id=None, only_missing=False):
         albedo_P = mean{ a(x) : x pixel of the raster in P, a(x) valid }
 
     kept only with at least MIN_PIXELS valid pixels and 0 <= mean <= 1.
-    Skips editor polygons (source_building / source_park), which the scene
+    Skips editor polygons (source_building / source_park / source_street / source_project), which the scene
     never saw, and polygons measured on a newer scene. `city_id` limits it
     to one city, `only_missing` to polygons without an albedo (bulk imports).
     Returns the number of polygons written.
@@ -147,7 +147,7 @@ def measure(imagery, city_id=None, only_missing=False):
                 JOIN "{img}" r ON r.id = %(img)s
                 WHERE l.geom && ST_Envelope(r.raster)
                   AND ST_Intersects(l.geom, ST_ConvexHull(r.raster))
-                  AND l.source_building IS NULL AND l.source_park IS NULL
+                  AND l.source_building IS NULL AND l.source_park IS NULL AND l.source_street IS NULL AND l.source_project IS NULL
                   AND (%(city)s::int IS NULL OR l.city_id = %(city)s)
                   AND (NOT %(missing)s OR l.albedo IS NULL)
                   AND (l.albedo_date IS NULL OR %(date)s::date IS NULL OR l.albedo_date <= %(date)s)

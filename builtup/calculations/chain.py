@@ -96,3 +96,46 @@ def urbanization_rate(area_0, year_0, area_1, year_1):
     if not area_0 or area_1 is None or year_1 is None or year_0 is None or year_1 <= year_0:
         return None
     return ((area_1 / area_0) ** (1.0 / (year_1 - year_0)) - 1.0) * 100.0
+
+
+# ── Neighbourhood generator (builtup/calculations/generative.py) ─────────
+#
+#   units  = floor(GFA / unit_gfa)                apartments (≥ 1 per building)
+#   floors = fewest in [1, 20] whose units reach the target (generative.generate)
+#   FAR    = Σ GFA / site area                    (floor area ratio, FSI)
+#   GSI    = Σ footprint / site area              (ground space index)
+#   density = units / (site area / 10 000)        dwellings per hectare
+# (Berghauser Pont & Haupt 2010, Spacematrix: FSI, GSI.)
+
+def units_in(gfa_m2, unit_gfa_m2):
+    """Dwellings in a building of that gross floor area: whole units, at least one."""
+    if not unit_gfa_m2 or unit_gfa_m2 <= 0:
+        return 1
+    return max(1, int(gfa_m2 // unit_gfa_m2))
+
+
+def layout_metrics(site_m2, footprints_m2, floors, units, street_m2, street_length_m, target_units=None):
+    """Spacematrix-style metrics of a generated layout (areas in m², lengths in m)."""
+    footprint = float(sum(footprints_m2))
+    gfa = float(sum(a * f for a, f in zip(footprints_m2, floors)))
+    total_units = int(sum(units))
+    site = float(site_m2) if site_m2 else 0.0
+    return {
+        "buildings": len(footprints_m2),
+        "units": total_units,
+        "target_units": target_units,
+        "units_vs_target": (total_units - target_units) if target_units else None,
+        "footprint_m2": round(footprint, 1),
+        "gfa_m2": round(gfa, 1),
+        "site_m2": round(site, 1),
+        "far": round(gfa / site, 3) if site else None,
+        "gsi": round(footprint / site, 3) if site else None,
+        "street_m2": round(float(street_m2), 1),
+        "street_share": round(street_m2 / site, 3) if site else None,
+        "street_length_m": round(float(street_length_m), 1),
+        "density_units_ha": round(total_units / (site / 10_000), 1) if site else None,
+        "dwellings_per_building": round(total_units / len(units), 2) if units else None,
+        "max_dwellings_per_building": max(units) if units else None,
+        "single_family": sum(1 for u in units if u == 1),
+        "multi_family": sum(1 for u in units if u > 1),
+    }

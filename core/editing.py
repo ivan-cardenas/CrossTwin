@@ -374,12 +374,13 @@ _editor = threading.local()
 
 @contextmanager
 def editor_change():
-    """Marks a save/delete made by the map editor (feature_form / feature_delete)."""
+    """Marks a save/delete made by the map editor (feature_form / feature_delete). Nestable."""
+    previous = getattr(_editor, 'active', False)
     _editor.active = True
     try:
         yield
     finally:
-        _editor.active = False
+        _editor.active = previous
 
 
 def is_editor_change():

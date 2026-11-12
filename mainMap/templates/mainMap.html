@@ -29,6 +29,7 @@
 <script src="{% static 'js/SvfTool.js' %}"></script>
 <script src="{% static 'js/SolweigTool.js' %}"></script>
 <script src="{% static 'js/DegurbaTool.js' %}"></script>
+<script src="{% static 'js/GeneratorTool.js' %}"></script>
 <script src="{% static 'js/WeatherPill.js' %}"></script>
 <script src="{% static 'js/info_popover.js' %}"></script>
 <script src="{% static 'js/MapSettings.js' %}"></script>
@@ -328,6 +329,92 @@
       <div class="lst-status" id="degurba-status" role="status"></div>
     </div>
 
+    <!-- NEIGHBOURHOOD GENERATOR — outline -> streets, plots, buildings
+         (core/static/js/GeneratorTool.js, builtup/views_generator.py,
+         builtup/calculations/generative.py). Preview is a what-if; Store
+         completes a housing project (DAG New_Units -> Buildings). -->
+    <div class="lst-card" id="generator-card"
+         data-projects-url="{% url 'builtup:generator_projects' %}"
+         data-preview-url="{% url 'builtup:generator_preview' %}"
+         data-commit-url="{% url 'builtup:generator_commit' %}"
+         data-remove-url="{% url 'builtup:generator_remove' %}"
+         data-can-commit="{{ user.is_staff|yesno:'1,0' }}">
+      {% csrf_token %}
+      <div class="lst-card-header">
+        <div class="lst-card-title">NEIGHBOURHOOD GENERATOR</div>
+        <button class="lst-card-close" id="generator-card-close" aria-label="Close neighbourhood generator">✕</button>
+      </div>
+      <p class="lst-card-hint">Draw an outline or pick a housing project. Streets are laid out first; plots and buildings fill the blocks they leave. Protected nature (Natura 2000, NNN) is left unbuilt. Empty fields use the style's defaults (shown greyed).</p>
+      <div class="lst-card-fields">
+        <label class="generator-half">Project
+          <select id="generator-project"><option value="">New outline (draw it)</option></select>
+        </label>
+        <button class="lst-btn" id="generator-draw" type="button">Draw outline</button>
+        <label class="generator-half">Style
+          <select id="generator-style">
+            <option value="plain" selected>Plain (straight grid)</option>
+            <option value="vinex">Vinex (row houses, curved streets)</option>
+            <option value="garden_city">Garden city (detached, curved)</option>
+            <option value="urban_block">Urban block (perimeter, chamfered corners)</option>
+            <option value="modernist">Modernist (slabs and towers)</option>
+          </select>
+        </label>
+        <label>Street pattern
+          <select id="generator-street_pattern">
+            <option value="" selected>Style default</option>
+            <option value="grid">Grid</option>
+            <option value="curved">Curved</option>
+            <option value="radial">Radial</option>
+          </select>
+        </label>
+        <label>Variation <span id="generator-variation-value">50 %</span>
+          <input type="range" min="0" max="100" step="5" value="50" id="generator-variation">
+        </label>
+        <label>Seed
+          <span class="generator-seed-row">
+            <input type="number" min="1" step="1" value="1" id="generator-seed">
+            <button class="lst-btn" id="generator-shuffle" type="button" title="Draw a new variation">Shuffle</button>
+          </span>
+        </label>
+        <label>Typology
+          <select id="generator-typology">
+            <option value="row" selected>Row houses</option>
+            <option value="semi">Semi-detached</option>
+            <option value="detached">Detached</option>
+            <option value="perimeter">Perimeter blocks</option>
+            <option value="slab">Slabs</option>
+          </select>
+        </label>
+        <label>Target dwellings <input type="number" min="1" step="1" id="generator-target_units"></label>
+        <label class="generator-half">Dwellings per building
+          <select id="generator-dwelling_mode">
+            <option value="auto" selected>Auto (houses up to 2 floors, flats above)</option>
+            <option value="single">One home per building</option>
+            <option value="stacked">Flats by floor area</option>
+          </select>
+        </label>
+        <label>Dwelling size (m² gross) <input type="number" min="41" step="5" id="generator-unit_gfa_m2"></label>
+        <label>Street width (m) <input type="number" min="3" max="40" step="0.5" id="generator-street_width"></label>
+        <label class="generator-half lst-check"><input type="checkbox" id="generator-ring" checked> Ring street along the outline</label>
+        <label>Block length (m) <input type="number" min="20" step="5" id="generator-block_length"></label>
+        <label>Block depth (m) <input type="number" min="20" step="5" id="generator-block_depth"></label>
+        <label>Plot width (m) <input type="number" min="3" step="0.1" id="generator-plot_width"></label>
+        <label>Plot depth (m) <input type="number" min="8" step="1" id="generator-plot_depth"></label>
+        <label>Building depth (m) <input type="number" min="5" step="0.5" id="generator-building_depth"></label>
+        <label>Front setback (m) <input type="number" min="0" step="0.5" id="generator-front_setback"></label>
+        <label>Floors <input type="number" min="1" max="20" step="1" id="generator-floors"></label>
+        <label>Grid angle (°) <input type="number" min="-90" max="90" step="1" id="generator-angle_deg"></label>
+        <label class="generator-half">Project name <input type="text" maxlength="100" id="generator-name"></label>
+        <label>Completion year <input type="number" min="1900" max="2200" step="1" id="generator-year"></label>
+      </div>
+      <div class="generator-findings" id="generator-site" role="status"></div>
+      <div class="generator-findings" id="generator-rules"></div>
+      <div class="lst-view-info" id="generator-metrics"></div>
+      <button class="lst-btn lst-btn-primary" id="generator-commit" disabled hidden>Store as a new completed project</button>
+      <button class="lst-btn" id="generator-remove" disabled hidden>Set back to planned (remove its buildings)</button>
+      <div class="lst-status" id="generator-status" role="status"></div>
+    </div>
+
     <!-- THERMAL COMFORT TOOL — SOLWEIG Tmrt, UTCI and PET for the area in view
          and one hour (core/static/js/SolweigTool.js, urban_heat/solweig/,
          docs/THERMAL_COMFORT.md). Reuses the LST card's lst-* classes. -->
@@ -530,30 +617,28 @@
       <div class="actions-header">
         <span class="actions-title">CALCULATE FOR THIS VIEW</span>
       </div>
-      <div class="actions-menu-row">
+      <div class="actions-menu-row actions-menu-grid">
         <button class="action-panel-btn" id="lstToolBtn">
           <span class="bi bi-thermometer-sun"></span>
           <span class="action-btn-text">Land Surface Temperature</span>
         </button>
-      </div>
-      <div class="actions-menu-row">
         <button class="action-panel-btn" id="svfToolBtn">
           <span class="bi bi-brightness-high"></span>
           <span class="action-btn-text">Sky View Factor</span>
           <span class="stale-dot" hidden title="Buildings changed here since the SVF was calculated: run it again"></span>
         </button>
-      </div>
-      <div class="actions-menu-row">
         <button class="action-panel-btn" id="solweigToolBtn">
           <span class="bi bi-person-walking"></span>
           <span class="action-btn-text">Thermal Comfort (SOLWEIG)</span>
           <span class="stale-dot" hidden title="Buildings changed here since thermal comfort was calculated: run it again"></span>
         </button>
-      </div>
-      <div class="actions-menu-row">
         <button class="action-panel-btn" id="degurbaToolBtn">
           <span class="bi bi-buildings"></span>
           <span class="action-btn-text">Degree of Urbanisation</span>
+        </button>
+        <button class="action-panel-btn" id="generatorToolBtn">
+          <span class="bi bi-grid-3x3"></span>
+          <span class="action-btn-text">Neighbourhood generator</span>
         </button>
       </div>
 

@@ -49,6 +49,8 @@ class Street(models.Model):
                                         help_text="Road surface (Oke et al. 2017 Table 5.1)")
     classification = models.CharField(max_length=50, choices=[('primary', 'Primary'), ('secondary', 'Secondary'), ('residential', 'Residential')], help_text="Street classification (e.g., primary, secondary, residential)")
     width = models.FloatField(null=True, blank=True, help_text="Width of the street in meters. Leave empty to let the canyon aspect ratio use the measured facade-to-facade distance (builtup.StreetCanyon); a value typed here overrides it")
+    # Plain id, not an FK: builtup must not depend on housing (housing imports builtup).
+    source_project = models.IntegerField(null=True, blank=True, db_index=True, help_text="housing.HousingProject whose neighbourhood generator laid out this street (builtup/calculations/materialise.py)")
     geom = models.MultiLineStringField(srid=CoordinateSystem)
 
     def __str__(self):
@@ -214,6 +216,8 @@ class Building(models.Model):
     floodDepth_p99_m = models.FloatField(null=True, blank=True, help_text="99th percentile water depth around the building in a 70 mm/h cloudburst, m (KEA nl_fcab_omgevingsscore_wateroverlast.waterdiepte_p99)")
     floodDepthClass = models.CharField(max_length=50, null=True, blank=True, help_text="Water depth class around the building, e.g. '10 tot 15 cm' (KEA nl_fcab_omgevingsscore_wateroverlast.waterdiepte_klasse)")
     connectivity = models.ManyToManyField(Facility, verbose_name="Connections to Facilities", blank=True, help_text="Facilities the property is connected to")  #TODO: Define connectivity index and calculation method
+    # Plain id, not an FK: builtup must not depend on housing (housing imports builtup).
+    source_project = models.IntegerField(null=True, blank=True, db_index=True, help_text="housing.HousingProject whose neighbourhood generator placed this building (builtup/calculations/materialise.py)")
     last_updated = models.DateTimeField(default=timezone.now)
     geom = models.MultiPolygonField(srid=CoordinateSystem)
     

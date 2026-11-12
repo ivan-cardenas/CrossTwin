@@ -8,7 +8,14 @@ give-back mechanics (convert_area / release_owner):
 - a green space (nature.GreenSpaces; a park is one of type 'park'): its
   outline becomes "green urban areas" (green_area, DAG edge
   New_Green_Area -> LandCover). The owner kind stays "park" (columns
-  source_park / owner_park), the id is the GreenSpaces id.
+  source_park / owner_park), the id is the GreenSpaces id;
+- a street (builtup.Street): its line buffered by half its width becomes
+  "Road and rail networks and associated land" (street_area, DAG edge
+  Streets -> LandCover; columns source_street / owner_street);
+- a generated neighbourhood (housing.HousingProject id): its outline becomes
+  one urban-fabric polygon (project_area, DAG edge Buildings -> LandCover for
+  all its buildings at once; columns source_project / owner_project); its
+  streets then cut their road surface out of it.
 
 urbanize_around() turns a buffer around a new building into "urban fabric":
 the buffer is cut out of every land-cover polygon of the city's latest year
@@ -39,11 +46,17 @@ from ..models import LandCoverClasses, LandCoverVector, UrbanFabricCut
 BUILDING_BUFFER_M = 10
 URBAN_FABRIC_CLASS = "urban fabric"
 GREEN_AREA_CLASS = "Green urban areas"   # CORINE 1.4.1
+ROAD_CLASS = "Road and rail networks and associated land"   # CORINE 1.2.2
+
+
+# Every kind of editor object that owns converted land cover; each has a
+# source_<kind> column (LandCoverVector, UrbanFabricCut) and owner_<kind> (UrbanFabricCut).
+OWNER_KINDS = ("building", "park", "street", "project")
 
 
 class Owner(NamedTuple):
     """The editor object a converted polygon belongs to."""
-    kind: str   # "building" | "park"
+    kind: str   # one of OWNER_KINDS
     id: int
 
     @property
@@ -65,6 +78,14 @@ landcover_rewriting = Signal()
 landcover_created = Signal()
 
 _POLYGONS = "ST_Multi(ST_CollectionExtract({}, 3))"
+_SOURCE_FIELDS = tuple(f"source_{kind}" for kind in OWNER_KINDS)
+_OWNER_FIELDS = tuple(f"owner_{kind}" for kind in OWNER_KINDS)
+_SOURCE_COLUMNS = ", ".join(_SOURCE_FIELDS)
+
+
+def _sources_of(row):
+    """The source_<kind> values of a cut, to copy onto the polygon recreated or re-targeted from it."""
+    return {name: getattr(row, name) for name in _SOURCE_FIELDS}
 
 
 def _land_cover_class(name, description):
@@ -83,6 +104,11 @@ def _urban_fabric_class():
 def _green_area_class():
     return _land_cover_class(
         GREEN_AREA_CLASS, "Auto-created for green spaces (parks) drawn in the map editor (CORINE 1.4.1 Green urban areas).")
+
+
+def _road_class():
+    return _land_cover_class(
+        ROAD_CLASS, "Auto-created for streets drawn or generated in the map editor (CORINE 1.2.2 Road and rail networks).")
 
 
 def _buffer_sql(expr, metres=BUILDING_BUFFER_M):
@@ -173,6 +199,60 @@ def green_area(geom, city_id, park_id, name="Park", vegetation_type=None):
                         buffer_m=0, material=material(DECIDUOUS if trees else GRASS))
 
 
+def project_area(geom, city_id, project_id, footprint_m2=0.0, name="Generated neighbourhood"):
+    """
+    Make a generated neighbourhood's outline (clipped to the city) one
+    urban-fabric polygon in the city's latest year; its buildings get no ring
+    of their own (physicalEnv.signals.building_created skips them) and its
+    streets cut their road surface out of it afterwards (street_area). The
+    albedo is estimated like a building ring: roofs over the footprints,
+    paving elsewhere (albedo.ring_albedo). Released by release_owner(Owner("project", id)).
+
+        U   = outline ∩ city
+        LC' = { P \ U : P ∈ LC, P \ U ≠ ∅ } ∪ { U as urban fabric }
+
+    DAG edge: Buildings -> LandCover (all buildings of the project at once)
+    """
+    from .albedo import ring_albedo
+
+    estimate = None
+    if not geom.srs or not geom.srs.geographic:
+        estimate = ring_albedo(geom.area, min(footprint_m2, geom.area), None)
+    owner = Owner("project", project_id)
+    return convert_area(geom, city_id, _urban_fabric_class(), (name or "Generated neighbourhood")[:100],
+                        owner=owner, albedo=estimate, albedo_source=owner.label() if estimate is not None else None)
+
+
+def street_area(geom, city_id, street_id, width_m, name="Street"):
+    """
+    Make a street's surface (its centre line buffered by half its width, flat
+    ends, clipped to the city) road land cover in the city's latest year,
+    cutting it out of what lay there:
+
+        S   = buffer(street line, W / 2) ∩ city
+        LC' = { P \\ S : P ∈ LC, P \\ S ≠ ∅ } ∪ { S as road and rail networks }
+
+    W = Street.width, else the class default (builtup/calculations/chain.py::DEFAULT_WIDTH_M,
+    passed in by the receiver). Released by release_street().
+
+    DAG edge: Streets -> LandCover
+    """
+    if not width_m or width_m <= 0:
+        return None
+    # Flat ends (end_cap_style 2) and mitred joins (join_style 2), like the generator's street area.
+    surface = geom.buffer_with_style(width_m / 2, end_cap_style=2, join_style=2)
+    return convert_area(surface, city_id, _road_class(), (name or "Street")[:100], owner=Owner("street", street_id))
+
+
+def release_street(street_id):
+    """
+    Undo street_area() for an editor street that moved or was deleted (release_owner).
+
+    DAG edge: Streets -> LandCover (the inverse step)
+    """
+    return release_owner(Owner("street", street_id))
+
+
 def convert_area(geom, city_id, land_cover_class, land_use, owner=None, buffer_m=0,
                  material=None, albedo=None, albedo_source=None):
     """
@@ -230,7 +310,7 @@ def convert_area(geom, city_id, land_cover_class, land_use, owner=None, buffer_m
                     # What each polygon is about to lose, with what it takes to recreate it
                     cursor.execute(
                         f"""
-                        SELECT id, land_cover_type_id, land_use, material_id, source_building, source_park,
+                        SELECT id, land_cover_type_id, land_use, material_id, {_SOURCE_COLUMNS},
                                albedo, albedo_source, albedo_date,
                                ST_AsEWKT({_POLYGONS.format("ST_Intersection(geom, ST_GeomFromEWKT(%(buffer)s))")})
                         FROM "{table}" WHERE id = ANY(%(ids)s)
@@ -276,15 +356,18 @@ def convert_area(geom, city_id, land_cover_class, land_use, owner=None, buffer_m
         landcover_created.send(sender=LandCoverVector, pks=[created.pk])
 
         cuts = []
-        for (target, class_id, target_use, material_id, target_building, target_park,
-             target_albedo, target_albedo_source, target_albedo_date, piece) in pieces:
+        n = len(OWNER_KINDS)
+        for row in pieces:
+            target, class_id, target_use, material_id = row[:4]
+            sources = dict(zip(_SOURCE_FIELDS, row[4:4 + n]))
+            target_albedo, target_albedo_source, target_albedo_date, piece = row[4 + n:]
             piece = GEOSGeometry(piece) if piece else None
             if piece is None or piece.empty:
                 continue
             cuts.append(UrbanFabricCut.objects.create(
                 **{owner.cut_field: owner.id}, target=target, city_id=city_id, year=year,
                 land_cover_type_id=class_id, land_use=target_use, material_id=material_id,
-                source_building=target_building, source_park=target_park,
+                **sources,
                 albedo=target_albedo, albedo_source=target_albedo_source, albedo_date=target_albedo_date,
                 geom=piece,
             ).pk)
@@ -381,8 +464,7 @@ def release_owner(owner):
                 LandCoverVector.objects.create(
                     id=target, city_id=cut.city_id, year=cut.year,
                     land_cover_type_id=cut.land_cover_type_id, land_use=cut.land_use,
-                    material_id=cut.material_id, source_building=cut.source_building,
-                    source_park=cut.source_park, albedo=cut.albedo, albedo_source=cut.albedo_source,
+                    material_id=cut.material_id, **_sources_of(cut), albedo=cut.albedo, albedo_source=cut.albedo_source,
                     albedo_date=cut.albedo_date, geom=piece, percentage=0.0,
                 )
                 recreated.append(target)
@@ -399,7 +481,7 @@ def release_owner(owner):
             with connection.cursor() as cursor:
                 cursor.execute(
                     f"""
-                    SELECT o.owner_building, o.owner_park, c.id,
+                    SELECT {", ".join("o." + f for f in _OWNER_FIELDS)}, c.id,
                            ST_AsEWKT({_POLYGONS.format("ST_Intersection(o.geom, c.geom)")})
                     FROM "{cut_table}" o
                     JOIN "{cut_table}" c ON c.{owner.cut_field} = %(b)s
@@ -410,17 +492,18 @@ def release_owner(owner):
                 )
                 overlaps = cursor.fetchall()
             by_pk = {c.pk: c for c in own}
-            for owner_building, owner_park, cut_pk, piece in overlaps:
+            for row in overlaps:
+                owners = dict(zip(_OWNER_FIELDS, row[:len(OWNER_KINDS)]))
+                cut_pk, piece = row[len(OWNER_KINDS):]
                 piece = GEOSGeometry(piece) if piece else None
                 if piece is None or piece.empty:
                     continue
                 c = by_pk[cut_pk]
                 new_cuts.append(UrbanFabricCut(
-                    owner_building=owner_building, owner_park=owner_park, target=c.target,
+                    **owners, target=c.target,
                     city_id=c.city_id, year=c.year,
                     land_cover_type_id=c.land_cover_type_id, land_use=c.land_use,
-                    material_id=c.material_id, source_building=c.source_building,
-                    source_park=c.source_park, albedo=c.albedo, albedo_source=c.albedo_source,
+                    material_id=c.material_id, **_sources_of(c), albedo=c.albedo, albedo_source=c.albedo_source,
                     albedo_date=c.albedo_date, geom=piece,
                 ))
 
