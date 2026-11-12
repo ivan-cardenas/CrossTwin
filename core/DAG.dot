@@ -264,7 +264,6 @@ digraph CrossTwin {
 
 
     Total_Water_Prod    -> Supply_Security;
-    Total_Water_Prod    -> OPEX;
 
     Supply_Security     -> Service_Time;
 

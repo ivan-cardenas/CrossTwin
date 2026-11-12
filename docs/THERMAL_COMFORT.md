@@ -9,7 +9,7 @@ radiation model is SOLWEIG (Lindberg et al. 2008), run on the GPU with
 model, and results they make outdated are flagged for recalculation.
 
 Code: `urban_heat/solweig/` (`inputs.py`, `met.py`, `pipeline.py`,
-`views.py`), `physicalEnv/dsm_patches.py`, `core/static/js/SolweigTool.js`.
+`views.py`), `physicalEnv/calculations/dsm_patches.py`, `core/static/js/SolweigTool.js`.
 Equations: `docs/functions_and_equations.tex` (sections *Building changes on
 the DSM* and *Thermal comfort with SOLWEIG*).
 
@@ -17,8 +17,8 @@ the DSM* and *Thermal comfort with SOLWEIG*).
 
 | DAG edge (`core/DAG.dot`) | Where |
 |---|---|
-| `Buildings -> DSM` | `physicalEnv/dsm_patches.py` (editor changes as an overlay on the DSM; receivers in `physicalEnv/signals.py`) |
-| `DSM -> SVF` | SOLWEIG's sky view factors (cached per input); also the standalone SVF tool (`physicalEnv/svf.py`) |
+| `Buildings -> DSM` | `physicalEnv/calculations/dsm_patches.py` (editor changes as an overlay on the DSM; receivers in `physicalEnv/signals.py`) |
+| `DSM -> SVF` | SOLWEIG's sky view factors (cached per input); also the standalone SVF tool (`physicalEnv/calculations/svf.py`) |
 | `SVF -> Tmrt`, `Meteorology -> Tmrt` | SOLWEIG 2022a radiant fluxes |
 | `Tmrt -> UTCI`, `Meteorology -> UTCI` | SOLWEIG-GPU's UTCI |
 | `Tmrt -> PET`, `SVF -> PET`, `Meteorology -> PET` | `pipeline.urban_pet` with `pet-adjusted` (Tmrt; SVF of the upwind source area in the heat island; the met record and the day's values) |

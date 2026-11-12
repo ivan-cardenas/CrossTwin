@@ -57,9 +57,9 @@ The degree of urbanisation is a **State** node measured from that chain, with no
 | added | `New_Units -> Buildings` | gap (completed projects are not turned into BAG buildings yet) |
 | added | `Buildings -> Streets` | gap |
 | added | `Streets -> LandCover` | gap |
-| added | `Buildings -> LandCover` (the 10 m urban-fabric ring of an editor building, `physicalEnv/landcover.py::urbanize_around`) | implemented (code that used to be cited as `New_Units -> LandCover`) |
+| added | `Buildings -> LandCover` (the 10 m urban-fabric ring of an editor building, `physicalEnv/calculations/landcover.py::urbanize_around`) | implemented (code that used to be cited as `New_Units -> LandCover`) |
 | added | `LandCover -> CityArea` (neighborhood `urban_area` from the urban land-cover classes, `physicalEnv/signals.py::_recompute_neighborhood_urban_area`) | implemented (existing code that had "no explicit DAG edge") |
-| added | `Total_Population -> Degree_Urbanisation`, `Buildings -> Degree_Urbanisation`, `LandCover -> Degree_Urbanisation` | implemented (`builtup.Urbanisation`, `builtup/urbanisation.py`, `builtup/signals.py`) |
+| added | `Total_Population -> Degree_Urbanisation`, `Buildings -> Degree_Urbanisation`, `LandCover -> Degree_Urbanisation` | implemented (`builtup.Urbanisation`, `builtup/calculations/urbanisation.py`, `builtup/signals.py`) |
 | changed | `Network -> New_Units` gets `[lag=1, style=dashed]` | gap, lagged |
 
 **Loop.** With `LandCover -> CityArea`, the graph holds `CityArea -> Network -> New_Units -> Buildings -> (Streets ->) LandCover -> CityArea`. Network capacity enabling new units acts at the next planning step, so `Network -> New_Units` is the lagged edge that breaks the loop in the same-time graph.

@@ -252,7 +252,7 @@ def _cached_province_data(level, location, year, pop_scenario, pop_growth):
 
 ## 5. Stop shipping admin geometries back and forth
 
-Examples: `watersupply/calculations.py:45,109,136,316,331`, `watersupply/views.py:58-59`, `urban_heat/calculations.py:26,41,81,82,156,290,293,318`.
+Examples: `watersupply/calculations/indicators.py:45,109,136,316,331`, `watersupply/views.py:58-59`, `urban_heat/calculations/indicators.py:26,41,81,82,156,290,293,318`.
 
 `adminUnit.geom` is a MultiPolygon with thousands of vertices. Each `filter(geom__intersects=adminUnit.geom)` serialises it to EWKB in Python, sends it over the wire and parses it again in PostGIS. `_get_adminUnit_data` does this about 8 times per request, and `get_thermal_indices` sends it as **WKT** text (the slowest format) about 10 times.
 
@@ -285,7 +285,7 @@ Django loads every column by default, including multi-MB geometries and PostGIS 
 
 | Location | Loads | Needs |
 |---|---|---|
-| `administrative/population.py:156` `City.objects.filter(province=unit)` | full geom per city | `.only("pk", "currentPopulation")` |
+| `administrative/calculations/population.py:156` `City.objects.filter(province=unit)` | full geom per city | `.only("pk", "currentPopulation")` |
 | `administrative/admin_units.py:48` `resolve_admin_unit_at_point` (up to 4 queries) | full geom of the match | `.defer("geom")`, or a single `UNION ALL … LIMIT 1` query |
 | `administrative/admin_units.py:62-64` `city_of` → `unit.district.city` | 2 extra queries, 2 geoms | `City.objects.defer("geom").get(district__neighborhood=unit)` or `select_related` |
 | `administrative/signals.py:31` `model.objects.filter(pk=pk).first()` | full parent row | `.values("area_km2", parent_fk).first()` |
@@ -373,7 +373,7 @@ PostgreSQL server settings also matter. The defaults are sized for a very small 
 
 ## 10. Raster statistics
 
-`urban_heat/calculations.py:112-142`
+`urban_heat/calculations/indicators.py:112-142`
 
 - `ST_Clip(raster, geom)` + `ST_SummaryStats` is only fast when the raster is stored **tiled** (e.g. 256×256 per row, as `raster2pgsql -t 256x256` does) with the `ST_ConvexHull` GiST index. If each raster is one large row, every call clips the whole image.
 - The COGs already exist for TiTiler. Computing stats from the COG is usually faster than from PostGIS, e.g. `rasterio.mask` with overviews, or TiTiler's `/cog/statistics` endpoint with a GeoJSON body. The raster rows in PostGIS then serve only as the source of truth.
@@ -403,7 +403,7 @@ A GPU speeds up **compute-bound array work**: the same arithmetic over millions 
 | Workload | GPU helps? | Why |
 |---|---|---|
 | Dashboard `calculate_*` aggregates, GeoJSON, catalog | ❌ No | DB-bound; a few rows of arithmetic after a query |
-| Population projection / what-if (`administrative/population.py`) | ❌ No | Tens of values; NumPy vectorisation is plenty |
+| Population projection / what-if (`administrative/calculations/population.py`) | ❌ No | Tens of values; NumPy vectorisation is plenty |
 | **Deriving rasters from rasters**: DSM → SVF → Tmrt/PET/UTCI, shadow casting, the DAG gaps in `urban_heat` | ✅ **Yes, 10–100×** | Per-pixel ray marching over millions of pixels × dozens of azimuths × hours of the day |
 | **Zonal statistics** over many rasters/timesteps (§10), e.g. hourly UTCI for every neighborhood | ✅ Yes, at volume | For one raster and one city, copying to the GPU takes most of the time. Hundreds of timesteps × hundreds of zones is where it pays off |
 | **Voxel simulations** (sky/green view, solar irradiance), see [VOXCITY.md](VOXCITY.md) | ✅ Yes | VoxCity ships a Taichi GPU simulator (`pip install "voxcity[gpu]"`) |

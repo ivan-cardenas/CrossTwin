@@ -410,7 +410,7 @@ def signals():
     # urban heat: computed on demand, deliberately outside the signal graph
     d.group(40, 700, 470, 190, "On demand · no receiver", "raster", dashed=True)
     d.box(60, 745, 205, 115, "LST", ["RS_Imagery, LandCover", "→ LST (Landsat + NDVI,", "SMW, urban_heat/lst/)"], "raster")
-    d.box(285, 745, 205, 115, "SVF", ["DSM → SVF", "(horizon search,", "physicalEnv/svf.py)"], "raster")
+    d.box(285, 745, 205, 115, "SVF", ["DSM → SVF", "(horizon search,", "physicalEnv/calculations/svf.py)"], "raster")
     d.edge([(490, 785), (590, 785)], "raster", "save")
     d.edge([(162, 860), (162, 875), (540, 875), (540, 825), (590, 825)], "raster", "save", label_at=1)
 
@@ -483,7 +483,7 @@ def editing():
 # =========================================================================
 def infiltration():
     d = Diagram("08-infiltration", "Soil Hydrology & Infiltration — SCS Curve Number",
-                "physicalEnv/soil.py: soil map × land cover × groundwater → hydrologic soil group → curve number → infiltrated share of a rain event",
+                "physicalEnv/calculations/soil.py: soil map × land cover × groundwater → hydrologic soil group → curve number → infiltrated share of a rain event",
                 h=900)
     # sources
     d.group(40, 120, 320, 580, "Sources", "external")
@@ -497,7 +497,7 @@ def infiltration():
     d.box(420, 430, 330, 110, "GroundwaterDepth", ["RasterField kept in PostGIS", "statistic GHG | GLG", "row per city · year · statistic"], "raster")
     d.box(420, 560, 330, 110, "LandCoverVector", ["+ LandCoverClasses (CORINE)", "latest year in the unit"], "data")
     # computation
-    d.group(800, 120, 400, 580, "physicalEnv/soil.py", "django")
+    d.group(800, 120, 400, 580, "physicalEnv/calculations/soil.py", "django")
     d.box(820, 170, 360, 250, "soil_landcover_composition()", ["(geom, statistic) — one SQL statement:",
           "· pieces = soil ∩ land cover ∩ unit", "· ST_Reclass(GHG|GLG < 60 cm)", "  → ST_DumpAsPolygons → ST_Union",
           "· shallow ∧ undrained → group D", "· drained land keeps its texture group",
@@ -557,7 +557,7 @@ def on_demand():
                       "source for its day fails before the download. The TPW source is kept in measurement_method."])
 
     # SVF
-    d.group(380, 480, 1180, 330, "SVF  ·  physicalEnv/svf.py  ·  DSM → SVF", "data")
+    d.group(380, 480, 1180, 330, "SVF  ·  physicalEnv/calculations/svf.py  ·  DSM → SVF", "data")
     d.box(400, 530, 250, 150, "physicalEnv/views.py", ["GET  /physicalEnv/svf/info/", "POST /physicalEnv/svf/calculate/", "(calculate: staff only)"], "django")
     d.box(680, 530, 270, 150, "calculate_svf() · plan()", ["dsm_for_view(): DSM covering", "the view + a halo of one radius", "refused above 16 M cells", "→ Recalculate if stored"], "django")
     d.box(980, 530, 250, 150, "load_dsm()", ["window of dsm_raster, or", "the DSM's COG warped back", "to the storage CRS", "at the COG's own cell"], "data")
@@ -588,7 +588,7 @@ def on_demand():
     d.edge([(980, 915), (950, 915)], "raster")
     d.edge([(525, 680), (525, 860)], "client", "JSON: new + replaced layers")
     d.note(40, 1010, ["Both are synchronous requests (LST ~10–60 s). Earth Engine only serves the inputs; every equation runs in numpy.",
-                      "Same tools from the shell: manage.py calculate_lst --city Enschede  ·  physicalEnv.svf.calculate_svf(bbox=…)."])
+                      "Same tools from the shell: manage.py calculate_lst --city Enschede  ·  physicalEnv.calculations.svf.calculate_svf(bbox=…)."])
     d.legend([("client", "Browser"), ("django", "Django view / orchestration"), ("external", "Earth Engine"),
               ("raster", "numpy / raster"), ("data", "Storage")])
     return d

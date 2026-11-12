@@ -420,7 +420,7 @@ class SolweigInputsTests(TestCase):
         from django.contrib.gis.geos import MultiPolygon, Polygon
 
         from builtup.models import Building
-        from physicalEnv.tests import _stored_dsm
+        from physicalEnv.tests.test_physicalenv import _stored_dsm
 
         from urban_heat.solweig import inputs
 
@@ -447,7 +447,7 @@ class SolweigInputsTests(TestCase):
     def test_a_too_large_view_is_refused(self):
         import numpy as np
 
-        from physicalEnv.tests import _stored_dsm
+        from physicalEnv.tests.test_physicalenv import _stored_dsm
 
         from urban_heat.solweig import inputs
 
@@ -476,7 +476,7 @@ class SolweigPipelineTests(TestCase):
         import numpy as np
 
         from physicalEnv.calculations.svf import wgs84_to_storage
-        from physicalEnv.tests import _stored_dsm
+        from physicalEnv.tests.test_physicalenv import _stored_dsm
 
         view = wgs84_to_storage(self.BBOX)
         _stored_dsm(np.full((300, 300), 5.0, dtype="float32"),

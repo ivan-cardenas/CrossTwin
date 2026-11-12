@@ -6,9 +6,9 @@ CrossTwin's measure of how urban each place is: the GHSL / Eurostat **Degree of 
 |---|---|
 | DAG node | `Degree_Urbanisation` (State), replacing the former `Urbanization` node: see `docs/DAG_REVISIONS.md` (2026-11-10) |
 | DAG edges | `Total_Population -> Degree_Urbanisation`, `Buildings -> Degree_Urbanisation`, `LandCover -> Degree_Urbanisation` |
-| Grid rules | `builtup/degurba.py` (pure numpy / scipy) |
-| Unit class, rate | `builtup/chain.py::classify_unit`, `urbanization_rate` |
-| Allocation, refresh | `builtup/urbanisation.py` |
+| Grid rules | `builtup/calculations/degurba.py` (pure numpy / scipy) |
+| Unit class, rate | `builtup/calculations/chain.py::classify_unit`, `urbanization_rate` |
+| Allocation, refresh | `builtup/calculations/urbanisation.py` |
 | Stored | `builtup.PopulationAllocation`, `builtup.UrbanisationCell` (map layers `UrbanisationCellLocal` 100 m, `UrbanisationCellOriginal` 1 km), `builtup.Urbanisation` (units), `administrative.City.urbanizationRate` |
 | Receivers | `builtup/signals.py` (Degree of Urbanisation section) |
 | UI | map: Actions menu → *Calculate for this view* → *Degree of Urbanisation* (`core/static/js/DegurbaTool.js`); built-up dashboard card (`builtup/views.py`) |
@@ -71,7 +71,7 @@ P_cell  = Σ_{d in cell} p_d
 
 **Built-up surface** (for the ≥ 50 % rule): `Σ area(footprint ∩ cell)` of all buildings of the neighborhood (assigned by point on surface), residential or not, as GHSL's built-up surface.
 
-**Settlement and water shares** of a cell = area of the cell covered by the settlement / water land-cover classes, over the cell's area (`builtup/urbanisation.py::landcover_shares`):
+**Settlement and water shares** of a cell = area of the cell covered by the settlement / water land-cover classes, over the cell's area (`builtup/calculations/urbanisation.py::landcover_shares`):
 - *Settlement* keywords: urban (fabric, green), industrial, commercial, road, rail, port area, airport, construction, sport, leisure, built.
 - *Water* keywords: water, sea and ocean, estuar, lagoon.
 - A cell is **settlement land** when its settlement share is ≥ 50 %, **or when it holds a dwelling**: a dwelling placed on a field counts at once. People spread *by area* (a neighborhood without dwellings) do not make a cell settlement land. Otherwise the fallback would turn whole rural neighborhoods into settlement and inflate the urban classes.
@@ -105,7 +105,7 @@ Window size (`window_cells`) and the mask (`masked`) are parameters of `degurba.
 
 **Expected bias.** The masked density is a *net-like* density: it is ≥ the gross density for settlement cells. More cells pass 1 500 / 300 than in a gross 100 m grid, and centres hug the built-up area instead of extending into its surroundings. The 1 km run on the same data measures this bias (see §8).
 
-## 5. Algorithm (`builtup/degurba.py::classify`)
+## 5. Algorithm (`builtup/calculations/degurba.py::classify`)
 
 ```
 input  pop, built_m2, water_share, settlement (bool), coverage   (2-D, one value per cell)
@@ -130,7 +130,7 @@ l2 = 30 centre, 23 dense, 22 semi, 21 suburban, 13 rural cluster,
 edge_effect = the cell's cluster touches a cell with coverage < 0.99 or the grid border
 ```
 
-## 6. Units and rate (`builtup/chain.py`)
+## 6. Units and rate (`builtup/calculations/chain.py`)
 
 ```
 L1(unit) = 3 city   if P_30 / P ≥ 0.5
@@ -156,7 +156,7 @@ rate     = ((A_t1 / A_t0)^(1 / (t1 − t0)) − 1) × 100   %/yr
 | `building_urbanisation_saved/_deleted` | `Building` footprint drawn, moved, deleted | built-up share of its neighborhoods |
 | `landcover_urbanisation_saved/_deleted`, `landcover_created` | `LandCoverVector` | settlement and water shares of the cells under it |
 
-`builtup/urbanisation.py::refresh` runs in a savepoint. Errors are logged and never block the source save. A refresh:
+`builtup/calculations/urbanisation.py::refresh` runs in a savepoint. Errors are logged and never block the source save. A refresh:
 1. re-allocates the scheduled neighborhoods;
 2. upserts the cells;
 3. re-reads land-cover shares where needed;
