@@ -122,6 +122,87 @@ class VegetationOverlayTests(TestCase):
         self.assertEqual(float(out[41, 41]), GROUND)
 
 
+class BuildingTreeClearanceTests(TestCase):
+    """A new or moved building clears tall vegetation within TREE_CLEARANCE_M (10 m) of its footprint."""
+
+    def setUp(self):
+        from builtup.models import Building
+
+        x, y = _cell_xy(50, 40)
+        Building.objects.create(id=1, height_m=20, geom=_rect(x - 0.5, y + 0.5, x + 9.5, y + 10.5))
+
+    def building_patch(self, footprint, original=None, height_m=6, building_id=-1):
+        from physicalEnv.models import DSMBuildingPatch
+
+        return DSMBuildingPatch.objects.create(building_id=building_id, original_footprint=original,
+                                               footprint=footprint, height_m=height_m)
+
+    @staticmethod
+    def _footprint_below_canopy():
+        """Cells rows 22..25, cols 12..15: the canopy's lower edge (row 19) is 2.5 m away, row 11 is 10.5 m."""
+        return _rect(ORIGIN[0] + 12, ORIGIN[1] - 26, ORIGIN[0] + 16, ORIGIN[1] - 22)
+
+    def test_a_new_building_clears_the_canopy_within_10_m(self):
+        self.building_patch(self._footprint_below_canopy())
+        out = _apply(_grid())
+        self.assertEqual(float(out[19, 14]), GROUND)          # 2.5 m from the footprint
+        self.assertEqual(float(out[12, 14]), GROUND)          # 9.5 m
+        self.assertEqual(float(out[11, 14]), GROUND + 10)     # 10.5 m: kept
+        self.assertEqual(float(out[24, 14]), GROUND + 6)      # the new roof
+
+    def test_a_height_only_change_keeps_the_trees(self):
+        footprint = self._footprint_below_canopy()
+        self.building_patch(footprint, original=footprint, height_m=9)
+        out = _apply(_grid())
+        self.assertEqual(float(out[19, 14]), GROUND + 10)
+
+    def test_a_moved_building_clears_around_its_new_footprint(self):
+        old = _rect(ORIGIN[0] + 30, ORIGIN[1] - 26, ORIGIN[0] + 34, ORIGIN[1] - 22)
+        self.building_patch(self._footprint_below_canopy(), original=old)
+        out = _apply(_grid())
+        self.assertEqual(float(out[19, 14]), GROUND)
+
+    def test_the_clearance_never_lowers_a_stored_building(self):
+        # 5 m above the stored 20 m building on rows/cols 40..49
+        self.building_patch(_rect(ORIGIN[0] + 40, ORIGIN[1] - 35, ORIGIN[0] + 45, ORIGIN[1] - 30))
+        out = _apply(_grid())
+        self.assertEqual(float(out[42, 42]), GROUND + 20)
+
+    def test_a_tree_planted_next_to_the_new_building_is_kept(self):
+        from physicalEnv.models import DSMVegetationPatch
+
+        self.building_patch(self._footprint_below_canopy())
+        cx, cy = _cell_xy(17, 14)
+        DSMVegetationPatch.objects.create(source="nature.Tree", source_id=1, original_geom=None,
+                                          geom=MultiPolygon(Point(cx, cy, srid=SRID).buffer(2), srid=SRID),
+                                          canopy_m=8)
+        out = _apply(_grid())
+        self.assertAlmostEqual(float(out[17, 14]), GROUND + 8, delta=0.5)
+        self.assertEqual(float(out[13, 14]), GROUND)          # the measured canopy around it is cleared
+
+    def test_a_footprint_just_outside_the_window_still_clears_inside_it(self):
+        # a footprint 5 m west of a 3-column window: no part of it lies inside the window
+        import numpy as np
+
+        from physicalEnv.calculations.dsm_patches import apply_patches
+
+        self.building_patch(_rect(ORIGIN[0] - 9, ORIGIN[1] - 20, ORIGIN[0] - 5, ORIGIN[1] - 10))
+        data = np.full((60, 3), GROUND + 10, dtype="float32")
+        out = apply_patches(data, ORIGIN, 1.0, SRID, ground=np.full(data.shape, GROUND, dtype="float32"))
+        self.assertEqual(float(out[15, 0]), GROUND)           # 5.5 m from the footprint
+        self.assertEqual(float(out[15, 2]), GROUND)           # 7.5 m
+        self.assertEqual(float(out[0, 0]), GROUND + 10)       # ~11 m (corner): kept
+
+    def test_the_logged_edit_area_covers_the_clearance(self):
+        from physicalEnv.models import DSMEdit
+
+        footprint = self._footprint_below_canopy()
+        self.building_patch(footprint)
+        x0, y0, x1, y1 = DSMEdit.objects.latest("pk").area.extent
+        fx0, fy0, fx1, fy1 = footprint.extent
+        self.assertEqual((x0, y0, x1, y1), (fx0 - 10, fy0 - 10, fx1 + 10, fy1 + 10))
+
+
 class VegetationReceiverTests(TestCase):
     """Editor changes of trees and forests record a DSMVegetationPatch; imports do not."""
 

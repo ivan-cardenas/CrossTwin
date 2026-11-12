@@ -9,7 +9,7 @@ from django.db.models import Max, Q
 from django.utils import timezone
 
 from core.cache import bump_layer_version
-from .calculations.dsm_patches import (DEFAULT_FOREST_CANOPY_M, building_height, record_change,
+from .calculations.dsm_patches import (DEFAULT_FOREST_CANOPY_M, TREE_CLEARANCE_M, building_height, record_change,
                           record_vegetation_change, tree_crown, tree_height)
 from .calculations.dsm_edited import schedule_refresh as schedule_dsm_refresh
 from .calculations.landcover import (green_area, refresh_percentages, release_green_area, release_ring, release_street,
@@ -534,8 +534,10 @@ def dsm_patch_changed(sender, instance, **kwargs):
     if not geoms:
         return
     extents = [g.extent for g in geoms]
-    area = Polygon.from_bbox((min(e[0] for e in extents), min(e[1] for e in extents),
-                              max(e[2] for e in extents), max(e[3] for e in extents)))
+    # a building patch also clears trees within TREE_CLEARANCE_M of its footprint
+    pad = TREE_CLEARANCE_M if sender is DSMBuildingPatch else 0.0
+    area = Polygon.from_bbox((min(e[0] for e in extents) - pad, min(e[1] for e in extents) - pad,
+                              max(e[2] for e in extents) + pad, max(e[3] for e in extents) + pad))
     area.srid = geoms[0].srid
     DSMEdit.objects.create(area=area)
     # Burn the change into the DSM the map shows once the edit commits

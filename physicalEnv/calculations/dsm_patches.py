@@ -16,6 +16,12 @@ layer shows them through dsm_edited.py, a patched copy of the COG):
 Ground is the DEM on the same grid, or, without a DEM, a minimum filter of the
 DSM (GROUND_WINDOW_M), which drops buildings narrower than the window.
 
+A building that is new or stands on a new footprint also clears the tall
+vegetation (cells more than MIN_CANOPY_M above ground, outside stored building
+footprints) within TREE_CLEARANCE_M of its footprint: trees are not kept that
+close to a new building, so their pixels go back to ground level. A building
+that only changed height keeps the trees around it.
+
 Only editor changes are recorded (core.editing.is_editor_change()): BAG imports
 already match AHN's measured roofs. Patches are journalled for the editor's
 backup (dsm_patch_rewriting / dsm_patch_created, mainMap/signals.py), so
@@ -31,9 +37,10 @@ and canopy is added where it was planted: a tree as a paraboloid crown of its
 height, a forest as a flat DEFAULT_FOREST_CANOPY_M. Parks and green spaces
 are not sources: their outlines do not record trees.
 
-Order inside one window: building originals cleared, vegetation cleared,
-vegetation added, buildings raised (so a tree may stand where a building was
-demolished, and a new roof always wins over a crown).
+Order inside one window: building originals cleared, tree clearance around
+new footprints, vegetation cleared, vegetation added, buildings raised (so a
+tree may stand where a building was demolished, a tree the editor plants next
+to a new building is kept, and a new roof always wins over a crown).
 
 DAG edges: Buildings -> DSM, Vegetation_Coverage -> DSM.
 """
@@ -55,6 +62,10 @@ DEFAULT_TREE_HEIGHT_M = 10.0
 CROWN_PER_HEIGHT = 0.6        # crown diameter / height when the crown is not mapped
 CROWN_EDGE_FRACTION = 0.5     # paraboloid crown height at its edge, share of the top
 DEFAULT_FOREST_CANOPY_M = 15.0
+# Tree-free buffer around a new or moved building footprint (modelling
+# assumption: the construction site and the strip next to the facades are
+# cleared). Changing it changes every patched DSM; argue it in the docstring.
+TREE_CLEARANCE_M = 10.0
 # Minimum filter window for the ground estimate without a DEM: wider than
 # most buildings, narrow enough to follow the terrain.
 GROUND_WINDOW_M = 40.0
@@ -137,12 +148,12 @@ def record_change(building_id, before, after, height_m):
     return patch
 
 
-def _box(origin, cell, shape):
+def _box(origin, cell, shape, pad=0.0):
     from django.conf import settings
     from django.contrib.gis.geos import Polygon
 
     x0, y0 = origin
-    box = Polygon.from_bbox((x0, y0 - shape[0] * cell, x0 + shape[1] * cell, y0))
+    box = Polygon.from_bbox((x0 - pad, y0 - shape[0] * cell - pad, x0 + shape[1] * cell + pad, y0 + pad))
     box.srid = int(settings.COORDINATE_SYSTEM)
     return box
 
@@ -152,7 +163,8 @@ def patches_in(origin, cell, shape):
 
     from ..models import DSMBuildingPatch
 
-    box = _box(origin, cell, shape)
+    # padded: a footprint just outside the window may still clear trees inside it
+    box = _box(origin, cell, shape, pad=TREE_CLEARANCE_M)
     return list(DSMBuildingPatch.objects.filter(
         Q(footprint__bboverlaps=box) | Q(original_footprint__bboverlaps=box)).order_by("updated", "pk"))
 
@@ -219,6 +231,36 @@ def _building_mask(origin, cell, shape):
 
     return burn(Building.objects.filter(geom__bboverlaps=_box(origin, cell, shape))
                 .values_list("geom", flat=True), origin, cell, shape)
+
+
+def clearance_zone(patch):
+    """
+    The tree-free zone of a building patch: its current footprint buffered by
+    TREE_CLEARANCE_M, when the building is new or its footprint changed; None
+    for a deleted building or one that only changed height.
+    """
+    footprint, original = patch.footprint, patch.original_footprint
+    if footprint is None or footprint.empty:
+        return None
+    if original is not None and not original.empty and footprint.equals(original):
+        return None
+    return footprint.buffer(TREE_CLEARANCE_M, quadsegs=8)
+
+
+def _clear_around_buildings(out, ground, patches, origin, cell):
+    """Tall vegetation inside the clearance zones -> ground (in place); stored buildings untouched."""
+    import numpy as np
+
+    zones = [z for z in (clearance_zone(p) for p in patches) if z is not None]
+    if not zones:
+        return
+    mask = burn(zones, origin, cell, out.shape)
+    if not mask.any():
+        return
+    with np.errstate(invalid="ignore"):
+        tall = np.isfinite(out) & np.isfinite(ground) & (out - ground > MIN_CANOPY_M)
+    mask &= tall & ~_building_mask(origin, cell, out.shape)
+    out[mask] = ground[mask]
 
 
 def _difference(a, b):
@@ -290,8 +332,9 @@ def apply_patches(height, origin, cell, srid, ground=None):
     building and vegetation changes applied. Returns the same array when no
     patch touches it. `ground` (same grid) is read only when a patch needs it.
 
-    Order: building originals -> ground, vegetation cleared, vegetation added,
-    current buildings raised.
+    Order: building originals -> ground, tall vegetation within
+    TREE_CLEARANCE_M of new footprints -> ground, vegetation cleared,
+    vegetation added, current buildings raised.
     """
     import numpy as np
 
@@ -305,6 +348,7 @@ def apply_patches(height, origin, cell, srid, ground=None):
     if buildings:
         cleared = burn([p.original_footprint for p in buildings], origin, cell, height.shape)
         out[cleared] = ground[cleared]
+        _clear_around_buildings(out, ground, buildings, origin, cell)
     if vegetation:
         _apply_vegetation(out, ground, vegetation, origin, cell)
     for p in buildings:
