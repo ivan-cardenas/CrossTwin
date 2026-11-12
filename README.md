@@ -283,9 +283,9 @@ Or run `start.bat` on Windows, which starts both. Visit `http://localhost:8000`.
 | `watersupply/` | `models.py`, `calculations.py`, `views.py`, `signals.py` | Water infrastructure, indicator dashboard (incl. SCS infiltration with rain-event and groundwater-season what-ifs) |
 | `urban_heat/` | `models.py`, `calculations.py`, `views.py` | Thermal comfort rasters (UTCI, PET, MRT, LST, SVF), NBS |
 | `housing/` | `models.py`, `calculations.py`, `views.py` | Supply/demand, mortgages, rentals, affordability |
-| `builtup/` | `models.py`, `calculations.py`, `views.py` | Streets, parks, facilities, buildings, properties, zoning (HILUCS land use), indicator dashboard |
+| `builtup/` | `models.py`, `calculations.py`, `views.py` | Streets, facilities, buildings, properties, zoning (HILUCS land use), indicator dashboard |
 | `physicalEnv/` | `models.py`, `soil.py`, `hilucs.py`, `signals.py` | Land cover, DEM/DSM, soil map + hydrologic soil groups, groundwater depth (GHG/GLG), SCS Curve Number method, HILUCS land-use codelist |
-| `nature/`, `weather/`, `Energy/` | `models.py` | Water bodies, forests, green space, trees; weather; energy domain data |
+| `nature/`, `weather/`, `Energy/` | `models.py` | Water bodies, forests, green spaces (parks = type `park`), trees; weather; energy domain data |
 | `Templates/` | `mainMap.html`, `indicators_base.html`, `<app>/partials/` | Shared HTML shells + HTMX partials |
 | `tiler.py` | — | Standalone FastAPI app serving COG tiles (run as its own process) |
 
@@ -347,7 +347,7 @@ Each follows the same three-layer pattern:
 | `watersupply` | Extraction, treatment, pipe networks, coverage, NRW, OPEX |
 | `urban_heat` | UTCI, PET, MRT, LST, SVF, SUHII rasters; Nature-Based Solutions; per-neighborhood heat and shade (`NeighborhoodHeat`, Klimaateffectatlas) |
 | `housing` | Supply/demand, mortgages, rentals, HPI, affordability stress; per-neighborhood social profile (`NeighborhoodSocialProfile`, Klimaateffectatlas) |
-| `builtup` | Zoning, streets, parks, facilities, buildings (incl. canopy, facade shade and cloudburst depth from the Klimaateffectatlas), properties; per-neighborhood foundation and flood risk (`NeighborhoodClimateRisk`) |
+| `builtup` | Zoning, streets, facilities, buildings (incl. canopy, facade shade and cloudburst depth from the Klimaateffectatlas), properties; per-neighborhood foundation and flood risk (`NeighborhoodClimateRisk`) |
 | `nature`, `weather`, `Energy` | Additional domain data |
 | `importer` | File-upload and external-catalog import pipelines |
 | `mainMap` | Interactive map view and layer catalog API |
@@ -383,7 +383,7 @@ Two paths, both under `/importer/`:
 | Klimaateffectatlas (WFS) | 21 of its 68 climate-effect layers: foundation and flood risk, heat and shade, social vulnerability per neighborhood; canopy, facade shade and cloudburst depth onto existing BAG buildings; water boards, drought-sensitive nature, climate buffers. Mapping, graph and the 47 layers not imported: [`docs/KEA_WFS_MAPPING.md`](docs/KEA_WFS_MAPPING.md) | None |
 | CBS | National statistics via OData, incl. population forecasts | None |
 | BIS Nederland (bodemdata.nl) | Soil map 1:50 000 (WFS) → `SoilType`/`SoilArea` with SCS soil group, drawn in the colours of the BRO Bodemkaart legend; groundwater depth GHG/GLG (WCS, 50 m) → `GroundwaterDepth` | None |
-| OpenStreetMap (Overpass API) | Parks → `builtup.Park`, water bodies → `nature.WaterBodies`, amenities (nodes only) → `builtup.Facility`, trees → `nature.Tree` | None (`OVERPASS_URL` optional) |
+| OpenStreetMap (Overpass API) | Parks → `nature.GreenSpaces` (type `park`), water bodies → `nature.WaterBodies`, amenities (nodes only) → `builtup.Facility`, trees → `nature.Tree` | None (`OVERPASS_URL` optional) |
 | Sentinel-2 | Land cover + NDVI/NDWI/moisture/true-color via openEO | `SENTINEL_CLIENT_ID`/`SECRET`, else UI prompt |
 | KNMI Data Platform | Weather observations (e.g. WBGT), precipitation radar forecast (WMS) | Server-side `KNMI_API_KEY` |
 | Google Earth Engine | Arbitrary GEE assets, exported as GeoTIFF | Service-account JSON pasted per import |

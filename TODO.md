@@ -32,6 +32,7 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 
 - [X] `RS_Imagery -> LandCover/LST` — raster models are plain imports, no ingestion/derivation code
 - [x] `LandCover/Soil_Type -> Infiltration -> Available_FW`, `Meteorology -> Available_FW` — the dashboard card computes event infiltration (SCS); `AvailableFreshWater.save()` now stores `infiltrationRate_cm_h` (soil group x unsealed share) and, with a year of daily KNMI rain + Makkink ET (catalog `knmi_daily_water_balance`), `infiltrationDepth_cm` and the yield; receivers on soil, land cover, groundwater and daily meteorology refresh it
+- [x] `New_Green_Area -> LandCover` — any green space (`nature.GreenSpaces`, parks = type `park`) drawn in the map editor becomes *Green urban areas* (`physicalEnv/landcover.py::green_area`, receivers `green_space_saved`/`green_space_deleted`)
 - [x] `New_Units -> LandCover` — a building drawn in the map editor turns a 10 m buffer into urban fabric (`physicalEnv/landcover.py::urbanize_around`); moving or deleting it gives the land back (`release_ring`, cut pieces kept in `UrbanFabricCut`). The housing pipeline's land take (greenfield vs infill) is a dashboard statistic (`housing/calculations.py::calculate_pipeline_land_take`)
 
 ## urban_heat
@@ -127,7 +128,7 @@ Collected from `#TODO` comments across the codebase:
 - [ ] Coordinate with Mila to review how comparable projects approach this (e.g. Rakibun's example), to align methodology/approach.
 
 **Domain data model / import design**
-- [ ] `nature.Park` — no import path exists yet; decide the source dataset (e.g. PDOK) and confirm the storage model before building an importer for it.
+- [x] Parks: stored as `nature.GreenSpaces` with `type = 'park'` (`GreenSpaces.objects.parks()`), imported from OSM (`osm_parks`, `leisure=park`); BGT recreation areas (`bgt_greenspace_park`) land in the same model with their `plus_type`
 - [ ] `builtup.Facility` — no import path exists yet; design how to source facilities from OpenStreetMap or Google Places/Maps.
 - [ ] Confirm where zoning data should live and how additional sources should import into it — `builtup.ZoningArea` already receives INSPIRE spatial-plan data via the `pdok_landcover_kadaster` import, but zone *type* classification still has no source (see the existing `plu:ZoningElement` note in `importer/external_catalog.py`).
 - [x] Design how surface albedo could be derived for `LandCoverVector.material` from satellite band math — `LandCoverVector.albedo` is the zonal mean of a Sentinel-2 broadband albedo raster (`sentinel2_albedo_raster`, Bonafoni & Sekertekin 2020, `physicalEnv/albedo.py::measure`; DAG `RS_Imagery -> LandCover`, partial); polygons without one use `material`, set from the class's `default_material` (Oke et al. 2017 Table 5.1, 45 surfaces, offered as the material options in the importer and the map editor); editor building rings get a roof + paving estimate; a park drawn in the editor becomes *Green urban areas* land cover (`New_Green_Area -> LandCover`, `landcover.green_area`)
@@ -139,7 +140,9 @@ Collected from `#TODO` comments across the codebase:
 - [ ] Decide whether the admin-hierarchy layer (Province/City/District/Neighborhood) should always stay available in `Config.js`'s `TOOL_CATEGORIES` for indicator grouping, given that makes map-click popup queries harder to disambiguate against other layers.
 - [ ] Decide whether groundwater should stay as its own domain — currently little derivation logic actually uses it.
 - [ ] Investigate whether underground-infrastructure navigation/visualization is feasible to add.
-- [ ] Decide whether `nature.Park` and the other green-space model should be merged into one (currently green spaces and parks are tracked as two separate models).
+- [x] `builtup.Park` merged into `nature.GreenSpaces` (2026-11-11, migration `nature/0004_move_builtup_parks` copies the rows and re-points editor-park land cover; `docs/DAG_REVISIONS.md`). No DAG change: `Green_Area` / `New_Green_Area` already mean green space in general
+- [x] Park space = green spaces of type `park` + BGT recreation areas (type `recreatie…`: sports fields, playgrounds), `GreenSpaces.objects.park_space()`; used by the `builtup` park area per inhabitant and `urban_heat.calculate_green_area`. Other types (gardens) do not count
+- [ ] `Green_Area -> Vegetation_Coverage` is partial: vegetation coverage is the green-area share computed on the dashboard, never stored
 - [ ] Investigate whether an infiltration-capacity table or map exists for the Netherlands that could replace the SCS soil-group rate ranges behind `AvailableFreshWater.infiltrationRate_cm_h` (now derived from soil map x land cover).
 - [ ] Decide how to define "degree of urbanisation" for CrossTwin — CBS defines it via address density per km² (5-band classification: <500 to 2,500+ addresses/km²), but the project's actual interest is urban-sprawl *growth over time*, which needs a different metric/approach.
 - [ ] Decide which domain app should own the Population Density raster layer (e.g. `administrative` vs `physicalEnv`).

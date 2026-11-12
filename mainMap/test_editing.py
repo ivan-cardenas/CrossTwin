@@ -377,23 +377,25 @@ class LandCoverBufferRestoreTests(EditingTestCase):
                 self.assertTrue(Building.objects.filter(pk=-1).exists())
 
     def test_a_new_park_becomes_green_area_and_restore_reverts_it(self):
-        from builtup.models import Park
+        from nature.models import GreenSpaces
         self.client.post(BACKUP_URL)
-        self.client.post(reverse('map:feature_new', args=['builtup', 'Park']),
-                         {'name': 'New park', 'geom': _wgs84_geojson(make_polygon(x=257300, half_size_m=20))})
-        park = Park.objects.get(name='New park')
+        self.client.post(reverse('map:feature_new', args=['nature', 'GreenSpaces']),
+                         {'name': 'New park', 'type': 'park',
+                          'geom': _wgs84_geojson(make_polygon(x=257300, half_size_m=20))})
+        park = GreenSpaces.objects.get(name='New park')
+        self.assertTrue(park.is_park)
         green = self.LandCoverVector.objects.get(source_park=park.pk)
         self.assertEqual(green.land_cover_type.class_name, 'Green urban areas')
         self.assertFalse(self.LandCoverVector.objects.filter(pk=self.cell.pk).exists())   # swallowed
 
         response = self.client.post(RESTORE_URL)
         self.assertEqual(json.loads(response['HX-Trigger'])['backup-restored']['layers'],
-                         ['builtup.Park', 'physicalEnv.LandCoverVector'])
+                         ['nature.GreenSpaces', 'physicalEnv.LandCoverVector'])
         restored = {lc.pk: lc.geom for lc in self.LandCoverVector.objects.all()}
         self.assertEqual(restored.keys(), self.original.keys())
         for pk, geom in self.original.items():
             self.assertTrue(restored[pk].equals_exact(geom, tolerance=1e-6), pk)
-        self.assertFalse(Park.objects.filter(pk=park.pk).exists())
+        self.assertFalse(GreenSpaces.objects.filter(pk=park.pk).exists())
 
 
 
@@ -423,18 +425,18 @@ class EditableLayersConfigTests(SimpleTestCase):
                     self.assertIn(name, fields)
 
     def test_settings_default_to_empty_lists(self):
-        layers = self._load('["builtup.Street"]\n\n["builtup.Park"]\nexclude = ["area"]\n')
+        layers = self._load('["builtup.Street"]\n\n["nature.GreenSpaces"]\nexclude = ["area"]\n')
         self.assertEqual(layers, {
             'builtup.Street': {'exclude': [], 'optional': []},
-            'builtup.Park': {'exclude': ['area'], 'optional': []},
+            'nature.GreenSpaces': {'exclude': ['area'], 'optional': []},
         })
 
     def test_malformed_files_are_rejected(self):
         from django.core.exceptions import ImproperlyConfigured
-        for text in ('["builtup.Park"]\nexclud = ["area"]\n',      # typo in a setting
-                     '["builtup.Park"]\nexclude = "area"\n',        # not a list
-                     'builtup.Park = 1\n',                           # not a table
-                     '["builtup.Park"\n'):                           # invalid TOML
+        for text in ('["nature.GreenSpaces"]\nexclud = ["area"]\n',      # typo in a setting
+                     '["nature.GreenSpaces"]\nexclude = "area"\n',        # not a list
+                     'nature.GreenSpaces = 1\n',                           # not a table
+                     '["nature.GreenSpaces"\n'):                           # invalid TOML
             with self.subTest(text=text), self.assertRaises(ImproperlyConfigured):
                 self._load(text)
 

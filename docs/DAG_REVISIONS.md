@@ -11,6 +11,14 @@ A dated log of every change to the DPSIR causal graph: what changed, why, and wh
 - **Lagged edge** `[lag=1, style=dashed]`. The cause acts one planning step later (a feedback). It is left out of the acyclicity check and never implemented by a receiver, because a receiver would close the loop within one save. Each lagged edge is argued here and listed in `core/test_dag.py::LAGGED_EDGES`.
 - **Counting.** Distinct `source -> target` pairs, legend excluded. `core/test_dag.py::parse_dag` is the reference parser.
 
+## 2026-11-11: parks stored as green spaces (no graph change)
+
+`builtup.Park` is removed; a park is now a `nature.GreenSpaces` row with `type = 'park'` (OSM `leisure=park` import, parks drawn in the map editor; BGT recreation areas keep their `plus_type`). Existing parks were copied by migration `nature/0004_move_builtup_parks`, which also re-pointed the editor parks' land-cover ownership (`source_park`, `owner_park`) to the new ids.
+
+The graph needs no new node or edge. The two nodes this touches already describe green space generally, not parks: `Green_Area` (State) is now stored as `nature.GreenSpaces` + the green land-cover classes, and `New_Green_Area` ("Green Space Created", Response) is any green space drawn in the editor (before: only parks). A direct `New_Green_Area -> Green_Area` edge would duplicate the existing path `New_Green_Area -> LandCover -> Green_Area`, so it is not added. Park space (dashboards) = parks + BGT recreation areas (`type` `recreatie…`), added 2026-11-12. The status of `LandCover -> Green_Area`, `Green_Area -> Vegetation_Coverage`, `Green_Area -> Accessibility` and `New_Green_Area -> LandCover` is unchanged (`Green_Area -> Accessibility` stays a gap: there is still no `Accessibility` model).
+
+**Coverage.** Unchanged: 105 distinct edges; 55 implemented, 4 partial, 46 gaps.
+
 ## 2026-11-10: the `Urbanization` node is replaced by the measured `Degree_Urbanisation`
 
 ![Before](figures/dag_urbanization_before.svg)

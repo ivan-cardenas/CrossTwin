@@ -52,7 +52,7 @@ mapboxgl.Map (basemap, labels, controls, geocoder, camera)
  ├─ Mapbox layers: basemap · admin boundaries · WMS (incl. animated) · TiTiler COG rasters · groundwater
  └─ MapboxOverlay({ interleaved: true })          ← one instance, added with map.addControl(overlay)
        └─ deck.gl layers (beforeId: first symbol layer, so labels stay on top)
-            GeoJsonLayer / MVTLayer  → Building (3-D), LandCoverVector, Street, Park, …
+            GeoJsonLayer / MVTLayer  → Building (3-D), LandCoverVector, Street, GreenSpaces, …
             Tile3DLayer              → 3D BAG / VoxCity (later)
             H3HexagonLayer / HeatmapLayer → aggregated indicators (later)
 ```
@@ -161,7 +161,7 @@ deck.gl renders faster, but `model_geojson` still sends the whole table ([PERFOR
 |---|---|---|---|
 | **0. Spike** | Add the deck.gl UMD script to `mainMap.html`; `initDeckOverlay()` in `map.on('load')`; render `builtup.Building` as an extruded `GeoJsonLayer` next to the Mapbox version | Measure first-render time, FPS while panning (Chrome performance panel), main-thread blocking, on the largest city. Go/no-go | 1–2 days |
 | **1. Plumbing** | `DeckLayers.js`; `renderer` + `deck` keys in `LAYER_STYLES`, returned by `available_layers`; `addLayer` dispatches on `renderer`; `toggleLayerVisibility`, `zoomToLayer`, `changeBasemap` (deck overlay survives `setStyle`, but check `beforeId` still exists), `MapUI` counts handle both renderers; shared popup via `createPopupContent` | Every catalog layer works with `renderer='mapbox'` **or** `'deck'` by flipping one dict key | 3–5 days |
-| **2. Move heavy layers** | `Building`, `BuildingEnergyLabel`, `LandCoverVector`, `Street`, `Park`, `nature.*` polygons → deck.gl; add the MVT endpoint and switch the largest to `MVTLayer`; `PathStyleExtension` for dashed pipes/streets; `DataFilterExtension` on `year` wired to the year selector | Same visuals as today (screenshot comparison), map usable with the full city building layer | 1–2 weeks |
+| **2. Move heavy layers** | `Building`, `BuildingEnergyLabel`, `LandCoverVector`, `Street`, `nature.*` polygons (parks are `nature.GreenSpaces`) → deck.gl; add the MVT endpoint and switch the largest to `MVTLayer`; `PathStyleExtension` for dashed pipes/streets; `DataFilterExtension` on `year` wired to the year selector | Same visuals as today (screenshot comparison), map usable with the full city building layer | 1–2 weeks |
 | **3. New capabilities** | 3D BAG via `Tile3DLayer`; VoxCity outputs (`PointCloudLayer` / 3D Tiles, [VOXCITY.md](VOXCITY.md)); `H3HexagonLayer` / `HeatmapLayer` indicator views; animated scenario transitions | Driven by research needs; one feature at a time | open |
 | **4. Optional: MapLibre** | Replace `mapbox-gl` with `maplibre-gl` v5+ and `@deck.gl/maplibre`; basemap from **PDOK BRT-Achtergrondkaart** vector tiles (or OpenFreeMap / MapTiler); geocoder → **PDOK Locatieserver**; rewrite `add3DBuildings` with 3D BAG | No Mapbox token, same UX. Take this only if Mapbox pricing/licensing becomes a concern | 1 week |
 

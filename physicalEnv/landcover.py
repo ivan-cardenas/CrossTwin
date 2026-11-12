@@ -5,8 +5,10 @@ Two owners rewrite land cover from the map editor, with the same cut /
 give-back mechanics (convert_area / release_owner):
 - a building: a 10 m buffer becomes "urban fabric" (urbanize_around,
   DAG edge Buildings -> LandCover);
-- a park: its outline becomes "green urban areas" (green_area,
-  DAG edge New_Green_Area -> LandCover).
+- a green space (nature.GreenSpaces; a park is one of type 'park'): its
+  outline becomes "green urban areas" (green_area, DAG edge
+  New_Green_Area -> LandCover). The owner kind stays "park" (columns
+  source_park / owner_park), the id is the GreenSpaces id.
 
 urbanize_around() turns a buffer around a new building into "urban fabric":
 the buffer is cut out of every land-cover polygon of the city's latest year
@@ -80,7 +82,7 @@ def _urban_fabric_class():
 
 def _green_area_class():
     return _land_cover_class(
-        GREEN_AREA_CLASS, "Auto-created for parks drawn in the map editor (CORINE 1.4.1 Green urban areas).")
+        GREEN_AREA_CLASS, "Auto-created for green spaces (parks) drawn in the map editor (CORINE 1.4.1 Green urban areas).")
 
 
 def _buffer_sql(expr, metres=BUILDING_BUFFER_M):
@@ -153,7 +155,7 @@ def urbanize_around(geom, city_id, land_use, building_id=None, roof_material=Non
 
 def green_area(geom, city_id, park_id, name="Park", vegetation_type=None):
     """
-    Make a park's outline (clipped to the city) green urban area in the
+    Make a green space's (park's) outline (clipped to the city) green urban area in the
     city's latest land-cover year, cutting it out of what lay there:
 
         G   = park ∩ city
@@ -298,7 +300,7 @@ def release_ring(building_id):
 
 def release_green_area(park_id):
     """
-    Undo green_area() for an editor park that moved or was deleted (release_owner).
+    Undo green_area() for an editor green space that moved or was deleted (release_owner).
 
     DAG edge: New_Green_Area -> LandCover (the inverse step)
     """

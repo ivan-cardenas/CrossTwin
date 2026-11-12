@@ -3,7 +3,7 @@ from django.contrib.gis.geos import MultiPolygon, Polygon
 from django.test import TestCase
 
 from administrative.models import City, District, Neighborhood, Province
-from builtup.models import Park
+from nature.models import GreenSpaces
 from physicalEnv.models import LandCoverClasses, LandCoverVector
 
 from .calculations import calculate_green_area, calculate_vegetation_coverage
@@ -64,9 +64,18 @@ class GreenAreaIsClippedToTheUnitTests(TestCase):
 
         self.assertAlmostEqual(calculate_green_area(self.west)['green_lc_km2'], 0.25, places=3)
 
+    def test_recreation_areas_count_as_parks_and_gardens_do_not(self):
+        GreenSpaces.objects.create(type="recreatie: speeltuin", name="Speeltuin", geom=_square(0, 0, 100, 100))
+        GreenSpaces.objects.create(type="tuin", name="Tuin", geom=_square(200, 0, 300, 100))
+        self.west.refresh_from_db()
+
+        green = calculate_green_area(self.west)
+        self.assertAlmostEqual(green['park_area_km2'], 0.01, places=4)
+        self.assertAlmostEqual(green['total_green_km2'], 0.01, places=4)
+
     def test_parks_are_clipped_too(self):
         # 200 m x 100 m park straddling the W/E boundary: 0.01 km² on each side.
-        Park.objects.create(name="Border park", area=0, geom=_square(900, 0, 1100, 100))
+        GreenSpaces.objects.create(type="park", name="Border park", geom=_square(900, 0, 1100, 100))
         self.west.refresh_from_db()
 
         green = calculate_green_area(self.west)
@@ -76,7 +85,7 @@ class GreenAreaIsClippedToTheUnitTests(TestCase):
     def test_a_park_inside_green_land_cover_counts_once(self):
         # 0.25 km² forest with a 0.04 km² park inside it: 0.25 km² of green, not 0.29.
         self._landcover(self.forest, _square(0, 0, 500, 500))
-        Park.objects.create(name="Forest park", area=0, geom=_square(100, 100, 300, 300))
+        GreenSpaces.objects.create(type="park", name="Forest park", geom=_square(100, 100, 300, 300))
         self.west.refresh_from_db()
 
         green = calculate_green_area(self.west)
@@ -87,8 +96,8 @@ class GreenAreaIsClippedToTheUnitTests(TestCase):
 
     def test_overlapping_parks_count_once(self):
         # Two 0.04 km² parks sharing half their area (e.g. duplicate OSM ways): 0.06 km².
-        Park.objects.create(name="A", area=0, geom=_square(0, 0, 200, 200))
-        Park.objects.create(name="B", area=0, geom=_square(100, 0, 300, 200))
+        GreenSpaces.objects.create(type="park", name="A", geom=_square(0, 0, 200, 200))
+        GreenSpaces.objects.create(type="park", name="B", geom=_square(100, 0, 300, 200))
         self.west.refresh_from_db()
 
         green = calculate_green_area(self.west)
@@ -99,7 +108,7 @@ class GreenAreaIsClippedToTheUnitTests(TestCase):
     def test_a_park_partly_outside_green_land_cover_adds_only_its_outside_part(self):
         # Forest x 0–500, park x 400–600: 0.05 km² + 0.02 km² of park beyond the forest.
         self._landcover(self.forest, _square(0, 0, 500, 100))
-        Park.objects.create(name="Edge park", area=0, geom=_square(400, 0, 600, 100))
+        GreenSpaces.objects.create(type="park", name="Edge park", geom=_square(400, 0, 600, 100))
         self.west.refresh_from_db()
 
         green = calculate_green_area(self.west)

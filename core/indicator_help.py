@@ -181,7 +181,7 @@ HELP = {
     "heat.vegetation": {
         "title": "Vegetation Coverage",
         "what": "The share of the area that is green: parks plus green land cover (forest, grass, trees, nature).",
-        "how": "Park polygons and the green land-cover classes of each city's most recent land-cover year are clipped to the unit (a polygon crossing the boundary counts only with its part inside), then merged into one shape before measuring, so ground covered by both a park and green land cover counts once.",
+        "how": "Park space (parks and recreation areas such as sports fields and playgrounds) and the green land-cover classes of each city's most recent land-cover year are clipped to the unit (a polygon crossing the boundary counts only with its part inside), then merged into one shape before measuring, so ground covered by both a park and green land cover counts once.",
         "eq": [
             "Green area = area of (parks ∪ green land cover) inside the unit",
             "Vegetation coverage = {green area | unit area} × 100 %",
@@ -317,7 +317,7 @@ HELP = {
     "builtup.park": {
         "title": "Park Area per Inhabitant",
         "what": "How much public park space each resident has.",
-        "how": "Park area in the unit plus the slider's additional hectares, divided by the projected population for the selected year.",
+        "how": "Park space in the unit (parks plus recreation areas: sports fields, playgrounds; overlapping areas merged so ground counts once) plus the slider's additional hectares, divided by the projected population for the selected year.",
         "eq": ["Park area per inhabitant = {park area (m²) + added area | population}"],
         "note": "WHO Europe recommends at least 9 m² of green space per inhabitant, ideally 50 m². The tag shows below minimum, between, or at the ideal.",
     },

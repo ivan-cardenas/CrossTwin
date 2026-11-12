@@ -1022,13 +1022,13 @@ class BuildingRingAlbedoTests(_UrbanFabricTestCase):
 
 
 class ParkGreenAreaTests(_UrbanFabricTestCase):
-    """physicalEnv.signals.park_saved/park_deleted -> landcover.green_area (DAG edge New_Green_Area -> LandCover)."""
+    """physicalEnv.signals.green_space_saved/green_space_deleted (a park = nature.GreenSpaces of type 'park') -> landcover.green_area (DAG edge New_Green_Area -> LandCover)."""
 
     def _park(self, x0=100, y0=100, x1=300, y1=300, **kwargs):
-        from builtup.models import Park
         from core.editing import editor_change
+        from nature.models import GreenSpaces
         with editor_change():
-            return Park.objects.create(name="New park", geom=_square(x0, y0, x1, y1), area=0, **kwargs)
+            return GreenSpaces.objects.create(name="New park", type="park", geom=_square(x0, y0, x1, y1), **kwargs)
 
     def _green(self):
         return LandCoverVector.objects.filter(source_park__isnull=False)
@@ -1063,8 +1063,8 @@ class ParkGreenAreaTests(_UrbanFabricTestCase):
         self.assertAlmostEqual(self.pasture.geom.area, 1e6, delta=0.01)
 
     def test_imported_parks_leave_the_land_cover_alone(self):
-        from builtup.models import Park
-        park = Park.objects.create(name="OSM park", geom=_square(100, 100, 300, 300), area=0)
+        from nature.models import GreenSpaces
+        park = GreenSpaces.objects.create(name="OSM park", type="park", geom=_square(100, 100, 300, 300))
         park.delete()
         self.assertFalse(self._green().exists())
         self.pasture.refresh_from_db()

@@ -82,6 +82,8 @@ digraph CrossTwin {
     RS_Imagery          [label="RS Imagery"];
     Meteorology         [label="Meteorology"];
     
+    // Stored as nature.GreenSpaces (parks = type 'park'; the former
+    // builtup.Park was merged into it on 2026-11-11) + green land cover.
     Green_Area          [label="Green Area"];
     
     Facilities          [label="Urban Facilities"]
@@ -236,7 +238,7 @@ digraph CrossTwin {
     Zoning_Status       -> New_Units;
 
     New_Units           -> Housing_Supply;
-    New_Green_Area      -> LandCover;   // park drawn in the map editor (physicalEnv/landcover.py::green_area)
+    New_Green_Area      -> LandCover;   // green space (e.g. park) drawn in the map editor (nature.GreenSpaces, physicalEnv/landcover.py::green_area)
     
     Property            -> Affordability_Stress;
     Property            -> Rent;

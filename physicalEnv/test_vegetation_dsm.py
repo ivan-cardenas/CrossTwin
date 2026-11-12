@@ -198,11 +198,11 @@ class VegetationReceiverTests(TestCase):
         self.assertEqual(self.patch("nature.Forests", forest.pk).canopy_m, DEFAULT_FOREST_CANOPY_M)
 
     def test_parks_never_patch_the_dsm(self):
-        from builtup.models import Park
         from core.editing import editor_change
+        from nature.models import GreenSpaces
         from .models import DSMVegetationPatch
 
         with editor_change():
-            park = Park.objects.create(name="Park", geom=_rect(250000, 469900, 250050, 469950))
+            park = GreenSpaces.objects.create(name="Park", type="park", geom=_rect(250000, 469900, 250050, 469950))
             park.delete()
         self.assertFalse(DSMVegetationPatch.objects.exists())

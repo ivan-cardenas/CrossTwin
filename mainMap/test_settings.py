@@ -58,7 +58,7 @@ class SettingsAccessTests(TestCase):
             with self.subTest(user=user):
                 self.assertEqual(self.client.get(SETTINGS_URL).status_code, 403)
                 self.assertEqual(self.client.post(EDITABLE_URL, {'key': 'builtup.Street'}).status_code, 403)
-                self.assertEqual(self.client.get(STYLE_URL, {'target': 'vector:builtup.Park'}).status_code, 403)
+                self.assertEqual(self.client.get(STYLE_URL, {'target': 'vector:nature.GreenSpaces'}).status_code, 403)
 
 
 class EditableLayerSettingsTests(SettingsTestCase):
@@ -101,31 +101,31 @@ class EditableLayerSettingsTests(SettingsTestCase):
 
 class VectorStyleTests(SettingsTestCase):
     def test_saving_stores_only_the_difference_and_reaches_the_catalog(self):
-        default = catalog_entry(self.client, 'builtup.Park')
+        default = catalog_entry(self.client, 'nature.GreenSpaces')
         response = self.client.post(STYLE_URL, {
-            'target': 'vector:builtup.Park', 'color': '#123456',
+            'target': 'vector:nature.GreenSpaces', 'color': '#123456',
             'paint:0:fill-opacity': '0.9',
         })
         self.assertEqual(response.status_code, 200)
         self.assertEqual(json.loads(response['HX-Trigger'])['style-changed'],
-                         {'kind': 'vector', 'key': 'builtup.Park'})
-        data = LayerStyleOverride.objects.get(kind='vector', key='builtup.Park').data
+                         {'kind': 'vector', 'key': 'nature.GreenSpaces'})
+        data = LayerStyleOverride.objects.get(kind='vector', key='nature.GreenSpaces').data
         self.assertEqual(data, {'color': '#123456', 'paint': {'0': {'fill-opacity': 0.9}}})
 
-        entry = catalog_entry(self.client, 'builtup.Park')
+        entry = catalog_entry(self.client, 'nature.GreenSpaces')
         self.assertEqual(entry['color'], '#123456')
         self.assertEqual(entry['style_layers'][0]['paint']['fill-opacity'], 0.9)
         # untouched properties keep following the code default
         self.assertEqual(entry['style_layers'][1:], default['style_layers'][1:])
 
-        self.client.post(STYLE_URL, {'target': 'vector:builtup.Park', 'action': 'reset'})
+        self.client.post(STYLE_URL, {'target': 'vector:nature.GreenSpaces', 'action': 'reset'})
         self.assertFalse(LayerStyleOverride.objects.exists())
-        self.assertEqual(catalog_entry(self.client, 'builtup.Park'), default)
+        self.assertEqual(catalog_entry(self.client, 'nature.GreenSpaces'), default)
 
     def test_invalid_values_are_rejected(self):
         for field, value in (('color', 'red'), ('paint:0:fill-opacity', '2')):
             with self.subTest(field=field):
-                response = self.client.post(STYLE_URL, {'target': 'vector:builtup.Park', field: value})
+                response = self.client.post(STYLE_URL, {'target': 'vector:nature.GreenSpaces', field: value})
                 self.assertNotIn('HX-Trigger', response)
                 self.assertIn('settings-error', response.content.decode())
         self.assertFalse(LayerStyleOverride.objects.exists())

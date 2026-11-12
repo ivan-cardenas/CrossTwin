@@ -35,7 +35,7 @@
       if (txt) txt.textContent = val.toFixed(1) + '%';
     }
 
-    // Park area per inhabitant — ring, full at the WHO ideal, in the Park
+    // Park area per inhabitant — ring, full at the WHO ideal, in the Green Spaces
     // layer's colour; the WHO status (below minimum / ideal) is on the tag
     const green = document.querySelector('[data-gauge-id="gauge-green"]');
     const greenPath = document.getElementById('gauge-green');

@@ -21,8 +21,9 @@ optional = ["buildingType"]   # derived from usageFunction
 
 ["builtup.Street"]
 
-["builtup.Park"]
-exclude = ["area"]            # save() sets it from geom
+["nature.GreenSpaces"]
+# parks are green spaces of type "park" (the default); save() sets area and city
+exclude = ["area", "city", "neighborhood", "last_updated"]
 
 ["builtup.Facility"]
 

@@ -118,27 +118,9 @@ class StreetCanyon(models.Model):
         verbose_name = "Street Canyon"
         verbose_name_plural = "Street Canyons"
 
-class Park(models.Model):
-    id = models.AutoField(primary_key=True)
-    sourceID = models.CharField(max_length=100, unique=True, null=True, blank=True, help_text="Identifier in the source dataset, e.g. 'osm:way/123' for OpenStreetMap")
-    name = models.CharField(max_length=100, help_text="Name of the park")
-    area = models.FloatField(help_text="Area of the park in square meters")
-    vegetationType = models.CharField(max_length=100, null=True, blank=True, help_text="Type of vegetation in the park (e.g., grass, trees, shrubs), where known")
-    neighborhood = models.ForeignKey(Neighborhood, on_delete=models.DO_NOTHING, null=True, blank=True, help_text="City code from administrative.City")
-    geom = models.MultiPolygonField(srid=CoordinateSystem)
+# Parks are nature.GreenSpaces rows with type 'park' (nature.models.PARK);
+# the former builtup.Park model was merged into it (2026-11-11).
 
-    def __str__(self):
-        return self.name
-
-    def save(self, *args, **kwargs):
-        if self.geom:
-            self.area = self.geom.area
-        super().save(*args, **kwargs)
-
-    class Meta:
-        verbose_name = "Park"
-        verbose_name_plural = "Parks"
-      
 class Facility(models.Model):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=100, help_text="Name of the facility")

@@ -74,7 +74,8 @@ class BuildingDerivedFieldsTests(TestCase):
 from django.contrib.gis.geos import LineString, MultiLineString, Point
 from django.urls import reverse
 
-from builtup.models import Facility, Park, Property, Street
+from builtup.models import Facility, Property, Street
+from nature.models import GreenSpaces
 from builtup.views import MOCK_DATA, _build_indicators
 from mainMap.styles.layerStyles import BUILDING_TYPE_COLORS, LAYER_STYLES
 from watersupply.tests.factories import make_neighborhood, make_polygon
@@ -96,9 +97,12 @@ class BuiltupDashboardTests(TestCase):
         # 1 km of street, 600 m of it inside the unit (its east edge is at X0 + 500)
         Street.objects.create(name="Hoofdweg", classification="primary", width=8,
                               geom=MultiLineString(LineString((X0 - 100, Y0), (X0 + 900, Y0)), srid=settings.COORDINATE_SYSTEM))
-        # Park.save() derives area from geom: a 5 000 m² square
-        Park.objects.create(name="Park", vegetationType="grass",
-                            neighborhood=self.hood, geom=make_polygon(X0, Y0, 5000 ** 0.5 / 2))
+        # a park is a green space of type 'park'; save() derives area from geom: a 5 000 m² square
+        GreenSpaces.objects.create(name="Park", type="park", vegetationType="grass",
+                                   neighborhood=self.hood, geom=make_polygon(X0, Y0, 5000 ** 0.5 / 2))
+        # other green spaces (a garden) are not park space
+        GreenSpaces.objects.create(name="Tuin", type="tuin",
+                                   neighborhood=self.hood, geom=make_polygon(X0 + 300, Y0, 50))
         Facility.objects.create(name="School", type="school", neighborhood=self.hood,
                                 geom=Point(X0, Y0, srid=settings.COORDINATE_SYSTEM))
 
@@ -121,7 +125,7 @@ class BuiltupDashboardTests(TestCase):
         # same colours as the Buildings layer on the map
         self.assertEqual(mix['industrial']['color'], BUILDING_TYPE_COLORS['industrial'])
         self.assertEqual(ind['layer_colors']['street'], LAYER_STYLES['builtup.Street']['color'])
-        self.assertContains(self.get(), f'stroke="{LAYER_STYLES["builtup.Park"]["color"]}"')
+        self.assertContains(self.get(), f'stroke="{LAYER_STYLES["nature.GreenSpaces"]["color"]}"')
         periods = {p['key']: p['count'] for p in ind['age_periods']}
         self.assertEqual((periods['pre_1945'], periods['1975_1991']), (1, 1))
 
@@ -137,6 +141,22 @@ class BuiltupDashboardTests(TestCase):
         self.assertTrue(population)
         self.assertEqual(ind['green_per_capita_m2'], round(5000 / population, 1))
         self.assertEqual(ind['facilities_per_10k'], round(1 / population * 10_000, 1))
+
+    def test_recreation_areas_count_as_park_space(self):
+        # BGT recreation area (plus_type 'recreatie: ...'), 100 m x 100 m = 10 000 m²
+        GreenSpaces.objects.create(name="Sportveld", type="recreatie: sportterrein",
+                                   neighborhood=self.hood, geom=make_polygon(X0 - 300, Y0, 50))
+        ind = self.get().context['indicators']
+        self.assertEqual(ind['park_count'], 2)
+        self.assertEqual(ind['park_area_ha'], 1.5)
+
+    def test_overlapping_park_space_counts_once(self):
+        # a BGT recreation area lying over the 5 000 m² park (same square): area stays 0.5 ha
+        GreenSpaces.objects.create(name="Speelweide", type="recreatie",
+                                   neighborhood=self.hood, geom=make_polygon(X0, Y0, 5000 ** 0.5 / 2))
+        ind = self.get().context['indicators']
+        self.assertEqual(ind['park_count'], 2)
+        self.assertEqual(ind['park_area_ha'], 0.5)
 
     def test_recalculate_adds_the_what_if_park_area(self):
         response = self.get('recalculate_indicators', green_added_ha='2')

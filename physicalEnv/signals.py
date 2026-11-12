@@ -15,8 +15,8 @@ from .dsm_edited import schedule_refresh as schedule_dsm_refresh
 from .landcover import green_area, refresh_percentages, release_green_area, release_ring, urbanize_around
 from .models import (DigitalSurfaceModel, DSMBuildingPatch, DSMEdit, DSMVegetationPatch, LandCoverClasses, LandCoverVector,
                      SatelliteImagery)
-from builtup.models import Building, Park
-from nature.models import Forests, Tree
+from builtup.models import Building
+from nature.models import Forests, GreenSpaces, Tree
 from administrative.models import Neighborhood, District, City, Province
 # Reused from administrative's own population cascade rather than
 # duplicated -- see administrative/signals.py for the shared aggregation
@@ -350,35 +350,35 @@ def building_deleted(sender, instance, **kwargs):
     _land_cover_step(instance, lambda: release_ring(instance.pk), "release")
 
 
-@receiver(pre_save, sender=Park, dispatch_uid="physicalEnv_park_presave")
-def park_presave(sender, instance, raw=False, **kwargs):
-    """Remember the stored outline of a park the editor changes, so post_save can tell a move from an attribute edit."""
+@receiver(pre_save, sender=GreenSpaces, dispatch_uid="physicalEnv_green_space_presave")
+def green_space_presave(sender, instance, raw=False, **kwargs):
+    """Remember the stored outline of a green space the editor changes, so post_save can tell a move from an attribute edit."""
     from core.editing import is_editor_change
     if raw or not is_editor_change() or instance.pk is None:
         return
-    instance._stored_geom = Park.objects.filter(pk=instance.pk).values_list("geom", flat=True).first()
+    instance._stored_geom = GreenSpaces.objects.filter(pk=instance.pk).values_list("geom", flat=True).first()
 
 
 def _green(instance):
-    city_id = _city_of(instance)
+    city_id = instance.city_id or _city_of(instance)
     if city_id:
         green_area(instance.geom, city_id, instance.pk, name=instance.name, vegetation_type=instance.vegetationType)
 
 
-@receiver(post_save, sender=Park, dispatch_uid="physicalEnv_park_saved")
-def park_saved(sender, instance, created, raw=False, **kwargs):
+@receiver(post_save, sender=GreenSpaces, dispatch_uid="physicalEnv_green_space_saved")
+def green_space_saved(sender, instance, created, raw=False, **kwargs):
     """
-    DAG edge: New_Green_Area -> LandCover. A park drawn or reshaped in the
-    map editor turns its outline into green urban area in the city's latest
-    land cover (landcover.green_area); a move first gives the old area back
-    (release_green_area). Imports and raw saves are skipped, and an
-    attribute-only edit leaves the land cover alone.
+    DAG edge: New_Green_Area -> LandCover. A green space (a park is one of
+    type 'park') drawn or reshaped in the map editor turns its outline into
+    green urban area in the city's latest land cover (landcover.green_area);
+    a move first gives the old area back (release_green_area). Imports and
+    raw saves are skipped, and an attribute-only edit leaves the land cover alone.
     """
     from core.editing import is_editor_change
     if raw or not is_editor_change() or not instance.geom:
         return
     if created:
-        _guarded(lambda: _green(instance), f"Green area for park {instance.pk}")
+        _guarded(lambda: _green(instance), f"Green area for green space {instance.pk}")
         return
     stored = getattr(instance, "_stored_geom", None)
     if stored is not None and stored.equals_exact(instance.geom, tolerance=1e-6):
@@ -387,20 +387,20 @@ def park_saved(sender, instance, created, raw=False, **kwargs):
     def move():
         release_green_area(instance.pk)
         _green(instance)
-    _guarded(move, f"Green area move for park {instance.pk}")
+    _guarded(move, f"Green area move for green space {instance.pk}")
 
 
-@receiver(post_delete, sender=Park, dispatch_uid="physicalEnv_park_deleted")
-def park_deleted(sender, instance, **kwargs):
+@receiver(post_delete, sender=GreenSpaces, dispatch_uid="physicalEnv_green_space_deleted")
+def green_space_deleted(sender, instance, **kwargs):
     """
-    DAG edge: New_Green_Area -> LandCover (inverse). Deleting a park in the
-    editor gives its green area back to the polygons it was cut from.
+    DAG edge: New_Green_Area -> LandCover (inverse). Deleting a green space in
+    the editor gives its green area back to the polygons it was cut from.
     Skipped while the editor's backup restore runs (it restores the rows).
     """
     from core.editing import is_editor_change, is_restoring
     if not is_editor_change() or is_restoring():
         return
-    _guarded(lambda: release_green_area(instance.pk), f"Green area release for park {instance.pk}")
+    _guarded(lambda: release_green_area(instance.pk), f"Green area release for green space {instance.pk}")
 
 
 @receiver(post_save, sender=Building, dispatch_uid="physicalEnv_building_dsm_saved")

@@ -7,7 +7,7 @@ Status: implemented 2026-10-05 (proposal written 2026-10-01). Code: `core/editin
 Today the map is read-only: objects can only be created or changed through the importer or the Django admin. The goal is to edit objects visually on the main map — draw a new building, reshape one, change its attribute values, delete it — with as little new code as possible.
 
 Decisions made:
-- **Scope:** built-up layers only (Building, Street, Park, Facility, Zoning area), as an allowlist that is easy to extend.
+- **Scope:** built-up layers only (Building, Street, Facility, Zoning area; parks are `nature.GreenSpaces` of type `park` since 2026-11-11), as an allowlist that is easy to extend.
 - **Access:** staff login only (the existing Django admin login). Everyone else sees the map as today.
 - **Delete:** included, with an inline confirm step.
 - **Backup / restore:** one restore point for what-if tests, so edits can be tried out and rolled back to the state before the test. It is stored as a change journal (only the objects edited after the restore point, not a copy of whole tables) and covers edits made through the map editor only.

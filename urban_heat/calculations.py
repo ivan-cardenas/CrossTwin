@@ -9,7 +9,8 @@ from .models import (
     StressCategory,
 )
 from physicalEnv.models import LandCoverVector, DigitalSurfaceModel
-from builtup.models import Park, Building, Street
+from builtup.models import Building, Street
+from nature.models import GreenSpaces, PARK, RECREATION_PREFIX
 from weather.models import Meteorology
 
 
@@ -22,6 +23,9 @@ GREEN_LANDCOVER_KEYWORDS = ['forest', 'grass', 'green', 'vegetation', 'tree', 'p
 
 def calculate_green_area(adminUnit):
     """Green area inside the unit, in km²: parks and green land cover merged.
+
+    Parks are the nature.GreenSpaces rows of type 'park' plus the BGT
+    recreation areas (type 'recreatie…'), as GreenSpaces.objects.park_space().
 
     DAG edges:  LandCover → Green_Area
 
@@ -48,7 +52,7 @@ def calculate_green_area(adminUnit):
     if geom is None:
         return {'park_area_km2': 0.0, 'green_lc_km2': 0.0, 'total_green_km2': 0.0}
 
-    parks = Park._meta.db_table
+    parks = GreenSpaces._meta.db_table
     landcover = LandCoverVector._meta.db_table
     classes = LandCoverClasses._meta.db_table
     # ST_CollectionExtract(…, 3): a clip can leave slivers of lines/points on
@@ -60,6 +64,7 @@ def calculate_green_area(adminUnit):
             SELECT {clip.format(g='p.geom')} AS g
             FROM "{parks}" p, unit u
             WHERE p.geom && u.geom AND ST_Intersects(p.geom, u.geom)
+              AND (LOWER(p.type) = %(park)s OR LOWER(p.type) LIKE %(recreation)s)
         ),
         green_parts AS (
             SELECT {clip.format(g='l.geom')} AS g
@@ -81,6 +86,8 @@ def calculate_green_area(adminUnit):
         cursor.execute(sql, {
             'geom': bytes(geom.ewkb),
             'patterns': [f'%{kw}%' for kw in GREEN_LANDCOVER_KEYWORDS],
+            'park': PARK,
+            'recreation': RECREATION_PREFIX + '%',
         })
         park_m2, total_m2 = cursor.fetchone()
     # the union can be a hair smaller than the parks alone through rounding

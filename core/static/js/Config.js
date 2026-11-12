@@ -98,7 +98,7 @@ const TOOL_CATEGORIES = {
   builtup:       ['administrative', 'builtup'],
   energy:        ['administrative', 'Energy'],
   housing:       ['administrative', 'housing'],
-  green:         ['administrative', 'nature', 'green', 'vegetation', 'trees', 'Park', 'LandCover'],
+  green:         ['administrative', 'nature', 'green', 'vegetation', 'trees', 'GreenSpaces', 'LandCover'],
   physicalEnv:   ['administrative', 'physicalEnv'],
   water:         ['administrative', 'watersupply'],
   // groundwater:   ['administrative', 'groundwater'],

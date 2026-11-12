@@ -227,8 +227,8 @@ def apps():
         ("watersupply", 17, ["extraction · treatment", "pipes · NRW · OPEX", "SupplySecurity"]),
         ("housing", 9, ["supply/demand · HPI", "mortgage · rentals", "affordability", "social profile (KEA)"]),
         ("urban_heat", 12, ["UTCI · PET · Tmrt", "LST · SVF · SUHII", "NBS · WBGT · lst/ SMW", "heat per buurt (KEA)"]),
-        ("builtup", 7, ["ZoningArea (HILUCS)", "Street · Park · Facility", "Building · Property", "climate risk (KEA)"]),
-        ("nature", 7, ["green / blue", "layers · trees"]),
+        ("builtup", 7, ["ZoningArea (HILUCS)", "Street · Facility", "Building · Property", "climate risk (KEA)"]),
+        ("nature", 7, ["green spaces · parks", "water · trees"]),
         ("weather", 7, ["WMS layers", "time steps"]),
         ("Energy", 3, ["energy labels"]),
     ]

@@ -297,7 +297,9 @@ FIELD_MAPPINGS = {
         "__unique_field__": "sourceID",
         "__spatial_fk__": {"field": "neighborhood", "model": "administrative.Neighborhood", "required": False},
         "osm_name": "name",
-        # area comes from Park.save(); OSM has no vegetation type for a park
+        # a park is a green space of type 'park'; area and city come from
+        # GreenSpaces.save(); OSM has no vegetation type for a park
+        "__static__": {"type": "park"},
     },
     "osm_water_bodies": {
         "__geometry__": "geom",
@@ -681,7 +683,7 @@ EXTERNAL_DATA_CATALOG = [
         "source": "pdok",
         "category": "Nature & Environment",
         "name": "Green Space / Parks (BGT functioneelgebied)",
-        "description": "Recreation-designated green space (parks, sports fields, playgrounds) from Kadaster's BGT.",
+        "description": "Recreation-designated green space (parks, sports fields, playgrounds) from Kadaster's BGT. Counts as park space (with the OSM parks) in the park area per inhabitant and the green area.",
         "target_model": "nature.GreenSpaces",
         "url": "https://api.pdok.nl/lv/bgt/ogc/v1",
         "collection": "functioneelgebied",
@@ -1313,8 +1315,8 @@ EXTERNAL_DATA_CATALOG = [
         "source": "osm",
         "category": "Nature & Environment",
         "name": "Parks (OpenStreetMap)",
-        "description": "Park polygons tagged leisure=park in OpenStreetMap. Feeds the park area per inhabitant of the built-up dashboard; import neighborhoods first so parks are attributed to them.",
-        "target_model": "builtup.Park",
+        "description": "Park polygons tagged leisure=park in OpenStreetMap. Stored as green spaces of type 'park'. Feeds the park area per inhabitant of the built-up dashboard; import neighborhoods first so parks are attributed to them.",
+        "target_model": "nature.GreenSpaces",
         "url": "https://overpass-api.de/api/interpreter",
         "format": "overpass",
         "osm_query": ['way["leisure"="park"]', 'relation["leisure"="park"]'],

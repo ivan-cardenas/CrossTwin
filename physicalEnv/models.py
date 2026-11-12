@@ -269,9 +269,11 @@ class LandCoverVector(models.Model):
     # (physicalEnv/landcover.py): moving or deleting that building releases
     # this ring. Plain id, not an FK: builtup already depends on physicalEnv.
     source_building = models.BigIntegerField(null=True, blank=True, db_index=True, help_text="Editor building whose 10 m urban-fabric buffer this polygon is")
-    # Set on the green-area polygon of a park drawn in the map editor
+    # Set on the green-area polygon of a green space (nature.GreenSpaces, a park
+    # is one of type 'park') drawn in the map editor
     # (physicalEnv/landcover.py::green_area); released like a building ring.
-    source_park = models.IntegerField(null=True, blank=True, db_index=True, help_text="Editor park whose outline this green-area polygon is")
+    # Name kept from the former builtup.Park; the id is a nature.GreenSpaces id.
+    source_park = models.IntegerField(null=True, blank=True, db_index=True, help_text="Editor green space (nature.GreenSpaces id) whose outline this green-area polygon is")
     # Measured (Sentinel-2 broadband albedo, zonal mean: physicalEnv/albedo.py::measure)
     # or estimated for editor polygons (building roof + paving). Empty: the
     # class default through `material` applies (effective_albedo).
@@ -293,8 +295,8 @@ class LandCoverVector(models.Model):
 
 class UrbanFabricCut(models.Model):
     """
-    A piece an editor building's urban-fabric ring (or an editor park's green
-    area) cut out of another land-cover polygon (physicalEnv/landcover.py).
+    A piece an editor building's urban-fabric ring (or an editor green space's
+    green area; `owner_park` holds the nature.GreenSpaces id) cut out of another land-cover polygon (physicalEnv/landcover.py).
     Releasing the ring (the building or park moved or was deleted) gives each
     piece back to `target`, or recreates `target` with the attributes copied
     here when it was swallowed whole. Exactly one owner is set. Not a map
@@ -303,7 +305,7 @@ class UrbanFabricCut(models.Model):
     registry_hidden = True
 
     owner_building = models.BigIntegerField(null=True, blank=True, db_index=True, help_text="Editor building whose ring took this piece")
-    owner_park = models.IntegerField(null=True, blank=True, db_index=True, help_text="Editor park whose green area took this piece")
+    owner_park = models.IntegerField(null=True, blank=True, db_index=True, help_text="Editor green space (nature.GreenSpaces id) whose green area took this piece")
     target = models.IntegerField(db_index=True, help_text="Id of the LandCoverVector row the piece was cut from")
     city = models.ForeignKey("administrative.City", on_delete=models.DO_NOTHING, null=True, blank=True)
     year = models.IntegerField()
@@ -311,7 +313,7 @@ class UrbanFabricCut(models.Model):
     land_use = models.CharField(max_length=100)
     material = models.ForeignKey(SurfaceMaterialProperties, on_delete=models.DO_NOTHING, null=True, blank=True)
     source_building = models.BigIntegerField(null=True, blank=True, db_index=True, help_text="The target's own source_building (set when the target is another ring)")
-    source_park = models.IntegerField(null=True, blank=True, db_index=True, help_text="The target's own source_park (set when the target is a park's green area)")
+    source_park = models.IntegerField(null=True, blank=True, db_index=True, help_text="The target's own source_park (set when the target is a green space's green area)")
     albedo = models.FloatField(null=True, blank=True)
     albedo_source = models.CharField(max_length=100, null=True, blank=True)
     albedo_date = models.DateField(null=True, blank=True)

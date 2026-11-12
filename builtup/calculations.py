@@ -1,8 +1,11 @@
+from django.contrib.gis.db.models import Union
 from django.contrib.gis.db.models.functions import Intersection, Length
-from django.db.models import Sum, Avg, Count, Q, F, FloatField, Value
+from django.db.models import Sum, Avg, Count, Q, F, FloatField, Func, Value
 from django.db.models.functions import Cast, Coalesce, Greatest, Round
 
-from .models import Building, Street, Park, Facility
+from nature.models import GreenSpaces
+
+from .models import Building, Street, Facility
 from administrative.admin_units import neighborhoods_within
 
 
@@ -170,11 +173,21 @@ def calculate_street_network(adminBund):
 def calculate_green_space(adminBund, population):
     """Park area per inhabitant, against the WHO guideline of ≥ 9 m² per person.
 
+    Park space = green spaces of type 'park' plus BGT recreation areas
+    (type 'recreatie…'), nature.GreenSpaces.objects.park_space().
+
+    Overlapping polygons (an OSM park and a BGT recreation area over the same
+    ground, duplicate OSM ways) are merged before measuring, so ground counts
+    once: park area = |∪ park space|, in the storage CRS's m².
+
     DAG edges:  LandCover  -> Green_Area
                 Green_Area -> Accessibility
     """
-    parks = Park.objects.filter(neighborhood__in=neighborhoods_within(adminBund))
-    agg = parks.aggregate(area=Sum('area'), count=Count('id'))
+    parks = GreenSpaces.objects.park_space().filter(neighborhood__in=neighborhoods_within(adminBund))
+    agg = parks.aggregate(
+        area=Func(Union('geom'), function='ST_Area', output_field=FloatField()),
+        count=Count('id'),
+    )
     area = agg['area'] or 0
     return {
         'park_area_m2': round(area),

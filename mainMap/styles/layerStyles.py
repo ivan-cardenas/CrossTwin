@@ -167,13 +167,6 @@ LAYER_STYLES = {
         'legend': DEGURBA_LEGEND,
         'layers': DEGURBA_LAYERS,
     },
-    'builtup.Park': {
-        'color': '#66bb6a',
-        'layers': [
-            {'type': 'fill', 'paint': {'fill-color': '#66bb6a', 'fill-opacity': 0.4}},
-            {'type': 'line', 'paint': {'line-color': '#388e3c', 'line-width': 1}},
-        ],
-    },
     'builtup.Facility': {
         'color': '#ab47bc',
         'layers': [

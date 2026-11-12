@@ -126,20 +126,56 @@ class Tree(models.Model):
         verbose_name_plural = "Trees"
 
 
+PARK = "park"
+# BGT functioneelgebied plus_type of recreation areas: "recreatie",
+# "recreatie: sportterrein", "recreatie: speeltuin", ... (bgt_greenspace_park)
+RECREATION_PREFIX = "recreatie"
+
+
+class GreenSpacesQuerySet(models.QuerySet):
+    def parks(self):
+        """Green spaces of type 'park' (OSM leisure=park, parks drawn in the map editor)."""
+        return self.filter(type__iexact=PARK)
+
+    def park_space(self):
+        """Public park space: parks plus BGT recreation areas (type 'recreatie…')."""
+        return self.filter(models.Q(type__iexact=PARK) | models.Q(type__istartswith=RECREATION_PREFIX))
+
+
 class GreenSpaces(models.Model):
+    """
+    Every green space polygon, parks included: a park is a green space with
+    type = 'park' (PARK). There is no separate park model.
+
+    DAG node: Green_Area (stored); a green space drawn in the map editor is
+    New_Green_Area -> LandCover (physicalEnv/signals.py::green_space_saved).
+    """
+    PARK = PARK
+
     id = models.AutoField(primary_key=True)
+    sourceID = models.CharField(max_length=100, unique=True, null=True, blank=True, help_text="Identifier in the source dataset, e.g. 'osm:way/123' for OpenStreetMap")
     name = models.CharField(max_length=200)
-    type = models.CharField(max_length=100, help_text="Type of green space (e.g., park, garden, etc.)", null=True, blank=True)
+    type = models.CharField(max_length=100, default=PARK, help_text="Type of green space: 'park' for parks, else e.g. garden or the BGT plus_type (recreatie, ...)", null=True, blank=True)
+    vegetationType = models.CharField(max_length=100, null=True, blank=True, help_text="Type of vegetation (e.g., grass, trees, shrubs), where known")
+    neighborhood = models.ForeignKey(
+        'administrative.Neighborhood',
+        on_delete=models.DO_NOTHING,
+        null=True,
+        blank=True,
+        help_text="Neighborhood the green space lies in (resolved spatially on import)",
+    )
     city = models.ForeignKey(
         'administrative.City',
         on_delete=models.DO_NOTHING,
         null=True,
         blank=True,
-        help_text="City this green space belongs to (resolved via centroid intersection)",
+        help_text="City this green space belongs to (through its neighborhood, else the city containing its centroid)",
     )
     geom = models.MultiPolygonField(srid=COORDINATE_SYSTEM)
     last_updated = models.DateTimeField(default=timezone.now)
     area = models.FloatField(help_text="Area of the green space in square meters", null=True, blank=True)
+
+    objects = GreenSpacesQuerySet.as_manager()
 
     def __str__(self):
         return f"{self.name}"
@@ -147,10 +183,22 @@ class GreenSpaces(models.Model):
     class Meta:
         verbose_name = "Green Space"
         verbose_name_plural = "Green Spaces"
-        
+
+    @property
+    def is_park(self):
+        return (self.type or "").lower() == PARK
+
     def save(self, *args, **kwargs):
-        self.area = self.geom.area
-        self.city = City.objects.filter(geom__contains=self.geom.centroid).first()
+        if self.geom:
+            self.area = self.geom.area
+            city_id = None
+            if not self.neighborhood_id:
+                self.neighborhood_id = (apps.get_model('administrative', 'Neighborhood').objects
+                                        .filter(geom__contains=self.geom.point_on_surface)
+                                        .values_list('pk', flat=True).first())
+            if self.neighborhood_id:
+                city_id = (apps.get_model('administrative', 'Neighborhood').objects
+                           .filter(pk=self.neighborhood_id).values_list('district__city_id', flat=True).first())
+            self.city_id = city_id or (City.objects.filter(geom__contains=self.geom.centroid)
+                                       .values_list('pk', flat=True).first())
         super().save(*args, **kwargs)
-        
-        

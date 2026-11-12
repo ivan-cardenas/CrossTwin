@@ -931,13 +931,13 @@ class OSMImportTests(TestCase):
         self.assertEqual(Tree.objects.get().height_m, 14.0)
 
     def test_parks_get_area_from_save_and_feed_the_dashboard_filter(self):
-        from builtup.models import Park
+        from nature.models import GreenSpaces
         result, post = self._fetch("osm_parks", [_ll_way(7, LL_SQUARE, leisure="park", name="Vondelpark")])
 
         self.assertEqual(result.status, "success", result.message)
         self.assertIn("out geom;", post.call_args.kwargs["data"]["data"])
-        park = Park.objects.get(neighborhood=self.neighborhood)
-        self.assertEqual((park.name, park.sourceID), ("Vondelpark", "osm:way/7"))
+        park = GreenSpaces.objects.parks().get(neighborhood=self.neighborhood)
+        self.assertEqual((park.name, park.sourceID, park.type), ("Vondelpark", "osm:way/7", "park"))
         self.assertTrue(700_000 < park.area < 800_000, park.area)   # ~680 m x ~1110 m, in m2
 
     def test_amenities_are_classified_into_facility_types(self):

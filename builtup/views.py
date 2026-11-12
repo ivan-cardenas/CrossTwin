@@ -24,9 +24,9 @@ GREEN_PER_CAPITA_GOOD_M2 = 50
 # Card colours = the matching map layer's colour (mainMap/styles/layerStyles.py LAYER_STYLES),
 # so a card and the layer it summarises read as the same thing.
 LAYER_COLORS = {
-    name: LAYER_STYLES[f'builtup.{model}']['color']
-    for name, model in (('building', 'Building'), ('street', 'Street'),
-                        ('park', 'Park'), ('facility', 'Facility'))
+    name: LAYER_STYLES[key]['color']
+    for name, key in (('building', 'builtup.Building'), ('street', 'builtup.Street'),
+                      ('park', 'nature.GreenSpaces'), ('facility', 'builtup.Facility'))
 }
 
 
@@ -36,7 +36,7 @@ def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, po
     """
     Fetch all built-up DB values for an administrative unit.
 
-    The building stock is the current one (no year on Building/Street/Park);
+    The building stock is the current one (no year on Building/Street/GreenSpaces);
     `year` and the population what-if only drive the per-capita indicators,
     through the projected population.
     """
