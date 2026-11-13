@@ -22,7 +22,7 @@ from django.db import connection
 
 # Service distance of a pipe when the city has no CoverageWaterSupply record
 # (CrossTwin assumption; the same default as CoverageWaterSupply.buffer_m).
-DEFAULT_SERVICE_BUFFER_M = 500.0
+DEFAULT_SERVICE_BUFFER_M = 50.0
 
 DWELLING = "Residential function"   # BAG woonfunctie label in Property.usageFunction
 
@@ -105,3 +105,62 @@ def neighborhoods_near(geoms, distance_m):
         Property.objects.filter(near, building__neighborhood_id__isnull=False)
         .values_list('building__neighborhood_id', flat=True).distinct()
     )
+
+
+# Most unserved homes one map request returns (the map clusters them).
+UNSERVED_MAX_FEATURES = 20_000
+
+
+def unserved_properties(bbox_wgs84=None, limit=UNSERVED_MAX_FEATURES):
+    """
+    GeoJSON FeatureCollection (WGS84 points) of the properties with residents
+    that no pipe reaches: no PipeNetwork within the service buffer of their
+    city (service_buffer_m: the city's latest CoverageWaterSupply.buffer_m,
+    else DEFAULT_SERVICE_BUFFER_M). The complement of populationServed, per home.
+    Properties not linked to a neighborhood use the default buffer.
+    `bbox_wgs84` = (minLng, minLat, maxLng, maxLat). One SQL statement.
+    """
+    from django.conf import settings
+
+    from administrative.models import District, Neighborhood
+    from watersupply.models import CoverageWaterSupply
+
+    prop, building, pipe = _tables()
+    params = [float(DEFAULT_SERVICE_BUFFER_M)]
+    where = ["p.residents > 0"]
+    if bbox_wgs84:
+        where.append("p.geom && ST_Transform(ST_MakeEnvelope(%s, %s, %s, %s, 4326), %s)")
+        params += [*map(float, bbox_wgs84), int(settings.COORDINATE_SYSTEM)]
+    params.append(int(limit))
+    sql = f"""
+        WITH buffers AS (
+            SELECT DISTINCT ON (city_id) city_id, buffer_m
+              FROM {CoverageWaterSupply._meta.db_table}
+             WHERE city_id IS NOT NULL AND buffer_m IS NOT NULL
+             ORDER BY city_id, year DESC, id DESC
+        ), homes AS (
+            SELECT p.id, p.geom, p.residents, b.neighborhood_id,
+                   COALESCE(c.buffer_m, %s) AS buffer_m
+              FROM {prop} p
+              LEFT JOIN {building} b ON b.id = p.building_id
+              LEFT JOIN {Neighborhood._meta.db_table} nb ON nb.id = b.neighborhood_id
+              LEFT JOIN {District._meta.db_table} d ON d.id = nb.district_id
+              LEFT JOIN buffers c ON c.city_id = d.city_id
+             WHERE {" AND ".join(where)}
+        )
+        SELECT json_build_object(
+                   'type', 'FeatureCollection',
+                   'features', COALESCE(json_agg(json_build_object(
+                       'type', 'Feature',
+                       'geometry', ST_AsGeoJSON(ST_Transform(ST_PointOnSurface(h.geom), 4326), 6)::json,
+                       'properties', json_build_object(
+                           'id', h.id, 'residents', h.residents, 'buffer_m', h.buffer_m)
+                   )), '[]'::json))::text
+          FROM (SELECT * FROM homes h
+                 WHERE NOT EXISTS (SELECT 1 FROM {pipe} n
+                                    WHERE ST_DWithin(n.geom, h.geom, h.buffer_m))
+                 LIMIT %s) h
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(sql, params)
+        return cursor.fetchone()[0]

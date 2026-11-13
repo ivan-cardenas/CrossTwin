@@ -164,6 +164,7 @@ MOCK_DATA = {
     'coverage':             {
         'covered_area_km2': 42.5, 'households_covered': 4_200,
         'households_total': 5_000, 'coverage_pct': 84.0,
+        'urban_area_km2': 30.0, 'uncovered_urban_km2': 1.8, 'uncovered_urban_pct': 6.0,
     },
     'drought':              {'total_area_km2': 12.3, 'max_sensibility': 2},
     'infiltration':         {
@@ -338,6 +339,9 @@ def _build_indicators(data, consumption_override=None, rain_mm=RAIN_MM_DEFAULT):
         'population_served':     cov.get('population_served'),
         'population_total':      cov.get('population_total'),
         'coverage_pct':          cov.get('coverage_pct'),
+        'urban_area_km2':        cov.get('urban_area_km2'),
+        'uncovered_urban_km2':   cov.get('uncovered_urban_km2'),
+        'uncovered_urban_pct':   cov.get('uncovered_urban_pct'),
         # Drought
         'drought_area_km2':      drought.get('total_area_km2', 0),
         'drought_sensibility':   drought.get('max_sensibility', 0),
@@ -397,3 +401,23 @@ def recalculate_indicators(request, level, location, year):
     indicators = _build_indicators(data, consumption_override=consumption, rain_mm=rain_mm)
 
     return render(request, 'watersupply/partials/indicators_grid.html', {'indicators': indicators})
+
+
+def unserved_homes(request):
+    """
+    Map layer of the homes no pipe reaches (residents outside the service
+    buffer; the complement of UsersLocation.populationServed), as WGS84
+    GeoJSON points. `?bbox=minLng,minLat,maxLng,maxLat` limits it to the view.
+    """
+    from django.http import HttpResponse, HttpResponseBadRequest
+
+    from mainMap.views import _parse_bbox
+    from .calculations.users import unserved_properties
+
+    bbox = None
+    if request.GET.get('bbox'):
+        try:
+            bbox = _parse_bbox(request.GET['bbox'])
+        except ValueError as exc:
+            return HttpResponseBadRequest(str(exc))
+    return HttpResponse(unserved_properties(bbox), content_type='application/json')

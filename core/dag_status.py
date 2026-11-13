@@ -74,7 +74,8 @@ EDGE_STATUS = {
     ("Household_Size", "Property"): (I, "housing/signals.py::_set_city_residents", "Property.residents of each dwelling = city's latest average size."),
     ("CityArea", "Coverage_WS_Area"): (I, "CoverageWaterSupply.save(); watersupply/calculations/indicators.py::calculate_coverage",
         "Borderline: the city geometry only scopes pipes / households."),
-    ("CityArea", "Network"): (G, "", "Urban growth does not extend or flag the pipe network."),
+    ("CityArea", "Network"): (P, "CoverageWaterSupply.save() -> watersupply/calculations/network_gap.py::urban_gap; receiver urban_area_updated <- physicalEnv.signals.urban_area_changed",
+                              "Urban land cover outside the pipe service area is stored and flagged (uncovered_urban_km2); the network is not extended."),
     ("Housing_Demand", "Zoning_Status"): (G, "", "Stored demand is not read by zoning."),
     ("Housing_Demand", "House_Price_Index"): (G, "", "calculate_house_price_index() only averages stored HousePriceIndex rows."),
     # ── Land cover / soil / heat ─────────────────────────────────────────

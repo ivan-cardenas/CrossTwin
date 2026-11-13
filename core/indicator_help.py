@@ -70,6 +70,20 @@ HELP = {
         ],
         "note": "An ILI below about 2 is considered good; 1 means only unavoidable leakage is left.",
     },
+    "water.coverage": {
+        "title": "Network Coverage",
+        "what": "Main value: the share of water users (the residents of each home) living within reach of a pipe. Below it, the urban area the pipe network has not followed yet: where the network should be extended.",
+        "how": "The pipes are buffered by the city's service distance (50 m unless the coverage record sets another). A home is served when it lies inside that buffer. The urban area is the city's built-up land cover (urban fabric, roads, rail, transport) of the latest land-cover year; the part of it outside the buffer is reported. It updates when pipes, homes, residents or land cover change.",
+        "eq": [
+            "Coverage = {residents within the buffer | all residents} × 100 %",
+            "Urban area without network = urban land cover − (urban land cover ∩ service area)",
+            "Share = {urban area without network | urban land cover} × 100 %",
+        ],
+        "where": [
+            ("service area", "the pipes buffered by the service distance, merged"),
+        ],
+        "note": "The network itself is not extended automatically; the figure flags where it lags behind urban growth. The map's water-drop markers show the homes outside the buffer.",
+    },
     "water.recharge": {
         "title": "Groundwater Recharge & Infiltration",
         "what": "Main value: the rain that neither runs off nor evaporates and so reaches the groundwater in a year. The same equation gives each fresh-water source its stored yield.",

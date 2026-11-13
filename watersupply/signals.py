@@ -50,6 +50,7 @@ from administrative.signals import city_population_changed
 from builtup.models import Property
 from builtup.signals import residents_changed
 from physicalEnv.calculations.landcover import landcover_created
+from physicalEnv.signals import urban_area_changed
 from physicalEnv.models import GroundwaterDepth, LandCoverVector, SoilArea, SoilType
 from weather.knmi import daily_water_balance_changed
 from weather.models import Meteorology
@@ -488,6 +489,18 @@ def coverage_saved(sender, instance, raw=False, **kwargs):
              .exclude(buffer_m=instance.buffer_m))
     if stale.exists():
         _refresh_users(_city_neighborhoods(instance.city_id))
+
+
+@receiver(urban_area_changed, dispatch_uid="water_urban_area_changed")
+def urban_area_updated(sender, city_id, **kwargs):
+    """
+    physicalEnv rewrote the city's neighborhood urban_area from its land cover
+    (update(), no post_save): re-save the city's coverage records so their
+    urban area outside the service area follows. Deferred with the users.
+
+    DAG edge: CityArea -> Network (partial: flagged, not extended)
+    """
+    _refresh_users((), {city_id})
 
 
 @receiver(post_save, sender=UsersLocation, dispatch_uid="water_users_saved")

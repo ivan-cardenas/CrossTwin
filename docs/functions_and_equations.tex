@@ -579,7 +579,7 @@ Uses the city's most recent \code{ConsumptionCapita} record (not filtered by yea
 
 \subsection{Water supply users --- \code{UsersLocation.save()}}
 \textbf{Location:} \code{watersupply/models.py::UsersLocation.save}; \code{watersupply/calculations/users.py::neighborhood\_users}
-A users location is each property (home); its users are its residents $r_k$ (\code{builtup.Property.residents}, the city's CBS persons per home). For neighbourhood $n$ with properties $K_n$ and service distance $b$ (\code{buffer\_m} of the city's latest \code{CoverageWaterSupply}, default 500\,\si{m}):
+A users location is each property (home); its users are its residents $r_k$ (\code{builtup.Property.residents}, the city's CBS persons per home). For neighbourhood $n$ with properties $K_n$ and service distance $b$ (\code{buffer\_m} of the city's latest \code{CoverageWaterSupply}, default 50\,\si{m}):
 \begin{align}
   U_n &= \operatorname{round}\Big(\sum_{k \in K_n} r_k\Big) \
   S_n &= \operatorname{round}\Big(\sum_{k \in K_n,\ \min_{p} d(k, p) \le b} r_k\Big)
@@ -594,6 +594,17 @@ A users location is each property (home); its users are its residents $r_k$ (\co
   \text{Coverage\%} &= \frac{\sum_{n \in c} S_n}{\sum_{n \in c} U_n} \times 100
 \end{align}
 \code{households\_covered}/\code{households\_total} count the city's dwellings within $b$ of a pipe / in total. Cities whose users locations are stored inputs (no properties) keep the former rule: households of neighbourhoods intersecting $G_{\text{buffer}}$ over $\sum$ \code{usersTotal}. \textbf{DAG edges:} \dagedge{Network $\rightarrow$ Coverage\_WS\_Area}, \dagedge{CityArea $\rightarrow$ Coverage\_WS\_Area}, \dagedge{NumberUsers $\rightarrow$ Coverage\_WS} --- \statusdone{}
+
+\subsection{Urban area outside the network --- \code{CoverageWaterSupply.save()}}
+\textbf{Location:} \code{watersupply/calculations/network\_gap.py::urban\_gap}; \code{watersupply/models.py::CoverageWaterSupply.\_set\_urban\_gap}; receiver \code{watersupply/signals.py::urban\_area\_updated} $\leftarrow$ \code{physicalEnv.signals.urban\_area\_changed}
+
+With $L_c$ the city's urban land-cover polygons (classes matching \code{URBAN\_AREA\_KEYWORDS}, the same as the neighbourhoods' \code{urban\_area}) of the latest land-cover year up to the record's year $y$ (else the earliest later one, stored as \code{urban\_landcover\_year}) and $G_{\text{buffer}}$ the record's service area:
+\begin{align}
+  A_{\text{urban}} &= \sum_{l \in L_c} |l|, \qquad
+  A_{\text{uncovered}} = \sum_{l \in L_c} |l \setminus G_{\text{buffer}}|, \qquad
+  \text{share} = \frac{A_{\text{uncovered}}}{A_{\text{urban}}} \times 100
+\end{align}
+(no network: $A_{\text{uncovered}} = A_{\text{urban}}$; no land cover: fields empty). Stored as \code{urban\_area\_km2}, \code{uncovered\_urban\_km2}, \code{uncovered\_urban\_pct}; the dashboard sums each city's latest record. It flags urban growth the network has not followed; it does not extend the network. \textbf{DAG edge:} \dagedge{CityArea $\rightarrow$ Network} --- \statuspartial{}
 
 \subsection{Non-Revenue Water and ILI}
 \textbf{Location:} \code{calculate\_nrw()} (\code{watersupply/calculations/indicators.py:275}); \code{NonRevenueWater.save()} (\code{watersupply/models.py:551})

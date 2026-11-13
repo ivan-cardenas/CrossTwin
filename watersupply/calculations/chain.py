@@ -66,6 +66,11 @@ def service_time_hours(production_m3_d, demand):
     return round(SERVICE_HOURS_MAX * production_m3_d / demand, 1)
 
 
+def share_pct(part, total):
+    """part / total in percent, one decimal (0 without a total)."""
+    return round(part / total * 100, 1) if total else 0
+
+
 def coverage_pct(served, total):
     """
     Share of the water users inside the network's service area, in percent

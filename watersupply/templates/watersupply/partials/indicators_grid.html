@@ -173,6 +173,39 @@
     </div>
   </div>
 
+  <!-- Network coverage: users served + urban area the network has not reached -->
+  <div class="card c3 wide">
+    <div class="gauge-header">
+      <div class="card-icon">🗺️</div>
+      <div class="card-label">Network Coverage</div>
+      {% info_help "water.coverage" %}
+    </div>
+    <div style="display:flex; align-items:baseline; gap:8px;">
+      <div class="card-value">{% if indicators.coverage_pct != None %}{{ indicators.coverage_pct }}{% else %}—{% endif %}</div>
+      <div class="card-unit">% of users within reach of a pipe</div>
+    </div>
+    <div class="bar-track" style="height:8px;">
+      <div class="bar-fill" style="width:{{ indicators.coverage_pct|default:0|unlocalize }}%; background:#38bdf8;"></div>
+    </div>
+    <div style="display:flex; gap:16px; margin-top:10px;">
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Service area</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.covered_area_km2 }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">km²</span></div>
+      </div>
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Urban area without network</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">
+          {% if indicators.uncovered_urban_km2 != None %}
+            <span style="color:{% if indicators.uncovered_urban_pct > 10 %}#ef4444{% elif indicators.uncovered_urban_pct > 0 %}#f59e0b{% else %}#22c55e{% endif %};">{{ indicators.uncovered_urban_km2 }}</span>
+            <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">km² ({{ indicators.uncovered_urban_pct }}% of {{ indicators.urban_area_km2 }} km²)</span>
+          {% else %}
+            <span style="color:rgba(232,244,255,0.35);">— no land cover</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Infiltration (SCS Curve Number) -->
   <div class="card c3 wide">
     <div class="gauge-header">

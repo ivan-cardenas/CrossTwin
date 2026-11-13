@@ -49,7 +49,7 @@ class NumberUsersTests(TestCase):
         self.assertEqual(users.usersTotal, 6)    # 3 homes x 2.0
         self.assertEqual(users.ResidentialUsers, 6)
         self.assertEqual(users.populationServed, 0)   # no pipes yet
-        self.assertEqual(users.buffer_m, 500.0)
+        self.assertEqual(users.buffer_m, 50.0)
 
     def test_population_served_is_the_residents_within_the_pipe_buffer(self):
         pipe = self._pipe()
@@ -94,6 +94,8 @@ class NumberUsersTests(TestCase):
             userLocation=self._users(), installed_meters=10, functional_meters=10, collected_meters=10,
             userTariff_EUR_m3=1.0, userAffordability_PCT=3.0)
         self.assertIsNone(meters.consumption_m3_yr)   # nobody served yet
+        CoverageWaterSupply.objects.create(city=self.city, year=2025, buffer_m=500,
+                                           coveredArea_km2=0, coveragePCT=0)
         self._pipe()
         meters.refresh_from_db()
         self.assertAlmostEqual(meters.consumption_m3_yr, 0.1 * 365 * 6)
@@ -107,6 +109,24 @@ class NumberUsersTests(TestCase):
                      if isinstance(obj, UsersLocation)]
         self.assertEqual(len(refreshed), 1)
         self.assertEqual(self._users().usersTotal, 16)
+
+    def _unserved_ids(self, **params):
+        import json
+        response = self.client.get('/watersupply/unserved/', params)
+        self.assertEqual(response.status_code, 200)
+        return {f['properties']['id'] for f in json.loads(response.content)['features']}
+
+    def test_the_map_shows_the_homes_outside_the_pipe_buffer(self):
+        everyone = {p.pk for p in self.near} | {self.far.pk}
+        self.assertEqual(self._unserved_ids(), everyone)          # no pipes yet
+        self._pipe()
+        CoverageWaterSupply.objects.create(city=self.city, year=2025, buffer_m=150,
+                                           coveredArea_km2=0, coveragePCT=0)
+        self.assertEqual(self._unserved_ids(), {self.far.pk})    # the city's buffer, not the default
+        self._dwelling(X, Y, usage=("Shop function",))            # no residents: never shown
+        self.assertEqual(self._unserved_ids(), {self.far.pk})
+        self.assertEqual(self._unserved_ids(bbox='0,0,1,1'), set())   # outside the view
+        self.assertEqual(self.client.get('/watersupply/unserved/', {'bbox': 'x'}).status_code, 400)
 
 
 class StoredUsersTests(TestCase):

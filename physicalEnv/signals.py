@@ -4,7 +4,7 @@ from contextlib import contextmanager
 
 from django.db import connection, transaction
 from django.db.models.signals import post_save, post_delete, pre_save
-from django.dispatch import receiver
+from django.dispatch import Signal, receiver
 from django.db.models import Max, Q
 from django.utils import timezone
 
@@ -27,6 +27,11 @@ from administrative.signals import _recompute_population
 logger = logging.getLogger(__name__)
 
 URBAN_AREA_KEYWORDS = ["urban fabric", "road", "rail", "transport"]
+
+# Sent (city_id=...) after a city's neighborhood urban_area was rewritten with
+# update(), which fires no post_save. Downstream apps subscribe to it, e.g.
+# watersupply's urban area outside the pipe network (DAG edge CityArea -> Network).
+urban_area_changed = Signal()
 
 # Per-thread set of city ids whose recompute is postponed; None when not deferring.
 _deferred = threading.local()
@@ -122,6 +127,7 @@ def _recompute_neighborhood_urban_area(city_id):
     if not district_ids:
         return
     bump_layer_version(Neighborhood)
+    urban_area_changed.send(sender=Neighborhood, city_id=city_id)
 
     city_pk = None
     for district_id in district_ids:

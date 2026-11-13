@@ -322,6 +322,8 @@ def calculate_coverage(adminBund):
     DAG edges:  Network   → Coverage_WS_Area
                 CityArea  → Coverage_WS_Area
                 NumberUsers → Coverage_WS
+                CityArea  → Network (urban land cover outside the service area,
+                            from each city's latest record)
     """
     cities = cities_within(adminBund)
     coverage_records = CoverageWaterSupply.objects.filter(city__in=cities)
@@ -352,6 +354,11 @@ def calculate_coverage(adminBund):
         pct = round(served / population * 100, 1)
     else:
         pct = round(covered / total * 100, 1) if total else None
+
+    latest = (coverage_records.filter(urban_area_km2__isnull=False)
+              .order_by('city_id', '-year', '-id').distinct('city_id'))
+    urban = sum(r.urban_area_km2 for r in latest)
+    uncovered = sum(r.uncovered_urban_km2 or 0 for r in latest)
     return {
         'covered_area_km2': round(agg['area'] or 0, 2),
         'households_covered': covered,
@@ -359,6 +366,9 @@ def calculate_coverage(adminBund):
         'population_served': served if population else None,
         'population_total': population or None,
         'coverage_pct': pct,
+        'urban_area_km2': round(urban, 2) if latest else None,
+        'uncovered_urban_km2': round(uncovered, 2) if latest else None,
+        'uncovered_urban_pct': round(uncovered / urban * 100, 1) if urban else None,
     }
 
 

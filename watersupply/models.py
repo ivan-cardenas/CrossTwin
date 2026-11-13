@@ -548,13 +548,21 @@ class CoverageWaterSupply(models.Model):
     id = models.AutoField(primary_key=True)
     city = models.ForeignKey(City, on_delete=models.DO_NOTHING, null=True, help_text="City code from administrative.City")
     year = models.IntegerField()
-    buffer_m = models.FloatField(default=500, help_text="Buffer distance around pipes in meters")
+    buffer_m = models.FloatField(default=50, help_text="Buffer distance around pipes in meters")
     coveredArea_km2 = models.FloatField(help_text="Covered area in square kilometers")
     households_covered = models.IntegerField(default=0, help_text="Number of households within the service area")
     households_total = models.IntegerField(default=0, help_text="Total households in the city")
     population_served = models.IntegerField(null=True, blank=True, help_text="Water users (residents) within buffer_m of the network: Σ UsersLocation.populationServed of the city")
     population_total = models.IntegerField(null=True, blank=True, help_text="Water users (residents) of the city: Σ UsersLocation.usersTotal")
     coveragePCT = models.FloatField(help_text="Coverage of users in percentage")
+    urban_area_km2 = models.FloatField(null=True, blank=True, editable=False,
+                                       help_text="Urban land cover of the city (classes of the neighborhoods' urban_area) of urban_landcover_year")
+    uncovered_urban_km2 = models.FloatField(null=True, blank=True, editable=False,
+                                            help_text="Urban land cover outside the service area (geom): where the network has not followed urban growth")
+    uncovered_urban_pct = models.FloatField(null=True, blank=True, editable=False,
+                                            help_text="uncovered_urban_km2 / urban_area_km2 x 100")
+    urban_landcover_year = models.IntegerField(null=True, blank=True, editable=False,
+                                               help_text="Land-cover year used: the latest up to the record's year, else the earliest later one")
     geom = models.MultiPolygonField(srid=COORDINATE_SYSTEM, null=True, blank=True,
                                     help_text="Dissolved buffer polygon around pipe network")
     last_updated = models.DateTimeField(default=timezone.now)
@@ -565,6 +573,9 @@ class CoverageWaterSupply(models.Model):
                    NumberUsers -> Coverage_WS  (Σ populationServed / Σ usersTotal
                    of the city's derived UsersLocations; those follow the city's
                    latest record's buffer_m)
+                   CityArea -> Network (partial: the city's urban land cover outside
+                   the service area is flagged, uncovered_urban_km2; the network
+                   itself is not extended)
         """
         from django.contrib.gis.geos import MultiPolygon
         from django.contrib.gis.db.models import Union
@@ -616,6 +627,7 @@ class CoverageWaterSupply(models.Model):
                 list(city_neighborhoods.values_list('pk', flat=True)), self.buffer_m).values()
             self.households_total = sum(c.dwellings for c in counts)
             self.households_covered = sum(c.dwellings_served for c in counts)
+            self._set_urban_gap()
             self.last_updated = timezone.now()
             super().save(*args, **kwargs)
             return
@@ -649,8 +661,28 @@ class CoverageWaterSupply(models.Model):
         else:
             self.coveragePCT = 0
 
+        self._set_urban_gap()
         self.last_updated = timezone.now()
         super().save(*args, **kwargs)
+
+    def _set_urban_gap(self):
+        """
+        DAG edge: CityArea -> Network. Urban land cover outside the service
+        area (watersupply/calculations/network_gap.py). Without land cover
+        the fields stay empty.
+        """
+        from .calculations.chain import share_pct
+        from .calculations.network_gap import urban_gap
+
+        gap = urban_gap(self.city_id, self.year, self.geom) if self.city_id else None
+        if gap is None:
+            self.urban_landcover_year = self.urban_area_km2 = None
+            self.uncovered_urban_km2 = self.uncovered_urban_pct = None
+            return
+        self.urban_landcover_year = gap.landcover_year
+        self.urban_area_km2 = gap.urban_km2
+        self.uncovered_urban_km2 = gap.uncovered_km2
+        self.uncovered_urban_pct = share_pct(gap.uncovered_km2, gap.urban_km2)
 
     def __str__(self):
         return f"{self.city} - covered area: {self.coveredArea_km2} km2. Coverage: {self.coveragePCT} %"

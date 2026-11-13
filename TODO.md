@@ -1,6 +1,6 @@
 # TODO — Unimplemented DAG Edges
 
-The DPSIR causal graph in [`core/DAG.dot`](core/DAG.dot) defines 105 distinct edges (106 edge lines; `Total_Water_Prod -> OPEX` is listed twice; recount 2026-11-10, `core/test_dag.py::parse_dag`). **59 are backed by real derivation logic** (5 partial, 41 gaps) (count as in `CLAUDE.md` › DAG Edge Coverage Gaps) — a `save()` method or a `calculations.py` function that actually reads the source field, not just a docstring claiming the edge. The rest are either flat stored fields with no computation, or `calculations.py` functions whose docstring claims an edge the code doesn't implement.
+The DPSIR causal graph in [`core/DAG.dot`](core/DAG.dot) defines 105 distinct edges (106 edge lines; `Total_Water_Prod -> OPEX` is listed twice; recount 2026-11-10, `core/test_dag.py::parse_dag`). **59 are backed by real derivation logic** (6 partial, 40 gaps) (count as in `CLAUDE.md` › DAG Edge Coverage Gaps) — a `save()` method or a `calculations.py` function that actually reads the source field, not just a docstring claiming the edge. The rest are either flat stored fields with no computation, or `calculations.py` functions whose docstring claims an edge the code doesn't implement.
 
 This file tracks the gaps, grouped by app. When one is closed, move it to the "Done" note at the bottom (or delete the line) and add the `# DAG edges:` comment to the implementing function per the convention in `CLAUDE.md`.
 
@@ -29,7 +29,7 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 - [ ] Generator: connect the generated street grid to the nearest existing streets
 - [ ] `Total_Population -> Anthropogenic_Heat`: no anthropogenic-heat model or calculation exists (feeds `Anthropogenic_Heat -> Meteorology`, see urban_heat)
 - [x] `Total_Population -> NumberUsers` and `Coverage_WS_Area -> NumberUsers` — a users location is each property (home): `UsersLocation.save()` (one per neighborhood) derives `usersTotal` = Σ residents of its properties and `populationServed` = Σ residents of the properties within `buffer_m` of a pipe (`watersupply/calculations/users.py`); coverage % = served / users. Refreshed when residents, properties, pipes or the coverage buffer change (2026-11-12)
-- [ ] `CityArea -> Network`: urban growth (`LandCover -> CityArea`) does not extend or flag the pipe network; `PipeNetwork.save()` only derives its length and diameter
+- [ ] `CityArea -> Network` is partial (2026-11-13): `CoverageWaterSupply.save()` stores the city's urban land cover outside the pipe service area (`urban_area_km2`, `uncovered_urban_km2`, `uncovered_urban_pct`; `watersupply/calculations/network_gap.py`), refreshed by `physicalEnv.signals.urban_area_changed` and pipe changes, shown on the Network Coverage card. Still open: the network is flagged, not extended (no proposed pipe routes)
 
 
 

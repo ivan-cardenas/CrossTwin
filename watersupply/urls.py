@@ -8,4 +8,5 @@ urlpatterns = [
     path('indicators/<str:level>/<str:location>/<int:year>/recalculate/',
          views.recalculate_indicators,
          name='recalculate_indicators'),
+    path('unserved/', views.unserved_homes, name='unserved_homes'),
 ]
