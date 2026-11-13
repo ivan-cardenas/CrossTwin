@@ -33,6 +33,7 @@ from administrative.models import City, PopulationProjection
 from administrative.calculations.population import DEFAULT_SCENARIO
 from administrative.signals import city_population_changed
 from builtup.models import Property
+from builtup.signals import residents_changed
 from core.cache import bump_layer_version
 
 from .models import HouseholdSize, HousingProject, HousingSupplyDemand, ResidentialProperty
@@ -74,6 +75,7 @@ def _set_city_residents(city_id):
     changed = _dwellings_of_city(city_id).update(residents=size.average_size if size else None)
     if changed:
         bump_layer_version(Property, ResidentialProperty)
+        residents_changed.send(sender=Property, city_id=city_id)
 
 
 def _rederive_household_sizes(city_id):
@@ -211,6 +213,7 @@ def property_saved(sender, instance, raw=False, **kwargs):
         Property.objects.filter(pk=instance.pk).update(residents=residents)
         instance.residents = residents
         bump_layer_version(Property, ResidentialProperty)
+        residents_changed.send(sender=Property, city_id=city_id)
 
 
 # ── New_Units -> Buildings ───────────────────────────────────────────

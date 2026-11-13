@@ -39,6 +39,11 @@ canyons_changed = Signal()
 # Same contract as physicalEnv.calculations.dsm_patches.dsm_patch_rewriting / dsm_patch_created.
 canyon_rewriting = Signal()
 canyon_created = Signal()
+# Sent with city_id=... after Property.residents of (some of) a city's properties
+# changed through queryset.update() (housing/signals.py, DAG edge Household_Size
+# -> Property), which fires no post_save. Defined here, upstream of housing and
+# watersupply, so watersupply can subscribe without importing housing.
+residents_changed = Signal()
 
 CHUNK = 500
 

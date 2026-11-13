@@ -66,6 +66,14 @@ def service_time_hours(production_m3_d, demand):
     return round(SERVICE_HOURS_MAX * production_m3_d / demand, 1)
 
 
+def coverage_pct(served, total):
+    """
+    Share of the water users inside the network's service area, in percent
+    (0 without users). DAG edge: NumberUsers -> Coverage_WS
+    """
+    return round(served / total * 100, 1) if total else 0
+
+
 def recharge_Mm3_yr(infiltration_depth_cm_yr, area_m2):
     """
     Yearly recharge of a fresh-water source in Mm3/year: the depth of water

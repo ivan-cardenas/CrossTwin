@@ -15,7 +15,11 @@ Dependency chain implemented here (source -> dependent):
     and the population of every city sharing a watershed (it sets each city's
     share of the watershed's extraction) -> SupplySecurity
     WaterTreatment, MeteredResidential, PipeNetwork -> OPEX
-    PipeNetwork, UsersLocation -> CoverageWaterSupply
+    Property.residents (housing: residents_changed), Property saved/deleted,
+    PipeNetwork, the latest CoverageWaterSupply.buffer_m
+        -> UsersLocation (users = residents, population served = residents
+           within the pipe buffer) -> CoverageWaterSupply, MeteredResidential
+    PipeNetwork -> CoverageWaterSupply (service area)
     NonRevenueWater -> ILI of the same-year Real-loss records
     SoilArea, SoilType, LandCoverVector, GroundwaterDepth (soil x land cover)
     and daily Meteorology (rain, reference ET)
@@ -36,13 +40,15 @@ import threading
 from contextlib import contextmanager
 
 from django.core.exceptions import ValidationError
-from django.db.models.signals import m2m_changed, post_delete, post_save
+from django.db.models.signals import m2m_changed, post_delete, post_save, pre_save
 from django.dispatch import receiver
 from django.utils import timezone
 
 from administrative.models import City, PopulationProjection
 from administrative.calculations.population import DEFAULT_SCENARIO
 from administrative.signals import city_population_changed
+from builtup.models import Property
+from builtup.signals import residents_changed
 from physicalEnv.calculations.landcover import landcover_created
 from physicalEnv.models import GroundwaterDepth, LandCoverVector, SoilArea, SoilType
 from weather.knmi import daily_water_balance_changed
@@ -128,24 +134,34 @@ def deferred_water_refresh():
     _deferred.pending = set()
     _deferred.security = set()
     _deferred.freshwater = set()
+    _deferred.users = set()
+    _deferred.coverage = set()
+
+    def take():
+        queued = (_deferred.pending, _deferred.security, _deferred.freshwater,
+                  _deferred.users, _deferred.coverage)
+        _deferred.pending = _deferred.security = _deferred.freshwater = None
+        _deferred.users = _deferred.coverage = None
+        return queued
+
     try:
         yield
     except BaseException:
-        pending, security, freshwater = _deferred.pending, _deferred.security, _deferred.freshwater
-        _deferred.pending = _deferred.security = _deferred.freshwater = None
+        queued = take()
         try:
-            _flush_water_refresh(pending, security, freshwater)
+            _flush_water_refresh(*queued)
         except Exception:
             # e.g. the transaction is already broken; don't mask the original error
             logger.exception("Deferred water refresh failed after an aborted block")
         raise
     else:
-        pending, security, freshwater = _deferred.pending, _deferred.security, _deferred.freshwater
-        _deferred.pending = _deferred.security = _deferred.freshwater = None
-        _flush_water_refresh(pending, security, freshwater)
+        _flush_water_refresh(*take())
 
 
-def _flush_water_refresh(city_ids, security_city_ids=(), freshwater_ids=()):
+def _flush_water_refresh(city_ids, security_city_ids=(), freshwater_ids=(),
+                         users_neighborhood_ids=(), coverage_city_ids=()):
+    if users_neighborhood_ids or coverage_city_ids:
+        _refresh_users(users_neighborhood_ids, coverage_city_ids)
     security_city_ids = set(security_city_ids)
     if freshwater_ids:
         # Each source's post_save refreshes every city's supply security:
@@ -313,23 +329,183 @@ def treatment_changed(sender, instance, raw=False, **kwargs):
 
 # ── network -> coverage, OPEX ────────────────────────────────────────
 
+# ── residents, pipes -> number of users -> coverage ──────────────────
+
+# Depth of the _refresh_users() calls running on this thread: while > 0 the
+# users and coverage receivers leave the coverage to the refresh, which
+# re-saves it once at the end (and so cannot re-enter itself).
+_users_batch = threading.local()
+
+
+def _in_users_refresh():
+    return getattr(_users_batch, "depth", 0) > 0
+
+
+def _refresh_users(neighborhood_ids, coverage_city_ids=()):
+    """
+    Re-save the UsersLocation of each given neighborhood (creating it where the
+    neighborhood holds properties with residents but has no row yet), then the
+    CoverageWaterSupply records of their cities and of `coverage_city_ids`.
+    Queued while deferred_water_refresh() is active.
+
+    DAG edges: Total_Population -> NumberUsers, Coverage_WS_Area -> NumberUsers,
+               NumberUsers -> Coverage_WS
+    """
+    from administrative.models import Neighborhood
+
+    from .calculations.users import neighborhoods_with_residents
+
+    neighborhood_ids = {n for n in neighborhood_ids if n is not None}
+    coverage_city_ids = {c for c in coverage_city_ids if c is not None}
+    if not neighborhood_ids and not coverage_city_ids:
+        return
+    pending = getattr(_deferred, "users", None)
+    if pending is not None:
+        pending.update(neighborhood_ids)
+        _deferred.coverage.update(coverage_city_ids)
+        return
+
+    _users_batch.depth = getattr(_users_batch, "depth", 0) + 1
+    try:
+        if neighborhood_ids:
+            existing = list(UsersLocation.objects.filter(neighborhood_id__in=neighborhood_ids))
+            _resave(existing)
+            have = {u.neighborhood_id for u in existing}
+            for neighborhood_id in sorted(neighborhoods_with_residents(neighborhood_ids) - have):
+                _resave([UsersLocation(neighborhood_id=neighborhood_id)])
+            coverage_city_ids |= set(
+                Neighborhood.objects.filter(pk__in=neighborhood_ids, district__isnull=False)
+                .values_list('district__city_id', flat=True))
+        _resave(CoverageWaterSupply.objects.filter(city_id__in=coverage_city_ids - {None}))
+    finally:
+        _users_batch.depth -= 1
+
+
+def _city_neighborhoods(city_id):
+    from administrative.models import Neighborhood
+
+    return Neighborhood.objects.filter(district__city_id=city_id).values_list('pk', flat=True)
+
+
+@receiver(residents_changed, dispatch_uid="water_residents_changed")
+def residents_updated(sender, city_id, **kwargs):
+    """
+    housing/signals.py rewrote Property.residents with update() (no post_save).
+
+    DAG edge: Total_Population -> NumberUsers (users = residents of each property)
+    """
+    _refresh_users(_city_neighborhoods(city_id))
+
+
+def _neighborhood_of_building(building_id):
+    from builtup.models import Building
+
+    return Building.objects.filter(pk=building_id).values_list('neighborhood_id', flat=True).first()
+
+
+# Not connected to one sender: proxies of Property (housing.ResidentialProperty)
+# send signals with themselves as sender, and watersupply must not import housing.
+@receiver(pre_save, dispatch_uid="water_property_presave")
+def property_presave(sender, instance, raw=False, **kwargs):
+    """Remember the stored neighborhood, so a moved property refreshes both."""
+    if raw or instance.pk is None or not isinstance(instance, Property):
+        return
+    instance._water_old_neighborhood = (
+        Property.objects.filter(pk=instance.pk)
+        .values_list('building__neighborhood_id', flat=True).first())
+
+
+@receiver(post_save, dispatch_uid="water_property_saved")
+@receiver(post_delete, dispatch_uid="water_property_deleted")
+def property_changed(sender, instance, raw=False, **kwargs):
+    """
+    A property (users location) added, moved or removed changes its
+    neighborhood's users and, by its distance to the pipes, the population served.
+
+    DAG edges: Total_Population -> NumberUsers, Coverage_WS_Area -> NumberUsers
+    """
+    if raw or not isinstance(instance, Property):
+        return
+    _refresh_users({_neighborhood_of_building(instance.building_id),
+                    getattr(instance, '_water_old_neighborhood', None)})
+
+
+def _max_service_buffer_m():
+    from django.db.models import Max
+
+    from .calculations.users import DEFAULT_SERVICE_BUFFER_M
+
+    stored = CoverageWaterSupply.objects.aggregate(m=Max('buffer_m'))['m']
+    return max(stored or 0, DEFAULT_SERVICE_BUFFER_M)
+
+
+@receiver(pre_save, sender=PipeNetwork, dispatch_uid="water_pipe_presave")
+def pipe_presave(sender, instance, raw=False, **kwargs):
+    """Remember the stored line, so the users near a moved pipe's old route are refreshed too."""
+    if raw or instance.pk is None:
+        return
+    instance._water_old_geom = PipeNetwork.objects.filter(pk=instance.pk).values_list('geom', flat=True).first()
+
+
 @receiver(post_save, sender=PipeNetwork, dispatch_uid="water_pipe_saved")
 @receiver(post_delete, sender=PipeNetwork, dispatch_uid="water_pipe_deleted")
 def pipe_changed(sender, instance, raw=False, **kwargs):
+    """
+    DAG edges: Network -> Coverage_WS_Area, Network -> Coverage_WS (cities the
+               pipe crosses); Coverage_WS_Area -> NumberUsers (the properties
+               within the service buffer of its old and new route)
+    """
+    from .calculations.users import neighborhoods_near
+
     if raw:
         return
-    _resave(CoverageWaterSupply.objects.filter(
-        city__isnull=False, city__geom__intersects=instance.geom))
+    geoms = [instance.geom, getattr(instance, '_water_old_geom', None)]
+    cities = set()
+    for geom in geoms:
+        if geom is not None:
+            cities.update(City.objects.filter(geom__intersects=geom).values_list('pk', flat=True))
+    _refresh_users(neighborhoods_near(geoms, _max_service_buffer_m()), cities)
     _refresh_latest_opex()
+
+
+@receiver(post_save, sender=CoverageWaterSupply, dispatch_uid="water_coverage_saved")
+def coverage_saved(sender, instance, raw=False, **kwargs):
+    """
+    The users locations take their service buffer from the city's latest
+    coverage record: a new latest record or a changed buffer_m re-derives them.
+    Skipped while a users refresh is running (it re-saves the coverage itself).
+
+    DAG edge: Coverage_WS_Area -> NumberUsers
+    """
+    if raw or instance.city_id is None or _in_users_refresh():
+        return
+    latest = (CoverageWaterSupply.objects.filter(city_id=instance.city_id)
+              .order_by('-year', '-id').values_list('pk', flat=True).first())
+    if latest != instance.pk:
+        return
+    stale = (UsersLocation.objects
+             .filter(neighborhood__district__city_id=instance.city_id, buffer_m__isnull=False)
+             .exclude(buffer_m=instance.buffer_m))
+    if stale.exists():
+        _refresh_users(_city_neighborhoods(instance.city_id))
 
 
 @receiver(post_save, sender=UsersLocation, dispatch_uid="water_users_saved")
 @receiver(post_delete, sender=UsersLocation, dispatch_uid="water_users_deleted")
 def users_changed(sender, instance, raw=False, **kwargs):
-    if not raw:
-        _resave(CoverageWaterSupply.objects.filter(
-            city__isnull=False, city__district__neighborhood=instance.neighborhood_id
-        ).distinct())
+    """
+    DAG edges: NumberUsers -> Coverage_WS (the city's coverage records)
+               NumberUsers -> Metered_Res_Water (populationServed of the meters)
+    """
+    if raw:
+        return
+    if 'created' in kwargs:   # post_save: the meters of this location
+        _resave(MeteredResidential.objects.filter(userLocation=instance))
+    if _in_users_refresh():
+        return
+    _resave(CoverageWaterSupply.objects.filter(
+        city__isnull=False, city__district__neighborhood=instance.neighborhood_id
+    ).distinct())
 
 
 # ── non-revenue water -> ILI of the whole year ───────────────────────

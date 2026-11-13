@@ -1,6 +1,6 @@
 # TODO — Unimplemented DAG Edges
 
-The DPSIR causal graph in [`core/DAG.dot`](core/DAG.dot) defines 105 distinct edges (106 edge lines; `Total_Water_Prod -> OPEX` is listed twice; recount 2026-11-10, `core/test_dag.py::parse_dag`). **55 are backed by real derivation logic** (4 partial, 46 gaps) (count as in `CLAUDE.md` › DAG Edge Coverage Gaps) — a `save()` method or a `calculations.py` function that actually reads the source field, not just a docstring claiming the edge. The rest are either flat stored fields with no computation, or `calculations.py` functions whose docstring claims an edge the code doesn't implement.
+The DPSIR causal graph in [`core/DAG.dot`](core/DAG.dot) defines 105 distinct edges (106 edge lines; `Total_Water_Prod -> OPEX` is listed twice; recount 2026-11-10, `core/test_dag.py::parse_dag`). **59 are backed by real derivation logic** (5 partial, 41 gaps) (count as in `CLAUDE.md` › DAG Edge Coverage Gaps) — a `save()` method or a `calculations.py` function that actually reads the source field, not just a docstring claiming the edge. The rest are either flat stored fields with no computation, or `calculations.py` functions whose docstring claims an edge the code doesn't implement.
 
 This file tracks the gaps, grouped by app. When one is closed, move it to the "Done" note at the bottom (or delete the line) and add the `# DAG edges:` comment to the implementing function per the convention in `CLAUDE.md`.
 
@@ -28,7 +28,7 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 - [ ] `Streets -> Buildings` is partial (flipped from `Buildings -> Streets` on 2026-11-12): editing a generated street does not re-place its buildings; `Streets` has no parent (`New_Units -> Streets` not in the DAG)
 - [ ] Generator: connect the generated street grid to the nearest existing streets
 - [ ] `Total_Population -> Anthropogenic_Heat`: no anthropogenic-heat model or calculation exists (feeds `Anthropogenic_Heat -> Meteorology`, see urban_heat)
-- [ ] `Total_Population -> NumberUsers` and `Coverage_WS_Area -> NumberUsers`: there is no `NumberUsers` node model; `UsersLocation.usersTotal`/`populationServed` are flat inputs (see watersupply)
+- [x] `Total_Population -> NumberUsers` and `Coverage_WS_Area -> NumberUsers` — a users location is each property (home): `UsersLocation.save()` (one per neighborhood) derives `usersTotal` = Σ residents of its properties and `populationServed` = Σ residents of the properties within `buffer_m` of a pipe (`watersupply/calculations/users.py`); coverage % = served / users. Refreshed when residents, properties, pipes or the coverage buffer change (2026-11-12)
 - [ ] `CityArea -> Network`: urban growth (`LandCover -> CityArea`) does not extend or flag the pipe network; `PipeNetwork.save()` only derives its length and diameter
 
 
@@ -86,7 +86,7 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 - [ ] `Samples_WQ -> User_Acceptance_WS` — `calculate_water_quality()`'s `acceptance_rate` is `Avg('acceptanceRate')`, unrelated to computed compliance
 - [ ] `WT_Efficiency -> WT_Cost` — `WaterTreatment` has no `save()`
 - [ ] `Apparent_Losses -> ILI` — `NonRevenueWater` ILI is only defined for real losses
-- [ ] `UsersLocation.usersTotal`/`populationServed` and non-latest-year `SupplySecurity` records aren't refreshed by signals — `OPEX`/`ExtractionWater`/`MeteredResidential`/`ImportedWater` carry no year field, so only the latest `OPEX`/`SupplySecurity` record is refreshed
+- [ ] Non-latest-year `SupplySecurity` records aren't refreshed by signals — `OPEX`/`ExtractionWater`/`MeteredResidential`/`ImportedWater` carry no year field, so only the latest `OPEX`/`SupplySecurity` record is refreshed
 - [ ] `Total_Extraction -> Area_Drought` — `calculate_drought_area()` only sums stored `AreaAffectedDrought` polygons; design in `docs/groundwater_drought_damage_plan.md` / `docs/groundwater_drought_damage.md`
 - [ ] `Total_Water_Prod -> Energy_Consumption` is partial — energy is pump rate x operation hours, not derived from the produced volume
 - [ ] `Energy_Consumption -> OPEX` — not a term of `OPEX.save()` (the energy cost is assumed inside each well's `opex_EUR_m3`); decide whether to keep it implicit or derive it from `Energy_Consumption` x `ElectricityCost`

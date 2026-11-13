@@ -335,6 +335,8 @@ def _build_indicators(data, consumption_override=None, rain_mm=RAIN_MM_DEFAULT):
         'covered_area_km2':      cov.get('covered_area_km2', 0),
         'households_covered':    cov.get('households_covered', 0),
         'households_total':      cov.get('households_total', 0),
+        'population_served':     cov.get('population_served'),
+        'population_total':      cov.get('population_total'),
         'coverage_pct':          cov.get('coverage_pct'),
         # Drought
         'drought_area_km2':      drought.get('total_area_km2', 0),

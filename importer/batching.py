@@ -103,14 +103,16 @@ def deferred_cascades():
         # population cascade directly), then the deferred population cascade
         # (which announces city_population_changed), and the water and housing
         # refreshes last, so they collect the cities of both and run once per city.
+        # Water exits after housing: the water users are the residents housing
+        # writes onto the dwellings (residents_changed).
         # The canyon refresh depends on no other cascade: its place is free.
         # The Degree of Urbanisation refresh reads the neighborhoods' own
         # population and land cover; entered first, it exits last, after every
         # other cascade has settled.
         stack.enter_context(deferred_urbanisation_refresh())
         stack.enter_context(deferred_canyon_refresh())
-        stack.enter_context(deferred_housing_refresh())
         stack.enter_context(deferred_water_refresh())
+        stack.enter_context(deferred_housing_refresh())
         stack.enter_context(deferred_population_cascade())
         stack.enter_context(deferred_urban_area())
         yield

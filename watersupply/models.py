@@ -152,15 +152,38 @@ class SupplySecurity(models.Model):
 class UsersLocation(models.Model):
     id = models.AutoField(primary_key=True)
     neighborhood = models.ForeignKey(Neighborhood, on_delete=models.DO_NOTHING, help_text="Neighborhood code from administrative.Neighborhood") #TODO: Change to City or make per point?
-    usersTotal = models.IntegerField(help_text="Total number of users in the neighborhood")
-    ResidentialUsers = models.IntegerField(null=True, help_text="Number of residential users")
-    CommercialUsers = models.IntegerField(null=True, help_text="Number of commercial users")
-    IndustrialUsers = models.IntegerField(null=True, help_text="Number of industrial users")
-    populationServed = models.IntegerField(null=True, help_text="Population served in the neighborhood")
+    usersTotal = models.IntegerField(null=True, blank=True, help_text="Water users in the neighborhood: the residents of its properties (derived when it has properties with residents)")
+    ResidentialUsers = models.IntegerField(null=True, blank=True, help_text="Number of residential users (= usersTotal when derived)")
+    CommercialUsers = models.IntegerField(null=True, blank=True, help_text="Number of commercial users (input, not part of usersTotal)")
+    IndustrialUsers = models.IntegerField(null=True, blank=True, help_text="Number of industrial users (input, not part of usersTotal)")
+    populationServed = models.IntegerField(null=True, blank=True, help_text="Residents of the neighborhood's properties within buffer_m of the pipe network")
+    buffer_m = models.FloatField(null=True, blank=True, editable=False, help_text="Service distance of a pipe used for populationServed (the city's latest CoverageWaterSupply.buffer_m); empty when the counts are stored inputs")
     last_updated = models.DateTimeField(default=timezone.now)
+
     def __str__(self):
         return f"{self.neighborhood} - {self.usersTotal} users"
-    
+
+    def save(self, *args, **kwargs):
+        """
+        A users location is each property (home); its users are its residents.
+        Without a property with residents the stored (or supplied) counts are kept.
+
+        DAG edges: Total_Population -> NumberUsers  (Σ residents of the properties)
+                   Coverage_WS_Area -> NumberUsers  (Σ residents within buffer_m of a pipe)
+        """
+        from .calculations.users import neighborhood_users, service_buffer_m
+
+        city_id = (Neighborhood.objects.filter(pk=self.neighborhood_id)
+                   .values_list('district__city_id', flat=True).first())
+        buffer_m = service_buffer_m(city_id)
+        users = neighborhood_users([self.neighborhood_id], buffer_m).get(self.neighborhood_id)
+        if users and users.residents > 0:
+            self.usersTotal = self.ResidentialUsers = round(users.residents)
+            self.populationServed = round(users.residents_served)
+            self.buffer_m = buffer_m
+        self.last_updated = timezone.now()
+        super().save(*args, **kwargs)
+
     class Meta:
         verbose_name = "Users Location"
         verbose_name_plural = "Users Locations"
@@ -529,12 +552,20 @@ class CoverageWaterSupply(models.Model):
     coveredArea_km2 = models.FloatField(help_text="Covered area in square kilometers")
     households_covered = models.IntegerField(default=0, help_text="Number of households within the service area")
     households_total = models.IntegerField(default=0, help_text="Total households in the city")
+    population_served = models.IntegerField(null=True, blank=True, help_text="Water users (residents) within buffer_m of the network: Σ UsersLocation.populationServed of the city")
+    population_total = models.IntegerField(null=True, blank=True, help_text="Water users (residents) of the city: Σ UsersLocation.usersTotal")
     coveragePCT = models.FloatField(help_text="Coverage of users in percentage")
     geom = models.MultiPolygonField(srid=COORDINATE_SYSTEM, null=True, blank=True,
                                     help_text="Dissolved buffer polygon around pipe network")
     last_updated = models.DateTimeField(default=timezone.now)
 
     def save(self, *args, **kwargs):
+        """
+        DAG edges: Network -> Coverage_WS_Area (dissolved buffer of the pipes)
+                   NumberUsers -> Coverage_WS  (Σ populationServed / Σ usersTotal
+                   of the city's derived UsersLocations; those follow the city's
+                   latest record's buffer_m)
+        """
         from django.contrib.gis.geos import MultiPolygon
         from django.contrib.gis.db.models import Union
 
@@ -565,10 +596,32 @@ class CoverageWaterSupply(models.Model):
             self.geom = None
             self.coveredArea_km2 = 0
 
-        # 2. Count households inside the buffer vs total in city
+        # 2. Users inside the service area. Derived users locations (buffer_m
+        #    set) hold the residents of the city's properties; the households
+        #    are its dwellings, counted with this record's buffer.
         city_neighborhoods = Neighborhood.objects.filter(
             district__city=self.city
         )
+        derived = UsersLocation.objects.filter(
+            neighborhood__in=city_neighborhoods, buffer_m__isnull=False)
+        if derived.exists():
+            from .calculations.chain import coverage_pct
+            from .calculations.users import neighborhood_users
+
+            agg = derived.aggregate(total=Sum('usersTotal'), served=Sum('populationServed'))
+            self.population_total = agg['total'] or 0
+            self.population_served = agg['served'] or 0
+            self.coveragePCT = coverage_pct(self.population_served, self.population_total)
+            counts = neighborhood_users(
+                list(city_neighborhoods.values_list('pk', flat=True)), self.buffer_m).values()
+            self.households_total = sum(c.dwellings for c in counts)
+            self.households_covered = sum(c.dwellings_served for c in counts)
+            self.last_updated = timezone.now()
+            super().save(*args, **kwargs)
+            return
+
+        # Legacy: users locations with stored counts only
+        self.population_total = self.population_served = None
 
         # Total households: sum usersTotal from all UsersLocations in city
         self.households_total = (

@@ -338,15 +338,27 @@ def calculate_coverage(adminBund):
         area=Sum('coveredArea_km2'),
         covered=Sum('households_covered'),
         total=Sum('households_total'),
+        served=Sum('population_served'),
+        population=Sum('population_total'),
     )
     total = agg['total'] or 0
     covered = agg['covered'] or 0
+    population = agg['population'] or 0
+    served = agg['served'] or 0
 
+    # Users = residents of the properties (UsersLocation, derived); records of
+    # cities without them fall back to the household counts.
+    if population:
+        pct = round(served / population * 100, 1)
+    else:
+        pct = round(covered / total * 100, 1) if total else None
     return {
         'covered_area_km2': round(agg['area'] or 0, 2),
         'households_covered': covered,
         'households_total': total,
-        'coverage_pct': round(covered / total * 100, 1) if total else None,
+        'population_served': served if population else None,
+        'population_total': population or None,
+        'coverage_pct': pct,
     }
 
 

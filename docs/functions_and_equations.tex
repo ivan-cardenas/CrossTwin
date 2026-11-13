@@ -577,14 +577,23 @@ Uses the city's most recent \code{ConsumptionCapita} record (not filtered by yea
 \end{equation}
 \textbf{DAG edges:} \dagedge{Metered\_Res\_Water $\rightarrow$ CollectionRatio}, \dagedge{User\_Acceptance\_WS $\rightarrow$ CollectionRatio}, \dagedge{Water\_Tariff\_Afford $\rightarrow$ CollectionRatio} --- \statuspartial{} (ignores \code{userAffordability\_PCT} and acceptance rate despite the docstring)
 
-\subsection{Coverage --- \code{calculate\_coverage()}, \code{CoverageWaterSupply.save()}}
-\textbf{Location:} \code{watersupply/calculations/indicators.py:239}; \code{watersupply/models.py:448}
+\subsection{Water supply users --- \code{UsersLocation.save()}}
+\textbf{Location:} \code{watersupply/models.py::UsersLocation.save}; \code{watersupply/calculations/users.py::neighborhood\_users}
+A users location is each property (home); its users are its residents $r_k$ (\code{builtup.Property.residents}, the city's CBS persons per home). For neighbourhood $n$ with properties $K_n$ and service distance $b$ (\code{buffer\_m} of the city's latest \code{CoverageWaterSupply}, default 500\,\si{m}):
 \begin{align}
-  G_{\text{buffer}} &= \bigcup_{\,p\, \in\, \text{pipes}(c)} \operatorname{buffer}(p,\ 500\,\si{m}) \\
-  A_{\text{covered}} &= \frac{\operatorname{area}(G_{\text{buffer}})}{10^6}\ [\si{km^2}] \\
-  \text{Coverage\%} &= \frac{H_{\text{covered}}}{H_{\text{total}}} \times 100
+  U_n &= \operatorname{round}\Big(\sum_{k \in K_n} r_k\Big) \
+  S_n &= \operatorname{round}\Big(\sum_{k \in K_n,\ \min_{p} d(k, p) \le b} r_k\Big)
 \end{align}
-where $H_{\text{covered}}$ counts households in \code{UsersLocation} points spatially within $G_{\text{buffer}}$, and $H_{\text{total}}$ sums \code{usersTotal} across the city's neighbourhoods. \textbf{DAG edges:} \dagedge{Network $\rightarrow$ Coverage\_WS\_Area}, \dagedge{CityArea $\rightarrow$ Coverage\_WS\_Area}, \dagedge{NumberUsers $\rightarrow$ Coverage\_WS} --- \statusdone{}
+($d(k,p)$: distance of the property point to pipe $p$, \code{ST\_DWithin}; equivalent to the point lying in $G_{\text{buffer}}$). Without properties with residents the stored counts are kept. \textbf{DAG edges:} \dagedge{Total\_Population $\rightarrow$ NumberUsers}, \dagedge{Coverage\_WS\_Area $\rightarrow$ NumberUsers} --- \statusdone{}
+
+\subsection{Coverage --- \code{calculate\_coverage()}, \code{CoverageWaterSupply.save()}}
+\textbf{Location:} \code{watersupply/calculations/indicators.py::calculate\_coverage}; \code{watersupply/models.py::CoverageWaterSupply.save}; \code{watersupply/calculations/chain.py::coverage\_pct}
+\begin{align}
+  G_{\text{buffer}} &= \bigcup_{\,p\, \in\, \text{pipes}(c)} \operatorname{buffer}(p,\ b) \
+  A_{\text{covered}} &= \frac{\operatorname{area}(G_{\text{buffer}})}{10^6}\ [\si{km^2}] \
+  \text{Coverage\%} &= \frac{\sum_{n \in c} S_n}{\sum_{n \in c} U_n} \times 100
+\end{align}
+\code{households\_covered}/\code{households\_total} count the city's dwellings within $b$ of a pipe / in total. Cities whose users locations are stored inputs (no properties) keep the former rule: households of neighbourhoods intersecting $G_{\text{buffer}}$ over $\sum$ \code{usersTotal}. \textbf{DAG edges:} \dagedge{Network $\rightarrow$ Coverage\_WS\_Area}, \dagedge{CityArea $\rightarrow$ Coverage\_WS\_Area}, \dagedge{NumberUsers $\rightarrow$ Coverage\_WS} --- \statusdone{}
 
 \subsection{Non-Revenue Water and ILI}
 \textbf{Location:} \code{calculate\_nrw()} (\code{watersupply/calculations/indicators.py:275}); \code{NonRevenueWater.save()} (\code{watersupply/models.py:551})
