@@ -240,50 +240,52 @@ function initPopulationHover() {
 }
 
 /**
- * Show the scenario manager panel
+ * Scenarios panel: the KNMI'23 climate scenarios of the Klimaateffectatlas,
+ * rendered by the server (weather/views.py::climate_panel). The chosen one is
+ * kept in window.CLIMATE_SCENARIO and sent as ?climate= to the Urban Heat and
+ * Water Supply panels (climateQuery / syncPanelBtns in mainMap.js).
  */
 function showScenarios() {
-  const panelTitle = document.getElementById('panel-title');
-  const panelBody  = document.getElementById('panel-body');
-  const sidePanel  = document.getElementById('side-panel');
-
-  if (panelTitle) panelTitle.textContent = 'SCENARIO MANAGER';
-  if (panelBody) {
-    panelBody.innerHTML = `
-      <p>Compare different urban development scenarios and their impacts.</p>
-
-      <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 12px;">
-        <div class="indicator-pill" style="width: 100%;">
-          <div class="indicator-icon">'25</div>
-          <div class="indicator-meta">
-            <span class="indicator-label">Baseline 2025</span>
-            <span class="indicator-value">Current state</span>
-          </div>
-        </div>
-
-        <div class="indicator-pill" style="width: 100%;">
-          <div class="indicator-icon">'30</div>
-          <div class="indicator-meta">
-            <span class="indicator-label">Scenario 2030</span>
-            <span class="indicator-value">Moderate growth</span>
-          </div>
-        </div>
-
-        <div class="indicator-pill" style="width: 100%;">
-          <div class="indicator-icon">'50</div>
-          <div class="indicator-meta">
-            <span class="indicator-label">Scenario 2050</span>
-            <span class="indicator-value">Climate adaptation</span>
-          </div>
-        </div>
-      </div>
-
-      <p class="dashboard-note" style="margin-top: 16px;">
-        Scenario comparison functionality coming soon. This will allow switching between baseline and future projections.
-      </p>
-    `;
-  }
-
+  const sidePanel = document.getElementById('side-panel');
+  const key = encodeURIComponent(window.CLIMATE_SCENARIO || 'current');
+  htmx.ajax('GET', `/weather/climate/panel/?climate=${key}`, {
+    target: '#panel-body',
+    swap: 'innerHTML',
+    source: document.getElementById('btn-scenarios'),
+  });
   sidePanel?.classList.add('visible');
   document.getElementById('layers-panel')?.classList.remove('visible');
 }
+
+/** Show the active scenario on the Scenarios button ("2050 High, dry"). */
+function renderClimateBadge(label) {
+  const btn = document.getElementById('btn-scenarios');
+  if (!btn) return;
+  let badge = btn.querySelector('.climate-active-badge');
+  if (!label) { badge?.remove(); return; }
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.className = 'climate-active-badge';
+    btn.appendChild(badge);
+  }
+  badge.textContent = label;
+}
+
+// After the panel is swapped in, adopt its scenario: every panel URL gets
+// ?climate= from now on. Choosing a scenario only changes the what-if.
+document.body.addEventListener('htmx:afterSwap', function (evt) {
+  const panel = evt.detail.target?.querySelector?.('#climate-panel');
+  if (!panel) return;
+  const key = panel.dataset.climate || 'current';
+  if (key === (window.CLIMATE_SCENARIO || 'current')) return;
+  window.CLIMATE_SCENARIO = key;
+  renderClimateBadge(panel.dataset.climateLabel);
+  if (typeof syncPanelBtns === 'function') syncPanelBtns();
+});
+
+// "Applied in the panels" buttons open that tool's indicator panel.
+document.body.addEventListener('click', function (evt) {
+  const open = evt.target.closest?.('#climate-panel [data-open-tool]');
+  if (!open) return;
+  document.querySelector(`.tool-button[data-tool="${open.dataset.openTool}"]`)?.click();
+});

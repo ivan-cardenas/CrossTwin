@@ -632,3 +632,60 @@ input[type="range"].zone-slider::-moz-range-thumb {
 }
 .heat-weather-value { font-family: var(--font-base); font-size: 0.9rem; font-weight: 600; }
 .heat-weather-value span { font-size: 0.7rem; color: rgba(232, 244, 255, 0.45); }
+
+/* ── KNMI'23 climate scenarios (weather/calculations/climate.py) ── */
+.climate-note {
+  margin-top: 6px;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: #7dd3fc;
+}
+.climate-panel { padding: 0 4px; font-size: 0.8rem; color: rgba(232, 244, 255, 0.8); }
+.climate-panel h4 {
+  margin: 16px 0 6px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(232, 244, 255, 0.45);
+}
+.climate-presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.climate-btn {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(232, 244, 255, 0.12);
+  background: rgba(232, 244, 255, 0.04);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.climate-btn:hover { border-color: rgba(56, 189, 248, 0.5); }
+.climate-btn:focus-visible { outline: 2px solid #38bdf8; outline-offset: 2px; }
+.climate-btn.is-active { border-color: #38bdf8; background: rgba(56, 189, 248, 0.14); }
+.climate-btn b { font-size: 0.85rem; }
+.climate-btn small { font-size: 0.68rem; color: rgba(232, 244, 255, 0.5); }
+.climate-grid { width: 100%; border-collapse: separate; border-spacing: 4px; }
+.climate-grid th { font-size: 0.68rem; font-weight: 600; color: rgba(232, 244, 255, 0.5); text-align: left; }
+.climate-grid .climate-btn { align-items: center; text-align: center; padding: 6px 4px; }
+.climate-grid .climate-btn.is-dry { box-shadow: inset 0 -2px 0 rgba(245, 158, 11, 0.6); }
+.climate-grid .climate-btn.is-wet { box-shadow: inset 0 -2px 0 rgba(56, 189, 248, 0.6); }
+.climate-table-wrap { overflow-x: auto; }
+.climate-table { width: 100%; border-collapse: collapse; font-size: 0.72rem; font-variant-numeric: tabular-nums; }
+.climate-table th, .climate-table td { padding: 4px 6px; border-bottom: 1px solid rgba(232, 244, 255, 0.08); text-align: right; white-space: nowrap; }
+.climate-table th:first-child, .climate-table td:first-child { text-align: left; }
+.climate-table thead th { color: rgba(232, 244, 255, 0.5); font-weight: 600; text-transform: capitalize; }
+.climate-applies { display: flex; flex-direction: column; gap: 6px; }
+.climate-applies .climate-btn { flex-direction: row; align-items: center; justify-content: space-between; }
+.climate-source { margin-top: 14px; font-size: 0.68rem; color: rgba(232, 244, 255, 0.45); }
+.climate-source a { color: #7dd3fc; }
+#btn-scenarios .climate-active-badge {
+  margin-left: 4px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 0.65rem;
+  background: rgba(56, 189, 248, 0.2);
+  color: #7dd3fc;
+}

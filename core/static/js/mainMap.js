@@ -207,6 +207,13 @@ function populationQuery() {
   return `?pop_scenario=${scenario}&pop_growth=${growth}`;
 }
 
+// KNMI'23 climate scenario chosen in the Scenarios panel (Panels.js,
+// weather/calculations/climate.py), passed on to the panels whose
+// meteorology it changes (heat: weather sliders; water: rain and recharge).
+function climateParam() {
+  return `climate=${encodeURIComponent(window.CLIMATE_SCENARIO || 'current')}`;
+}
+
 // Registry of toolbar panels driven by the selected administrative unit
 // (level/location[/year]). Add an entry here when wiring up a new
 // indicator panel (e.g. housing, energy) to admin-unit selection —
@@ -214,10 +221,10 @@ function populationQuery() {
 // changes needed in Map_init.js.
 const ADMIN_PANEL_TOOLS = {
   water: (level, location) =>
-    `/watersupply/indicators/${level}/${location}/${window.ACTIVE_YEAR}/${populationQuery()}`,
+    `/watersupply/indicators/${level}/${location}/${window.ACTIVE_YEAR}/${populationQuery()}&${climateParam()}`,
   // Urban heat has no year and does not depend on population.
   temperature: (level, location) =>
-    `/urban_heat/indicators/${level}/${location}/`,
+    `/urban_heat/indicators/${level}/${location}/?${climateParam()}`,
   // Same URL shape as water: housing/urls.py is indicators/<level>/<location>/<year>/.
   housing: (level, location) =>
     `/housing/indicators/${level}/${location}/${window.ACTIVE_YEAR}/${populationQuery()}`,

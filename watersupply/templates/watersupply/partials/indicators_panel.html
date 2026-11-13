@@ -18,6 +18,11 @@
       <span style="opacity:.7;">· {{ pop_scenario|default:"prognose" }}{% if pop_growth %}, {{ pop_growth|floatformat:1 }}%/yr extra growth{% endif %}</span>
     </div>
     {% endif %}
+    {% if climate_key and climate_key != 'current' %}
+    <div style="margin-top:2px; font-size:0.78rem; color:rgba(232,244,255,0.55);">
+      🌍 Climate scenario: KNMI'23 {{ indicators.climate.label }} · {{ indicators.climate.period }}
+    </div>
+    {% endif %}
   </div>
 
   <!-- Styled slider -->
@@ -47,7 +52,7 @@
                min="50" max="300" step="1"
                value="{{ indicators.consumption_capita }}"
                hx-get="{% url 'watersupply:recalculate_indicators' level location year %}"
-               hx-vals='{"pop_scenario": "{{ pop_scenario|default:"prognose" }}", "pop_growth": "{{ pop_growth|default:0|unlocalize }}"}'
+               hx-vals='{"pop_scenario": "{{ pop_scenario|default:"prognose" }}", "pop_growth": "{{ pop_growth|default:0|unlocalize }}", "climate": "{{ climate_key|default:"current" }}"}'
                hx-trigger="input changed delay:200ms"
                hx-target="#indicators-grid"
                hx-include="#consumption-slider, #rain-slider, input[name=season]:checked"/>

@@ -1,0 +1,101 @@
+{% comment %}
+Scenarios panel (map side panel): the KNMI'23 climate scenarios as the
+Klimaateffectatlas shows them. Choosing one re-renders this partial; the
+root's data-climate is then picked up by core/static/js/Panels.js
+(window.CLIMATE_SCENARIO), which adds ?climate= to the Urban Heat and
+Water Supply panels. Nothing is stored. View: weather/views.py::climate_panel.
+{% endcomment %}
+<div class="climate-panel" id="climate-panel" data-climate="{{ scenario.key }}" data-climate-label="{% if scenario.active %}{{ scenario.short }}{% endif %}">
+
+  <div style="font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:rgba(232,244,255,0.45); margin-bottom:4px;">
+    Climate change scenarios · KNMI'23
+  </div>
+  <div style="font-family:var(--font-base); font-size:1.1rem; font-weight:700;">
+    {{ scenario.label }}
+    <span style="color:rgba(232,244,255,0.4); font-size:0.85rem;">· {{ scenario.period }}</span>
+  </div>
+  {% if scenario.active %}
+  <div style="margin-top:4px; font-size:0.75rem; color:rgba(232,244,255,0.55);">
+    {{ scenario.emissions|capfirst }} emissions, {{ scenario.variant }} variant · +{{ scenario.global_warming_c }} °C global warming vs 1850-1900
+  </div>
+  {% else %}
+  <div style="margin-top:4px; font-size:0.75rem; color:rgba(232,244,255,0.55);">
+    The panels use the observed weather (reference climate 1991-2020).
+  </div>
+  {% endif %}
+
+  <h4>Klimaateffectatlas</h4>
+  <div class="climate-presets" role="group" aria-label="Klimaateffectatlas scenarios">
+    {% for p in presets %}
+    <button type="button" class="climate-btn{% if p.key == scenario.key %} is-active{% endif %}"
+            aria-pressed="{% if p.key == scenario.key %}true{% else %}false{% endif %}"
+            hx-get="{% url 'weather:climate_panel' %}?climate={{ p.key }}"
+            hx-target="#panel-body" hx-swap="innerHTML" data-panel-title="SCENARIOS">
+      <b>{{ p.kea_label }}</b>
+      <small>{% if p.active %}{{ p.pathway }} · {{ p.period }}{% else %}{{ p.period }}{% endif %}</small>
+    </button>
+    {% endfor %}
+  </div>
+
+  <h4>All KNMI'23 scenarios</h4>
+  <table class="climate-grid">
+    <thead>
+      <tr><th></th>{% for p in pathways %}<th title="{{ p.emissions|capfirst }} emissions, {{ p.variant }}">{{ p.label }}</th>{% endfor %}</tr>
+    </thead>
+    <tbody>
+      {% for row in grid %}
+      <tr>
+        <th title="{{ row.period }}">{{ row.horizon }}</th>
+        {% for c in row.cells %}
+        <td>
+          <button type="button" class="climate-btn is-{{ c.variant }}{% if c.key == scenario.key %} is-active{% endif %}"
+                  aria-pressed="{% if c.key == scenario.key %}true{% else %}false{% endif %}"
+                  title="{{ c.label }} · {{ c.period }} · +{{ c.global_warming_c }} °C global"
+                  hx-get="{% url 'weather:climate_panel' %}?climate={{ c.key }}"
+                  hx-target="#panel-body" hx-swap="innerHTML" data-panel-title="SCENARIOS">
+            <b>{{ c.code }}</b>
+          </button>
+        </td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if rows %}
+  <h4>Change vs 1991-2020 (national average)</h4>
+  <div class="climate-table-wrap">
+    <table class="climate-table">
+      <thead>
+        <tr><th>Indicator</th>{% for period in periods %}<th>{{ period }}</th>{% endfor %}</tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr><td>{{ row.label }} <span style="opacity:.5;">{{ row.unit }}</span></td>{% for cell in row.cells %}<td>{{ cell }}</td>{% endfor %}</tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div style="margin-top:6px; font-size:0.72rem; color:rgba(232,244,255,0.6);">
+    Summer extremes: 1-day rain (once per 10 yr) {{ summer.rain_1d_10y_pct|stringformat:"+d" }}% · hourly rain (once per yr) {{ summer.rain_1h_1y_pct|stringformat:"+d" }}%
+  </div>
+  {% endif %}
+
+  <h4>Applied in the panels</h4>
+  <div class="climate-applies">
+    <button type="button" class="climate-btn" data-open-tool="temperature">
+      <span>🌡️ <b>Urban Heat</b> · weather sliders = observed weather + the season's change (temperature, humidity, wind, radiation)</span><span aria-hidden="true">→</span>
+    </button>
+    <button type="button" class="climate-btn" data-open-tool="water">
+      <span>💧 <b>Water Supply</b> · rain event × heavy-rain change; recharge with seasonal rain and Makkink ET changes</span><span aria-hidden="true">→</span>
+    </button>
+  </div>
+
+  <p class="climate-source">
+    Source: {{ source }} — <a href="{{ source_url }}" target="_blank" rel="noopener">knmi.nl/klimaatscenarios</a>.
+    The Klimaateffectatlas viewer offers the current climate, 2050 high and 2100 high; "high" is taken as the dry variant (Hd), the heat and drought case.
+    Delta-change on the observed weather: a what-if, never stored.
+    The heat panel adds the change of the <em>average</em> daily maximum; the hottest days warm more, so heat-wave stress is understated.
+    The rain event uses KNMI's extreme-rain figure.
+  </p>
+</div>

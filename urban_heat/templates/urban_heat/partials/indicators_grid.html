@@ -5,16 +5,22 @@
   
   <!-- ── Weather (live baseline + what-if) ── -->
   {% load l10n %}
-  <div class="card c3 wide heat-weather-card{% if indicators.weather_whatif %} is-whatif{% endif %}">
+  <div class="card c3 wide heat-weather-card{% if indicators.weather_whatif or indicators.climate.active %} is-whatif{% endif %}">
     <div class="gauge-header">
       <div class="card-icon">{{ indicators.weather_icon }}</div>
-      <div class="card-label">{% if indicators.weather_whatif %}Weather what-if{% else %}Current Weather{% endif %}</div>
+      <div class="card-label">{% if indicators.weather_whatif %}Weather what-if{% elif indicators.climate.active %}Weather in {{ indicators.climate.short }}{% else %}Current Weather{% endif %}</div>
       {% info_help "heat.weather" %}
     </div>
     <div class="heat-weather-source">
       {% if indicators.weather_whatif %}<span class="threshold-tag warn">What-if</span>{% endif %}
       {% if indicators.weather_source %}{{ indicators.weather_source }}{% if indicators.weather_description %} · {{ indicators.weather_description }}{% endif %}{% if indicators.weather_time %} · {{ indicators.weather_time }}{% endif %}{% else %}No weather data{% endif %}
     </div>
+    {% if indicators.climate.active and indicators.climate_delta %}
+    <div class="climate-note" title="Delta-change: the observed weather plus the {{ indicators.climate_season }} change of KNMI'23 Table 1 (average daily maximum by day, minimum by night; radiation scaled by the seasonal mean change). The hottest days warm more than the average, so heat-wave stress is understated.">
+      🌍 KNMI'23 {{ indicators.climate.label }} · {{ indicators.climate_season }} change:
+      {% if indicators.climate_delta.ta_c != None %}{{ indicators.climate_delta.ta_c|stringformat:"+.1f" }} °C{% endif %}{% if indicators.climate_delta.rh_pct != None %} · {{ indicators.climate_delta.rh_pct|stringformat:"+.1f" }} % RH{% endif %}{% if indicators.climate_delta.wind_ms != None %} · {{ indicators.climate_delta.wind_ms|stringformat:"+.1f" }} m/s{% endif %}{% if indicators.climate_delta.kdown_wm2 != None %} · {{ indicators.climate_delta.kdown_wm2|stringformat:"+.0f" }} W/m²{% endif %}
+    </div>
+    {% endif %}
     <div class="heat-weather-values">
       <div>
         <div class="heat-weather-label">Air Temp</div>
@@ -52,7 +58,8 @@
     {% endif %}
     {% localize off %}
     <div id="heat-weather-state" hidden
-         data-whatif="{{ indicators.weather_whatif|yesno:'1,0' }}"
+         data-whatif="{% if indicators.weather_whatif or indicators.climate.active %}1{% else %}0{% endif %}"
+         data-climate="{% if indicators.climate.active %}{{ indicators.climate.short }}{% endif %}"
          data-ta_c="{{ indicators.weather.ta_c|default_if_none:'' }}"
          data-rh_pct="{{ indicators.weather.rh_pct|default_if_none:'' }}"
          data-wind_ms="{{ indicators.weather.wind_ms|default_if_none:'' }}"

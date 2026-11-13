@@ -16,8 +16,8 @@ MAX_STATIONS = 5
 
 def yearly_water_balance(point, year=None):
     """
-    {'station': WeatherStation, 'year', 'daily_rain_mm': [...], 'et_ref_mm': float}
-    of the nearest station with a complete year: `year` when given, otherwise
+    {'station': WeatherStation, 'year', 'daily_rain_mm': [...], 'daily_months': [...],
+    'et_ref_mm': float} of the nearest station with a complete year: `year` when given, otherwise
     the station's latest complete year. None when no station has one.
     `point` is a GEOS point in the storage CRS.
     """
@@ -45,7 +45,14 @@ def yearly_water_balance(point, year=None):
             chosen = max(years, default=None)
             if chosen is None:
                 continue
-        rows = daily.filter(station=station, date__year=chosen).values_list("precipitation_mm", "reference_et_mm")
-        rain, et = zip(*rows)
-        return {"station": station, "year": chosen, "daily_rain_mm": list(rain), "et_ref_mm": sum(et)}
+        rows = (
+            daily.filter(station=station, date__year=chosen).order_by("date")
+            .values_list("precipitation_mm", "reference_et_mm", "date__month")
+        )
+        rain, et, months = zip(*rows)
+        return {
+            "station": station, "year": chosen, "daily_rain_mm": list(rain),
+            # month of each day, for the climate scenarios' seasonal changes (climate.py)
+            "daily_months": list(months), "et_ref_mm": sum(et),
+        }
     return None

@@ -515,6 +515,7 @@ def calculate_infiltration(adminBund, season='wet'):
             'station': balance['station'].name,
             'year': balance['year'],
             'daily_rain_mm': balance['daily_rain_mm'],
+            'daily_months': balance['daily_months'],
             'et_ref_mm': balance['et_ref_mm'],
         },
     }

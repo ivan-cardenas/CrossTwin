@@ -90,7 +90,9 @@ EDGE_STATUS = {
     ("RS_Imagery", "LandCover"): (P, "physicalEnv/calculations/albedo.py::measure",
         "Only the Sentinel-2 albedo attribute; the land-cover classes are plain imports."),
     ("RS_Imagery", "LST"): (I, "urban_heat/lst/smw.py::land_surface_temperature", "Landsat 8/9 B10 + Statistical Mono-Window. On demand."),
-    ("Climate_Change", "Meteorology"): (G, "", "get_latest_meteorology() only returns the latest station reading; no climate-scenario delta."),
+    ("Climate_Change", "Meteorology"): (P, "weather/calculations/climate.py::apply_to_weather, apply_to_daily_rain, apply_to_et, design_rain_mm",
+        "KNMI'23 scenarios (Klimaateffectatlas: current, 2050/2100 high; all Ld/Ln/Hd/Hn) as a delta-change what-if from the "
+        "map's Scenarios panel: heat weather sliders, water rain event and recharge. Not stored; SOLWEIG/LST/stored records use observed weather."),
     ("Anthropogenic_Heat", "Meteorology"): (G, "", "No anthropogenic-heat term in any meteorology input."),
     ("Canyon_Aspect", "Meteorology"): (G, "", "Stored H/W does not feed SOLWEIG's PET (UHI / 1.2 m wind) yet."),
     ("Meteorology", "Tmrt"): (I, "urban_heat/solweig/pipeline.py::calculate", "One hour of meteorology into SOLWEIG-GPU. On demand."),

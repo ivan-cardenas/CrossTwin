@@ -163,6 +163,8 @@
     }
     el('weather-pill-meta').textContent = parts.join(' · ');
     el('weather-pill-badge').hidden = !whatif;
+    // A KNMI'23 scenario of the Scenarios panel names itself in the badge
+    el('weather-pill-badge').textContent = (whatif && whatif.climate) ? whatif.climate : 'What-if';
     const when = live ? timeLabel(live.time) : '';
     pill.title = whatif
       ? 'Weather what-if from the Urban Heat panel — click to adjust, Reset there to return to live'

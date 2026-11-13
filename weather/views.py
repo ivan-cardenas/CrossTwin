@@ -314,3 +314,45 @@ def live_weather(request):
     response = JsonResponse(values)
     response["Cache-Control"] = "private, max-age=300"
     return response
+
+
+def climate_panel(request):
+    """
+    The map's Scenarios panel: the KNMI'23 climate scenarios of the
+    Klimaateffectatlas (weather/calculations/climate.py) and the changes of
+    the chosen one (`?climate=2050_Hd`). Choosing one only sets the what-if the
+    Urban Heat and Water Supply panels apply; nothing is written.
+    URL: /weather/climate/panel/
+    """
+    from django.shortcuts import render
+
+    from .calculations import climate
+
+    key = climate.normalize(request.GET.get("climate"))
+    pathways = [
+        {"code": code, **info} for code, info in climate.PATHWAYS.items()
+    ]
+    grid = [
+        {
+            "horizon": horizon, "period": period,
+            "cells": [
+                {**climate.describe(f"{horizon}_{p['code']}"), "code": p["code"]}
+                for p in pathways
+            ],
+        }
+        for horizon, period in climate.HORIZONS.items()
+    ]
+    return render(request, "weather/partials/climate_panel.html", {
+        "scenario": climate.describe(key),
+        "presets": [
+            {**climate.describe(k), "kea_label": climate.KEA_LABELS[k]}
+            for k in climate.KEA_PRESETS
+        ],
+        "pathways": pathways,
+        "grid": grid,
+        "periods": climate.TABLE_PERIODS,
+        "rows": climate.scenario_table(key),
+        "summer": climate.deltas(key, "summer"),
+        "source": climate.KNMI23_SOURCE,
+        "source_url": climate.KNMI23_URL,
+    })

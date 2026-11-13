@@ -3,6 +3,9 @@
 partial and the standalone dashboard. Driven by core/static/js/indicators/heat.js.
 {% endcomment %}
   <form id="heat-whatif">
+  <!-- KNMI'23 scenario of the Scenarios panel: the sliders start at the
+       observed weather plus its change (urban_heat/views.py::_climate_weather) -->
+  <input type="hidden" name="climate" value="{{ climate_key|default:'current' }}">
 
   <!-- Weather what-if: starts at the live (or station) weather; the map's
        weather pill mirrors it (heat.js -> WeatherPill.js). Never stored. -->
@@ -18,7 +21,7 @@ partial and the standalone dashboard. Driven by core/static/js/indicators/heat.j
         <span class="card-label">Weather what-if</span>
       </div>
       <button type="button" class="heat-weather-reset" id="heat-weather-reset"
-              {% if not indicators.weather_whatif %}hidden{% endif %}>Reset to {% if indicators.weather_source %}{{ indicators.weather_source }}{% else %}defaults{% endif %}</button>
+              {% if not indicators.weather_whatif %}hidden{% endif %}>Reset to {% if indicators.climate.active %}{{ indicators.climate.short }}{% elif indicators.weather_source %}{{ indicators.weather_source }}{% else %}defaults{% endif %}</button>
     </div>
     <label class="heat-weather-row">
       <span>Air temp.</span>

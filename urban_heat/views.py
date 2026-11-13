@@ -14,6 +14,7 @@ from .calculations.indicators import (
     get_latest_meteorology,
 )
 from .calculations.chain import WEATHER_LIMITS, clamp_weather, weather_heat_stress
+from weather.calculations import climate
 
 
 # ── constants ─────────────────────────────────────────────────────────
@@ -78,6 +79,46 @@ def _station_weather(meteo):
         'time': when.isoformat() if when else None,
         'description': None,
         'icon': '🌡️',
+    }
+
+
+def climate_param(params):
+    """KNMI'23 scenario of the Scenarios panel (`?climate=2050_Hd`); the current climate when absent or invalid."""
+    return climate.normalize(params.get('climate'))
+
+
+def _month(when):
+    """Month (1-12) of an ISO date/time string, None when it has none."""
+    try:
+        return int(str(when)[5:7])
+    except (TypeError, ValueError):
+        return None
+
+
+def _climate_weather(baseline, climate_key):
+    """
+    The observed baseline weather moved into a KNMI'23 scenario (delta-change
+    of the observation's season, weather/calculations/climate.py) and the
+    display data of the scenario. Pure; the current climate returns the
+    baseline unchanged.
+
+    DAG edge: Climate_Change -> Meteorology (what-if only, never stored)
+    """
+    scenario = climate.describe(climate_key)
+    if not scenario['active'] or not baseline:
+        return baseline, {'climate': scenario}
+    month = _month(baseline.get('time'))
+    shifted = climate.apply_to_weather(baseline, climate_key, month)
+    season = climate.season_of_month(month)
+    return shifted, {
+        'climate': scenario,
+        'climate_season': season,
+        'climate_observed': {name: baseline.get(name) for name in WEATHER_LIMITS},
+        'climate_delta': {
+            name: (round(shifted[name] - baseline[name], 1)
+                   if shifted.get(name) is not None and baseline.get(name) is not None else None)
+            for name in WEATHER_LIMITS
+        },
     }
 
 
@@ -171,19 +212,22 @@ def _weather_indicators(baseline, overrides):
     }
 
 
-def _build_indicators(data, weather_override=None):
+def _build_indicators(data, weather_override=None, climate_key=climate.CURRENT):
     """
     Pure function: takes raw data dict, returns display-ready indicators.
     weather_override: the heat panel's weather what-if (weather_overrides()),
     applied on top of data['weather']; never stored.
+    climate_key: a KNMI'23 scenario of the Scenarios panel; the sliders then
+    start at the observed weather plus the scenario's change (_climate_weather).
     """
     thermal = data.get('thermal', {})
     vegetation = data.get('vegetation', {})
     morphology = data.get('morphology', {})
     nbs = data.get('nbs', {})
     meteo = data.get('meteorology') or {}
-    weather = _weather_indicators(
-        data.get('weather') or _station_weather(data.get('meteorology')), weather_override)
+    baseline, climate_info = _climate_weather(
+        data.get('weather') or _station_weather(data.get('meteorology')), climate_key)
+    weather = _weather_indicators(baseline, weather_override)
     current = weather['weather']
 
     # Extract mean values from thermal indices (or None)
@@ -272,6 +316,7 @@ def _build_indicators(data, weather_override=None):
         'solar_radiation':    current['kdown_wm2'],
         'station_air_temp_C': meteo.get('temperature_C'),
         **weather,
+        **climate_info,
     }
 
 
@@ -286,11 +331,13 @@ def heat_indicators(request, level, location):
     if data is None:
         data = MOCK_DATA
 
+    climate_key = climate_param(request.GET)
     context = {
         'adminUnit': data['adminUnit'],
         'level': level,
         'location': location,
-        'indicators': _build_indicators(data, weather_overrides(request.GET)),
+        'climate_key': climate_key,
+        'indicators': _build_indicators(data, weather_overrides(request.GET), climate_key),
     }
 
     if request.headers.get('HX-Request'):
@@ -311,7 +358,7 @@ def recalculate_indicators(request, level, location):
 
     # Allow vegetation override for scenario analysis
     veg_override = request.GET.get('vegetation_pct')
-    indicators = _build_indicators(data, weather_overrides(request.GET))
+    indicators = _build_indicators(data, weather_overrides(request.GET), climate_param(request.GET))
 
     if veg_override is not None:
         indicators['vegetation_pct'] = float(veg_override)

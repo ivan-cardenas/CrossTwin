@@ -33,7 +33,7 @@ Zones follow KNMI's daily rain classes: heavy from 25 mm, extreme from 50 mm.
              min="1" max="100" step="1"
              value="{{ indicators.rain_mm|unlocalize }}"
              hx-get="{% url 'watersupply:recalculate_indicators' level location year %}"
-             hx-vals='{"pop_scenario": "{{ pop_scenario|default:"prognose" }}", "pop_growth": "{{ pop_growth|default:0|unlocalize }}"}'
+             hx-vals='{"pop_scenario": "{{ pop_scenario|default:"prognose" }}", "pop_growth": "{{ pop_growth|default:0|unlocalize }}", "climate": "{{ climate_key|default:"current" }}"}'
              hx-trigger="input changed delay:200ms"
              hx-target="#indicators-grid"
              hx-include="#consumption-slider, #rain-slider, input[name=season]:checked"/>
@@ -43,6 +43,11 @@ Zones follow KNMI's daily rain classes: heavy from 25 mm, extreme from 50 mm.
     </div>
   </div>
   <div><span id="rain-tag" class="threshold-tag ok">Moderate</span></div>
+  {% if indicators.climate.active %}
+  <div class="climate-note" title="KNMI'23 Table 1: change of the summer 1-day rain exceeded once every 10 years ({{ indicators.climate_rain_event_pct }}%), applied to the 25 mm design event. The yearly recharge scales each day's rain by its season's change (summer {{ indicators.climate_precip_summer_pct }}%, winter {{ indicators.climate_precip_winter_pct }}%) and Makkink ET by {{ indicators.climate_et_pct }}%.">
+    🌍 {{ indicators.climate.label }} · heavy rain {{ indicators.climate_rain_event_pct|stringformat:"+d" }}% · summer rain {{ indicators.climate_precip_summer_pct|stringformat:"+d" }}% · ET {{ indicators.climate_et_pct|stringformat:"+d" }}%
+  </div>
+  {% endif %}
 
   <!-- Groundwater season: which level (GHG/GLG) marks shallow groundwater -->
   <div class="season-switch-row">
@@ -50,7 +55,7 @@ Zones follow KNMI's daily rain classes: heavy from 25 mm, extreme from 50 mm.
     {% info_help "water.gw_season" %}
     <div class="season-switch" role="radiogroup" aria-label="Groundwater season"
          hx-get="{% url 'watersupply:recalculate_indicators' level location year %}"
-         hx-vals='{"pop_scenario": "{{ pop_scenario|default:"prognose" }}", "pop_growth": "{{ pop_growth|default:0|unlocalize }}"}'
+         hx-vals='{"pop_scenario": "{{ pop_scenario|default:"prognose" }}", "pop_growth": "{{ pop_growth|default:0|unlocalize }}", "climate": "{{ climate_key|default:"current" }}"}'
          hx-trigger="change"
          hx-target="#indicators-grid"
          hx-include="#consumption-slider, #rain-slider, input[name=season]:checked">

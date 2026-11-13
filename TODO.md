@@ -53,7 +53,8 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 - [ ] `Canyon_Aspect -> Meteorology` — the stored H/W is not yet used by SOLWEIG's PET (UHI / 1.2 m wind)
 - [ ] `calculate_urban_morphology()` / `get_thermal_indices()` — only compute statistics *over* existing rasters, don't derive one raster from another
 - [ ] `PET -> NBS`, `UTCI -> NBS` — `calculate_nbs_coverage()` counts NBS geometries but reads neither the PET nor the UTCI raster
-- [ ] `Climate_Change -> Meteorology`, `Anthropogenic_Heat -> Meteorology` — `get_latest_meteorology()` (`urban_heat/calculations/indicators.py`) claims both edges but only returns the latest station reading; there is no climate-scenario delta (e.g. KNMI'23 scenarios) and no anthropogenic-heat term. There are possibilities of using WRF/BEP + BEM to calculate the anthropogenic-heat term. 
+- [~] `Climate_Change -> Meteorology` — partial (2026-11-13): KNMI'23 scenarios (Klimaateffectatlas current / 2050 high / 2100 high, plus all Ld/Ln/Hd/Hn) from the map's Scenarios panel shift the heat panel's weather and the water panel's rain event and recharge (delta-change, `weather/calculations/climate.py`). Still open: not applied to SOLWEIG/LST runs or stored records, no 2150 horizon, no regional (station) table; the heat shift is the change of the *average* daily maximum, which understates heat waves (the hottest days warm more) — add KNMI's warmest-day figures (data portal) when available.
+- [ ] `Anthropogenic_Heat -> Meteorology` — `get_latest_meteorology()` (`urban_heat/calculations/indicators.py`) claims the edge but has no anthropogenic-heat term. There are possibilities of using WRF/BEP + BEM to calculate the anthropogenic-heat term. 
 
 
 ## builtup / housing

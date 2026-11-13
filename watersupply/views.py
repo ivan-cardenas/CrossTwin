@@ -27,6 +27,7 @@ from .calculations.indicators import (
     calculate_drought_area,
     calculate_infiltration,
 )
+from weather.calculations import climate
 from physicalEnv.calculations.soil import DEFAULT_SEASON, SEASONS, SOIL_GROUP_ORDER, SOIL_GROUPS, summarize_infiltration
 from django.contrib.gis.db.models.functions import Intersection, Length
 from django.contrib.gis.measure import D
@@ -183,7 +184,7 @@ MOCK_DATA = {
 }
 
 # ── shared calculation ────────────────────────────────────────────────
-def _recharge_indicators(infiltration, area_m2):
+def _recharge_indicators(infiltration, area_m2, climate_key=climate.CURRENT):
     """
     Yearly groundwater recharge of the unit: the same water balance that
     AvailableFreshWater.save() stores (chain.recharge_depth_cm_yr), over the
@@ -191,13 +192,21 @@ def _recharge_indicators(infiltration, area_m2):
     The rain-event slider does not enter; the season switch does, through the
     composition (the stored value uses the wet season, the default).
 
+    A KNMI'23 climate scenario (`climate_key`, weather/calculations/climate.py)
+    scales each day's rain by its season's precipitation change and the
+    year's Makkink ET by its change (delta-change; what-if, never stored).
+    The current climate equals the stored value.
+
     DAG edges:  Meteorology -> Available_FW
                 LandCover   -> Infiltration -> Available_FW
                 Soil_Type   -> Infiltration -> Available_FW
+                Climate_Change -> Meteorology (scenario what-if)
     """
     met = infiltration.get('water_balance')
     balance = met and chain.yearly_water_balance_mm(
-        met['daily_rain_mm'], met['et_ref_mm'], infiltration.get('composition', []))
+        climate.apply_to_daily_rain(met['daily_rain_mm'], met.get('daily_months'), climate_key),
+        climate.apply_to_et(met['et_ref_mm'], climate_key),
+        infiltration.get('composition', []))
     if not balance:
         return {'recharge_mm_yr': None}
     rain = balance['rain_mm']
@@ -220,7 +229,7 @@ def _recharge_indicators(infiltration, area_m2):
     }
 
 
-def _infiltration_indicators(infiltration, rain_mm):
+def _infiltration_indicators(infiltration, rain_mm, climate_key=climate.CURRENT):
     """SCS infiltration of a rain event of `rain_mm` over the unit's soil x land cover."""
     scs = summarize_infiltration(infiltration.get('composition', []), rain_mm)
     groups = infiltration.get('soil_groups_m2', {})
@@ -231,7 +240,7 @@ def _infiltration_indicators(infiltration, rain_mm):
     season = infiltration.get('season', DEFAULT_SEASON)
     classified_m2 = scs['classified_m2']
     return {
-        **_recharge_indicators(infiltration, classified_m2),
+        **_recharge_indicators(infiltration, classified_m2, climate_key),
         # the rain event: depth that runs off (comparable across units of any size)
         'event_runoff_mm':           round(scs['runoff_m3'] / classified_m2 * 1000, 1) if classified_m2 else None,
         'rain_mm':                   rain_mm,
@@ -262,8 +271,34 @@ def _infiltration_indicators(infiltration, rain_mm):
     }
 
 
-def _build_indicators(data, consumption_override=None, rain_mm=RAIN_MM_DEFAULT):
-    """Pure function: takes DB data dict, returns indicators dict."""
+def _climate_indicators(climate_key):
+    """The KNMI'23 scenario applied to the panel's rain and recharge (display data)."""
+    scenario = climate.describe(climate_key)
+    if not scenario['active']:
+        return {'climate': scenario}
+    year = climate.deltas(climate_key, 'year')
+    summer = climate.deltas(climate_key, 'summer')
+    winter = climate.deltas(climate_key, 'winter')
+    return {
+        'climate': scenario,
+        'climate_rain_event_pct': summer['rain_1d_10y_pct'],
+        'climate_precip_summer_pct': summer['precip_pct'],
+        'climate_precip_winter_pct': winter['precip_pct'],
+        'climate_precip_year_pct': year['precip_pct'],
+        'climate_et_pct': year['et_pct'],
+    }
+
+
+def _build_indicators(data, consumption_override=None, rain_mm=None, climate_key=climate.CURRENT):
+    """
+    Pure function: takes DB data dict, returns indicators dict.
+
+    `rain_mm` is the Rain Event slider; without it the design event
+    (RAIN_MM_DEFAULT) of the climate scenario `climate_key` is used.
+    """
+    climate_key = climate.normalize(climate_key)
+    if rain_mm is None:
+        rain_mm = climate.design_rain_mm(RAIN_MM_DEFAULT, climate_key)
     consumption  = (consumption_override or data['consumption_capita'])
     # Same chain as the stored records (watersupply/calculations/chain.py), fed with the
     # request's population what-if instead of the baseline projection.
@@ -346,14 +381,20 @@ def _build_indicators(data, consumption_override=None, rain_mm=RAIN_MM_DEFAULT):
         'drought_area_km2':      drought.get('total_area_km2', 0),
         'drought_sensibility':   drought.get('max_sensibility', 0),
         # Infiltration (SCS Curve Number, rain-event what-if)
-        **_infiltration_indicators(data.get('infiltration', {}), rain_mm),
+        **_infiltration_indicators(data.get('infiltration', {}), rain_mm, climate_key),
+        **_climate_indicators(climate_key),
     }
 
 
 # ── views ─────────────────────────────────────────────────────────────
-def _population_context(pop_scenario, pop_growth):
-    """Template context that lets the panel's own controls keep the population what-if."""
-    return {'pop_scenario': pop_scenario, 'pop_growth': pop_growth}
+def _population_context(pop_scenario, pop_growth, climate_key=climate.CURRENT):
+    """Template context that lets the panel's own controls keep the population and climate what-ifs."""
+    return {'pop_scenario': pop_scenario, 'pop_growth': pop_growth, 'climate_key': climate_key}
+
+
+def _climate_param(params):
+    """KNMI'23 scenario of the Scenarios panel (`?climate=2050_Hd`); the current climate when absent or invalid."""
+    return climate.normalize(params.get('climate'))
 
 
 def _season_param(params):
@@ -364,6 +405,7 @@ def _season_param(params):
 
 def water_indicators(request, level, location, year):
     pop_scenario, pop_growth = population_params(request.GET)
+    climate_key = _climate_param(request.GET)
     data = _get_adminUnit_data(level, location, year, pop_scenario, pop_growth, _season_param(request.GET))
     if data is None:
         data = MOCK_DATA
@@ -373,8 +415,8 @@ def water_indicators(request, level, location, year):
         'level':      level,
         'location':   location,
         'year':       year,
-        'indicators': _build_indicators(data),
-        **_population_context(pop_scenario, pop_growth),
+        'indicators': _build_indicators(data, climate_key=climate_key),
+        **_population_context(pop_scenario, pop_growth, climate_key),
     }
 
     if request.headers.get('HX-Request'):
@@ -383,11 +425,11 @@ def water_indicators(request, level, location, year):
 
 
 def _rain_param(params):
-    """Rain depth (mm) of the infiltration what-if; the default when absent or invalid."""
+    """Rain depth (mm) of the infiltration what-if; None (the scenario's design event) when absent or invalid."""
     try:
-        return min(max(float(params.get('rain_mm', RAIN_MM_DEFAULT)), 1.0), 200.0)
-    except (TypeError, ValueError):
-        return RAIN_MM_DEFAULT
+        return min(max(float(params['rain_mm']), 1.0), 200.0)
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def recalculate_indicators(request, level, location, year):
@@ -398,7 +440,8 @@ def recalculate_indicators(request, level, location, year):
     if data is None:
         data = MOCK_DATA
 
-    indicators = _build_indicators(data, consumption_override=consumption, rain_mm=rain_mm)
+    indicators = _build_indicators(
+        data, consumption_override=consumption, rain_mm=rain_mm, climate_key=_climate_param(request.GET))
 
     return render(request, 'watersupply/partials/indicators_grid.html', {'indicators': indicators})
 

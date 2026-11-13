@@ -936,6 +936,22 @@ No equations; behaviour relevant to reproducing results:
   \item The \code{feature-saved} and \code{backup-restored} HTMX events reload the affected layers (\code{reloadLayer()}), so the map always shows the stored state.
 \end{itemize}
 
+\section{Climate change scenarios (weather app, KNMI'23)}
+\label{sec:climate-scenarios}
+
+Source: \code{weather/calculations/climate.py} (\code{apply\_to\_weather()}, \code{design\_rain\_mm()}, \code{apply\_to\_daily\_rain()}, \code{apply\_to\_et()}, \code{scenario\_table()}); panel \code{weather/views.py::climate\_panel}; used by \code{urban\_heat/views.py::\_climate\_weather} and \code{watersupply/views.py::\_recharge\_indicators}. Status: \textbf{partial} --- \code{Climate\_Change -> Meteorology} as a what-if of the map's Scenarios panel; nothing is stored, and SOLWEIG, LST and the stored recharge keep the observed weather.
+
+The scenarios are those of KNMI'23~\cite{KNMI2023}: low (L) or high (H) emissions, each with a dry (d) and a wet (n) variant, for 2050 (2036--2065) and 2100 (2086--2115). The Klimaateffectatlas viewer offers the current climate, 2050 high and 2100 high; ``high'' is taken as Hd. The temperature change is that of the average daily maximum or minimum: the hottest days warm more, so heat-wave stress is understated (Table~1 has no national warmest-day figure). The changes $\Delta$ are the national averages of Table~1 of~\cite{KNMI2023}, relative to 1991--2020, per season $s$ (DJF, MAM, JJA, SON) of the observation's month (summer when unknown). Delta-change on the observed weather:
+\begin{align}
+T_a' &= T_a + \begin{cases} \Delta T_{x,s} & K_\downarrow > 1~\mathrm{W\,m^{-2}} \\ \Delta T_{n,s} & \text{otherwise} \end{cases} \\
+RH' &= \min\!\left(100, \max(0, RH + \Delta RH_s)\right) \\
+u' &= \max(0, u + \Delta u_s) \\
+K_\downarrow' &= K_\downarrow \, \frac{\bar K_s + \Delta K_s}{\bar K_s}
+\end{align}
+with $\bar K_s$ the 1991--2020 seasonal mean radiation (34, 161, 206, 77~W\,m$^{-2}$). The heat panel's sliders start at $(T_a', RH', u', K_\downarrow')$; the weather-only heat stress (Steadman, BoM WBGT) follows from them.
+
+Water: the design rain event $P_e' = P_e (1 + \Delta P_{1d,10y})$ with the change of the summer 1-day rain exceeded once in 10 years (central value). The yearly recharge (Section on infiltration) runs on scaled daily rain $P_d' = P_d (1 + \Delta P_{s(d)})$ and Makkink ET $ET' = ET (1 + \Delta ET_{\mathrm{year}})$. Extremes are not scaled separately in the daily series.
+
 \section{Imported climate-effect indicators (importer app, Klimaateffectatlas)}
 \label{sec:kea}
 
@@ -1095,6 +1111,7 @@ Beyond the CBS 85173NED forecasts used for the \texttt{Population\_Growth} $\to$
 
 \bibitem{HILUCS} European Commission. \textit{INSPIRE Data Specification on Land Use (D2.8.III.4)}, Hierarchical INSPIRE Land Use Classification System (HILUCS). \url{http://inspire.ec.europa.eu/codelist/HILUCSValue}.
 
+\bibitem{KNMI2023} KNMI (2023). \textit{KNMI'23 climate scenarios for the Netherlands}. KNMI Publication 23-03, De Bilt. Table 1. \url{https://www.knmi.nl/klimaatscenarios}.
 \end{thebibliography}
 
 \end{document}

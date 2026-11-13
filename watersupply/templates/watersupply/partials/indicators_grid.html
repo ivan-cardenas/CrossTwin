@@ -229,7 +229,7 @@
       <span><b style="color:#38bdf8;">■</b> Recharge {{ indicators.recharge_pct }}%</span>
       <span><b style="color:#f59e0b;">■</b> Runoff {{ indicators.recharge_runoff_mm_yr }} mm</span>
       <span><b style="color:rgba(232,244,255,0.4);">■</b> ET {{ indicators.recharge_et_mm_yr }} mm</span>
-      <span>of {{ indicators.recharge_rain_mm_yr }} mm rain · KNMI {{ indicators.recharge_station }} {{ indicators.recharge_year }}</span>
+      <span>of {{ indicators.recharge_rain_mm_yr }} mm rain · KNMI {{ indicators.recharge_station }} {{ indicators.recharge_year }}{% if indicators.climate.active %} in KNMI'23 {{ indicators.climate.short }} (delta-change){% endif %}</span>
     </div>
     {% else %}
     <div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;">
