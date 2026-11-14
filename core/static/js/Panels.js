@@ -242,13 +242,18 @@ function initPopulationHover() {
 /**
  * Scenarios panel: the KNMI'23 climate scenarios of the Klimaateffectatlas,
  * rendered by the server (weather/views.py::climate_panel). The chosen one is
- * kept in window.CLIMATE_SCENARIO and sent as ?climate= to the Urban Heat and
- * Water Supply panels (climateQuery / syncPanelBtns in mainMap.js).
+ * kept in window.CLIMATE_SCENARIO, the heat mode ('average' | 'warmest' =
+ * heat-wave day) in window.CLIMATE_HEAT; both go to the Urban Heat and Water
+ * Supply panels (climateParam / syncPanelBtns in mainMap.js). The map centre
+ * picks the station marked nearest in the panel's heat table.
  */
 function showScenarios() {
   const sidePanel = document.getElementById('side-panel');
   const key = encodeURIComponent(window.CLIMATE_SCENARIO || 'current');
-  htmx.ajax('GET', `/weather/climate/panel/?climate=${key}`, {
+  const heat = encodeURIComponent(window.CLIMATE_HEAT || 'average');
+  const c = (typeof map !== 'undefined' && map.getCenter) ? map.getCenter() : null;
+  const loc = c ? `&lat=${c.lat.toFixed(4)}&lng=${c.lng.toFixed(4)}` : '';
+  htmx.ajax('GET', `/weather/climate/panel/?climate=${key}&heat=${heat}${loc}`, {
     target: '#panel-body',
     swap: 'innerHTML',
     source: document.getElementById('btn-scenarios'),
@@ -277,8 +282,10 @@ document.body.addEventListener('htmx:afterSwap', function (evt) {
   const panel = evt.detail.target?.querySelector?.('#climate-panel');
   if (!panel) return;
   const key = panel.dataset.climate || 'current';
-  if (key === (window.CLIMATE_SCENARIO || 'current')) return;
+  const heat = panel.dataset.climateHeat || 'average';
+  if (key === (window.CLIMATE_SCENARIO || 'current') && heat === (window.CLIMATE_HEAT || 'average')) return;
   window.CLIMATE_SCENARIO = key;
+  window.CLIMATE_HEAT = heat;
   renderClimateBadge(panel.dataset.climateLabel);
   if (typeof syncPanelBtns === 'function') syncPanelBtns();
 });

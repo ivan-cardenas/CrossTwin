@@ -320,8 +320,10 @@ def climate_panel(request):
     """
     The map's Scenarios panel: the KNMI'23 climate scenarios of the
     Klimaateffectatlas (weather/calculations/climate.py) and the changes of
-    the chosen one (`?climate=2050_Hd`). Choosing one only sets the what-if the
-    Urban Heat and Water Supply panels apply; nothing is written.
+    the chosen one (`?climate=2050_Hd`), plus the heat mode (`&heat=average|warmest`,
+    warmest = heat-wave day) and the heat key figures per station, the one
+    nearest to the map centre (`&lat=&lng=`) first. Choosing one only sets the
+    what-if the Urban Heat and Water Supply panels apply; nothing is written.
     URL: /weather/climate/panel/
     """
     from django.shortcuts import render
@@ -329,6 +331,14 @@ def climate_panel(request):
     from .calculations import climate
 
     key = climate.normalize(request.GET.get("climate"))
+    heat = climate.normalize_heat(request.GET.get("heat"))
+    try:
+        lat, lng = float(request.GET["lat"]), float(request.GET["lng"])
+    except (KeyError, TypeError, ValueError):
+        lat = lng = None
+    station = climate.nearest_station(lat, lng)
+    # Query kept by the panel's buttons: the map centre, then the heat mode.
+    loc = f"&lat={lat:.4f}&lng={lng:.4f}" if lat is not None else ""
     pathways = [
         {"code": code, **info} for code, info in climate.PATHWAYS.items()
     ]
@@ -353,6 +363,14 @@ def climate_panel(request):
         "periods": climate.TABLE_PERIODS,
         "rows": climate.scenario_table(key),
         "summer": climate.deltas(key, "summer"),
+        "heat": heat,
+        "heat_modes": climate.HEAT_MODES,
+        "loc": loc,
+        "station": station,
+        "stations": climate.station_table(key, station),
+        "station_rows": climate.STATION_ROWS,
         "source": climate.KNMI23_SOURCE,
         "source_url": climate.KNMI23_URL,
+        "stations_source": climate.STATIONS_SOURCE,
+        "stations_url": climate.STATIONS_URL,
     })

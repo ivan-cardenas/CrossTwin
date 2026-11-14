@@ -1,11 +1,13 @@
 {% comment %}
 Scenarios panel (map side panel): the KNMI'23 climate scenarios as the
 Klimaateffectatlas shows them. Choosing one re-renders this partial; the
-root's data-climate is then picked up by core/static/js/Panels.js
-(window.CLIMATE_SCENARIO), which adds ?climate= to the Urban Heat and
-Water Supply panels. Nothing is stored. View: weather/views.py::climate_panel.
+root's data-climate / data-climate-heat are then picked up by
+core/static/js/Panels.js (window.CLIMATE_SCENARIO / CLIMATE_HEAT), which adds
+?climate=&climate_heat= to the Urban Heat and Water Supply panels. Nothing is
+stored. View: weather/views.py::climate_panel.
 {% endcomment %}
-<div class="climate-panel" id="climate-panel" data-climate="{{ scenario.key }}" data-climate-label="{% if scenario.active %}{{ scenario.short }}{% endif %}">
+<div class="climate-panel" id="climate-panel" data-climate="{{ scenario.key }}" data-climate-heat="{{ heat }}"
+     data-climate-label="{% if scenario.active %}{{ scenario.short }}{% if heat == 'warmest' %} · warmest day{% endif %}{% endif %}">
 
   <div style="font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:rgba(232,244,255,0.45); margin-bottom:4px;">
     Climate change scenarios · KNMI'23
@@ -29,7 +31,7 @@ Water Supply panels. Nothing is stored. View: weather/views.py::climate_panel.
     {% for p in presets %}
     <button type="button" class="climate-btn{% if p.key == scenario.key %} is-active{% endif %}"
             aria-pressed="{% if p.key == scenario.key %}true{% else %}false{% endif %}"
-            hx-get="{% url 'weather:climate_panel' %}?climate={{ p.key }}"
+            hx-get="{% url 'weather:climate_panel' %}?climate={{ p.key }}&heat={{ heat }}{{ loc }}"
             hx-target="#panel-body" hx-swap="innerHTML" data-panel-title="SCENARIOS">
       <b>{{ p.kea_label }}</b>
       <small>{% if p.active %}{{ p.pathway }} · {{ p.period }}{% else %}{{ p.period }}{% endif %}</small>
@@ -51,7 +53,7 @@ Water Supply panels. Nothing is stored. View: weather/views.py::climate_panel.
           <button type="button" class="climate-btn is-{{ c.variant }}{% if c.key == scenario.key %} is-active{% endif %}"
                   aria-pressed="{% if c.key == scenario.key %}true{% else %}false{% endif %}"
                   title="{{ c.label }} · {{ c.period }} · +{{ c.global_warming_c }} °C global"
-                  hx-get="{% url 'weather:climate_panel' %}?climate={{ c.key }}"
+                  hx-get="{% url 'weather:climate_panel' %}?climate={{ c.key }}&heat={{ heat }}{{ loc }}"
                   hx-target="#panel-body" hx-swap="innerHTML" data-panel-title="SCENARIOS">
             <b>{{ c.code }}</b>
           </button>
@@ -81,10 +83,43 @@ Water Supply panels. Nothing is stored. View: weather/views.py::climate_panel.
   </div>
   {% endif %}
 
+  <h4>Heat in the Urban Heat panel</h4>
+  <div class="climate-presets climate-heat-modes" role="group" aria-label="Heat change">
+    {% for mode, label in heat_modes.items %}
+    <button type="button" class="climate-btn{% if mode == heat %} is-active{% endif %}"
+            aria-pressed="{% if mode == heat %}true{% else %}false{% endif %}"
+            hx-get="{% url 'weather:climate_panel' %}?climate={{ scenario.key }}&heat={{ mode }}{{ loc }}"
+            hx-target="#panel-body" hx-swap="innerHTML" data-panel-title="SCENARIOS">
+      <b>{{ label }}</b>
+      <small>{% if mode == 'warmest' %}heat wave · nearest KNMI station{% else %}season's mean daily max / min{% endif %}</small>
+    </button>
+    {% endfor %}
+  </div>
+  {% if stations %}
+  <div class="climate-table-wrap">
+    <table class="climate-table climate-stations">
+      <thead>
+        <tr><th>Station</th>{% for indicator, label, unit in station_rows %}<th>{{ label }}{% if unit != '°C' %} <span style="opacity:.5;">{{ unit }}</span>{% endif %}</th>{% endfor %}</tr>
+      </thead>
+      <tbody>
+        {% for row in stations %}
+        <tr{% if row.nearest %} class="is-nearest" title="Nearest to the map centre: used by the heat-wave day"{% endif %}>
+          <td>{{ row.station }}{% if row.nearest %} ◂{% endif %}</td>
+          {% for c in row.cells %}<td title="1991-2020: {{ c.reference }} → {{ c.future }}">{% if c.unit == '°C' %}{{ c.change|stringformat:"+.1f" }} °C{% else %}{{ c.change|stringformat:"+g" }}{% endif %}</td>{% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div style="margin-top:6px; font-size:0.72rem; color:rgba(232,244,255,0.6);">
+    Change vs 1991-2020 (hover a cell for the values). The heat-wave day adds the warmest-day change of the station nearest to the selected unit to the observed weather, by day and night; apply it to a hot observed day.
+  </div>
+  {% endif %}
+
   <h4>Applied in the panels</h4>
   <div class="climate-applies">
     <button type="button" class="climate-btn" data-open-tool="temperature">
-      <span>🌡️ <b>Urban Heat</b> · weather sliders = observed weather + the season's change (temperature, humidity, wind, radiation)</span><span aria-hidden="true">→</span>
+      <span>🌡️ <b>Urban Heat</b> · weather sliders = observed weather + {% if heat == 'warmest' %}the warmest-day change (nearest station) and the summer changes of humidity, wind and radiation{% else %}the season's change (temperature, humidity, wind, radiation){% endif %}</span><span aria-hidden="true">→</span>
     </button>
     <button type="button" class="climate-btn" data-open-tool="water">
       <span>💧 <b>Water Supply</b> · rain event × heavy-rain change; recharge with seasonal rain and Makkink ET changes</span><span aria-hidden="true">→</span>
@@ -95,7 +130,9 @@ Water Supply panels. Nothing is stored. View: weather/views.py::climate_panel.
     Source: {{ source }} — <a href="{{ source_url }}" target="_blank" rel="noopener">knmi.nl/klimaatscenarios</a>.
     The Klimaateffectatlas viewer offers the current climate, 2050 high and 2100 high; "high" is taken as the dry variant (Hd), the heat and drought case.
     Delta-change on the observed weather: a what-if, never stored.
-    The heat panel adds the change of the <em>average</em> daily maximum; the hottest days warm more, so heat-wave stress is understated.
+    "Average day" adds the change of the <em>average</em> daily maximum (minimum at night), which understates heat waves: the hottest days warm more.
+    "Warmest day of the year" uses KNMI's key figures per station: {{ stations_source }} — <a href="{{ stations_url }}" target="_blank" rel="noopener">klimaatscenarios-data.knmi.nl</a>.
+    The portal does not define the warmest day; its 1991-2020 values match the warmest daily mean temperature.
     The rain event uses KNMI's extreme-rain figure.
   </p>
 </div>

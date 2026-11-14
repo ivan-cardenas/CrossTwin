@@ -15,15 +15,25 @@ relative to 1991-2020. They are applied with the delta-change method: the
 observed weather (live, station or a KNMI year) plus the change of its
 season. Pure: no queries, no clock.
 
-Limitation: Table 1 gives 30-year seasonal means. The temperature change used
-for the weather is that of the *average* daily maximum/minimum; the hottest
-days of the year warm more than that (KNMI'23, "Extreme temperatures"), so a
-heat-wave what-if built on it understates the scenario's heat stress. Table 1
-has no national figure for the warmest day; rain extremes do have one and the
-design rain event uses it (design_rain_mm).
+Heat: Table 1 gives 30-year seasonal means, and the hottest days of the year
+warm more than the *average* daily maximum (KNMI'23, "Extreme temperatures").
+Two heat modes therefore exist (HEAT_MODES):
+
+- "average" (default): the season's change of the average daily maximum by
+  day and minimum by night (Table 1). Understates heat-wave stress.
+- "warmest" (heat-wave day): the change of the warmest day of the year at
+  the nearest of KNMI's five KNMI'23 key-figure stations (De Bilt, Den
+  Helder, Groningen, Maastricht, Vlissingen; KNMI'23 data portal,
+  STATION_EXTREMES), by day and night, with the summer changes of
+  humidity, wind and radiation. Apply it to a hot observed day.
+
+Table 1 has no national warmest-day figure, hence the stations. Rain
+extremes do have one and the design rain event uses it (design_rain_mm).
 
 DAG edge: Climate_Change -> Meteorology (what-if only, never stored)
 """
+import math
+
 KNMI23_SOURCE = (
     "KNMI (2023), KNMI'23 climate scenarios for the Netherlands, KNMI Publication 23-03, "
     "Table 1 (country averages, change relative to 1991-2020)"
@@ -136,6 +146,139 @@ SCENARIOS = (CURRENT,) + _COLUMNS
 # temperature change is then the daily minimum's, otherwise the daily maximum's.
 NIGHT_KDOWN_WM2 = 1.0
 
+# ── Heat-wave day: KNMI'23 key figures per station ─────────────────────
+STATIONS_SOURCE = (
+    "KNMI (2023), KNMI'23 climate scenarios, key figures per station "
+    "(klimaatscenarios-data.knmi.nl, table 'Temperatuur', change relative to 1991-2020; "
+    "retrieved 2026-11-14)"
+)
+STATIONS_URL = "https://klimaatscenarios-data.knmi.nl"
+
+HEAT_AVERAGE = "average"
+HEAT_WARMEST = "warmest"
+HEAT_MODES = {
+    HEAT_AVERAGE: "Average day",
+    HEAT_WARMEST: "Warmest day of the year",
+}
+
+# The five stations of KNMI's key-figure tables (KNMI station number and
+# location; De Kooy for Den Helder, Eelde for Groningen, Beek for Maastricht).
+STATIONS = {
+    "De Bilt": {"knmi_id": 260, "lat": 52.100, "lng": 5.180},
+    "Den Helder": {"knmi_id": 235, "lat": 52.928, "lng": 4.781},
+    "Groningen": {"knmi_id": 280, "lat": 53.125, "lng": 6.585},
+    "Maastricht": {"knmi_id": 380, "lat": 50.906, "lng": 5.762},
+    "Vlissingen": {"knmi_id": 310, "lat": 51.442, "lng": 3.596},
+}
+DEFAULT_STATION = "De Bilt"
+
+# Per station: (1991-2020 value, changes in the column order of _COLUMNS).
+#   warmest_day_c    warmest day of the year ("warmste dag per jaar"), °C.
+#                    The portal does not define it; its 1991-2020 values
+#                    (De Bilt 25.5 °C) are those of the warmest daily mean,
+#                    so the change is applied to the day and the night alike.
+#   days_tx30        days with maximum ≥ 30 °C per year
+#   days_tx35        days with maximum ≥ 35 °C per year
+#   tropical_nights  nights with minimum ≥ 20 °C per year
+_STATION_TABLE = {
+    "De Bilt": {
+        "warmest_day_c": (25.5, (1.7, 1.5, 3.0, 2.3, 1.7, 1.5, 6.9, 5.6)),
+        "days_tx30": (5.0, (4.9, 3.9, 8.7, 5.4, 4.9, 3.9, 34, 23)),
+        "days_tx35": (0.2, (0.5, 0.3, 1.4, 0.8, 0.5, 0.3, 8.1, 4.1)),
+        "tropical_nights": (0.3, (0.9, 0.9, 3.1, 2.1, 0.9, 0.9, 24, 20)),
+    },
+    "Den Helder": {
+        "warmest_day_c": (24.2, (1.2, 1.2, 1.8, 1.7, 1.2, 1.2, 4.6, 4.3)),
+        "days_tx30": (1.3, (0.7, 0.7, 1.2, 1.0, 0.7, 0.7, 5.8, 4.8)),
+        "days_tx35": (0.0, (0.1, 0.1, 0.2, 0.2, 0.1, 0.1, 1.2, 0.8)),
+        "tropical_nights": (1.0, (1.6, 1.6, 3.9, 2.8, 1.6, 1.6, 26, 23)),
+    },
+    "Groningen": {
+        "warmest_day_c": (24.9, (1.6, 1.5, 2.5, 1.9, 1.6, 1.5, 6.0, 5.1)),
+        "days_tx30": (5.1, (5.2, 5.2, 7.4, 5.0, 5.2, 5.2, 27, 18)),
+        "days_tx35": (0.2, (0.9, 0.6, 1.2, 0.7, 0.9, 0.6, 5.4, 3.3)),
+        "tropical_nights": (0.1, (0.4, 0.5, 1.6, 1.3, 0.4, 0.5, 14, 13)),
+    },
+    "Maastricht": {
+        "warmest_day_c": (26.9, (1.5, 1.2, 3.0, 2.3, 1.5, 1.2, 7.4, 6.0)),
+        "days_tx30": (7.7, (8.2, 6.5, 12, 8.3, 8.2, 6.5, 47, 34)),
+        "days_tx35": (0.7, (1.6, 1.1, 2.7, 1.6, 1.6, 1.1, 15, 7.8)),
+        "tropical_nights": (0.7, (1.3, 1.1, 5.5, 4.1, 1.3, 1.1, 37, 30)),
+    },
+    "Vlissingen": {
+        "warmest_day_c": (24.5, (1.5, 1.3, 2.2, 1.9, 1.5, 1.3, 5.5, 4.8)),
+        "days_tx30": (2.3, (1.7, 1.3, 3.6, 2.3, 1.7, 1.3, 13, 10)),
+        "days_tx35": (0.1, (0.3, 0.2, 0.5, 0.4, 0.3, 0.2, 3.2, 1.7)),
+        "tropical_nights": (1.4, (1.8, 1.5, 5.5, 3.5, 1.8, 1.5, 41, 35)),
+    },
+}
+STATION_EXTREMES = {
+    station: {
+        name: {"reference": ref, **dict(zip(_COLUMNS, changes))}
+        for name, (ref, changes) in table.items()
+    }
+    for station, table in _STATION_TABLE.items()
+}
+STATION_ROWS = (
+    ("warmest_day_c", "Warmest day", "°C"),
+    ("days_tx30", "Days ≥ 30 °C", "/yr"),
+    ("days_tx35", "Days ≥ 35 °C", "/yr"),
+    ("tropical_nights", "Tropical nights", "/yr"),
+)
+
+
+def normalize_heat(mode):
+    """A valid heat mode, HEAT_AVERAGE for anything else."""
+    return mode if mode in HEAT_MODES else HEAT_AVERAGE
+
+
+def nearest_station(lat=None, lng=None):
+    """
+    The key-figure station closest to a WGS84 point (equirectangular
+    distance, enough at the scale of the Netherlands); DEFAULT_STATION
+    without a point.
+    """
+    if lat is None or lng is None:
+        return DEFAULT_STATION
+    cos_lat = math.cos(math.radians(lat))
+    return min(
+        STATIONS,
+        key=lambda s: (STATIONS[s]["lat"] - lat) ** 2 + ((STATIONS[s]["lng"] - lng) * cos_lat) ** 2,
+    )
+
+
+def warmest_day_change(key, station=DEFAULT_STATION):
+    """Change of the warmest day of the year (°C) at a station; 0 for CURRENT."""
+    key = normalize(key)
+    if key == CURRENT:
+        return 0.0
+    station = station if station in STATION_EXTREMES else DEFAULT_STATION
+    return STATION_EXTREMES[station]["warmest_day_c"][key]
+
+
+def station_table(key, station=None):
+    """
+    The heat key figures of a scenario as display rows, one per station
+    (`station` first when given): [{'station', 'cells': [{'label', 'unit',
+    'reference', 'change', 'future'}]}]; [] for CURRENT.
+    """
+    key = normalize(key)
+    if key == CURRENT:
+        return []
+    order = sorted(STATION_EXTREMES, key=lambda s: (s != station, s))
+    rows = []
+    for name in order:
+        cells = []
+        for indicator, label, unit in STATION_ROWS:
+            values = STATION_EXTREMES[name][indicator]
+            cells.append({
+                "indicator": indicator, "label": label, "unit": unit,
+                "reference": values["reference"], "change": values[key],
+                "future": round(values["reference"] + values[key], 1),
+            })
+        rows.append({"station": name, "nearest": name == station, "cells": cells})
+    return rows
+
 
 def normalize(key):
     """A valid scenario key, or CURRENT for anything else (None, '', unknown)."""
@@ -210,7 +353,7 @@ def deltas(key, period):
     return dict(DELTAS[key][period])
 
 
-def apply_to_weather(weather, key, month=None):
+def apply_to_weather(weather, key, month=None, heat=HEAT_AVERAGE, station=DEFAULT_STATION):
     """
     Observed weather (ta_c, rh_pct, wind_ms, kdown_wm2) moved into a scenario
     with the delta-change of its season (`month`, 1-12; summer when None):
@@ -219,6 +362,9 @@ def apply_to_weather(weather, key, month=None):
         rh    + ΔRH (percentage points), within 0-100
         wind  + Δwind, at least 0
         kdown × (K_ref + ΔK) / K_ref   (K_ref = the season's 1991-2020 mean)
+
+    heat = HEAT_WARMEST (heat-wave day): ta + ΔT of the warmest day of the
+    year at `station` (day and night), the other changes those of summer.
 
     Missing values stay missing; other keys are copied. CURRENT returns the
     weather unchanged.
@@ -229,12 +375,17 @@ def apply_to_weather(weather, key, month=None):
     out = dict(weather)
     if key == CURRENT:
         return out
-    season = season_of_month(month)
+    warmest = normalize_heat(heat) == HEAT_WARMEST
+    season = "summer" if warmest else season_of_month(month)
     d = DELTAS[key][season]
     kdown = weather.get("kdown_wm2")
     if weather.get("ta_c") is not None:
-        daytime = kdown is not None and kdown > NIGHT_KDOWN_WM2
-        out["ta_c"] = round(weather["ta_c"] + (d["tx_c"] if daytime else d["tn_c"]), 1)
+        if warmest:
+            change = warmest_day_change(key, station)
+        else:
+            daytime = kdown is not None and kdown > NIGHT_KDOWN_WM2
+            change = d["tx_c"] if daytime else d["tn_c"]
+        out["ta_c"] = round(weather["ta_c"] + change, 1)
     if weather.get("rh_pct") is not None:
         out["rh_pct"] = round(min(100.0, max(0.0, weather["rh_pct"] + d["rh_pp"])), 1)
     if weather.get("wind_ms") is not None:

@@ -146,3 +146,79 @@ class ScenarioPanelViewTests(TestCase):
         water = self.client.get(reverse("watersupply:recalculate_indicators", args=["city", "Nowhere", 2030]),
                                 {"climate": "2100_Hn"})
         self.assertEqual(water.context["indicators"]["rain_mm"], 31.5)
+
+
+class HeatWaveDayTests(SimpleTestCase):
+    """Warmest day of the year per station (KNMI'23 data portal key figures)."""
+
+    WEATHER = {"ta_c": 30.0, "rh_pct": 50.0, "wind_ms": 2.0, "kdown_wm2": 800.0}
+
+    def test_pinned_station_cells(self):
+        self.assertEqual(climate.STATION_EXTREMES["De Bilt"]["warmest_day_c"]["reference"], 25.5)
+        self.assertEqual(climate.STATION_EXTREMES["De Bilt"]["warmest_day_c"]["2100_Hd"], 6.9)
+        self.assertEqual(climate.STATION_EXTREMES["Maastricht"]["warmest_day_c"]["2100_Hd"], 7.4)
+        self.assertEqual(climate.STATION_EXTREMES["Den Helder"]["warmest_day_c"]["2050_Hd"], 1.8)
+        self.assertEqual(climate.STATION_EXTREMES["Vlissingen"]["tropical_nights"]["2100_Hd"], 41)
+        self.assertEqual(climate.STATION_EXTREMES["De Bilt"]["days_tx35"]["2100_Hn"], 4.1)
+
+    def test_warmest_day_warms_more_than_the_average_summer_maximum(self):
+        for key in climate.SCENARIOS[1:]:
+            self.assertGreater(climate.warmest_day_change(key, "De Bilt"),
+                               climate.DELTAS[key]["summer"]["tx_c"], key)
+
+    def test_nearest_station(self):
+        self.assertEqual(climate.nearest_station(52.22, 6.89), "Groningen")    # Enschede
+        self.assertEqual(climate.nearest_station(52.09, 5.12), "De Bilt")      # Utrecht
+        self.assertEqual(climate.nearest_station(50.85, 5.69), "Maastricht")
+        self.assertEqual(climate.nearest_station(51.50, 3.61), "Vlissingen")
+        self.assertEqual(climate.nearest_station(), "De Bilt")
+
+    def test_heat_wave_day(self):
+        out = climate.apply_to_weather(self.WEATHER, "2100_Hd", 1, climate.HEAT_WARMEST, "De Bilt")
+        self.assertEqual(out["ta_c"], 36.9)       # + warmest day 6.9, whatever the month
+        self.assertEqual(out["rh_pct"], 46.0)     # summer change
+        night = climate.apply_to_weather({**self.WEATHER, "kdown_wm2": 0.0}, "2100_Hd", 7,
+                                         climate.HEAT_WARMEST, "Maastricht")
+        self.assertEqual(night["ta_c"], 37.4)     # same change at night
+        self.assertEqual(climate.apply_to_weather(self.WEATHER, "current", 7, climate.HEAT_WARMEST),
+                         self.WEATHER)
+
+    def test_unknown_heat_mode_is_average(self):
+        self.assertEqual(climate.normalize_heat("<x>"), climate.HEAT_AVERAGE)
+        self.assertEqual(climate.apply_to_weather(self.WEATHER, "2100_Hd", 7, "<x>")["ta_c"], 35.4)
+
+    def test_station_table(self):
+        rows = climate.station_table("2050_Hd", "Maastricht")
+        self.assertEqual(rows[0]["station"], "Maastricht")
+        self.assertTrue(rows[0]["nearest"])
+        self.assertEqual(rows[0]["cells"][0]["future"], 29.9)   # 26.9 + 3.0
+        self.assertEqual(climate.station_table("current"), [])
+
+    def test_heat_panel(self):
+        from urban_heat.views import MOCK_DATA, _build_indicators
+        weather = {"ta_c": 30.0, "rh_pct": 50, "wind_ms": 2.0, "kdown_wm2": 800.0,
+                   "source": "Open-Meteo", "time": "2026-07-15T14:15"}
+        data = {**MOCK_DATA, "weather": weather, "point": (50.85, 5.69)}
+        average = _build_indicators(data, climate_key="2100_Hd")
+        warmest = _build_indicators(data, climate_key="2100_Hd", climate_heat="warmest")
+        self.assertEqual(average["air_temp_C"], 35.4)
+        self.assertEqual(warmest["air_temp_C"], 37.4)
+        self.assertEqual(warmest["climate_station"], "Maastricht")
+        self.assertEqual(warmest["climate_heat"], "warmest")
+        self.assertGreater(warmest["weather_stress"]["wbgt_estimate_c"],
+                           average["weather_stress"]["wbgt_estimate_c"])
+
+
+class HeatWavePanelViewTests(TestCase):
+    def test_scenarios_panel_heat_modes_and_stations(self):
+        response = self.client.get(reverse("weather:climate_panel"),
+                                   {"climate": "2100_Hd", "heat": "warmest", "lat": "50.85", "lng": "5.69"})
+        self.assertContains(response, 'data-climate-heat="warmest"')
+        self.assertContains(response, "Warmest day of the year")
+        self.assertContains(response, "+7.4 °C")
+        self.assertContains(response, "heat=average&amp;lat=50.8500&amp;lng=5.6900")
+
+    def test_heat_panel_takes_the_mode(self):
+        heat = self.client.get(reverse("urban_heat:heat_indicators", args=["city", "Nowhere"]),
+                               {"climate": "2050_Hd", "climate_heat": "warmest"}, HTTP_HX_REQUEST="true")
+        self.assertContains(heat, 'name="climate_heat" value="warmest"')

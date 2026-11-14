@@ -56,6 +56,10 @@ REFERENCES = [
      "Table 1 (country averages, change relative to 1991-2020; Ld/Ln/Hd/Hn, 2050 and 2100). "
      "https://www.knmi.nl/klimaatscenarios — the Klimaateffectatlas viewer shows the current climate, 2050 high and 2100 high.",
      "weather/calculations/climate.py (Scenarios panel; heat and water what-ifs)"),
+    ("KNMI'23 stations", "KNMI (2023), *KNMI'23 climate scenarios, key figures per station*, table Temperatuur "
+     "(warmest day of the year, days with Tx >= 30 and >= 35 °C, tropical nights; De Bilt, Den Helder, Groningen, "
+     "Maastricht, Vlissingen; change relative to 1991-2020). https://klimaatscenarios-data.knmi.nl, retrieved 2026-11-14.",
+     "weather/calculations/climate.py (heat-wave day of the Scenarios panel)"),
     ("Bbl", "Besluit bouwwerken leefomgeving (Bbl), in force since 1 January 2024; art. 4.163 lid 2 "
      "(≥ 55 % of a dwelling's usable area is verblijfsgebied), §4.3.10 daylight. https://wetten.overheid.nl",
      "builtup/calculations/regulations.py"),

@@ -35,6 +35,7 @@ def _get_adminUnit_data(level, location):
     thermal = get_thermal_indices(adminUnit)
     nbs = calculate_nbs_coverage(adminUnit)
     meteo = get_latest_meteorology(adminUnit)
+    point = _unit_point(adminUnit)
 
     return {
         'adminUnit': adminUnit,
@@ -43,23 +44,31 @@ def _get_adminUnit_data(level, location):
         'thermal': thermal,
         'nbs': nbs,
         'meteorology': meteo,
-        'weather': _baseline_weather(adminUnit, meteo),
+        'weather': _baseline_weather(point, meteo),
+        'point': point,
     }
 
 
-def _baseline_weather(adminUnit, meteo):
+def _unit_point(adminUnit):
+    """(lat, lng) of a point on the unit's surface in WGS84, None without a geometry."""
+    geom = getattr(adminUnit, 'geom', None)
+    if geom is None:
+        return None
+    point = geom.point_on_surface.transform(4326, clone=True)
+    return (point.y, point.x)
+
+
+def _baseline_weather(point, meteo):
     """
-    The weather the what-if starts from: live Open-Meteo values at a point of
-    the unit (weather/live.py), else the latest stored station reading,
-    else None. Keys: ta_c, rh_pct, wind_ms, kdown_wm2, source, time,
-    description, icon.
+    The weather the what-if starts from: live Open-Meteo values at `point`
+    ((lat, lng) on the unit, _unit_point; weather/live.py), else the latest
+    stored station reading, else None. Keys: ta_c, rh_pct, wind_ms,
+    kdown_wm2, source, time, description, icon.
     """
     from weather.live import current_weather_or_none
 
-    geom = getattr(adminUnit, 'geom', None)
-    if geom is not None:
-        point = geom.point_on_surface.transform(4326, clone=True)
-        live = current_weather_or_none(point.y, point.x)
+    if point is not None:
+        live = current_weather_or_none(*point)
         if live is not None:
             return live
     return _station_weather(meteo)
@@ -87,6 +96,11 @@ def climate_param(params):
     return climate.normalize(params.get('climate'))
 
 
+def climate_heat_param(params):
+    """Heat mode of the Scenarios panel (`?climate_heat=warmest` = heat-wave day); 'average' otherwise."""
+    return climate.normalize_heat(params.get('climate_heat'))
+
+
 def _month(when):
     """Month (1-12) of an ISO date/time string, None when it has none."""
     try:
@@ -95,23 +109,33 @@ def _month(when):
         return None
 
 
-def _climate_weather(baseline, climate_key):
+def _climate_weather(baseline, climate_key, heat=climate.HEAT_AVERAGE, point=None):
     """
     The observed baseline weather moved into a KNMI'23 scenario (delta-change
     of the observation's season, weather/calculations/climate.py) and the
-    display data of the scenario. Pure; the current climate returns the
+    display data of the scenario. heat='warmest' (heat-wave day) uses the
+    warmest-day change of the key-figure station nearest to `point`
+    ((lat, lng); De Bilt without one). Pure; the current climate returns the
     baseline unchanged.
 
     DAG edge: Climate_Change -> Meteorology (what-if only, never stored)
     """
     scenario = climate.describe(climate_key)
-    if not scenario['active'] or not baseline:
-        return baseline, {'climate': scenario}
-    month = _month(baseline.get('time'))
-    shifted = climate.apply_to_weather(baseline, climate_key, month)
-    season = climate.season_of_month(month)
-    return shifted, {
+    heat = climate.normalize_heat(heat)
+    station = climate.nearest_station(*(point or (None, None)))
+    info = {
         'climate': scenario,
+        'climate_heat': heat,
+        'climate_heat_label': climate.HEAT_MODES[heat],
+        'climate_station': station,
+    }
+    if not scenario['active'] or not baseline:
+        return baseline, info
+    month = _month(baseline.get('time'))
+    shifted = climate.apply_to_weather(baseline, climate_key, month, heat, station)
+    season = 'summer' if heat == climate.HEAT_WARMEST else climate.season_of_month(month)
+    return shifted, {
+        **info,
         'climate_season': season,
         'climate_observed': {name: baseline.get(name) for name in WEATHER_LIMITS},
         'climate_delta': {
@@ -212,13 +236,15 @@ def _weather_indicators(baseline, overrides):
     }
 
 
-def _build_indicators(data, weather_override=None, climate_key=climate.CURRENT):
+def _build_indicators(data, weather_override=None, climate_key=climate.CURRENT,
+                      climate_heat=climate.HEAT_AVERAGE):
     """
     Pure function: takes raw data dict, returns display-ready indicators.
     weather_override: the heat panel's weather what-if (weather_overrides()),
     applied on top of data['weather']; never stored.
     climate_key: a KNMI'23 scenario of the Scenarios panel; the sliders then
     start at the observed weather plus the scenario's change (_climate_weather).
+    climate_heat: 'average' (Table 1 daily max/min) or 'warmest' (heat-wave day).
     """
     thermal = data.get('thermal', {})
     vegetation = data.get('vegetation', {})
@@ -226,7 +252,8 @@ def _build_indicators(data, weather_override=None, climate_key=climate.CURRENT):
     nbs = data.get('nbs', {})
     meteo = data.get('meteorology') or {}
     baseline, climate_info = _climate_weather(
-        data.get('weather') or _station_weather(data.get('meteorology')), climate_key)
+        data.get('weather') or _station_weather(data.get('meteorology')), climate_key,
+        climate_heat, data.get('point'))
     weather = _weather_indicators(baseline, weather_override)
     current = weather['weather']
 
@@ -332,12 +359,14 @@ def heat_indicators(request, level, location):
         data = MOCK_DATA
 
     climate_key = climate_param(request.GET)
+    climate_heat = climate_heat_param(request.GET)
     context = {
         'adminUnit': data['adminUnit'],
         'level': level,
         'location': location,
         'climate_key': climate_key,
-        'indicators': _build_indicators(data, weather_overrides(request.GET), climate_key),
+        'climate_heat': climate_heat,
+        'indicators': _build_indicators(data, weather_overrides(request.GET), climate_key, climate_heat),
     }
 
     if request.headers.get('HX-Request'):
@@ -358,7 +387,8 @@ def recalculate_indicators(request, level, location):
 
     # Allow vegetation override for scenario analysis
     veg_override = request.GET.get('vegetation_pct')
-    indicators = _build_indicators(data, weather_overrides(request.GET), climate_param(request.GET))
+    indicators = _build_indicators(data, weather_overrides(request.GET), climate_param(request.GET),
+                                   climate_heat_param(request.GET))
 
     if veg_override is not None:
         indicators['vegetation_pct'] = float(veg_override)

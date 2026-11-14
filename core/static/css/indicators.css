@@ -677,6 +677,9 @@ input[type="range"].zone-slider::-moz-range-thumb {
 .climate-table th, .climate-table td { padding: 4px 6px; border-bottom: 1px solid rgba(232, 244, 255, 0.08); text-align: right; white-space: nowrap; }
 .climate-table th:first-child, .climate-table td:first-child { text-align: left; }
 .climate-table thead th { color: rgba(232, 244, 255, 0.5); font-weight: 600; text-transform: capitalize; }
+.climate-stations thead th { text-transform: none; }
+.climate-stations tr.is-nearest td { color: #ffb36b; font-weight: 600; }
+.climate-heat-modes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .climate-applies { display: flex; flex-direction: column; gap: 6px; }
 .climate-applies .climate-btn { flex-direction: row; align-items: center; justify-content: space-between; }
 .climate-source { margin-top: 14px; font-size: 0.68rem; color: rgba(232, 244, 255, 0.45); }

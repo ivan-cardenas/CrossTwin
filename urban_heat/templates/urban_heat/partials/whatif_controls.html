@@ -6,6 +6,7 @@ partial and the standalone dashboard. Driven by core/static/js/indicators/heat.j
   <!-- KNMI'23 scenario of the Scenarios panel: the sliders start at the
        observed weather plus its change (urban_heat/views.py::_climate_weather) -->
   <input type="hidden" name="climate" value="{{ climate_key|default:'current' }}">
+  <input type="hidden" name="climate_heat" value="{{ climate_heat|default:'average' }}">
 
   <!-- Weather what-if: starts at the live (or station) weather; the map's
        weather pill mirrors it (heat.js -> WeatherPill.js). Never stored. -->

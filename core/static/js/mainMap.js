@@ -209,9 +209,11 @@ function populationQuery() {
 
 // KNMI'23 climate scenario chosen in the Scenarios panel (Panels.js,
 // weather/calculations/climate.py), passed on to the panels whose
-// meteorology it changes (heat: weather sliders; water: rain and recharge).
+// meteorology it changes (heat: weather sliders; water: rain and recharge),
+// with the heat mode (average day | warmest = heat-wave day; heat panel only).
 function climateParam() {
-  return `climate=${encodeURIComponent(window.CLIMATE_SCENARIO || 'current')}`;
+  return `climate=${encodeURIComponent(window.CLIMATE_SCENARIO || 'current')}` +
+    `&climate_heat=${encodeURIComponent(window.CLIMATE_HEAT || 'average')}`;
 }
 
 // Registry of toolbar panels driven by the selected administrative unit
