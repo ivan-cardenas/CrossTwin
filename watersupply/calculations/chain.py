@@ -66,6 +66,18 @@ def service_time_hours(production_m3_d, demand):
     return round(SERVICE_HOURS_MAX * production_m3_d / demand, 1)
 
 
+DAYS_PER_YEAR = 365
+
+
+def energy_cost_EUR_yr(kwh_day, price_EUR_kWh):
+    """
+    Yearly electricity cost of pumping: kWh/day x 365 x EUR/kWh.
+
+    DAG edge: Energy_Consumption -> OPEX
+    """
+    return kwh_day * DAYS_PER_YEAR * price_EUR_kWh
+
+
 def share_pct(part, total):
     """part / total in percent, one decimal (0 without a total)."""
     return round(part / total * 100, 1) if total else 0

@@ -61,7 +61,6 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 
 - [x] `Total_Population, Household_Size -> Housing_Demand` — `housing.HouseholdSize` (CBS households 86291NED, catalog `CBS_Households`; the population is the median `PopulationProjection` already imported by `CBS_PopulationForecast`, so there is a single population import; `average_size` derived in `save()` and re-derived by signal when the forecast arrives later); `HousingSupplyDemand.demand_units` = baseline population ÷ persons per home. The housing dashboard slider is now *Average persons per home* (default = the CBS value of the unit; a what-if via `chain.what_if_demand`, never written)
 - [x] `Household_Size -> Property` — `builtup.Property.residents` of every dwelling (BAG *Residential function*) = the city's latest average, written by `housing/signals.py` (one `update()` per city; bulk imports deferred)
-- [ ] Verify `CBS_Households` with a real import from the importer UI — the API columns and filters were checked by hand, but no import has run end to end yet
 - [ ] Years before the population forecast (2014-2022) have households but no average size, because the forecast starts in 2023; if they are needed, import observed populations into `PopulationProjection` (or a historical table) rather than adding a second population import
 - [ ] `HousingSupplyDemand` has no supply derivation — `supply_units` is still the CBS stock balance (`CBS_Housing`); decide whether supply should be the count of BAG dwellings (`ResidentialProperty`) plus `New_Units` completions instead
 - [ ] `Property.residents` uses the city's *latest* household size, not the dashboard's year; and household size is carried forward into forecast years (CBS 85172NED, the household forecast, was unavailable when this was built — import it when it is back, as `HouseholdSize` rows for 2027+)
@@ -89,8 +88,8 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 - [ ] `Apparent_Losses -> ILI` — `NonRevenueWater` ILI is only defined for real losses
 - [ ] Non-latest-year `SupplySecurity` records aren't refreshed by signals — `OPEX`/`ExtractionWater`/`MeteredResidential`/`ImportedWater` carry no year field, so only the latest `OPEX`/`SupplySecurity` record is refreshed
 - [ ] `Total_Extraction -> Area_Drought` — `calculate_drought_area()` only sums stored `AreaAffectedDrought` polygons; design in `docs/groundwater_drought_damage_plan.md` / `docs/groundwater_drought_damage.md`
-- [ ] `Total_Water_Prod -> Energy_Consumption` is partial — energy is pump rate x operation hours, not derived from the produced volume
-- [ ] `Energy_Consumption -> OPEX` — not a term of `OPEX.save()` (the energy cost is assumed inside each well's `opex_EUR_m3`); decide whether to keep it implicit or derive it from `Energy_Consumption` x `ElectricityCost`
+han
+- [x] `Energy_Consumption -> OPEX` — not a term of `OPEX.save()` (the energy cost is assumed inside each well's `opex_EUR_m3`); decide whether to keep it implicit or derive it from `Energy_Consumption` x `ElectricityCost` (2026-11-14: derived in `OPEX.save()`, pump kWh x province price, replacing each well's `energy_EUR_m3`)
 - [ ] `WT_Efficiency -> Samples_WQ` — `calculate_water_quality()` averages `treatment_efficiency` beside the compliance ratio, but efficiency does not affect it (`Samples_Taken -> Samples_WQ` = ok / taken is fine)
 
 ---

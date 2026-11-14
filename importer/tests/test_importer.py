@@ -1506,3 +1506,37 @@ class GenericImportAttributeTests(TestCase):
         self.assertEqual(well.depth_m, 80.0)
         self.assertFalse(well.is_active)
         self.assertEqual(well.source, source)
+
+    def test_flow_in_m3_per_day_is_converted_to_m3_per_second(self):
+        from shapely.geometry import Point as ShapelyPoint
+
+        from physicalEnv.models import EnvironmentalCosts
+        from watersupply.models import AvailableFreshWater, ExtractionWater
+
+        EnvironmentalCosts.objects.create(price_EUR_kg_CO2=0.05, price_EUR_droughtDamage_m3=0.02)
+        x, y = 257000.0, 470000.0
+        square = Polygon(((x - 500, y - 500), (x + 500, y - 500), (x + 500, y + 500),
+                          (x - 500, y + 500), (x - 500, y - 500)))
+        AvailableFreshWater.objects.create(
+            SourceName="Src", geom=MultiPolygon(square, srid=RD), infiltrationRate_cm_h=1.0,
+            infiltrationDepth_cm=10.0, totalQuantity_Mm3=100.0, yield_Mm3_year=10.0)
+        gdf = gpd.GeoDataFrame({"naam": ["Well A"], "flow": [-8640.0], "max": [360.0]},
+                               geometry=[ShapelyPoint(x, y)], crs=f"EPSG:{RD}")
+        colmap = {"stationName": "naam", "pumpflow_m3_s": "flow", "pumpMaxFlow_m3_s": "max"}
+
+        report = _generic_import(gdf, "watersupply.ExtractionWater", colmap, dry_run=False,
+                                 units={"pumpflow_m3_s": "m3_d", "pumpMaxFlow_m3_s": "m3_h"})
+
+        self.assertEqual(report["errors"], 0, report["sample_errors"])
+        well = ExtractionWater.objects.get()
+        self.assertAlmostEqual(well.pumpflow_m3_s, 0.1)     # |-8640| m3/day
+        self.assertAlmostEqual(well.pumpMaxFlow_m3_s, 0.1)  # 360 m3/h
+
+    def test_mapping_form_offers_a_unit_beside_flow_fields(self):
+        from importer.views import _build_mapping_form
+
+        form, _spec = _build_mapping_form("watersupply.ExtractionWater", ["flow"], None)
+        rows = {field.name: unit for field, unit in form.mapping_rows()}
+        self.assertEqual(rows["map__pumpflow_m3_s"].name, "unit__pumpflow_m3_s")
+        self.assertIsNone(rows["map__stationName"])
+        self.assertNotIn("unit__pumpflow_m3_s", rows)

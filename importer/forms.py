@@ -122,4 +122,13 @@ class MappingForm(forms.Form):
     Dynamic form for field mapping.
     Fields are added dynamically in the view based on the target model.
     """
-    pass
+    LAYOUT_FIELDS = ('dry_run', 'target_srid')
+
+    def mapping_rows(self):
+        """(field, its unit select or None) for the column-mapping grid."""
+        for field in self:
+            name = field.name
+            if name in self.LAYOUT_FIELDS or name.startswith('unit__'):
+                continue
+            unit_name = f'unit__{name[len("map__"):]}' if name.startswith('map__') else None
+            yield field, (self[unit_name] if unit_name in self.fields else None)

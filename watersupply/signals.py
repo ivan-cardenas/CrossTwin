@@ -15,6 +15,7 @@ Dependency chain implemented here (source -> dependent):
     and the population of every city sharing a watershed (it sets each city's
     share of the watershed's extraction) -> SupplySecurity
     WaterTreatment, MeteredResidential, PipeNetwork -> OPEX
+    ElectricityCost (Energy) -> TotalWaterProduction, OPEX of that year
     Property.residents (housing: residents_changed), Property saved/deleted,
     PipeNetwork, the latest CoverageWaterSupply.buffer_m
         -> UsersLocation (users = residents, population served = residents
@@ -48,6 +49,7 @@ from administrative.models import City, PopulationProjection
 from administrative.calculations.population import DEFAULT_SCENARIO
 from administrative.signals import city_population_changed
 from builtup.models import Property
+from Energy.models import ElectricityCost
 from builtup.signals import residents_changed
 from physicalEnv.calculations.landcover import landcover_created
 from physicalEnv.signals import urban_area_changed
@@ -326,6 +328,22 @@ def metered_changed(sender, instance, raw=False, **kwargs):
 def treatment_changed(sender, instance, raw=False, **kwargs):
     if not raw:
         _resave(OPEX.objects.filter(year=instance.year))
+
+
+@receiver(post_save, sender=ElectricityCost, dispatch_uid="water_electricity_saved")
+@receiver(post_delete, sender=ElectricityCost, dispatch_uid="water_electricity_deleted")
+def electricity_changed(sender, instance, raw=False, **kwargs):
+    """
+    The electricity price of a year prices the pump energy of that year's
+    production and OPEX records.
+
+    DAG edges: Energy_Cost -> Total_Water_Prod
+               Energy_Consumption -> OPEX (the price turns the kWh into EUR)
+    """
+    if raw:
+        return
+    _resave(TotalWaterProduction.objects.filter(year=instance.year))
+    _resave(OPEX.objects.filter(year=instance.year))
 
 
 # ── network -> coverage, OPEX ────────────────────────────────────────

@@ -17,7 +17,19 @@ class ElectricityCost(models.Model):
     
     def __str__(self):
         return f"{self.province} - {self.year}: {self.cost_EUR_kWh} EUR/kWh"
-    
+
+    @classmethod
+    def price(cls, province_id, year, default):
+        """
+        EUR/kWh for `province_id` in `year`: the province's record, else a
+        national record (no province), else `default`.
+        """
+        for province in ((province_id,) if province_id is not None else ()) + (None,):
+            row = cls.objects.filter(province_id=province, year=year).order_by('-last_updated', '-id').first()
+            if row is not None:
+                return row.cost_EUR_kWh
+        return default
+
     class Meta:
         verbose_name = "Electricity Cost"
         verbose_name_plural = "Electricity Costs"

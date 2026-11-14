@@ -161,7 +161,8 @@ EDGE_STATUS = {
     # ── Water costs / tariff ─────────────────────────────────────────────
     ("Energy_Cost", "Energy_Consumption"): (G, "", "Electricity price changes cost, not consumption; calculate_energy_consumption ignores it."),
     ("Energy_Cost", "Total_Water_Prod"): (I, "TotalWaterProduction.calculate()", "Pump kWh priced with ElectricityCost of the province / year."),
-    ("Energy_Consumption", "OPEX"): (G, "", "Not a term of OPEX.save(); energy assumed inside each well's opex_EUR_m3."),
+    ("Energy_Consumption", "OPEX"): (I, "OPEX.save() -> chain.energy_cost_EUR_yr",
+        "Pump kWh/day x 365 x ElectricityCost of the well's province / year (replaces energy_EUR_m3). Receiver electricity_changed."),
     ("WT_Cost", "OPEX"): (I, "OPEX.save()", "Mean UnitaryOPEX of the year x volume."),
     ("Network", "OPEX"): (I, "OPEX.save()", "Maintenance EUR/km x length."),
     ("Imported_Water", "OPEX"): (I, "OPEX.save()", "Quantity x price."),

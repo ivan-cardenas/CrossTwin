@@ -541,18 +541,19 @@ $[K] = \si{kWh/day}$. \textbf{DAG edges:} \dagedge{Total\_Extraction $\rightarro
 \subsection{Consolidated OPEX --- \code{OPEX.save()}}
 \textbf{Location:} \code{watersupply/models.py:640}
 \begin{align}
-  \text{Cost}_{\text{extraction}} &= \sum \big(\texttt{opex\_EUR\_m3} \times \texttt{current\_extraction\_Mm3\_yr} \times 10^6\big) \\
+  \text{Cost}_{\text{extraction}} &= \sum_{w} \big(\texttt{opex\_EUR\_m3}_w - e_w\big) \times \texttt{current\_extraction\_Mm3\_yr}_w \times 10^6, \quad e_w = \texttt{energy\_EUR\_m3}_w \text{ if } w \text{ has pump energy data, else } 0 \\
+  \text{Cost}_{\text{energy}} &= \sum_{w} \texttt{pumpEnergyRate\_kWh\_h}_w \times \texttt{OperationTime\_h\_day}_w \times 365 \times p_{\text{prov}(w),\,\text{year}} \\
   \text{Cost}_{\text{imported}} &= \sum \big(\texttt{quantity\_m3\_d} \times 365 \times \texttt{price\_EUR\_m3}\big) \\
   \text{Cost}_{\text{treatment}} &= \overline{\texttt{UnitaryOPEX\_EUR\_m3}}_{\,\text{year}} \times V_{\text{yr}} \\
   \text{Cost}_{\text{network}} &= \sum \big(\texttt{maitenanceCost\_EUR\_km} \times \texttt{length\_km}\big) \\
-  \texttt{totalOPEX\_EUR} &= \text{Cost}_{\text{extraction}} + \text{Cost}_{\text{imported}} + \text{Cost}_{\text{treatment}} + \text{Cost}_{\text{network}} \\
+  \texttt{totalOPEX\_EUR} &= \text{Cost}_{\text{extraction}} + \text{Cost}_{\text{energy}} + \text{Cost}_{\text{imported}} + \text{Cost}_{\text{treatment}} + \text{Cost}_{\text{network}} \\
   \texttt{UnitaryOPEX\_EUR\_m3} &= \frac{\texttt{totalOPEX\_EUR}}{V_{\text{yr}}}, \qquad V_{\text{yr}} = V_{\text{extraction}} + V_{\text{imported}}
 \end{align}
-\code{TotalWaterProduction}'s own energy cost is deliberately excluded, since it is already embedded in $\texttt{opex\_EUR\_m3}$ (see inline comment, \code{watersupply/models.py}).
+$p$ = \code{ElectricityCost.price()} (EUR/kWh of the well's province in the OPEX year, else a national row, else the assumed default 0.15). The derived pumping cost replaces each well's stored energy share $e_w$; $\text{Cost}_{\text{energy}}$ is computed by \code{watersupply/calculations/chain.py::energy\_cost\_EUR\_yr}. Treatment energy is taken to be inside the treatment \texttt{UnitaryOPEX}. \code{TotalWaterProduction}'s cost is not added (it would count the same pump energy twice). An \code{ElectricityCost} save/delete re-saves the OPEX and production records of its year (\code{electricity\_changed}).
 \begin{equation}
   \texttt{OPEX\_recovered\_PCT} = \frac{\sum \texttt{Recovery\_EUR}}{\texttt{totalOPEX\_EUR}} \times 100
 \end{equation}
-\textbf{DAG edges:} \dagedge{Total\_Extraction/Total\_Water\_Prod $\rightarrow$ OPEX}, \dagedge{Imported\_Water $\rightarrow$ OPEX}, \dagedge{WT\_Cost $\rightarrow$ OPEX}, \dagedge{Network $\rightarrow$ OPEX}, \dagedge{Metered\_Res\_Water $\rightarrow$ OPEX\_Recovery} --- \statusdone{}
+\textbf{DAG edges:} \dagedge{Total\_Extraction/Total\_Water\_Prod $\rightarrow$ OPEX}, \dagedge{Energy\_Consumption $\rightarrow$ OPEX}, \dagedge{Imported\_Water $\rightarrow$ OPEX}, \dagedge{WT\_Cost $\rightarrow$ OPEX}, \dagedge{Network $\rightarrow$ OPEX}, \dagedge{Metered\_Res\_Water $\rightarrow$ OPEX\_Recovery} --- \statusdone{}
 
 \subsection{OPEX recovery (dashboard) --- \code{calculate\_opex\_recovery()}}
 \textbf{Location:} \code{watersupply/calculations/indicators.py:205}
@@ -1000,7 +1001,7 @@ watersupply & \code{calculate\_total\_production\_day()} & Total\_Extraction / I
 watersupply & \code{calculate\_supply\_security()} / \code{SupplySecurity.save()} & Total\_Water\_Demand / Prod $\to$ Supply\_Security $\to$ Service\_Time & \statusdone{} \\
 watersupply & \code{calculate\_energy\_consumption()} & Total\_Extraction / Prod $\to$ Energy\_Consumption & \statuspartial{} \\
 watersupply & \code{ExtractionWater.save()} (emissions) & Total\_Extraction $\to$ CO2\_Emission & \statusdone{} \\
-watersupply & \code{OPEX.save()} & Extraction / Imported / WT\_Cost / Network $\to$ OPEX & \statusdone{} \\
+watersupply & \code{OPEX.save()} & Extraction / Energy / Imported / WT\_Cost / Network $\to$ OPEX & \statusdone{} \\
 watersupply & \code{calculate\_opex\_recovery()} & OPEX / CollectionRatio / NRW $\to$ OPEX\_Recovery & \statuspartial{} \\
 watersupply & \code{MeteredResidential.save()} & Metered\_Res\_Water $\to$ OPEX\_Recovery & \statusdone{} \\
 watersupply & \code{calculate\_collection\_ratio()} & Metered\_Res\_Water / User\_Acceptance / Water\_Tariff $\to$ CollectionRatio & \statuspartial{} \\

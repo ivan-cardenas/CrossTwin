@@ -1,5 +1,5 @@
 from django.contrib.gis.db import models
-from django.db.models import Sum, F, ExpressionWrapper, FloatField
+from django.db.models import Case, ExpressionWrapper, F, FloatField, OuterRef, Q, Subquery, Sum, Value, When
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from django.core.exceptions import ValidationError
@@ -8,6 +8,10 @@ from physicalEnv.models import EnvironmentalCosts
 from django.conf import settings
 
 COORDINATE_SYSTEM = settings.COORDINATE_SYSTEM
+
+# EUR/kWh used when no ElectricityCost record exists for a province (or nationally)
+# in the year: an assumed Dutch non-household price, not a measured value.
+DEFAULT_ELECTRICITY_EUR_KWH = 0.15
 
 class WMSLayer(models.Model):
     name = models.CharField(max_length=200)
@@ -431,6 +435,13 @@ class ExtractionWater(models.Model):
         OPEX per m3, CO2 cost per m3 and drought damage per m3. OPEX and the two
         environmental costs are only calculated when not supplied explicitly.
         """
+        # Some vendors report extraction as a negative flow (water leaving the
+        # aquifer); store the magnitude so volumes, energy and costs stay positive.
+        if self.pumpflow_m3_s is not None:
+            self.pumpflow_m3_s = abs(self.pumpflow_m3_s)
+        if self.pumpMaxFlow_m3_s is not None:
+            self.pumpMaxFlow_m3_s = abs(self.pumpMaxFlow_m3_s)
+
         # Assign source from location only when none was given explicitly
         if self.source_id is None:
             source = AvailableFreshWater.objects.filter(
@@ -827,22 +838,55 @@ class OPEX(models.Model):
     def save(self, *args, **kwargs):
         """
         DAG edges: Total_Extraction/Total_Water_Prod -> OPEX
+                   Energy_Consumption -> OPEX
                    Imported_Water -> OPEX, WT_Cost -> OPEX, Network -> OPEX
                    Metered_Res_Water -> OPEX_Recovery
-        totalOPEX_EUR = extraction (opex/m3 x current extraction)
+        totalOPEX_EUR = extraction (opex/m3 x current extraction; for a well
+                        with pump energy data its energy_EUR_m3 share is left out)
+                      + pumping energy (pump kWh/day x 365 x the electricity
+                        price of the well's province in this record's year,
+                        chain.energy_cost_EUR_yr)
                       + imported water (quantity x price)
                       + treatment (mean UnitaryOPEX of that year x volume produced)
                       + network maintenance (EUR/km x length)
+        The derived energy cost replaces the stored per-m3 energy share, so a
+        supplied opex_EUR_m3 without energy_EUR_m3 is read as excluding energy.
+        Treatment energy (WaterTreatment.EnergyConsumption_MW_day) is not priced
+        here: it is taken to be inside the treatment UnitaryOPEX.
         The inputs (ExtractionWater, ImportedWater, PipeNetwork, MeteredResidential)
-        have no year, so they are read as the current state; treatment is filtered
-        by this record's year. If no cost data exists at all the supplied
-        totalOPEX_EUR / UnitaryOPEX_EUR_m3 are kept.
+        have no year, so they are read as the current state; treatment and the
+        electricity price are filtered by this record's year. If no cost data
+        exists at all the supplied totalOPEX_EUR / UnitaryOPEX_EUR_m3 are kept.
         """
-        extraction = ExtractionWater.objects.filter(is_active=True).aggregate(
-            cost=Sum(ExpressionWrapper(
-                F('opex_EUR_m3') * F('current_extraction_Mm3_yr') * 1e6, output_field=FloatField())),
-            volume=Sum(ExpressionWrapper(
-                F('current_extraction_Mm3_yr') * 1e6, output_field=FloatField())),
+        from Energy.models import ElectricityCost
+        from watersupply.calculations.chain import energy_cost_EUR_yr
+
+        wells = ExtractionWater.objects.filter(is_active=True)
+        pumped = Q(pumpEnergyRate_kWh_h__isnull=False, OperationTime_h_day__isnull=False)
+        volume_m3_yr_expr = F('current_extraction_Mm3_yr') * 1e6
+        extraction = wells.aggregate(
+            cost=Sum(Case(
+                When(pumped, then=ExpressionWrapper(
+                    (Coalesce(F('opex_EUR_m3'), Value(0.0)) - Coalesce(F('energy_EUR_m3'), Value(0.0)))
+                    * volume_m3_yr_expr, output_field=FloatField())),
+                default=ExpressionWrapper(F('opex_EUR_m3') * volume_m3_yr_expr, output_field=FloatField()),
+                output_field=FloatField(),
+            )),
+            volume=Sum(ExpressionWrapper(volume_m3_yr_expr, output_field=FloatField())),
+        )
+        # Pump energy per province (the electricity price is set per province)
+        energy_by_province = (
+            wells.filter(pumped)
+            .annotate(province_id=Subquery(
+                Province.objects.filter(geom__contains=OuterRef('geom')).values('pk')[:1]))
+            .values('province_id')
+            .annotate(kwh_day=Sum(ExpressionWrapper(
+                F('pumpEnergyRate_kWh_h') * F('OperationTime_h_day'), output_field=FloatField())))
+        )
+        energy_cost = sum(
+            energy_cost_EUR_yr(row['kwh_day'] or 0, ElectricityCost.price(
+                row['province_id'], self.year, DEFAULT_ELECTRICITY_EUR_KWH))
+            for row in energy_by_province
         )
         imported = ImportedWater.objects.filter(is_active=True).aggregate(
             cost=Sum(ExpressionWrapper(
@@ -860,7 +904,7 @@ class OPEX(models.Model):
         )['cost'] or 0
 
         total = (
-            (extraction['cost'] or 0) + (imported['cost'] or 0)
+            (extraction['cost'] or 0) + energy_cost + (imported['cost'] or 0)
             + treatment_unit * volume_m3_yr + network_maintenance
         )
         if total > 0:
@@ -936,7 +980,7 @@ class TotalWaterProduction(models.Model):
     last_updated = models.DateTimeField(default=timezone.now)
 
     # Used when no ElectricityCost record exists for the source's province/year.
-    DEFAULT_ELECTRICITY_EUR_KWH = 0.15
+    DEFAULT_ELECTRICITY_EUR_KWH = DEFAULT_ELECTRICITY_EUR_KWH
 
     def __str__(self):
         return f"Production {self.year}: {self.productionDay} Mm3/day"
@@ -979,13 +1023,12 @@ class TotalWaterProduction(models.Model):
             imported = {k: v or 0 for k, v in agg.items()}
 
         # Electricity price: province of the first linked source, for this year
-        elec_cost = self.DEFAULT_ELECTRICITY_EUR_KWH
         first_source = sources.first()
+        province_id = None
         if first_source is not None:
-            province = Province.objects.filter(geom__contains=first_source.geom.centroid).first()
-            price = ElectricityCost.objects.filter(province=province, year=self.year).first() if province else None
-            if price is not None:
-                elec_cost = price.cost_EUR_kWh
+            province_id = Province.objects.filter(
+                geom__contains=first_source.geom.centroid).values_list('pk', flat=True).first()
+        elec_cost = ElectricityCost.price(province_id, self.year, self.DEFAULT_ELECTRICITY_EUR_KWH)
 
         self.productionDay = ((extraction['m3_day'] or 0) + imported['m3_day']) / 1e6  # Mm3/day
         self.productionYR = self.productionDay * 365

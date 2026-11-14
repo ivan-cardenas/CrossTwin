@@ -64,8 +64,7 @@
             </h3>
             
             <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {% for field in mapping_form %}
-                    {% if field.name != 'dry_run' and field.name != 'target_srid' %}
+                {% for field, unit in mapping_form.mapping_rows %}
                     <div class="space-y-1.5">
                         <label class="text-sm font-medium text-slate-100 flex items-center gap-2">
                             {{ field.label }}
@@ -74,6 +73,12 @@
                             {% endif %}
                         </label>
                         {{ field }}
+                        {% if unit %}
+                        <label class="flex items-center gap-2 text-xs text-slate-300">
+                            <span>Unit</span>
+                            {{ unit }}
+                        </label>
+                        {% endif %}
                         {% if field.help_text %}
                         <span class="helptext">{{ field.help_text }}</span>
                         {% endif %}
@@ -85,7 +90,6 @@
                         </ul>
                         {% endif %}
                     </div>
-                    {% endif %}
                 {% endfor %}
             </div>
         </div>
