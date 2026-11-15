@@ -121,6 +121,7 @@ def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, po
         'apparent_losses_m3_d': nrw['apparent_losses_m3_d'],
         'real_losses_m3_d':     nrw['real_losses_m3_d'],
         'ili':                  nrw['ili'],
+        'uarl_reliable':        nrw['uarl_reliable'],
         # ── New DAG-derived fields ──
         'extraction_m3_d':      extraction_m3_d,
         'energy_kwh_day':       energy_kwh_day,
@@ -149,6 +150,7 @@ MOCK_DATA = {
     'apparent_losses_m3_d': 1_200,
     'real_losses_m3_d':     2_000,
     'ili':                  3.5,
+    'uarl_reliable':        True,
     'extraction_m3_d':      18_000,
     'energy_kwh_day':       4_500,
     'co2_kg_day':           2_250,
@@ -352,6 +354,7 @@ def _build_indicators(data, consumption_override=None, rain_mm=None, climate_key
         'apparent_losses_m3_d':  round(data.get('apparent_losses_m3_d', 0), 1),
         'real_losses_m3_d':      round(data.get('real_losses_m3_d', 0), 1),
         'ili':                   data.get('ili'),
+        'uarl_reliable':         data.get('uarl_reliable', False),
         # ── New DAG indicators ──
         'extraction_m3_d':       round(data.get('extraction_m3_d', 0), 1),
         'energy_kwh_day':        round(data.get('energy_kwh_day', 0), 1),

@@ -560,6 +560,10 @@ class CoverageWaterSupply(models.Model):
     city = models.ForeignKey(City, on_delete=models.DO_NOTHING, null=True, help_text="City code from administrative.City")
     year = models.IntegerField()
     buffer_m = models.FloatField(default=50, help_text="Buffer distance around pipes in meters")
+    avg_pressure_m = models.FloatField(
+        default=30.0,
+        help_text="Average operating pressure of the city's network in m (editable; "
+                  "default chain.DEFAULT_PRESSURE_M). Feeds the UARL of LeakageIndex")
     coveredArea_km2 = models.FloatField(help_text="Covered area in square kilometers")
     households_covered = models.IntegerField(default=0, help_text="Number of households within the service area")
     households_total = models.IntegerField(default=0, help_text="Total households in the city")
@@ -729,37 +733,20 @@ class NonRevenueWater(models.Model):
                             default=LossesChoices.ConsumerMeter , help_text="Specific loss category")
     loss_Quantity_m3 = models.FloatField(help_text="Loss quantity in cubic meters per day")
     WaterCost_EUR_day = models.FloatField(help_text="Water cost in EUR per day")
-    UnavoidableLossses_PCT = models.FloatField(help_text="Unavoidable losses in percentage")
+    UnavoidableLossses_PCT = models.FloatField(help_text="Unavoidable losses in percentage (record data only; the ILI uses the IWA UARL of LeakageIndex)")
     # DAG edge: Network -> Real_Losses. Nullable only for records created before the link.
     pipe = models.ForeignKey(PipeNetwork, on_delete=models.DO_NOTHING, null=True, blank=True,
                              related_name='losses',
                              help_text="Pipe where the real loss (leakage) is presumed to occur")
-    ILI = models.FloatField(null=True, blank=True, help_text="Infrastructure Leakage Index")
     last_updated = models.DateTimeField(default=timezone.now)
 
     def save(self, *args, **kwargs):
-        # Auto-assign loss type from specificLoss
+        # Auto-assign loss type from specificLoss. The ILI of the year is
+        # LeakageIndex (watersupply/signals.py re-saves it after this save).
         if self.specificLoss in self.REAL_CHOICES:
             self.type = self.LossesTypes.Real
         else:
             self.type = self.LossesTypes.Apparent
-
-        # Calculate ILI for Real losses: CARL / UARL across the whole year
-        if self.type == self.LossesTypes.Real:
-            # Get all other Real loss records for this year (exclude self if updating)
-            qs = NonRevenueWater.objects.filter(year=self.year, type='R')
-            if self.pk:
-                qs = qs.exclude(pk=self.pk)
-
-            carl_daily = sum(r.loss_Quantity_m3 for r in qs) + self.loss_Quantity_m3
-            uarl_daily = (
-                sum(r.loss_Quantity_m3 * r.UnavoidableLossses_PCT / 100 for r in qs)
-                + self.loss_Quantity_m3 * self.UnavoidableLossses_PCT / 100
-            )
-
-            self.ILI = round(carl_daily / uarl_daily, 2) if uarl_daily > 0 else None
-        else:
-            self.ILI = None
 
         self.last_updated = timezone.now()
         super().save(*args, **kwargs)
@@ -823,6 +810,69 @@ class NonRevenueWater(models.Model):
         event.save()
         return event
     
+class LeakageIndex(models.Model):
+    """
+    Infrastructure Leakage Index of the whole network for one year (IWA):
+    ILI = CARL / UARL. CARL = the year's real losses (NonRevenueWater type R);
+    UARL = Σ per city (18 Lm + 0.8 Nc + 25 Lp) x P (Lambert et al. 1999), with
+    each city's editable pressure (CoverageWaterSupply.avg_pressure_m), mains
+    length and connections (calculations/leakage.py). Apparent losses are no
+    leakage and do not enter it. The inputs used are stored with the result.
+    """
+    year = models.IntegerField(unique=True)
+    private_pipe_m_per_conn = models.FloatField(
+        default=5.0, help_text="Private pipe from property boundary to meter, m per connection "
+                               "(editable; default chain.DEFAULT_PRIVATE_PIPE_M)")
+    mains_km = models.FloatField(null=True, blank=True, editable=False, help_text="Lm: mains length (km)")
+    connections = models.IntegerField(null=True, blank=True, editable=False,
+                                      help_text="Nc: service connections (dwellings within the service buffer)")
+    pressure_m = models.FloatField(null=True, blank=True, editable=False,
+                                   help_text="P: mean of the cities' avg_pressure_m, weighted by Lm + Nc (m)")
+    city_inputs = models.JSONField(default=list, blank=True, editable=False,
+                                   help_text="Per city: coverage year, Lm, Nc, P and UARL used")
+    carl_m3_d = models.FloatField(null=True, blank=True, editable=False,
+                                  help_text="CARL: current annual real losses (m³/day)")
+    uarl_m3_d = models.FloatField(null=True, blank=True, editable=False,
+                                  help_text="UARL: unavoidable annual real losses (m³/day)")
+    uarl_reliable = models.BooleanField(default=False, editable=False,
+                                        help_text="Nc ≥ 3000, ≥ 20 connections/km and P ≥ 25 m (Lambert & McKenzie 2002)")
+    ILI = models.FloatField(null=True, blank=True, editable=False, help_text="Infrastructure Leakage Index")
+    last_updated = models.DateTimeField(default=timezone.now)
+
+    def save(self, *args, **kwargs):
+        """
+        DAG edges: Real_Losses -> ILI (CARL), Network -> ILI (UARL from the mains
+                   length, connections and pressure per city)
+
+        Without pipes or connections the stored UARL and ILI are kept (no
+        zero is written); without real-loss records CARL and ILI are empty.
+        """
+        from .calculations import chain, leakage
+
+        carl = (NonRevenueWater.objects.filter(year=self.year, type=NonRevenueWater.LossesTypes.Real)
+                .aggregate(total=Sum('loss_Quantity_m3'))['total'])
+        self.carl_m3_d = carl
+        parts = leakage.network_parts(self.year, self.private_pipe_m_per_conn)
+        totals = leakage.combine(parts)
+        if totals['mains_km'] > 0 and totals['connections'] > 0:
+            self.city_inputs = parts
+            self.mains_km = totals['mains_km']
+            self.connections = totals['connections']
+            self.pressure_m = totals['pressure_m']
+            self.uarl_m3_d = round(totals['uarl_m3_d'], 3)
+            self.uarl_reliable = totals['reliable']
+        self.ILI = chain.ili(carl, self.uarl_m3_d) if carl is not None else None
+        self.last_updated = timezone.now()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"ILI {self.year}: {self.ILI}"
+
+    class Meta:
+        verbose_name = "Leakage Index (ILI)"
+        verbose_name_plural = "Leakage Index (ILI) Records"
+
+
 class OPEX(models.Model):
     id = models.AutoField(primary_key=True)
     year = models.IntegerField(help_text="Year of operation")

@@ -24,3 +24,4 @@ admin.site.register(CoverageWaterSupply)
 admin.site.register(NonRevenueWater)
 admin.site.register(Watershed)
 
+admin.site.register(LeakageIndex)

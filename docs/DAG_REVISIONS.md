@@ -11,6 +11,22 @@ A dated log of every change to the DPSIR causal graph: what changed, why, and wh
 - **Lagged edge** `[lag=1, style=dashed]`. The cause acts one planning step later (a feedback). It is left out of the acyclicity check and never implemented by a receiver, because a receiver would close the loop within one save. Each lagged edge is argued here and listed in `core/test_dag.py::LAGGED_EDGES`.
 - **Counting.** Distinct `source -> target` pairs, legend excluded. `core/test_dag.py::parse_dag` is the reference parser.
 
+## 2026-11-15: `Apparent_Losses -> ILI` replaced by `Network -> ILI`
+
+The Infrastructure Leakage Index of the IWA Water Loss Task Force is ILI = CARL / UARL: current annual *real* losses over the unavoidable annual *real* losses (Lambert et al. 1999). Apparent losses (meter error, unauthorised use, data errors) are no leakage and enter neither term, so the edge described no mechanism and could never be implemented. It is removed. They still reach `NRW`.
+
+What the graph lacked is the driver of the denominator. UARL = (18 Lm + 0.8 Nc + 25 Lp) x P depends on the network: mains length Lm, service connections Nc, private pipe length Lp and the operating pressure P. The ILI used to divide the losses by a percentage of themselves (`UnavoidableLossses_PCT`), so it ignored the network. `LeakageIndex` (one row per year) now sums UARL per city with the city's editable pressure (`CoverageWaterSupply.avg_pressure_m`, default 30 m, no pressure data is imported yet) and stores the inputs used.
+
+| Change | Edge | Status |
+|---|---|---|
+| removed | `Apparent_Losses -> ILI` | was a gap |
+| added | `Network -> ILI` | implemented (`LeakageIndex.save()` → `watersupply/calculations/chain.py::uarl_m3_d`) |
+| re-implemented | `Real_Losses -> ILI` | implemented (CARL of `LeakageIndex`; formerly a sibling `update()` on the loss rows) |
+
+**Consequences.** Acyclicity is unaffected: nothing downstream of `ILI` reaches `Network`. Nc counts dwellings within the service buffer as connections (each Dutch dwelling has its own meter), which overcounts shared connections of apartment blocks. `LeakageIndex.uarl_reliable` flags systems below the equation's range (Nc < 3000, < 20 connections/km or P < 25 m; Lambert & McKenzie 2002).
+
+**Coverage.** 105 distinct edges. Before: 60 implemented, 7 partial, 38 gaps (57 %). After: 61 implemented, 7 partial, 37 gaps (58 %).
+
 ## 2026-11-12: `Buildings -> Streets` flipped to `Streets -> Buildings`
 
 The edge said that new buildings cause their access streets. The neighbourhood generator (`builtup/calculations/generative.py`), the first code to implement either direction, works the other way round, as urban layout does in practice: the street grid is drawn first, the land it leaves is cut into blocks and plots, and the buildings are placed on them. Counting the edge as implemented while the code runs the opposite way would misstate the mechanism in a coverage figure that is cited, so the edge now follows the code.

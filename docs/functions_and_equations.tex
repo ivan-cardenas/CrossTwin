@@ -608,15 +608,15 @@ With $L_c$ the city's urban land-cover polygons (classes matching \code{URBAN\_A
 (no network: $A_{\text{uncovered}} = A_{\text{urban}}$; no land cover: fields empty). Stored as \code{urban\_area\_km2}, \code{uncovered\_urban\_km2}, \code{uncovered\_urban\_pct}; the dashboard sums each city's latest record. It flags urban growth the network has not followed; it does not extend the network. \textbf{DAG edge:} \dagedge{CityArea $\rightarrow$ Network} --- \statuspartial{}
 
 \subsection{Non-Revenue Water and ILI}
-\textbf{Location:} \code{calculate\_nrw()} (\code{watersupply/calculations/indicators.py:275}); \code{NonRevenueWater.save()} (\code{watersupply/models.py:551})
+\textbf{Location:} \code{calculate\_nrw()} (\code{watersupply/calculations/indicators.py}); \code{LeakageIndex.save()} (\code{watersupply/models.py}); \code{uarl\_m3\_d()}, \code{ili()} (\code{watersupply/calculations/chain.py}); inputs per city in \code{watersupply/calculations/leakage.py}
 \begin{align}
   \text{NRW}_{\text{apparent}} &= \sum_{\,\text{type}=A} \texttt{loss\_Quantity\_m3} \\
   \text{NRW}_{\text{real}} &= \sum_{\,\text{type}=R} \texttt{loss\_Quantity\_m3} \\
   \text{CARL} &= \sum_{\,\text{type}=R,\ \text{year}} \texttt{loss\_Quantity\_m3} \\
-  \text{UARL} &= \sum_{\,\text{type}=R,\ \text{year}} \texttt{loss\_Quantity\_m3} \times \frac{\texttt{UnavoidableLossses\_PCT}}{100} \\
+  \text{UARL} &= \frac{1}{1000} \sum_{c} \left(18\,L_{m,c} + 0.8\,N_{c,c} + 25\,L_{p,c}\right) P_c \quad [\si{m^3/day}] \\
   \text{ILI} &= \frac{\text{CARL}}{\text{UARL}}
 \end{align}
-The Infrastructure Leakage Index formulation follows the IWA Water Loss Task Force methodology \cite{IWA_WLTF}. \textbf{DAG edges:} \dagedge{Real\_Losses $\rightarrow$ NRW, ILI}, \dagedge{Apparent\_Losses $\rightarrow$ NRW, ILI} --- \statuspartial{} (ILI is only defined for Real losses; \dagedge{Apparent\_Losses $\rightarrow$ ILI} is unimplemented). \dagedge{Network $\rightarrow$ Real\_Losses} --- \statusdone{}: every real \code{NonRevenueWater} record must point (\code{pipe} FK, enforced in \code{clean()}) to the \code{PipeNetwork} where the leakage is presumed, apparent losses may not; \code{calculate\_nrw()} reports \code{real\_losses\_by\_pipe} (\si{m^3/day} and \si{m^3/km/day}) and, per admin unit, weights each real loss by the share of its pipe's length inside the unit, splits apparent losses by the unit's share of \code{UsersLocation.usersTotal}, and recomputes ILI over the unit's real losses.
+The Infrastructure Leakage Index follows the IWA Water Loss Task Force methodology \cite{IWA_WLTF}: per city $c$, $L_m$ = mains length inside the city (km), $N_c$ = service connections (dwellings within the service buffer, \code{CoverageWaterSupply.households\_covered} of the city's latest record up to the year), $L_p = N_c \times$ \code{private\_pipe\_m\_per\_conn} / 1000 (km; default 5 m), $P_c$ = \code{CoverageWaterSupply.avg\_pressure\_m} (m; editable per city, default 30 m). Pipes outside every city count with 30 m and no connections. \code{LeakageIndex} stores one row per year with these inputs (\code{city\_inputs}) and \code{uarl\_reliable} ($N_c \ge 3000$, $N_c/L_m \ge 20$, $P \ge 25$ m). Apparent losses enter neither CARL nor UARL; \code{UnavoidableLossses\_PCT} no longer feeds the ILI. \textbf{DAG edges:} \dagedge{Real\_Losses $\rightarrow$ NRW, ILI}, \dagedge{Apparent\_Losses $\rightarrow$ NRW}, \dagedge{Network $\rightarrow$ ILI} --- \statusdone{} (\dagedge{Apparent\_Losses $\rightarrow$ ILI} removed from the DAG on 2026-11-15). \dagedge{Network $\rightarrow$ Real\_Losses} --- \statusdone{}: every real \code{NonRevenueWater} record must point (\code{pipe} FK, enforced in \code{clean()}) to the \code{PipeNetwork} where the leakage is presumed, apparent losses may not; \code{calculate\_nrw()} reports \code{real\_losses\_by\_pipe} (\si{m^3/day} and \si{m^3/km/day}) and, per admin unit, weights each real loss by the share of its pipe's length inside the unit, splits apparent losses by the unit's share of \code{UsersLocation.usersTotal}, and recomputes ILI over the unit's real losses.
 
 \subsection{Water quality --- \code{calculate\_water\_quality()}}
 \textbf{Location:} \code{watersupply/calculations/indicators.py:144}
@@ -1006,7 +1006,8 @@ watersupply & \code{calculate\_opex\_recovery()} & OPEX / CollectionRatio / NRW 
 watersupply & \code{MeteredResidential.save()} & Metered\_Res\_Water $\to$ OPEX\_Recovery & \statusdone{} \\
 watersupply & \code{calculate\_collection\_ratio()} & Metered\_Res\_Water / User\_Acceptance / Water\_Tariff $\to$ CollectionRatio & \statuspartial{} \\
 watersupply & \code{calculate\_coverage()} / \code{CoverageWaterSupply.save()} & Network / CityArea $\to$ Coverage\_WS\_Area & \statusdone{} \\
-watersupply & \code{calculate\_nrw()} / \code{NonRevenueWater.save()} & Real / Apparent\_Losses $\to$ NRW, ILI & \statuspartial{} \\
+watersupply & \code{calculate\_nrw()} & Real / Apparent\_Losses $\to$ NRW & \statusdone{} \\
+watersupply & \code{LeakageIndex.save()} / \code{chain.uarl\_m3\_d()} & Real\_Losses / Network $\to$ ILI & \statusdone{} \\
 watersupply & \code{NonRevenueWater.pipe} / \code{calculate\_nrw()} & Network $\to$ Real\_Losses & \statusdone{} \\
 watersupply & \code{calculate\_water\_quality()} & Samples\_WQ $\to$ User\_Acceptance\_WS & \statusgap{} \\
 watersupply & \code{calculate\_available\_freshwater()} & Infiltration / Meteorology $\to$ Available\_FW & \statusgap{} \\

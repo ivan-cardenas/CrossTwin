@@ -165,6 +165,9 @@
             <span style="color:{% if indicators.ili <= 2 %}#22c55e{% elif indicators.ili <= 4 %}#f59e0b{% else %}#ef4444{% endif %};">
               {{ indicators.ili }}
             </span>
+            {% if not indicators.uarl_reliable %}
+              <span title="Network below the IWA UARL range (3000 connections, 20 per km, 25 m pressure): indicative only" style="font-size:0.65rem; font-weight:400; color:rgba(232,244,255,0.45);">indicative</span>
+            {% endif %}
           {% else %}
             <span style="color:rgba(232,244,255,0.35);">—</span>
           {% endif %}

@@ -52,6 +52,14 @@ OTHER_SOURCES = [
 
 # Regulations, standards and literature cited by checks and equations: (key, citation, used by)
 REFERENCES = [
+    ("IWA UARL", "Lambert, A., Brown, T. G., Takizawa, M. & Weimer, D. (1999), A review of performance indicators "
+     "for real losses from water supply systems, *J. Water Supply: Research and Technology-AQUA* 48(6), 227-237: "
+     "UARL [L/day] = (18 Lm + 0.8 Nc + 25 Lp) x P, ILI = CARL / UARL (IWA Water Loss Task Force).",
+     "watersupply/calculations/chain.py::uarl_m3_d, ili (LeakageIndex, water dashboard NRW card)"),
+    ("UARL range", "Lambert, A. & McKenzie, R. (2002), Practical experience in using the Infrastructure Leakage Index, "
+     "IWA Conference 'Leakage Management - A Practical Approach', Lemesos: the UARL equation holds for "
+     ">= 3000 connections, >= 20 connections/km of mains and >= 25 m pressure.",
+     "watersupply/calculations/chain.py::uarl_reliable"),
     ("KNMI'23", "KNMI (2023), *KNMI'23 climate scenarios for the Netherlands*, KNMI Publication 23-03, "
      "Table 1 (country averages, change relative to 1991-2020; Ld/Ln/Hd/Hn, 2050 and 2100). "
      "https://www.knmi.nl/klimaatscenarios — the Klimaateffectatlas viewer shows the current climate, 2050 high and 2100 high.",

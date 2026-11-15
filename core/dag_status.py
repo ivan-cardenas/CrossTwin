@@ -156,8 +156,8 @@ EDGE_STATUS = {
     ("Metered_Res_Water", "CollectionRatio"): (I, "watersupply/calculations/indicators.py::calculate_collection_ratio", "Collected / installed meters."),
     ("Real_Losses", "NRW"): (I, "watersupply/calculations/indicators.py::calculate_nrw", ""),
     ("Apparent_Losses", "NRW"): (I, "watersupply/calculations/indicators.py::calculate_nrw", "Split by share of usersTotal."),
-    ("Real_Losses", "ILI"): (I, "NonRevenueWater.save()", "CARL / UARL."),
-    ("Apparent_Losses", "ILI"): (G, "", "ILI only defined for real losses."),
+    ("Real_Losses", "ILI"): (I, "LeakageIndex.save() -> chain.ili", "CARL = the year's real losses; ILI = CARL / UARL."),
+    ("Network", "ILI"): (I, "LeakageIndex.save() -> chain.uarl_m3_d (calculations/leakage.py)", "IWA UARL per city: mains km, connections, editable pressure (CoverageWaterSupply.avg_pressure_m)."),
     # ── Water costs / tariff ─────────────────────────────────────────────
     ("Energy_Cost", "Energy_Consumption"): (G, "", "Electricity price changes cost, not consumption; calculate_energy_consumption ignores it."),
     ("Energy_Cost", "Total_Water_Prod"): (I, "TotalWaterProduction.calculate()", "Pump kWh priced with ElectricityCost of the province / year."),

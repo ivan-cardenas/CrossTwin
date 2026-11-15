@@ -297,7 +297,7 @@ digraph CrossTwin {
     Apparent_Losses     -> NRW;
 
     Real_Losses         -> ILI;
-    Apparent_Losses     -> ILI;
+    Network             -> ILI;
 
     // Water costs / tariff
     Energy_Cost         -> Energy_Consumption;

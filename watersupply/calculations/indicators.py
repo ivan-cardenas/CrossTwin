@@ -379,7 +379,8 @@ def calculate_nrw(year, adminBund=None):
 
     DAG edges:  Network         → Real_Losses (each real loss sits on a PipeNetwork)
                 Real_Losses     → NRW, ILI
-                Apparent_Losses → NRW, ILI
+                Apparent_Losses → NRW
+                Network         → ILI (UARL from mains length, connections, pressure)
 
     With ``adminBund``:
     - a real loss counts in proportion to the share of its pipe's length inside
@@ -390,7 +391,11 @@ def calculate_nrw(year, adminBund=None):
     - apparent losses (meter error, theft, data errors) have no location, so the
       unit gets its share of them by water users (``UsersLocation.usersTotal``);
       ``apparent_share`` is None when no user counts are stored.
-    ILI = CARL / UARL over the real losses counted, so it is the unit's own ILI.
+    ILI = CARL / UARL (IWA, chain.ili). Network-wide it is the stored
+    LeakageIndex of the year; for a unit, CARL is the real losses counted
+    and UARL is computed by chain.uarl_m3_d from the unit's mains length,
+    connections and each city's pressure (calculations/leakage.py), so it is
+    the unit's own ILI. Apparent losses never enter it.
 
     ``real_losses_by_pipe`` lists, per pipe, the presumed leakage counted
     here (``loss_m3_d``, after the length share), that share, and the
@@ -419,8 +424,6 @@ def calculate_nrw(year, adminBund=None):
         .values('pipe_id', 'pipe__length_km')
         .annotate(
             carl=Sum('loss_Quantity_m3'),
-            uarl=Sum(ExpressionWrapper(
-                F('loss_Quantity_m3') * F('UnavoidableLossses_PCT') / 100, output_field=FloatField())),
         )
     )
     if adminBund is None:
@@ -436,14 +439,13 @@ def calculate_nrw(year, adminBund=None):
             )
         }
 
-    real = uarl = 0
+    real = 0
     by_pipe = []
     for row in per_pipe:
         share = 1.0 if shares is None else shares.get(row['pipe_id'], 0)
         if not share:
             continue
         real += row['carl'] * share
-        uarl += row['uarl'] * share
         if row['pipe_id']:
             length_km = row['pipe__length_km']
             by_pipe.append({
@@ -454,13 +456,53 @@ def calculate_nrw(year, adminBund=None):
             })
     by_pipe.sort(key=lambda r: r['loss_m3_d'], reverse=True)
 
+    leak = _leakage_index(year, adminBund, real if per_pipe else None)
+
     return {
         'apparent_losses_m3_d': apparent,
         'apparent_share': apparent_share,
         'real_losses_m3_d': real,
         'total_nrw_m3_d': apparent + real,
-        'ili': round(real / uarl, 2) if uarl else None,
+        'ili': leak['ili'],
+        'uarl_m3_d': leak['uarl_m3_d'],
+        'uarl_reliable': leak['uarl_reliable'],
         'real_losses_by_pipe': by_pipe,
+    }
+
+
+def _leakage_index(year, adminBund, carl_m3_d):
+    """
+    ILI and UARL: the stored LeakageIndex network-wide, else computed for the
+    unit with the same equation (chain.uarl_m3_d per city, leakage.city_part).
+
+    DAG edges: Real_Losses -> ILI, Network -> ILI
+    """
+    from administrative.models import Province
+
+    from . import chain, leakage
+    from ..models import LeakageIndex
+
+    stored = LeakageIndex.objects.filter(year=year).first()
+    if adminBund is None:
+        if stored is None:
+            return {'ili': None, 'uarl_m3_d': None, 'uarl_reliable': False}
+        return {'ili': stored.ILI, 'uarl_m3_d': stored.uarl_m3_d, 'uarl_reliable': stored.uarl_reliable}
+
+    private_m = stored.private_pipe_m_per_conn if stored else chain.DEFAULT_PRIVATE_PIPE_M
+    whole_cities = isinstance(adminBund, (City, Province))
+    parts = []
+    for city in cities_within(adminBund).only('pk', 'geom'):
+        if whole_cities:
+            parts.append(leakage.city_part(city.pk, year, city.geom, private_m))
+        else:
+            parts.append(leakage.city_part(
+                city.pk, year, adminBund.geom, private_m,
+                buffer_neighborhoods=neighborhoods_within(adminBund).values_list('pk', flat=True)))
+    totals = leakage.combine(parts)
+    return {
+        'ili': chain.ili(carl_m3_d, totals['uarl_m3_d']) if totals['connections'] else None,
+        'uarl_m3_d': round(totals['uarl_m3_d'], 3),
+        'uarl_reliable': totals['reliable'],
     }
 
 

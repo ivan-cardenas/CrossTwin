@@ -85,7 +85,7 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 - [ ] `calculate_opex_recovery()` computes directly from stored totals rather than calling `calculate_collection_ratio()` or referencing NRW
 - [ ] `Samples_WQ -> User_Acceptance_WS` — `calculate_water_quality()`'s `acceptance_rate` is `Avg('acceptanceRate')`, unrelated to computed compliance
 - [ ] `WT_Efficiency -> WT_Cost` — `WaterTreatment` has no `save()`
-- [ ] `Apparent_Losses -> ILI` — `NonRevenueWater` ILI is only defined for real losses
+- [x] `Apparent_Losses -> ILI` — removed from the DAG (IWA ILI counts real losses only); replaced by `Network -> ILI`: `LeakageIndex` per year, UARL = Σ per city (18 Lm + 0.8 Nc + 25 Lp) x P with the city's editable `CoverageWaterSupply.avg_pressure_m` (2026-11-15)
 - [ ] Non-latest-year `SupplySecurity` records aren't refreshed by signals — `OPEX`/`ExtractionWater`/`MeteredResidential`/`ImportedWater` carry no year field, so only the latest `OPEX`/`SupplySecurity` record is refreshed
 - [ ] `Total_Extraction -> Area_Drought` — `calculate_drought_area()` only sums stored `AreaAffectedDrought` polygons; design in `docs/groundwater_drought_damage_plan.md` / `docs/groundwater_drought_damage.md`
 han

@@ -21,7 +21,9 @@ Dependency chain implemented here (source -> dependent):
         -> UsersLocation (users = residents, population served = residents
            within the pipe buffer) -> CoverageWaterSupply, MeteredResidential
     PipeNetwork -> CoverageWaterSupply (service area)
-    NonRevenueWater -> ILI of the same-year Real-loss records
+    NonRevenueWater (real losses) -> LeakageIndex of that year (CARL)
+    PipeNetwork, CoverageWaterSupply (connections, pressure per city)
+        -> LeakageIndex (UARL; latest year, or the coverage year onwards)
     SoilArea, SoilType, LandCoverVector, GroundwaterDepth (soil x land cover)
     and daily Meteorology (rain, reference ET)
         -> AvailableFreshWater infiltration rate, recharge depth and yield
@@ -59,7 +61,7 @@ from weather.models import Meteorology
 
 from .models import (
     AvailableFreshWater, ConsumptionCapita, CoverageWaterSupply, ExtractionWater,
-    ImportedWater, MeteredResidential, NonRevenueWater, OPEX, PipeNetwork,
+    ImportedWater, LeakageIndex, MeteredResidential, NonRevenueWater, OPEX, PipeNetwork,
     SupplySecurity, TotalWaterDemand, TotalWaterProduction, UsersLocation,
     WaterTreatment, Watershed,
 )
@@ -116,6 +118,51 @@ def _refresh_watershed_neighbours(city_id):
     _refresh_latest_supply_security(_cities_in_watersheds(list(_watersheds_of_city(city_id))) - {city_id})
 
 
+# ── leakage index (ILI) refresh, batched ─────────────────────────────
+
+# Per-thread set of requested LeakageIndex refreshes while batching; None otherwise.
+# An entry is a year (refresh that year onwards) or LATEST (only the latest row).
+_leakage = threading.local()
+LATEST = 'latest'
+
+
+@contextmanager
+def _batched_leakage():
+    """Collect LeakageIndex refreshes inside the block and run each once at its end."""
+    if getattr(_leakage, "requests", None) is not None:
+        yield
+        return
+    _leakage.requests = set()
+    try:
+        yield
+    finally:
+        requests, _leakage.requests = _leakage.requests, None
+        _refresh_leakage_now(requests)
+
+
+def _refresh_leakage(request=LATEST):
+    pending = getattr(_leakage, "requests", None)
+    if pending is not None:
+        pending.add(request)
+        return
+    _refresh_leakage_now({request})
+
+
+def _refresh_leakage_now(requests):
+    if not requests:
+        return
+    years = {r for r in requests if r != LATEST}
+    rows = LeakageIndex.objects.none()
+    if years:
+        rows = LeakageIndex.objects.filter(year__gte=min(years))
+    pks = set(rows.values_list('pk', flat=True))
+    if LATEST in requests:
+        latest = LeakageIndex.objects.order_by('-year').values_list('pk', flat=True).first()
+        if latest is not None:
+            pks.add(latest)
+    _resave(LeakageIndex.objects.filter(pk__in=pks).order_by('year'))
+
+
 # ── population -> consumption -> demand -> supply security ───────────
 
 # Per-thread set of cities whose water refresh is postponed; None when not deferring.
@@ -147,18 +194,21 @@ def deferred_water_refresh():
         _deferred.users = _deferred.coverage = None
         return queued
 
-    try:
-        yield
-    except BaseException:
-        queued = take()
+    # The LeakageIndex refreshes requested by the block and by the flush below
+    # (pipes, coverage records) run once when it ends.
+    with _batched_leakage():
         try:
-            _flush_water_refresh(*queued)
-        except Exception:
-            # e.g. the transaction is already broken; don't mask the original error
-            logger.exception("Deferred water refresh failed after an aborted block")
-        raise
-    else:
-        _flush_water_refresh(*take())
+            yield
+        except BaseException:
+            queued = take()
+            try:
+                _flush_water_refresh(*queued)
+            except Exception:
+                # e.g. the transaction is already broken; don't mask the original error
+                logger.exception("Deferred water refresh failed after an aborted block")
+            raise
+        else:
+            _flush_water_refresh(*take())
 
 
 def _flush_water_refresh(city_ids, security_city_ids=(), freshwater_ids=(),
@@ -370,10 +420,6 @@ def _refresh_users(neighborhood_ids, coverage_city_ids=()):
     DAG edges: Total_Population -> NumberUsers, Coverage_WS_Area -> NumberUsers,
                NumberUsers -> Coverage_WS
     """
-    from administrative.models import Neighborhood
-
-    from .calculations.users import neighborhoods_with_residents
-
     neighborhood_ids = {n for n in neighborhood_ids if n is not None}
     coverage_city_ids = {c for c in coverage_city_ids if c is not None}
     if not neighborhood_ids and not coverage_city_ids:
@@ -386,18 +432,27 @@ def _refresh_users(neighborhood_ids, coverage_city_ids=()):
 
     _users_batch.depth = getattr(_users_batch, "depth", 0) + 1
     try:
-        if neighborhood_ids:
-            existing = list(UsersLocation.objects.filter(neighborhood_id__in=neighborhood_ids))
-            _resave(existing)
-            have = {u.neighborhood_id for u in existing}
-            for neighborhood_id in sorted(neighborhoods_with_residents(neighborhood_ids) - have):
-                _resave([UsersLocation(neighborhood_id=neighborhood_id)])
-            coverage_city_ids |= set(
-                Neighborhood.objects.filter(pk__in=neighborhood_ids, district__isnull=False)
-                .values_list('district__city_id', flat=True))
-        _resave(CoverageWaterSupply.objects.filter(city_id__in=coverage_city_ids - {None}))
+        with _batched_leakage():
+            _refresh_users_now(neighborhood_ids, coverage_city_ids)
     finally:
         _users_batch.depth -= 1
+
+
+def _refresh_users_now(neighborhood_ids, coverage_city_ids):
+    from administrative.models import Neighborhood
+
+    from .calculations.users import neighborhoods_with_residents
+
+    if neighborhood_ids:
+        existing = list(UsersLocation.objects.filter(neighborhood_id__in=neighborhood_ids))
+        _resave(existing)
+        have = {u.neighborhood_id for u in existing}
+        for neighborhood_id in sorted(neighborhoods_with_residents(neighborhood_ids) - have):
+            _resave([UsersLocation(neighborhood_id=neighborhood_id)])
+        coverage_city_ids |= set(
+            Neighborhood.objects.filter(pk__in=neighborhood_ids, district__isnull=False)
+            .values_list('district__city_id', flat=True))
+    _resave(CoverageWaterSupply.objects.filter(city_id__in=coverage_city_ids - {None}))
 
 
 def _city_neighborhoods(city_id):
@@ -483,8 +538,10 @@ def pipe_changed(sender, instance, raw=False, **kwargs):
     for geom in geoms:
         if geom is not None:
             cities.update(City.objects.filter(geom__intersects=geom).values_list('pk', flat=True))
-    _refresh_users(neighborhoods_near(geoms, _max_service_buffer_m()), cities)
-    _refresh_latest_opex()
+    with _batched_leakage():
+        _refresh_users(neighborhoods_near(geoms, _max_service_buffer_m()), cities)
+        _refresh_latest_opex()
+        _refresh_leakage(LATEST)   # DAG edge: Network -> ILI (mains length; pipes have no year)
 
 
 @receiver(post_save, sender=CoverageWaterSupply, dispatch_uid="water_coverage_saved")
@@ -496,7 +553,12 @@ def coverage_saved(sender, instance, raw=False, **kwargs):
 
     DAG edge: Coverage_WS_Area -> NumberUsers
     """
-    if raw or instance.city_id is None or _in_users_refresh():
+    if raw or instance.city_id is None:
+        return
+    # DAG edge: Network -> ILI (the city's connections and pressure of this year
+    # are used by every later LeakageIndex until a newer coverage record exists)
+    _refresh_leakage(instance.year)
+    if _in_users_refresh():
         return
     latest = (CoverageWaterSupply.objects.filter(city_id=instance.city_id)
               .order_by('-year', '-id').values_list('pk', flat=True).first())
@@ -539,23 +601,22 @@ def users_changed(sender, instance, raw=False, **kwargs):
     ).distinct())
 
 
-# ── non-revenue water -> ILI of the whole year ───────────────────────
+# ── non-revenue water -> ILI of the year ─────────────────────────────
 
 @receiver(post_save, sender=NonRevenueWater, dispatch_uid="water_nrw_saved")
 @receiver(post_delete, sender=NonRevenueWater, dispatch_uid="water_nrw_deleted")
 def nrw_changed(sender, instance, raw=False, **kwargs):
     """
-    ILI = CARL / UARL over all Real-loss records of the year, so every Real record
-    of that year shares it. NonRevenueWater.save() only computes its own row;
-    bring the siblings in line (update(): no save(), so no signal loop).
+    A real loss changes the year's CARL: re-save the year's LeakageIndex
+    (created on the first loss record of a year). Apparent losses do not
+    enter the ILI.
+
+    DAG edge: Real_Losses -> ILI
     """
-    if raw:
+    if raw or instance.type != NonRevenueWater.LossesTypes.Real:
         return
-    real = NonRevenueWater.objects.filter(year=instance.year, type=NonRevenueWater.LossesTypes.Real)
-    carl = sum(r.loss_Quantity_m3 for r in real)
-    uarl = sum(r.loss_Quantity_m3 * r.UnavoidableLossses_PCT / 100 for r in real)
-    ili = round(carl / uarl, 2) if uarl > 0 else None
-    real.update(ILI=ili, last_updated=timezone.now())
+    row = LeakageIndex.objects.filter(year=instance.year).first() or LeakageIndex(year=instance.year)
+    _resave([row])
 
 
 # ── soil, land cover, groundwater, meteorology -> available fresh water ─

@@ -325,16 +325,6 @@ class NonRevenueWaterTests(TestCase):
             year=2024, specificLoss=code, loss_Quantity_m3=quantity,
             WaterCost_EUR_day=quantity * 0.5, UnavoidableLossses_PCT=unavoidable_pct, pipe=pipe)
 
-    def test_ili_of_sibling_records_follows_new_losses(self):
-        first = self._loss('LP', 100, 25)   # CARL 100 / UARL 25 = 4.0
-        self.assertEqual(first.ILI, 4.0)
-        self._loss('LS', 100, 75)           # CARL 200 / UARL 100 = 2.0
-        first.refresh_from_db()
-        self.assertEqual(first.ILI, 2.0)
-
-    def test_apparent_losses_have_no_ili(self):
-        self.assertIsNone(self._loss('CM', 100, 25).ILI)
-
     def test_real_loss_requires_a_pipe(self):
         loss = NonRevenueWater(year=2024, type=NonRevenueWater.LossesTypes.Real, specificLoss='LP',
                                loss_Quantity_m3=100, WaterCost_EUR_day=50, UnavoidableLossses_PCT=25)
@@ -379,7 +369,7 @@ class NonRevenueWaterTests(TestCase):
 
         nrw = calculate_nrw(2024, city)
         self.assertAlmostEqual(nrw['real_losses_m3_d'], 25)   # 100 x 0.25
-        self.assertEqual(nrw['ili'], 4.0)           # CARL 25 / UARL 6.25
+        self.assertIsNone(nrw['ili'])               # no coverage record: no connections (test_leakage_index)
         self.assertAlmostEqual(nrw['apparent_share'], 0.3)
         self.assertAlmostEqual(nrw['apparent_losses_m3_d'], 300)
         [row] = nrw['real_losses_by_pipe']
@@ -390,7 +380,7 @@ class NonRevenueWaterTests(TestCase):
         network = calculate_nrw(2024)
         self.assertEqual(network['real_losses_m3_d'], 400)
         self.assertEqual(network['apparent_losses_m3_d'], 1000)
-        self.assertEqual(network['ili'], round(400 / 175, 2))
+        self.assertIsNone(network['ili'])           # no connections: no UARL
 
     def test_leak_on_a_pipe_crossing_units_is_split_not_duplicated(self):
         # Two adjacent 1 km squares: west [X-500, X+500], east [X+500, X+1500]

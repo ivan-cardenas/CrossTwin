@@ -172,3 +172,63 @@ def yearly_water_balance_mm(daily_rain_mm, et_ref_mm_yr, composition):
         'et_mm':       min(et_ref, rain - runoff),
         'recharge_mm': max(0.0, rain - runoff - et_ref),
     }
+
+
+# ── Unavoidable Annual Real Losses and the Infrastructure Leakage Index ──
+#
+# UARL [L/day] = (18 Lm + 0.8 Nc + 25 Lp) x P   (Lambert et al. 1999, IWA Water
+# Loss Task Force; Lm = mains km, Nc = service connections, Lp = km of private
+# pipe from the property boundary to the meter, P = average pressure in m).
+UARL_MAINS_L_KM_M = 18.0        # L / km of mains / day / m of pressure
+UARL_CONNECTION_L_M = 0.8       # L / service connection / day / m of pressure
+UARL_PRIVATE_L_KM_M = 25.0      # L / km of private pipe / day / m of pressure
+L_PER_M3 = 1000.0
+
+# The equation holds for larger systems only (Lambert & McKenzie 2002,
+# "Practical experience in using the Infrastructure Leakage Index"):
+UARL_MIN_CONNECTIONS = 3000     # service connections
+UARL_MIN_DENSITY_CONN_KM = 20   # connections per km of mains
+UARL_MIN_PRESSURE_M = 25        # m
+
+# No measured pressure or private-pipe data is imported yet. The pressure is an
+# editable value per city and year (CoverageWaterSupply.avg_pressure_m) that
+# starts at DEFAULT_PRESSURE_M: just above the equation's validity floor and
+# within Dutch distribution pressures (2.5-3.5 bar). The private pipe length
+# per connection is editable on each LeakageIndex row: 5 m is the typical
+# front-garden length to a meter in the meterkast of a Dutch dwelling.
+DEFAULT_PRESSURE_M = 30.0
+DEFAULT_PRIVATE_PIPE_M = 5.0
+
+
+def uarl_m3_d(mains_km, connections, private_pipe_km, pressure_m):
+    """
+    Unavoidable Annual Real Losses in m³/day (IWA, Lambert et al. 1999):
+    (18 Lm + 0.8 Nc + 25 Lp) x P / 1000.
+
+    DAG edge: Network -> ILI
+    """
+    litres = (UARL_MAINS_L_KM_M * mains_km
+              + UARL_CONNECTION_L_M * connections
+              + UARL_PRIVATE_L_KM_M * private_pipe_km) * pressure_m
+    return litres / L_PER_M3
+
+
+def ili(carl_m3_d, uarl_m3_d):
+    """
+    Infrastructure Leakage Index = CARL / UARL (two decimals; None without UARL).
+    Real losses only: apparent losses are no leakage and do not enter it.
+
+    DAG edges: Real_Losses -> ILI, Network -> ILI
+    """
+    if not uarl_m3_d or uarl_m3_d <= 0 or carl_m3_d is None:
+        return None
+    return round(carl_m3_d / uarl_m3_d, 2)
+
+
+def uarl_reliable(mains_km, connections, pressure_m):
+    """Whether the system is large and dense enough for the UARL equation."""
+    if not mains_km:
+        return False
+    return (connections >= UARL_MIN_CONNECTIONS
+            and connections / mains_km >= UARL_MIN_DENSITY_CONN_KM
+            and pressure_m >= UARL_MIN_PRESSURE_M)

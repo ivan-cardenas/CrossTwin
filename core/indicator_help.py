@@ -58,17 +58,22 @@ HELP = {
     "water.nrw": {
         "title": "Non-Revenue Water (NRW)",
         "what": "Water that is produced but never billed: lost through leaks (real losses) or through theft and meter errors (apparent losses).",
-        "how": "Summed from the recorded loss entries of the year. A leak counts in proportion to the share of its pipe's length inside the area; apparent losses are split by the area's share of connected users. ILI rates only the leaks against what is technically unavoidable.",
+        "how": "Summed from the recorded loss entries of the year. A leak counts in proportion to the share of its pipe's length inside the area; apparent losses are split by the area's share of connected users. ILI rates only the leaks against what is technically unavoidable for this network: its mains length, its connections and each city's average pressure (editable on the city's coverage record, 30 m by default). Apparent losses are not leaks and do not count in it.",
         "eq": [
             "NRW = real losses + apparent losses",
             "NRW share = {NRW (m³/day) | supply (m³/day)} × 100 %",
             "ILI = {CARL | UARL}",
+            "UARL (L/day) = (18 × Lm + 0.8 × Nc + 25 × Lp) × P",
         ],
         "where": [
             ("CARL", "current annual real losses: the recorded leakage volume"),
-            ("UARL", "unavoidable annual real losses: each leak × its unavoidable share"),
+            ("UARL", "unavoidable annual real losses (IWA): what even a well-run network of this size leaks"),
+            ("Lm", "mains length (km)"),
+            ("Nc", "service connections: dwellings within the service area"),
+            ("Lp", "private pipe from the property boundary to the meter (km; 5 m per connection)"),
+            ("P", "average operating pressure (m) of each city's network"),
         ],
-        "note": "An ILI below about 2 is considered good; 1 means only unavoidable leakage is left.",
+        "note": "An ILI below about 2 is considered good; 1 means only unavoidable leakage is left. The UARL equation is meant for networks with at least 3000 connections, 20 connections per km and 25 m pressure; below that the ILI is indicative.",
     },
     "water.coverage": {
         "title": "Network Coverage",
