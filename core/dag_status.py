@@ -90,17 +90,19 @@ EDGE_STATUS = {
     ("RS_Imagery", "LandCover"): (P, "physicalEnv/calculations/albedo.py::measure",
         "Only the Sentinel-2 albedo attribute; the land-cover classes are plain imports."),
     ("RS_Imagery", "LST"): (I, "urban_heat/lst/smw.py::land_surface_temperature", "Landsat 8/9 B10 + Statistical Mono-Window. On demand."),
-    ("Climate_Change", "Meteorology"): (P, "weather/calculations/climate.py::apply_to_weather, apply_to_daily_rain, apply_to_et, design_rain_mm",
-        "KNMI'23 scenarios (Klimaateffectatlas: current, 2050/2100 high; all Ld/Ln/Hd/Hn) as a delta-change what-if from the "
-        "map's Scenarios panel: heat weather sliders, water rain event and recharge. Not stored; SOLWEIG/LST/stored records use observed weather."),
+    ("Climate_Change", "Meteorology"): (I, "weather/calculations/climate.py::apply_to_weather, apply_to_day_values, apply_to_daily_rain, apply_to_et; "
+        "weather.ClimateScenarioRun + receivers in watersupply/, housing/, urban_heat/signals.py",
+        "KNMI'23 scenarios (all Ld/Ln/Hd/Hn x 2050/2100; a season or the heat-wave day) by delta-change. Stored as a scenario run "
+        "(Scenarios panel, staff): scenario recharge per source, demand/supply security and homes needed for the horizon population, "
+        "SOLWEIG Tmrt/UTCI/PET/WBGT on the shifted hour (one run; the current values from an observed run of that hour). Also the panels' what-if. LST is not projected (surface reflectance)."),
     ("Anthropogenic_Heat", "Meteorology"): (G, "", "No anthropogenic-heat term in any meteorology input."),
-    ("Canyon_Aspect", "Meteorology"): (G, "", "Stored H/W does not feed SOLWEIG's PET (UHI / 1.2 m wind) yet."),
-    ("Meteorology", "Tmrt"): (I, "urban_heat/solweig/pipeline.py::calculate", "One hour of meteorology into SOLWEIG-GPU. On demand."),
+    ("Meteorology", "Tmrt"): (I, "urban_heat/solweig/pipeline.py::calculate", "One hour of meteorology into SOLWEIG-GPU. On demand; a climate scenario run queues it with the observed and the shifted hour (urban_heat/solweig/scenario.py)."),
     ("Meteorology", "PET"): (I, "urban_heat/solweig/pipeline.py::urban_pet", "pet-adjusted with Koopmans UHI and 1.2 m wind."),
     ("Meteorology", "UTCI"): (I, "urban_heat/solweig/pipeline.py::run_solweig", "SOLWEIG-GPU."),
     ("Meteorology", "Available_FW"): (I, "AvailableFreshWater.save() -> watersupply/calculations/chain.py::recharge_depth_cm_yr",
         "Yearly KNMI rain and Makkink ET at the nearest station."),
     ("DSM", "SVF"): (I, "physicalEnv/calculations/svf.py::calculate_svf", "RVT horizon search. On demand."),
+    ("DSM", "PET"): (I, "urban_heat/solweig/pipeline.py::urban_pet", "Koopmans UHI source areas and 1.2 m wind from building/tree frontal areas of the patched DSM. On demand."),
     ("SVF", "Tmrt"): (I, "urban_heat/solweig/pipeline.py::run_solweig", "SOLWEIG SVF from the patched DSM."),
     ("SVF", "PET"): (I, "urban_heat/solweig/pipeline.py::urban_pet", "Through Tmrt and the 1.2 m wind."),
     ("Tmrt", "PET"): (I, "urban_heat/solweig/pipeline.py::urban_pet", ""),

@@ -237,3 +237,29 @@ class PopulationParamsTests(TestCase):
         self.assertEqual(population_params({'pop_growth': '99'})[1], MAX_GROWTH_ADJUST_PCT)
         self.assertEqual(population_params({'pop_growth': '-99'})[1], -MAX_GROWTH_ADJUST_PCT)
         self.assertEqual(population_params({'pop_growth': 'nan'})[1], 0.0)
+
+
+class ExtrapolationLabelTests(PopulationTestBase):
+    """is_extrapolated: a year outside the imported CBS years is the trend, labelled in the panels."""
+
+    def test_one_imported_year_is_never_extrapolated(self):
+        from administrative.calculations.population import is_extrapolated
+        self.assertFalse(is_extrapolated(self.city, 2100))
+
+    def test_years_beyond_the_imported_range(self):
+        from administrative.calculations.population import is_extrapolated
+        project(self.city, 2050, 14000)
+        self.assertFalse(is_extrapolated(self.city, 2030))
+        self.assertFalse(is_extrapolated(self.city, 2050))
+        self.assertTrue(is_extrapolated(self.city, 2100))
+        self.assertFalse(is_extrapolated(self.city, None))
+
+    def test_water_panel_labels_2100(self):
+        from django.urls import reverse
+        project(self.city, 2050, 14000)
+        response = self.client.get(
+            reverse("watersupply:water_indicators", args=["city", "A", 2100]), HTTP_HX_REQUEST="true")
+        self.assertContains(response, "trend extrapolation")
+        response = self.client.get(
+            reverse("watersupply:water_indicators", args=["city", "A", 2050]), HTTP_HX_REQUEST="true")
+        self.assertNotContains(response, "trend extrapolation")

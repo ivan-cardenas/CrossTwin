@@ -1,0 +1,17 @@
+{% comment %}
+Stored climate scenario runs of the selected unit (mainMap/views_climate.py::climate_run_list).
+A click loads the run into #climate-effects (core/static/js/Panels.js).
+{% endcomment %}
+{% if runs %}
+<h4>Stored runs</h4>
+<ul class="climate-run-list">
+  {% for run in runs %}
+  <li>
+    <button type="button" class="climate-run-open" data-url="{% url 'map:climate_run_detail' run.pk %}">
+      <b>Run {{ run.pk }} · {{ run.scenario }} · {{ run.heat_mode }}</b>
+      <small>population {{ run.population_year }} · {{ run.created|date:"Y-m-d H:i" }}</small>
+    </button>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}

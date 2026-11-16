@@ -11,6 +11,30 @@ A dated log of every change to the DPSIR causal graph: what changed, why, and wh
 - **Lagged edge** `[lag=1, style=dashed]`. The cause acts one planning step later (a feedback). It is left out of the acyclicity check and never implemented by a receiver, because a receiver would close the loop within one save. Each lagged edge is argued here and listed in `core/test_dag.py::LAGGED_EDGES`.
 - **Counting.** Distinct `source -> target` pairs, legend excluded. `core/test_dag.py::parse_dag` is the reference parser.
 
+## 2026-11-16: `Climate_Change -> Meteorology` implemented as stored scenario runs (graph unchanged)
+
+No edge is added or removed. The edge was partial (a what-if of the Scenarios panel). It is now also stored: `weather.ClimateScenarioRun` is the Climate_Change node, and the receivers of watersupply, housing and urban_heat store their scenario results (recharge per source, demand and supply security, homes needed, SOLWEIG Tmrt/UTCI/PET + WBGT). Coverage: 63 implemented, 6 partial, 36 gaps.
+
+Two deliberate departures from "every input edge is a receiver":
+
+- **Snapshot.** Scenario results do not subscribe to later changes of soil, land cover, KNMI or CBS data. A run is a dated experiment that records its inputs; the panel flags a run whose sources were recomputed or whose heat-model inputs changed (`urban_heat.HeatInputChange`), and *Recalculate* / *Rerun heat model* refresh it. Keeping it live would rerun SOLWEIG (minutes to hours) on every edit.
+- **GPU from a receiver.** Creating a run (a staff POST, never imported, restored or bulk-written) queues its one SOLWEIG run (the shifted hour) from `urban_heat/signals.py`; a re-save never does.
+
+WBGT is computed from Tmrt but is not a DAG node (it is an imported KNMI measure elsewhere); LST is not projected (surface reflectance), so `Meteorology -> LST` is not drawn.
+
+## 2026-11-16: `Canyon_Aspect -> Meteorology` replaced by `DSM -> PET`
+
+The edge stood for the urban form changing the local climate a pedestrian feels. CrossTwin computes that effect in SOLWEIG's PET (`urban_heat/solweig/pipeline.py::urban_pet`, pet-adjusted, Koopmans et al. 2020): the 10 m wind is reduced to 1.2 m with the frontal area densities of buildings and trees and their mean height (Macdonald), and the air temperature gets the urban heat island of each cell's upwind source area (sky view factor, vegetation). All of these are read off the DSM window with the editor's building and vegetation patches, never off the stored street H/W (`builtup.StreetCanyon`). A raster of frontal areas also describes the form better than one H/W per street (open squares, courtyards, trees). The edge as drawn could not be implemented without computing the same effect twice from two descriptions of the same buildings, so it is replaced by the mechanism the code implements.
+
+It points to `PET`, not `Meteorology`: the adjusted wind and temperature are local to the PET calculation; `Meteorology` stays the uniform station/ERA5 input of Tmrt, UTCI and PET (`Meteorology -> PET`).
+
+| Change | Edge | Status |
+|---|---|---|
+| removed | `Canyon_Aspect -> Meteorology` | was a gap |
+| added | `DSM -> PET` | implemented, on demand (`urban_heat/solweig/pipeline.py::urban_pet`) |
+
+**Consequences.** `Canyon_Aspect` becomes a sink: a State node measured from `Buildings` and `Streets` and shown on the heat dashboard's morphology card, consumed by no other node. Acyclicity is unaffected (`DSM` was already upstream of `PET` through `SVF`). Coverage: 105 edges, 62 implemented (59 %), 7 partial, 36 gaps.
+
 ## 2026-11-15: `Apparent_Losses -> ILI` replaced by `Network -> ILI`
 
 The Infrastructure Leakage Index of the IWA Water Loss Task Force is ILI = CARL / UARL: current annual *real* losses over the unavoidable annual *real* losses (Lambert et al. 1999). Apparent losses (meter error, unauthorised use, data errors) are no leakage and enter neither term, so the edge described no mechanism and could never be implemented. It is removed. They still reach `NRW`.

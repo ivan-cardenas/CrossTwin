@@ -11,7 +11,7 @@ import json
 import math
 
 from administrative.calculations.population import (
-    REFERENCE_YEAR, population_by_year, population_curve, projection_years,
+    EXTRAPOLATION_LABEL, REFERENCE_YEAR, is_extrapolated, population_by_year, population_curve, projection_years,
 )
 
 WIDTH, HEIGHT = 760, 230
@@ -25,6 +25,9 @@ VARIANTS = ('low', 'prognose', 'high')
 VARIANT_LABELS = {'low': 'Lower bound', 'prognose': 'Median forecast', 'high': 'Upper bound'}
 HANDLE_SIZE = 5.5  # px side of a handle square
 HANDLE_EVERY = 5   # a square handle every N years (plus first, last and the selected year)
+# A selected year beyond the imported CBS years (e.g. 2100) is drawn as a
+# dashed trend (population.extrapolate) sampled every TREND_STEP years.
+TREND_STEP = 5
 
 
 def short_number(value):
@@ -121,8 +124,14 @@ def band_d(upper, lower):
 
 
 def _year_ticks(first, last):
-    """Vertical grid years: multiples of 5 inside the range (or the ends for a short range)."""
-    ticks = [y for y in range(first, last + 1) if y % 5 == 0]
+    """
+    Vertical grid years: multiples of 5 inside the range, 10 for a span over
+    30 years and 25 over 60 (2023-2100: 2025, 2050, 2075, 2100); the ends for
+    a short range.
+    """
+    span = last - first
+    every = 5 if span <= 30 else 10 if span <= 60 else 25
+    ticks = [y for y in range(first, last + 1) if y % every == 0]
     return ticks if len(ticks) >= 2 else sorted({first, last})
 
 
@@ -149,11 +158,24 @@ def build_population_chart(unit, scenario, growth, year, current):
 
     years = sorted(by_year['prognose'].keys() | by_year['low'].keys() | by_year['high'].keys() | selected.keys())
     data_first, data_last = years[0], years[-1]
-    # The axis always spans at least REFERENCE_YEAR..FORECAST_END_YEAR (2025-2050),
-    # widening around whatever has actually been imported.
-    first, last = min(data_first, REFERENCE_YEAR), max(data_last, FORECAST_END_YEAR)
 
-    all_values = [v for s in VARIANTS for v in by_year[s].values()] + list(selected.values()) + [current or 0]
+    # A selected year past the imported years: the CBS trend extrapolated
+    # (the same values the indicator panels use), from the last imported year.
+    trend_years = []
+    trend = trend_by = {}
+    if year is not None and year > data_last and is_extrapolated(unit, year):
+        trend_years = sorted({*range(data_last, year, TREND_STEP), year})
+        trend = population_by_year(unit, trend_years, scenario, growth)
+        trend_by = {s: population_by_year(unit, trend_years, s, 0) for s in ('low', 'high')}
+
+    # The axis always spans at least REFERENCE_YEAR..FORECAST_END_YEAR (2025-2050),
+    # widening around whatever has actually been imported and the trend.
+    first = min(data_first, REFERENCE_YEAR)
+    last = max(data_last, FORECAST_END_YEAR, trend_years[-1] if trend_years else 0)
+
+    all_values = ([v for s in VARIANTS for v in by_year[s].values()] + list(selected.values())
+                  + list(trend.values()) + [v for t in trend_by.values() for v in t.values()]
+                  + [current or 0])
     lo, hi = min(all_values), max(all_values)
     step = nice_step((hi - lo) / 4 or max(hi, 1) / 4)
     y_min = math.floor(lo / step) * step
@@ -171,8 +193,8 @@ def build_population_chart(unit, scenario, growth, year, current):
     def y_of(v):
         return y1 - (v - y_min) / (y_max - y_min) * (y1 - y0)
 
-    def pts(series):
-        return [(x_of(y), y_of(series[y])) for y in years if y in series]
+    def pts(series, over=years):
+        return [(x_of(y), y_of(series[y])) for y in over if y in series]
 
     grid_h, value = [], y_min
     while value <= y_max + step / 100:
@@ -196,10 +218,24 @@ def build_population_chart(unit, scenario, growth, year, current):
         'y_median': round(y_of(by_year['prognose'][y]), 1) if y in by_year['prognose'] else None,
         'y_high': round(y_of(by_year['high'][y]), 1) if y in by_year['high'] else None,
     } for y in years]
+    for y in trend_years[1:]:
+        points.append({
+            'year': y, 'x': round(x_of(y), 1), 'trend': True,
+            'low': trend_by['low'][y], 'median': trend[y], 'high': trend_by['high'][y],
+            'y_low': round(y_of(trend_by['low'][y]), 1),
+            'y_median': round(y_of(trend[y]), 1),
+            'y_high': round(y_of(trend_by['high'][y]), 1),
+        })
 
     marker = None
     if year in selected:
         marker = {'x': round(x_of(year), 1), 'year': year, 'y': round(y_of(selected[year]), 1)}
+    elif year in trend:
+        marker = {'x': round(x_of(year), 1), 'year': year, 'y': round(y_of(trend[year]), 1), 'trend': True}
+        handles.append({
+            'x': marker['x'], 'y': marker['y'], 'year': year, 'active': True,
+            'rx': round(marker['x'] - HANDLE_SIZE / 2, 1), 'ry': round(marker['y'] - HANDLE_SIZE / 2, 1),
+        })
 
     return {
         'width': WIDTH, 'height': HEIGHT,
@@ -210,6 +246,11 @@ def build_population_chart(unit, scenario, growth, year, current):
         'low_path': path_d(pts(by_year['low'])), 'high_path': path_d(pts(by_year['high'])),
         'median_path': path_d(pts(by_year['prognose'])),
         'selected_path': path_d(pts(selected)),
+        'has_trend': bool(trend_years),
+        'trend_path': path_d(pts(trend, trend_years)) if trend_years else '',
+        'trend_low_path': path_d(pts(trend_by['low'], trend_years)) if trend_years else '',
+        'trend_high_path': path_d(pts(trend_by['high'], trend_years)) if trend_years else '',
+        'trend_label': EXTRAPOLATION_LABEL,
         'scenario': scenario, 'variant_label': VARIANT_LABELS[scenario],
         'baseline': {
             'y': round(y_of(current), 1), 'text_y': round(y_of(current) - 4, 1),
@@ -225,13 +266,16 @@ def build_population_chart(unit, scenario, growth, year, current):
 def build_population_stats(unit, scenario, growth, year, current):
     """
     Numbers shown next to the graph: today, the selected year, the change and the
-    interval. `has_projection` is False when the year is outside the imported
-    data (the value would just be today's population, which must not be
-    presented as a forecast).
+    interval. `has_projection` is False when there is no projection for the
+    year (the value would just be today's population, which must not be
+    presented as a forecast). A year beyond the imported CBS years (2100)
+    is the CBS trend extrapolated: `extrapolated` is then True and the
+    panel labels it.
     """
     scenario = scenario if scenario in VARIANTS else 'prognose'
     stats = {'current': current or 0, 'year': year, 'has_projection': False}
-    if year is None or year not in projection_years(unit):
+    extrapolated = is_extrapolated(unit, year)
+    if year is None or (year not in projection_years(unit) and not extrapolated):
         return stats
     # The interval is the original CBS prediction (growth=0); only the
     # highlighted scenario's projected value moves with the what-if slider.
@@ -239,6 +283,7 @@ def build_population_stats(unit, scenario, growth, year, current):
     projected = population_by_year(unit, [year], scenario, growth)[year]
     stats.update({
         'has_projection': True,
+        'extrapolated': extrapolated,
         'variant_label': VARIANT_LABELS[scenario],
         'projected': projected,
         'low': band['low'], 'high': band['high'],

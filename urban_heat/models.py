@@ -57,6 +57,7 @@ class MeanRadiantTemperature(models.Model):
     measurement_method = models.CharField(max_length=100, null=True, blank=True, help_text="Method used to derive the values (e.g., 'SOLWEIG', 'field measurement')")
     resolution = models.FloatField(null=True, blank=True, help_text="Spatial resolution of the raster in meters")
     cog_path = models.CharField(max_length=500, null=True, blank=True, help_text="Path to the exported Cloud-Optimized GeoTIFF served by TiTiler")
+    climate_run = models.ForeignKey("weather.ClimateScenarioRun", on_delete=models.CASCADE, null=True, blank=True, related_name="+", help_text="Stored climate scenario run this result belongs to; empty = observed")
 
     def __str__(self):
         return f"MRT Measurement at {self.date_time.strftime('%Y-%m-%d %H:%M:%S')}"
@@ -74,6 +75,7 @@ class UTCI(models.Model):
     measurement_method = models.CharField(max_length=100, null=True, blank=True, help_text="Method used to derive the values (e.g., 'SOLWEIG', 'field measurement')")
     resolution = models.FloatField(null=True, blank=True, help_text="Spatial resolution of the raster in meters")
     cog_path = models.CharField(max_length=500, null=True, blank=True, help_text="Path to the exported Cloud-Optimized GeoTIFF served by TiTiler")
+    climate_run = models.ForeignKey("weather.ClimateScenarioRun", on_delete=models.CASCADE, null=True, blank=True, related_name="+", help_text="Stored climate scenario run this result belongs to; empty = observed")
 
     def __str__(self):
         return f"UTCI Measurement at {self.date_time.strftime('%Y-%m-%d %H:%M:%S')}"
@@ -92,6 +94,7 @@ class WetBulbGlobeTemperature(models.Model):
     measurement_method = models.CharField(max_length=100, null=True, blank=True, help_text="Method used to derive the values (e.g., 'KNMI WBGT analysis')")
     resolution = models.FloatField(null=True, blank=True, help_text="Spatial resolution of the raster in meters")
     cog_path = models.CharField(max_length=500, null=True, blank=True, help_text="Path to the exported Cloud-Optimized GeoTIFF served by TiTiler")
+    climate_run = models.ForeignKey("weather.ClimateScenarioRun", on_delete=models.CASCADE, null=True, blank=True, related_name="+", help_text="Stored climate scenario run this result belongs to; empty = observed")
 
     def __str__(self):
         return f"WBGT Measurement at {self.date_time.strftime('%Y-%m-%d %H:%M:%S')}"
@@ -126,6 +129,7 @@ class PET(models.Model):
     measurement_method = models.CharField(max_length=100, null=True, blank=True, help_text="Method used to derive the values (e.g., 'SOLWEIG', 'field measurement')")
     resolution = models.FloatField(null=True, blank=True, help_text="Spatial resolution of the raster in meters")
     cog_path = models.CharField(max_length=500, null=True, blank=True, help_text="Path to the exported Cloud-Optimized GeoTIFF served by TiTiler")
+    climate_run = models.ForeignKey("weather.ClimateScenarioRun", on_delete=models.CASCADE, null=True, blank=True, related_name="+", help_text="Stored climate scenario run this result belongs to; empty = observed")
 
     def __str__(self):
         return f"PET Measurement at {self.date_time.strftime('%Y-%m-%d %H:%M:%S')}"
@@ -251,8 +255,123 @@ class ThermalComfortRun(models.Model):
     mrt = models.ForeignKey(MeanRadiantTemperature, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     utci = models.ForeignKey(UTCI, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     pet = models.ForeignKey(PET, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    wbgt = models.ForeignKey(WetBulbGlobeTemperature, on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+                             help_text="WBGT from Tmrt and the met (scenario runs only)")
+    climate_run = models.ForeignKey("weather.ClimateScenarioRun", on_delete=models.CASCADE, null=True, blank=True,
+                                    related_name="+", help_text="Climate scenario run that started it; empty = the map's tool")
     created = models.DateTimeField(auto_now_add=True)
     finished = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f"SOLWEIG run {self.pk} ({self.status}) for {self.date_time:%Y-%m-%d %H:%M}"
+
+
+
+class ScenarioHeat(models.Model):
+    """
+    Heat stress of a stored KNMI'23 climate scenario run
+    (weather.ClimateScenarioRun): one SOLWEIG run over the run's map view and
+    hour with the observed weather moved into the scenario (`thermal_run`,
+    climate.apply_to_weather / apply_to_day_values), giving Tmrt, UTCI, PET
+    and WBGT rasters tagged with the run. The current-climate column reuses an
+    observed SOLWEIG run of the same hour that covers the view
+    (`thermal_baseline`, e.g. from the Thermal Comfort tool) when there is
+    one: no second run is started. The observed met and the shifted met are
+    kept for reproducibility.
+
+    LST is not calculated: it depends on the surface reflectance a satellite
+    measures. SUHII (LST-based) stays the observed raster: a uniform climate
+    shift leaves the urban-rural difference unchanged.
+    Created by urban_heat/signals.py. Not a map layer.
+    """
+    registry_hidden = True
+
+    STATUS_CHOICES = [("pending", "Pending"), ("queued", "Queued"), ("done", "Done"),
+                      ("failed", "Failed"), ("unavailable", "SOLWEIG not installed"), ("skipped", "Not requested")]
+
+    run = models.OneToOneField("weather.ClimateScenarioRun", on_delete=models.CASCADE, related_name="heat")
+    thermal_baseline = models.ForeignKey(ThermalComfortRun, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    thermal_run = models.ForeignKey(ThermalComfortRun, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    met_observed = models.JSONField(null=True, blank=True, help_text="Observed met of the hour (SOLWEIG Met fields)")
+    met_scenario = models.JSONField(null=True, blank=True, help_text="The same met moved into the scenario")
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="pending")
+    message = models.TextField(blank=True, default="")
+    # Means over the view: baseline (observed weather) and scenario.
+    tmrt_now = models.FloatField(null=True, blank=True)
+    tmrt_scenario = models.FloatField(null=True, blank=True)
+    utci_now = models.FloatField(null=True, blank=True)
+    utci_scenario = models.FloatField(null=True, blank=True)
+    pet_now = models.FloatField(null=True, blank=True)
+    pet_scenario = models.FloatField(null=True, blank=True)
+    wbgt_now = models.FloatField(null=True, blank=True)
+    wbgt_scenario = models.FloatField(null=True, blank=True)
+    last_updated = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        verbose_name = "Scenario Heat"
+        verbose_name_plural = "Scenario Heat"
+
+    def save(self, *args, **kwargs):
+        """
+        DAG edges: Climate_Change -> Meteorology -> Tmrt, UTCI, PET, WBGT
+        met_scenario = the run's observed hour (run.parameters['met_observed'])
+        moved into the scenario: climate.apply_to_weather for the hour,
+        climate.apply_to_day_values for PET's day values.
+        The scenario means come from `thermal_run`, the current ones from the
+        latest finished observed run of the same hour covering the view
+        (scenario.find_baseline; WBGT from its Tmrt when it stored none); the
+        status is that of `thermal_run`. Missing runs keep the stored values.
+        """
+        from weather.calculations import climate
+
+        from .solweig.scenario import baseline_wbgt_mean, find_baseline
+
+        run = self.run
+        observed = (run.parameters or {}).get("met_observed")
+        if observed:
+            month = run.analysis_datetime.month if run.analysis_datetime else None
+            shifted = climate.apply_to_weather(observed, run.scenario, month, run.heat_mode, run.station)
+            shifted = climate.apply_to_day_values(shifted, run.scenario, run.heat_mode, month, run.station)
+            shifted["source"] = f"KNMI23 {run.scenario} {run.heat_mode} on {observed.get('source', '')}"[:60]
+            self.met_observed, self.met_scenario = observed, shifted
+        if self.thermal_baseline is None and self.thermal_run is not None:
+            self.thermal_baseline = find_baseline(run)
+        thermal = self.thermal_run
+        if thermal is not None:
+            if thermal.status == "failed":
+                self.status, self.message = "failed", thermal.message
+            elif thermal.status == "done":
+                self.status, self.message = "done", ""
+            elif self.status not in ("unavailable", "skipped"):
+                self.status = "queued"
+        for prefix, run in (("now", self.thermal_baseline), ("scenario", self.thermal_run)):
+            stats = (run.stats or {}) if run is not None and run.status == "done" else {}
+            for name, key in (("tmrt", "tmrt"), ("utci", "utci"), ("pet", "pet"), ("wbgt", "wbgt")):
+                mean = (stats.get(key) or {}).get("mean")
+                if mean is not None:
+                    setattr(self, f"{name}_{prefix}", mean)
+        if self.wbgt_now is None and self.thermal_baseline is not None:
+            self.wbgt_now = baseline_wbgt_mean(self.thermal_baseline)
+        self.last_updated = timezone.now()
+        super().save(*args, **kwargs)
+
+
+class HeatInputChange(models.Model):
+    """
+    When an input of the heat model last changed (land cover, soil, the DSM,
+    buildings): the Scenarios panel suggests rerunning a scenario's heat model
+    when its SOLWEIG runs are older (urban_heat/signals.py writes it, at most
+    once a minute per input, also after bulk imports). Bookkeeping, not a
+    DAG node or map layer.
+    """
+    registry_hidden = True
+
+    input = models.CharField(max_length=40, unique=True)
+    changed_at = models.DateTimeField()
+
+    class Meta:
+        verbose_name = "Heat Model Input Change"
+        verbose_name_plural = "Heat Model Input Changes"
+
+    def __str__(self):
+        return f"{self.input} changed {self.changed_at:%Y-%m-%d %H:%M}"

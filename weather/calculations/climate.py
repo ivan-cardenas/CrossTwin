@@ -52,6 +52,15 @@ PATHWAYS = {
 # high-emission pair; the dry variant (Hd) is the default here because it is
 # the heat and drought stress case, the wet one (Hn) the heavy-rain case.
 KEA_PRESETS = (CURRENT, "2050_Hd", "2100_Hd")
+# Population year that goes with a scenario: the current climate keeps the
+# year selector's first year (administrative.calculations.population.
+# REFERENCE_YEAR; a test checks they match), a scenario its horizon year
+# (CBS projection to 2050, extrapolated beyond). Not the period mid-point
+# (2036-2065 -> 2050 is the KNMI'23 label, not a computed year).
+CURRENT_POPULATION_YEAR = 2025
+# Version of the stored scenario-run method (weather.ClimateScenarioRun):
+# bump it when an equation a run uses changes, so old runs stay identifiable.
+SCENARIO_RUN_VERSION = "1"
 KEA_LABELS = {CURRENT: "Current", "2050_Hd": "2050 high", "2100_Hd": "2100 high"}
 
 SEASONS = ("winter", "spring", "summer", "autumn")
@@ -154,10 +163,18 @@ STATIONS_SOURCE = (
 )
 STATIONS_URL = "https://klimaatscenarios-data.knmi.nl"
 
+# Which change the heat panel / a scenario run applies to the observed
+# weather: the average day of the observation's own season (default), the
+# average day of a chosen season (its Table 1 changes, whatever the date of
+# the observation), or the warmest day of the year (heat-wave day).
 HEAT_AVERAGE = "average"
 HEAT_WARMEST = "warmest"
 HEAT_MODES = {
-    HEAT_AVERAGE: "Average day",
+    HEAT_AVERAGE: "Observed season",
+    "winter": "Winter day",
+    "spring": "Spring day",
+    "summer": "Summer day",
+    "autumn": "Autumn day",
     HEAT_WARMEST: "Warmest day of the year",
 }
 
@@ -293,7 +310,7 @@ def describe(key):
             "key": CURRENT, "horizon": None, "pathway": None, "active": False,
             "label": "Current climate", "short": "Current", "period": "1991-2020",
             "emissions": None, "variant": None, "global_warming_c": None,
-            "kea_preset": True,
+            "kea_preset": True, "year": CURRENT_POPULATION_YEAR,
         }
     horizon, pathway = key.split("_")
     info = PATHWAYS[pathway]
@@ -305,7 +322,14 @@ def describe(key):
         "emissions": info["emissions"], "variant": info["variant"],
         "global_warming_c": GLOBAL_WARMING_C[key],
         "kea_preset": key in KEA_PRESETS,
+        "year": population_year(key),
     }
+
+
+def population_year(key):
+    """Population projection year of a scenario: its horizon, or CURRENT_POPULATION_YEAR."""
+    key = normalize(key)
+    return CURRENT_POPULATION_YEAR if key == CURRENT else int(key.split("_")[0])
 
 
 # Rows of the Scenarios panel's table: (indicator, label, unit, format).
@@ -353,6 +377,89 @@ def deltas(key, period):
     return dict(DELTAS[key][period])
 
 
+def season_for(heat, month=None):
+    """
+    The season whose Table 1 changes a heat mode applies: summer for the
+    heat-wave day, the chosen season for a season mode, else the season of
+    the observation's `month` (summer when unknown).
+    """
+    heat = normalize_heat(heat)
+    if heat == HEAT_WARMEST:
+        return "summer"
+    if heat in SEASONS:
+        return heat
+    return season_of_month(month)
+
+
+def temperature_change(key, heat=HEAT_AVERAGE, month=None, station=DEFAULT_STATION, daytime=True):
+    """
+    Air-temperature change (°C) of a scenario for a heat mode: the warmest-day
+    change at `station` (day and night) for HEAT_WARMEST, otherwise ΔTx by
+    day or ΔTn by night of season_for(heat, month). 0 for CURRENT.
+    """
+    key = normalize(key)
+    if key == CURRENT:
+        return 0.0
+    if normalize_heat(heat) == HEAT_WARMEST:
+        return warmest_day_change(key, station)
+    d = DELTAS[key][season_for(heat, month)]
+    return d["tx_c"] if daytime else d["tn_c"]
+
+
+def apply_to_day_values(day, key, heat=HEAT_AVERAGE, month=None, station=DEFAULT_STATION):
+    """
+    The day values SOLWEIG's PET needs (tmax_c, tmin_c, kdown_day_wm2,
+    wind_day_ms) moved into a scenario like apply_to_weather: tmax + ΔTx,
+    tmin + ΔTn (both the warmest-day change for HEAT_WARMEST), the day's
+    radiation × (K_ref + ΔK) / K_ref, wind + Δwind. Missing values stay
+    missing, other keys are copied; CURRENT returns them unchanged.
+    """
+    if day is None:
+        return None
+    key = normalize(key)
+    out = dict(day)
+    if key == CURRENT:
+        return out
+    season = season_for(heat, month)
+    d = DELTAS[key][season]
+    if day.get("tmax_c") is not None:
+        out["tmax_c"] = round(day["tmax_c"] + temperature_change(key, heat, month, station, True), 1)
+    if day.get("tmin_c") is not None:
+        out["tmin_c"] = round(day["tmin_c"] + temperature_change(key, heat, month, station, False), 1)
+    if day.get("kdown_day_wm2") is not None:
+        ref = REFERENCE_KDOWN_WM2[season]
+        out["kdown_day_wm2"] = round(day["kdown_day_wm2"] * (ref + d["kdown_wm2"]) / ref, 1)
+    if day.get("wind_day_ms") is not None:
+        out["wind_day_ms"] = round(max(0.0, day["wind_day_ms"] + d["wind_ms"]), 1)
+    return out
+
+
+# Default analysed day of a stored scenario run per season (the middle month
+# of the meteorological season, 15th, 14:00 local: near the daily maximum).
+# The observed season and the heat-wave day default to summer.
+DEFAULT_ANALYSIS_MONTH = {"winter": 1, "spring": 4, "summer": 7, "autumn": 10}
+DEFAULT_ANALYSIS_DAY, DEFAULT_ANALYSIS_HOUR = 15, 14
+
+
+def default_analysis_date(heat, year):
+    """(year, month, day, hour) of the default observed hour of a scenario run for a heat mode."""
+    heat = normalize_heat(heat)
+    season = heat if heat in SEASONS else "summer"
+    return year, DEFAULT_ANALYSIS_MONTH[season], DEFAULT_ANALYSIS_DAY, DEFAULT_ANALYSIS_HOUR
+
+
+def month_fits_heat_mode(month, heat):
+    """
+    Whether an observed month suits a heat mode in a stored run: a season mode
+    needs a month of that season, the heat-wave day a summer month; the
+    observed season takes any month.
+    """
+    heat = normalize_heat(heat)
+    if heat == HEAT_AVERAGE:
+        return True
+    return season_of_month(month) == season_for(heat, month)
+
+
 def apply_to_weather(weather, key, month=None, heat=HEAT_AVERAGE, station=DEFAULT_STATION):
     """
     Observed weather (ta_c, rh_pct, wind_ms, kdown_wm2) moved into a scenario
@@ -365,6 +472,8 @@ def apply_to_weather(weather, key, month=None, heat=HEAT_AVERAGE, station=DEFAUL
 
     heat = HEAT_WARMEST (heat-wave day): ta + ΔT of the warmest day of the
     year at `station` (day and night), the other changes those of summer.
+    heat = a season ('winter' ...): that season's changes instead of the
+    observation's (season_for).
 
     Missing values stay missing; other keys are copied. CURRENT returns the
     weather unchanged.
@@ -375,17 +484,12 @@ def apply_to_weather(weather, key, month=None, heat=HEAT_AVERAGE, station=DEFAUL
     out = dict(weather)
     if key == CURRENT:
         return out
-    warmest = normalize_heat(heat) == HEAT_WARMEST
-    season = "summer" if warmest else season_of_month(month)
+    season = season_for(heat, month)
     d = DELTAS[key][season]
     kdown = weather.get("kdown_wm2")
     if weather.get("ta_c") is not None:
-        if warmest:
-            change = warmest_day_change(key, station)
-        else:
-            daytime = kdown is not None and kdown > NIGHT_KDOWN_WM2
-            change = d["tx_c"] if daytime else d["tn_c"]
-        out["ta_c"] = round(weather["ta_c"] + change, 1)
+        daytime = kdown is not None and kdown > NIGHT_KDOWN_WM2
+        out["ta_c"] = round(weather["ta_c"] + temperature_change(key, heat, month, station, daytime), 1)
     if weather.get("rh_pct") is not None:
         out["rh_pct"] = round(min(100.0, max(0.0, weather["rh_pct"] + d["rh_pp"])), 1)
     if weather.get("wind_ms") is not None:

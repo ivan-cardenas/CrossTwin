@@ -148,8 +148,22 @@ def raster_display_name(instance, registry_key, fallback=None):
 
     date_value = getattr(instance, "date", None) or getattr(instance, "date_time", None)
     if date_value:
-        return f"{label} - {date_value.strftime('%m-%y')}"
-    return label
+        label = f"{label} - {date_value.strftime('%m-%y')}"
+    return label + climate_run_suffix(instance)
+
+
+def climate_run_suffix(instance):
+    """
+    ' · KNMI'23 run 12' for a raster of a stored climate scenario run's
+    scenario SOLWEIG run, ' · run 12 (current climate)' for its baseline run,
+    '' for observed rasters. From the row itself (climate_run_id, source), no query.
+    """
+    run_id = getattr(instance, "climate_run_id", None)
+    if not run_id:
+        return ""
+    if "KNMI23" in (getattr(instance, "source", None) or ""):
+        return f" · KNMI'23 run {run_id}"
+    return f" · run {run_id} (current climate)"
 
 
 def _raster_statistics(instance):

@@ -222,3 +222,79 @@ class HeatWavePanelViewTests(TestCase):
         heat = self.client.get(reverse("urban_heat:heat_indicators", args=["city", "Nowhere"]),
                                {"climate": "2050_Hd", "climate_heat": "warmest"}, HTTP_HX_REQUEST="true")
         self.assertContains(heat, 'name="climate_heat" value="warmest"')
+
+
+class ScenarioPopulationYearTests(TestCase):
+    """A scenario sets the population year: current 2025, else its horizon."""
+
+    def test_population_year_per_scenario(self):
+        self.assertEqual(climate.population_year("current"), 2025)
+        self.assertEqual(climate.population_year("2050_Hd"), 2050)
+        self.assertEqual(climate.population_year("2100_Ln"), 2100)
+        self.assertEqual(climate.population_year("bogus"), 2025)
+
+    def test_current_year_matches_the_year_selector_baseline(self):
+        from administrative.calculations.population import REFERENCE_YEAR
+        self.assertEqual(climate.CURRENT_POPULATION_YEAR, REFERENCE_YEAR)
+
+    def test_panel_carries_the_year_and_the_effects_button(self):
+        response = self.client.get(reverse("weather:climate_panel"), {"climate": "2100_Hd"})
+        self.assertContains(response, 'data-climate-year="2100"')
+        self.assertContains(response, 'id="climate-effects-btn"')
+        self.assertNotContains(response, "Applied in the panels")
+
+
+class ClimateEffectsTests(TestCase):
+    """mainMap/views.py::climate_effects: current (2025) vs scenario (horizon year)."""
+
+    def test_rows_are_the_change_future_minus_now(self):
+        from mainMap.views import climate_effect_rows
+        rows = climate_effect_rows({"ta_c": 20.0, "population": 1000}, {"ta_c": 22.34, "population": 1100})
+        by_label = {r["label"]: r for r in rows}
+        self.assertEqual(by_label["Air temperature"]["change"], 2.3)
+        self.assertEqual(by_label["Population"]["change"], 100)
+        self.assertNotIn("WBGT (estimate)", by_label)   # missing on both sides
+
+    def test_view_renders_heat_and_water(self):
+        response = self.client.get(reverse("map:climate_effects"),
+                                   {"climate": "2050_Hd", "level": "city", "location": "Nowhere"})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Urban heat")
+        self.assertContains(response, "Water supply")
+        self.assertEqual(response.context["future_year"], 2050)
+        rain = next(r for r in response.context["rows"] if r["label"] == "Design rain event")
+        self.assertGreater(rain["future"], rain["now"])
+
+
+class SeasonModeTests(TestCase):
+    """Heat modes: the observed season, a chosen season, or the heat-wave day."""
+
+    def test_season_for(self):
+        self.assertEqual(climate.season_for("average", 7), "summer")
+        self.assertEqual(climate.season_for("average", 1), "winter")
+        self.assertEqual(climate.season_for("winter", 7), "winter")
+        self.assertEqual(climate.season_for("warmest", 1), "summer")
+        self.assertEqual(climate.season_for("bogus", 4), "spring")
+
+    def test_chosen_season_overrides_the_observation_month(self):
+        july_day = {"ta_c": 20.0, "rh_pct": 70.0, "wind_ms": 3.0, "kdown_wm2": 500.0}
+        out = climate.apply_to_weather(july_day, "2050_Hd", 7, "winter")
+        self.assertAlmostEqual(out["ta_c"], 20.0 + climate.DELTAS["2050_Hd"]["winter"]["tx_c"])
+
+    def test_day_values_shift_like_the_hour(self):
+        day = {"tmax_c": 25.0, "tmin_c": 12.0, "kdown_day_wm2": 300.0, "wind_day_ms": 3.0, "other": 1}
+        out = climate.apply_to_day_values(day, "2050_Hd", "summer")
+        d = climate.DELTAS["2050_Hd"]["summer"]
+        self.assertAlmostEqual(out["tmax_c"], round(25.0 + d["tx_c"], 1))
+        self.assertAlmostEqual(out["tmin_c"], round(12.0 + d["tn_c"], 1))
+        self.assertEqual(out["other"], 1)
+        hot = climate.apply_to_day_values(day, "2100_Hd", "warmest", station="De Bilt")
+        self.assertAlmostEqual(hot["tmax_c"], 25.0 + 6.9)
+        self.assertEqual(climate.apply_to_day_values(day, "current"), day)
+
+    def test_panel_shows_six_modes_and_the_season(self):
+        response = self.client.get(reverse("weather:climate_panel"), {"climate": "2050_Hd", "heat": "autumn"})
+        for label in climate.HEAT_MODES.values():
+            self.assertContains(response, label)
+        self.assertContains(response, 'data-climate-heat="autumn"')
+        self.assertContains(response, "Autumn change")

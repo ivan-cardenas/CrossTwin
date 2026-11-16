@@ -21,8 +21,14 @@ time (the SVF), so the map's tool polls the run instead of waiting on the
 request.
 
 DAG edges: DSM -> SVF, SVF -> Tmrt, SVF -> PET, Meteorology -> Tmrt,
-Meteorology -> PET, Meteorology -> UTCI, Tmrt -> PET, Tmrt -> UTCI. On demand,
-no receivers: a post_save must not start a GPU run.
+Meteorology -> PET, Meteorology -> UTCI, Tmrt -> PET, Tmrt -> UTCI. On demand:
+a post_save must not start a GPU run, with one exception: creating a
+weather.ClimateScenarioRun (a staff POST, never imported, restored or
+bulk-written) queues its scenario run (urban_heat/solweig/scenario.py).
+
+Runs of a climate scenario (run.climate_run set) tag their rows with it, also
+store WBGT from Tmrt (urban_heat/calculations/chain.py::wbgt_outdoor_c) and
+never replace other rows; the map tool's runs only replace observed rows.
 """
 import logging
 import os
@@ -123,6 +129,8 @@ def urban_pet(inputs, tmrt, met, when_local):
     the day's Tmax - Tmin, mean Kdown and mean wind and the hour's diurnal
     factor), the wind is the 10 m wind reduced to 1.2 m by the frontal areas
     of buildings and trees. Building cells are NaN (PET is for pedestrians).
+
+    DAG edges: DSM -> PET, SVF -> PET, Tmrt -> PET, Meteorology -> PET
 
     Without the day's values, outside April-September (the diurnal table) or
     on a day with Tmax = Tmin the air temperature stays the met record's.
@@ -225,11 +233,15 @@ def _raster(array, origin, cell, srid):
 
 
 def replace_covered(model, record, when_local, area, cell):
-    """Delete the other SOLWEIG rows of `model` for the same hour inside `area`, with their COGs."""
+    """
+    Delete the other observed SOLWEIG rows of `model` for the same hour inside
+    `area`, with their COGs. Rows of climate scenario runs are never replaced.
+    """
     from physicalEnv.calculations.svf import _storage_box
 
     replaced = []
     inside = (model.objects.filter(source__startswith=SOURCE_PREFIX, date_time=when_local,
+                                   climate_run__isnull=True,
                                    raster__contained=_storage_box(area.extent, pad=cell / 2))
               .exclude(pk=record.pk).defer("raster"))
     for old in inside:
@@ -261,7 +273,8 @@ def calculate(run):
 
     from physicalEnv.calculations import svf
 
-    from urban_heat.models import PET, UTCI, MeanRadiantTemperature
+    from urban_heat.calculations.chain import wbgt_outdoor_c
+    from urban_heat.models import PET, UTCI, MeanRadiantTemperature, WetBulbGlobeTemperature
 
     from . import inputs as solweig_inputs
     from .met import Met
@@ -282,6 +295,10 @@ def calculate(run):
 
     r0, c0, rows, cols = inputs.crop
     tmrt, utci, pet = (a[r0:r0 + rows, c0:c0 + cols] for a in (tmrt, utci, pet))
+    scenario = run.climate_run_id is not None
+    outputs = [("mrt", MeanRadiantTemperature, tmrt), ("utci", UTCI, utci), ("pet", PET, pet)]
+    if scenario:
+        outputs.append(("wbgt", WetBulbGlobeTemperature, wbgt_outdoor_c(met.ta_c, met.rh_pct, met.wind_ms, tmrt)))
 
     origin, cell, srid = inputs.view_origin, inputs.cell, inputs.srid
     source = f"{SOURCE_PREFIX}{p['dsm'].pk}: {met.source}"[:100]
@@ -289,21 +306,26 @@ def calculate(run):
     replaced = {}
     with transaction.atomic():
         records = {}
-        for key, model, array in (("mrt", MeanRadiantTemperature, tmrt), ("utci", UTCI, utci), ("pet", PET, pet)):
-            method_label = f"{method}, {pet_model}" if key == "pet" else method
+        for key, model, array in outputs:
+            method_label = {"pet": f"{method}, {pet_model}",
+                            "wbgt": "ISO 7243 from SOLWEIG Tmrt (Tg ISO 7726, Tnwb Stull 2011)"}.get(key, method)
             records[key] = model.objects.create(
                 raster=_raster(array, origin, cell, srid), date_time=when_local,
-                source=source, measurement_method=method_label[:100], resolution=cell)
+                source=source, measurement_method=method_label[:100], resolution=cell,
+                climate_run_id=run.climate_run_id)
         extent = Polygon.from_bbox(records["mrt"].raster.extent)
         extent.srid = srid
-        for key, model in (("mrt", MeanRadiantTemperature), ("utci", UTCI), ("pet", PET)):
-            replaced[key] = replace_covered(model, records[key], when_local, extent, cell)
+        if not scenario:
+            for key, model, _array in outputs:
+                replaced[key] = replace_covered(model, records[key], when_local, extent, cell)
         run.area = extent
         run.mrt, run.utci, run.pet = records["mrt"], records["utci"], records["pet"]
+        run.wbgt = records.get("wbgt")
     run.inputs = {**inputs.labels, "grid": [inputs.shape[1], inputs.shape[0]], "halo_m": solweig_inputs.HALO_M,
                   "pet_model": pet_model,
                   "timezone": str(when_local.tzinfo), "sun": sun_position(when_local, *centre(run.bbox_wgs84))}
-    run.stats = {"tmrt": _stats(tmrt), "utci": _stats(utci), "pet": _stats(pet), "replaced": replaced}
+    run.stats = {**{("tmrt" if key == "mrt" else key): _stats(array) for key, _m, array in outputs},
+                 "replaced": replaced}
     return run
 
 
@@ -378,6 +400,6 @@ def stale_results(view):
         svf.update(SkyViewFactor.objects.filter(raster__bboverlaps=edit.area).filter(
             raster__bboverlaps=box, date_time__lt=edit.at).values_list("pk", flat=True))
         thermal.update(ThermalComfortRun.objects.filter(
-            status="done", mrt__isnull=False, area__bboverlaps=edit.area, finished__lt=edit.at)
+            status="done", mrt__isnull=False, climate_run__isnull=True, area__bboverlaps=edit.area, finished__lt=edit.at)
             .filter(area__bboverlaps=box).values_list("pk", flat=True))
     return {"svf": sorted(svf), "thermal": sorted(thermal)}

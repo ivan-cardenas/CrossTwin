@@ -679,9 +679,64 @@ input[type="range"].zone-slider::-moz-range-thumb {
 .climate-table thead th { color: rgba(232, 244, 255, 0.5); font-weight: 600; text-transform: capitalize; }
 .climate-stations thead th { text-transform: none; }
 .climate-stations tr.is-nearest td { color: #ffb36b; font-weight: 600; }
-.climate-heat-modes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.climate-applies { display: flex; flex-direction: column; gap: 6px; }
-.climate-applies .climate-btn { flex-direction: row; align-items: center; justify-content: space-between; }
+.climate-heat-modes { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.climate-table thead th.is-season { color: #fcd34d; }
+/* "Calculate effects" call to action of the Scenarios panel */
+.climate-cta {
+  margin-top: 12px; padding: 12px; border-radius: 10px;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.22), rgba(245, 158, 11, 0.18));
+  border: 1px solid rgba(56, 189, 248, 0.55);
+}
+.climate-cta-btn {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px; width: 100%;
+  padding: 12px 14px; border: 0; border-radius: 8px; cursor: pointer; text-align: left;
+  background: #38bdf8; color: #06202e; font-size: 0.95rem; font-weight: 700;
+  box-shadow: 0 4px 14px rgba(56, 189, 248, 0.35); transition: filter 0.15s, transform 0.15s;
+}
+.climate-cta-btn span { font-size: 0.7rem; font-weight: 500; line-height: 1.35; color: rgba(6, 32, 46, 0.8); }
+.climate-cta-btn:hover { filter: brightness(1.08); transform: translateY(-1px); }
+.climate-cta-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.climate-cta-btn[disabled] { opacity: 0.6; cursor: progress; transform: none; }
+.climate-cta-secondary { width: 100%; margin-top: 8px; }
+.climate-cta-hint { font-size: 0.78rem; color: rgba(232, 244, 255, 0.7); }
+.climate-cta-options { margin-top: 8px; font-size: 0.72rem; color: rgba(232, 244, 255, 0.75); }
+.climate-cta-options summary { cursor: pointer; }
+.climate-cta-options label { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+.climate-cta-options .climate-cta-check { flex-direction: row; align-items: center; gap: 6px; }
+.climate-cta-options input, .climate-cta-options select {
+  background: rgba(0, 0, 0, 0.3); color: inherit; border: 1px solid rgba(232, 244, 255, 0.2); border-radius: 4px; padding: 3px 5px;
+}
+.climate-effects-btn { width: 100%; }
+/* Stored scenario runs */
+.climate-run { margin-top: 10px; }
+.climate-run-head { display: flex; flex-direction: column; gap: 2px; font-size: 0.78rem; margin-bottom: 6px; }
+.climate-run-head span { color: rgba(232, 244, 255, 0.55); font-size: 0.7rem; }
+.climate-run-status { font-size: 0.72rem; color: rgba(232, 244, 255, 0.7); margin-bottom: 4px; }
+.climate-run-status.is-queued::after { content: " ●"; color: #38bdf8; animation: climate-pulse 1.2s infinite; }
+@keyframes climate-pulse { 50% { opacity: 0.2; } }
+@media (prefers-reduced-motion: reduce) { .climate-run-status.is-queued::after { animation: none; } }
+.climate-run-stale { margin: 4px 0; padding: 6px 8px; border-radius: 6px; font-size: 0.72rem;
+  background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.5); color: #fcd34d; }
+.climate-run-error { margin-top: 8px; padding: 6px 8px; border-radius: 6px; font-size: 0.75rem;
+  background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.5); color: #fca5a5; }
+.climate-run-note { text-align: left !important; white-space: normal !important; color: rgba(232, 244, 255, 0.55); }
+.climate-run-layers { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.climate-run-layer, .climate-run-open {
+  background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.4); color: #e8f4ff;
+  border-radius: 6px; padding: 4px 8px; font-size: 0.72rem; cursor: pointer; text-align: left;
+}
+.climate-run-open { display: flex; flex-direction: column; width: 100%; }
+.climate-run-open small { color: rgba(232, 244, 255, 0.55); }
+.climate-run-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.climate-run-actions { display: flex; gap: 6px; margin-top: 8px; }
+.climate-btn.is-attention { border-color: #f59e0b; color: #fcd34d; }
+.climate-effects { margin-top: 8px; }
+.climate-effects-head { font-size: 0.75rem; color: rgba(232, 244, 255, 0.7); margin-bottom: 4px; }
+.climate-effects-loading { margin-top: 8px; font-size: 0.75rem; color: rgba(232, 244, 255, 0.55); }
+.climate-effects-table .climate-effects-section td {
+  padding-top: 8px; font-size: 0.65rem; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(232, 244, 255, 0.45);
+}
+.pop-extrapolated { color: #fcd34d; opacity: 0.85; }
 .climate-source { margin-top: 14px; font-size: 0.68rem; color: rgba(232, 244, 255, 0.45); }
 .climate-source a { color: #7dd3fc; }
 #btn-scenarios .climate-active-badge {
@@ -692,3 +747,7 @@ input[type="range"].zone-slider::-moz-range-thumb {
   background: rgba(56, 189, 248, 0.2);
   color: #7dd3fc;
 }
+
+/* Thermal Comfort card while a KNMI'23 scenario is selected (SolweigTool.js) */
+.solweig-scenario { margin-top: 6px; padding: 6px 8px; border-radius: 6px;
+  background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.45); color: #e8f4ff; line-height: 1.4; }

@@ -334,6 +334,150 @@ class AvailableFreshWater(models.Model):
         verbose_name = "Available Fresh Water"
         verbose_name_plural = "Available Fresh Water"
     
+class ScenarioFreshWater(models.Model):
+    """
+    Yearly recharge of one AvailableFreshWater source in a stored KNMI'23
+    climate scenario run (weather.ClimateScenarioRun): the same water balance
+    as AvailableFreshWater.save() (soil x land cover, wet-season groundwater,
+    a year of daily KNMI rain and Makkink ET at the nearest station), with the
+    scenario's seasonal rain and yearly ET changes. The observed source row
+    is not changed; its current-climate values are kept beside the scenario's.
+    Created by watersupply/signals.py when a run is saved. Not a map layer.
+    """
+    registry_hidden = True
+
+    run = models.ForeignKey("weather.ClimateScenarioRun", on_delete=models.CASCADE, related_name="freshwater")
+    source = models.ForeignKey(AvailableFreshWater, on_delete=models.CASCADE, related_name="+")
+    station = models.ForeignKey("weather.WeatherStation", on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+                                help_text="KNMI station of the daily rain and ET (derived)")
+    met_year = models.IntegerField(null=True, blank=True, help_text="Year of the station's daily rain and ET (the source's recharge_year, else the latest complete year)")
+    rain_mm = models.FloatField(null=True, blank=True)
+    runoff_mm = models.FloatField(null=True, blank=True)
+    et_mm = models.FloatField(null=True, blank=True)
+    recharge_mm = models.FloatField(null=True, blank=True)
+    infiltrationDepth_cm = models.FloatField(null=True, blank=True, help_text="Yearly recharge depth in the scenario, cm/yr")
+    yield_Mm3_year = models.FloatField(null=True, blank=True, help_text="Yearly recharge volume in the scenario, Mm3/yr")
+    baseline_recharge_mm = models.FloatField(null=True, blank=True, help_text="Same balance in the current climate, mm/yr")
+    baseline_yield_Mm3_year = models.FloatField(null=True, blank=True, help_text="Same balance in the current climate, Mm3/yr")
+    last_updated = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        verbose_name = "Scenario Fresh Water"
+        verbose_name_plural = "Scenario Fresh Water"
+        constraints = [models.UniqueConstraint(fields=["run", "source"], name="unique_scenario_freshwater")]
+
+    def save(self, *args, **kwargs):
+        """
+        DAG edges:  Climate_Change -> Meteorology -> Available_FW
+                    LandCover, Soil_Type -> Infiltration -> Available_FW
+        balance = chain.scenario_water_balance(station year, composition, scenario)
+        depth = recharge / 10; yield = chain.recharge_Mm3_yr(depth, area).
+        A missing input (no soil map, land cover or station year) keeps the
+        stored values.
+        """
+        from physicalEnv.calculations.soil import SEASONS, soil_landcover_composition
+        from weather.calculations.water_balance import yearly_water_balance
+
+        from .calculations.chain import recharge_Mm3_yr, scenario_water_balance
+
+        geom = self.source.geom
+        composition = soil_landcover_composition(geom, SEASONS['wet']['statistic'])[0] if geom else []
+        met = yearly_water_balance(geom.point_on_surface, self.source.recharge_year) if composition else None
+        scenario = scenario_water_balance(met, composition, self.run.scenario)
+        if scenario is not None:
+            observed = scenario_water_balance(met, composition, "current")
+            self.station, self.met_year = met['station'], met['year']
+            self.rain_mm = round(scenario['rain_mm'], 1)
+            self.runoff_mm = round(scenario['runoff_mm'], 1)
+            self.et_mm = round(scenario['et_mm'], 1)
+            self.recharge_mm = round(scenario['recharge_mm'], 1)
+            self.infiltrationDepth_cm = round(scenario['recharge_mm'] / 10, 2)
+            self.yield_Mm3_year = recharge_Mm3_yr(self.infiltrationDepth_cm, geom.area)
+            self.baseline_recharge_mm = round(observed['recharge_mm'], 1)
+            self.baseline_yield_Mm3_year = recharge_Mm3_yr(round(observed['recharge_mm'] / 10, 2), geom.area)
+        self.last_updated = timezone.now()
+        super().save(*args, **kwargs)
+
+
+class ScenarioWaterSecurity(models.Model):
+    """
+    Water demand and supply security of a run's city in the scenario's
+    population year (weather.ClimateScenarioRun: CBS variant + extra growth,
+    2100 = trend extrapolation), against the baseline year, with the same
+    equations as TotalWaterDemand / SupplySecurity (calculations/chain.py).
+    Production is today's (wells + imports): the scenario changes demand and
+    recharge, not the installed capacity. The yearly recharge of the run's
+    sources (ScenarioFreshWater) is set beside the extraction. Not a map layer.
+    """
+    registry_hidden = True
+
+    run = models.OneToOneField("weather.ClimateScenarioRun", on_delete=models.CASCADE, related_name="water_security")
+    city = models.ForeignKey("administrative.City", on_delete=models.DO_NOTHING, null=True, blank=True, related_name="+")
+    year = models.IntegerField(null=True, blank=True)
+    population = models.IntegerField(null=True, blank=True)
+    population_extrapolated = models.BooleanField(default=False)
+    consumption_L_d = models.FloatField(null=True, blank=True, help_text="L/person/day of ConsumptionCapita.for_year")
+    consumption_year = models.IntegerField(null=True, blank=True)
+    demand_m3_d = models.FloatField(null=True, blank=True)
+    production_m3_d = models.FloatField(null=True, blank=True)
+    supply_security_pct = models.FloatField(null=True, blank=True)
+    service_time_hours = models.FloatField(null=True, blank=True)
+    baseline_population = models.IntegerField(null=True, blank=True)
+    baseline_demand_m3_d = models.FloatField(null=True, blank=True)
+    baseline_supply_security_pct = models.FloatField(null=True, blank=True)
+    yield_Mm3_year = models.FloatField(null=True, blank=True, help_text="Σ scenario recharge of the run's sources, Mm3/yr")
+    baseline_yield_Mm3_year = models.FloatField(null=True, blank=True)
+    extraction_Mm3_year = models.FloatField(null=True, blank=True, help_text="Active extraction for the city, Mm3/yr")
+    last_updated = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        verbose_name = "Scenario Water Security"
+        verbose_name_plural = "Scenario Water Security"
+
+    def save(self, *args, **kwargs):
+        """
+        DAG edges:  Total_Population -> Total_Water_Demand -> Supply_Security -> Service_Time
+                    Available_FW (scenario recharge, set beside the extraction)
+        demand = chain.demand_m3_d(consumption, population of the run's year/variant/growth)
+        security = chain.supply_security_pct(production, demand); service time likewise.
+        """
+        from administrative.calculations.population import get_population, is_extrapolated
+
+        from .calculations.chain import demand_m3_d, service_time_hours, supply_security_pct
+        from .calculations.indicators import calculate_total_extraction, calculate_total_production_day
+
+        run = self.run
+        if self.city_id is None:
+            self.city = run.city
+        self.year = run.population_year
+        if self.city is not None:
+            self.population = get_population(self.city, self.year, run.population_variant, run.population_growth_pct)
+            self.population_extrapolated = is_extrapolated(self.city, self.year)
+            self.baseline_population = get_population(self.city, run.baseline_year, run.population_variant, 0)
+            consumption = ConsumptionCapita.for_year(self.city, self.year)
+            production = calculate_total_production_day(self.city) or 0
+            self.production_m3_d = round(production, 1)
+            self.extraction_Mm3_year = round((calculate_total_extraction(self.city) or 0) * 365 / 1e6, 3)
+            if consumption is not None:
+                self.consumption_L_d = consumption.consumption_capita_L_d
+                self.consumption_year = consumption.year
+                demand = demand_m3_d(self.consumption_L_d, self.population or 0)
+                baseline = demand_m3_d(self.consumption_L_d, self.baseline_population or 0)
+                self.demand_m3_d = round(demand, 1)
+                self.baseline_demand_m3_d = round(baseline, 1)
+                if production > 0 and demand > 0:
+                    self.supply_security_pct = round(supply_security_pct(production, demand), 1)
+                    self.service_time_hours = service_time_hours(production, demand)
+                if production > 0 and baseline > 0:
+                    self.baseline_supply_security_pct = round(supply_security_pct(production, baseline), 1)
+        sources = list(run.freshwater.values_list("yield_Mm3_year", "baseline_yield_Mm3_year"))
+        if sources:
+            self.yield_Mm3_year = round(sum(y or 0 for y, _ in sources), 3)
+            self.baseline_yield_Mm3_year = round(sum(b or 0 for _, b in sources), 3)
+        self.last_updated = timezone.now()
+        super().save(*args, **kwargs)
+
+
 class ExtractionWater(models.Model):
     id=models.AutoField(primary_key=True)
     source = models.ForeignKey(AvailableFreshWater,

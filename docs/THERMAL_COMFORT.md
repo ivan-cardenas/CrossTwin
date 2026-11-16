@@ -271,6 +271,10 @@ map move. It shows an orange dot on the Actions button and on the Sky View
 Factor / Thermal Comfort rows, and the card's button reads *Recalculate*.
 Recalculating produces results newer than the edits, which clears the mark.
 
+## Climate scenario runs
+
+The Scenarios panel's *Calculate effects* (staff) stores a `weather.ClimateScenarioRun`. Its receiver in `urban_heat/signals.py` queues one run over the map view and hour (`urban_heat/solweig/scenario.py`): the observed weather of that hour (nearest KNMI station, ERA5, or the Thermal Comfort tool's form) moved into the KNMI'23 scenario (`climate.apply_to_weather` for the hour, `apply_to_day_values` for PET's Tmax/Tmin/Kdown/wind of the day). No second run is started: the current-climate values come from the latest observed run of the same hour that covers the view (`find_baseline`; WBGT from its Tmrt), so run the hour without a scenario first for the comparison. This is the only post_save that starts GPU work, and only when the run is created. The scenario `ThermalComfortRun` and its rasters carry `climate_run`: they never replace observed rows of the same hour (`replace_covered`), the dashboards skip them, and deleting the run deletes them with their COGs. Scenario runs also store WBGT per cell from Tmrt (`urban_heat/calculations/chain.py::wbgt_outdoor_c`: ISO 7243 outdoors, the globe temperature from Tmrt with the ISO 7726 forced-convection equation, the natural wet bulb approximated by Stull's 2011 psychrometric wet bulb). When land cover, soil, the DSM or buildings change after the run (`urban_heat.HeatInputChange`), the panel suggests *Rerun heat model*.
+
 ## Assumptions and limitations
 
 - Meteorology is uniform over the view; the urban heat island effect on air

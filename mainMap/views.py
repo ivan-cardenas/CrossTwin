@@ -273,6 +273,113 @@ def population_panel(request):
     return render(request, 'mainMap/partials/population_panel.html', context)
 
 
+# Rows of the Scenarios panel's effects table: (section, indicator key, label,
+# unit, decimals). Keys index the dicts built by `_heat_effects` /
+# `_water_effects`; a row is left out when both sides are None.
+CLIMATE_EFFECT_ROWS = (
+    ("Urban heat", "ta_c", "Air temperature", "°C", 1),
+    ("Urban heat", "rh_pct", "Relative humidity", "%", 0),
+    ("Urban heat", "wind_ms", "Wind speed", "m/s", 1),
+    ("Urban heat", "kdown_wm2", "Solar radiation", "W/m²", 0),
+    ("Urban heat", "apparent_shade_c", "Feels like, shade", "°C", 1),
+    ("Urban heat", "apparent_sun_c", "Feels like, sun", "°C", 1),
+    ("Urban heat", "wbgt_estimate_c", "WBGT (estimate)", "°C", 1),
+    ("Water supply", "population", "Population", "", 0),
+    ("Water supply", "total_demand_Mm3", "Water demand", "Mm³/yr", 2),
+    ("Water supply", "balance_Mm3", "Supply − demand", "Mm³/yr", 2),
+    ("Water supply", "supply_security", "Supply security", "%", 1),
+    ("Water supply", "rain_mm", "Design rain event", "mm", 1),
+    ("Water supply", "event_runoff_mm", "Event runoff", "mm", 1),
+    ("Water supply", "infiltration_pct", "Event infiltration", "%", 1),
+    ("Water supply", "recharge_rain_mm_yr", "Yearly rain", "mm/yr", 0),
+    ("Water supply", "recharge_et_mm_yr", "Evapotranspiration", "mm/yr", 0),
+    ("Water supply", "recharge_mm_yr", "Groundwater recharge", "mm/yr", 0),
+    ("Water supply", "recharge_Mm3_yr", "Groundwater recharge", "Mm³/yr", 2),
+)
+
+
+def _heat_effects(indicators):
+    """The weather (with the scenario's change) and its heat stress, from urban_heat's _build_indicators."""
+    return {**(indicators.get('weather') or {}), **(indicators.get('weather_stress') or {})}
+
+
+def climate_effect_rows(now, future):
+    """
+    Pure: the effects table of the Scenarios panel, one row per
+    CLIMATE_EFFECT_ROWS entry with both values and the change (future - now).
+    """
+    rows = []
+    for section, key, label, unit, decimals in CLIMATE_EFFECT_ROWS:
+        a, b = now.get(key), future.get(key)
+        if a is None and b is None:
+            continue
+        change = round(b - a, decimals) if a is not None and b is not None else None
+        rows.append({
+            'section': section, 'label': label, 'unit': unit, 'decimals': decimals,
+            'now': None if a is None else round(a, decimals),
+            'future': None if b is None else round(b, decimals),
+            'change': change,
+        })
+    return rows
+
+
+def _resolve_unit(level, location):
+    """The admin unit of a panel URL, or None (demo / unknown)."""
+    from administrative.admin_units import resolve_admin_unit
+    return resolve_admin_unit(level, location)
+
+
+def climate_effects(request):
+    """
+    Effects of a KNMI'23 scenario on the Water Supply and Urban Heat
+    indicators of the selected unit: the current climate with the 2025
+    population against the scenario with its horizon year's population
+    (weather/calculations/climate.py::population_year). Both sides run the
+    panels' own _build_indicators (urban_heat, watersupply) with the same
+    population what-if (`pop_scenario`, `pop_growth`); nothing is written.
+    URL: /api/climate/effects/?climate=&heat=&level=&location=&pop_scenario=&pop_growth=
+    DAG edges: Climate_Change -> Meteorology (what-if),
+               Population_Growth -> Total_Population -> Total_Water_Demand
+    """
+    from administrative.calculations.population import is_extrapolated, population_params
+    from urban_heat import views as heat_views
+    from watersupply import views as water_views
+    from weather.calculations import climate
+
+    key = climate.normalize(request.GET.get('climate'))
+    heat = climate.normalize_heat(request.GET.get('heat'))
+    level = request.GET.get('level') or 'province'
+    location = request.GET.get('location') or 'Demo'
+    pop_scenario, pop_growth = population_params(request.GET)
+    now_year, future_year = climate.CURRENT_POPULATION_YEAR, climate.population_year(key)
+
+    heat_data = heat_views._get_adminUnit_data(level, location) or heat_views.MOCK_DATA
+    heat_now = heat_views._build_indicators(heat_data, None, climate.CURRENT, heat)
+    heat_future = heat_views._build_indicators(heat_data, None, key, heat)
+
+    def water(year, climate_key):
+        data = water_views._get_adminUnit_data(level, location, year, pop_scenario, pop_growth)
+        return water_views._build_indicators(data or water_views.MOCK_DATA, climate_key=climate_key)
+
+    water_now = water(now_year, climate.CURRENT)
+    water_future = water_now if future_year == now_year and key == climate.CURRENT else water(future_year, key)
+
+    rows = climate_effect_rows(
+        {**_heat_effects(heat_now), **water_now},
+        {**_heat_effects(heat_future), **water_future},
+    )
+    return render(request, 'mainMap/partials/climate_effects.html', {
+        'scenario': climate.describe(key),
+        'heat_label': climate.HEAT_MODES[heat],
+        'now_year': now_year,
+        'future_year': future_year,
+        'unit_name': getattr(heat_data.get('adminUnit'), 'name', None) or location,
+        'future_extrapolated': is_extrapolated(_resolve_unit(level, location), future_year),
+        'weather_source': heat_now.get('weather_source'),
+        'rows': rows,
+    })
+
+
 # ── GeoJSON endpoint tuning (docs/PERFORMANCE.md §1) ─────────────────────────
 # 6 decimal places of a degree is ~10 cm, well below one screen pixel at any
 # zoom Mapbox renders; PostGIS's default of 9 only makes the payload bigger.

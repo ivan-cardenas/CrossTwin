@@ -2,7 +2,7 @@ from django.shortcuts import render
 from django.http import JsonResponse
 
 from administrative.admin_units import resolve_admin_unit, ADMIN_LEVELS
-from administrative.calculations.population import DEFAULT_SCENARIO, get_population, population_params
+from administrative.calculations.population import DEFAULT_SCENARIO, get_population, is_extrapolated, population_params
 from mainMap.styles.layerStyles import (BUILDING_TYPE_COLORS, BUILDING_TYPE_LABELS, DEGURBA_COLORS,
                                        DEGURBA_LABELS, LAYER_STYLES)
 from .calculations.indicators import (
@@ -45,9 +45,11 @@ def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, po
         return None
 
     population = get_population(adminUnit, year, pop_scenario, pop_growth)
+    population_extrapolated = is_extrapolated(adminUnit, year)
     return {
         'adminUnit': adminUnit,
         'population': population,
+        'population_extrapolated': population_extrapolated,
         'stock': calculate_building_stock(adminUnit),
         'mix': calculate_building_mix(adminUnit),
         'age': calculate_building_age(adminUnit),
@@ -190,6 +192,7 @@ def _build_indicators(data, green_added_ha=None):
 
     return {
         'population': population,
+        'population_extrapolated': data.get('population_extrapolated', False),
         'degurba': degurba,
 
         # -- Building stock --

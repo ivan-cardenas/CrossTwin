@@ -150,6 +150,17 @@ def _finalize_landcover(rows):
         measure_missing(city_id)          # RS_Imagery -> LandCover for an albedo raster imported earlier
         schedule_urban_area_recompute(city_id)
     _refresh_freshwater_over(rows)       # replays watersupply/signals.py
+    _mark_heat_input("land cover")       # replays urban_heat/signals.py
+
+
+def _finalize_soil(rows):
+    _refresh_freshwater_over(rows)       # replays watersupply/signals.py
+    _mark_heat_input("soil")             # replays urban_heat/signals.py
+
+
+def _mark_heat_input(name):
+    from urban_heat.signals import mark_heat_input_changed
+    mark_heat_input_changed(name)
 
 
 def _fill_tree_heights(rows):
@@ -178,7 +189,7 @@ BULK_IMPORT_MODELS = {
     "physicalEnv.LandCoverVector": _finalize_landcover,   # replays physicalEnv/signals.py
     "builtup.Street": _refresh_canyons_over,              # replays builtup/signals.py
     "builtup.Facility": None,
-    "physicalEnv.SoilArea": _refresh_freshwater_over,     # replays watersupply/signals.py
+    "physicalEnv.SoilArea": _finalize_soil,               # replays watersupply/ and urban_heat/signals.py
     "nature.ProtectedArea": None,
     "nature.WaterWaysLN": None,
     "nature.WaterWaysPG": None,

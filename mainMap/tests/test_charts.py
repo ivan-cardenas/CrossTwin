@@ -104,10 +104,32 @@ class ChartTests(TestCase):
         self.assertEqual([h['year'] for h in handles], [2023, 2028, 2033, 2038, 2043, 2048, 2050])
         self.assertEqual([h['year'] for h in handles if h['active']], [2033])
 
-    def test_marker_only_for_a_year_in_the_data(self):
+    def test_marker_for_a_year_in_the_data_or_its_trend(self):
         self.assertEqual(self.chart(year=2030)['marker']['year'], 2030)
-        self.assertIsNone(self.chart(year=2060)['marker'])
+        self.assertNotIn('trend', self.chart(year=2030)['marker'])
+        self.assertTrue(self.chart(year=2060)['marker']['trend'])
         self.assertIsNone(self.chart(year=None)['marker'])
+
+    def test_extrapolated_year_extends_the_axis_with_a_dashed_trend(self):
+        chart = self.chart(year=2100)
+        self.assertTrue(chart['has_trend'])
+        self.assertEqual(chart['last_year'], 2100)
+        self.assertEqual([g['label'] for g in chart['grid_v']], ['2025', '2050', '2075', '2100'])
+        points = json.loads(chart['points_json'])
+        trend = [p for p in points if p.get('trend')]
+        self.assertEqual(trend[0]['year'], 2055)
+        self.assertEqual(trend[-1]['year'], 2100)
+        # the same value the indicator panels use for 2100
+        self.assertEqual(trend[-1]['median'], population_by_year(self.city, [2100])[2100])
+        for p in points:
+            for key in ('y_low', 'y_median', 'y_high'):
+                self.assertTrue(chart['y0'] <= p[key] <= chart['y1'], (p['year'], key))
+        self.assertEqual(chart['marker']['year'], 2100)
+
+    def test_no_trend_inside_the_data(self):
+        chart = self.chart(year=2040)
+        self.assertFalse(chart['has_trend'])
+        self.assertEqual(chart['last_year'], 2050)
 
     def test_growth_adjustment_moves_the_curve_but_not_the_band(self):
         # The band (low/median/high) is always the original CBS prediction, so the

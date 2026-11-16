@@ -112,7 +112,8 @@ def _month(when):
 def _climate_weather(baseline, climate_key, heat=climate.HEAT_AVERAGE, point=None):
     """
     The observed baseline weather moved into a KNMI'23 scenario (delta-change
-    of the observation's season, weather/calculations/climate.py) and the
+    of the observation's season, or of the season chosen as heat mode;
+    weather/calculations/climate.py::season_for) and the
     display data of the scenario. heat='warmest' (heat-wave day) uses the
     warmest-day change of the key-figure station nearest to `point`
     ((lat, lng); De Bilt without one). Pure; the current climate returns the
@@ -133,7 +134,7 @@ def _climate_weather(baseline, climate_key, heat=climate.HEAT_AVERAGE, point=Non
         return baseline, info
     month = _month(baseline.get('time'))
     shifted = climate.apply_to_weather(baseline, climate_key, month, heat, station)
-    season = 'summer' if heat == climate.HEAT_WARMEST else climate.season_of_month(month)
+    season = climate.season_for(heat, month)
     return shifted, {
         **info,
         'climate_season': season,

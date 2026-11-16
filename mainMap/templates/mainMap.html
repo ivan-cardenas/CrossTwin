@@ -470,6 +470,11 @@
         <label>Day wind m/s <input type="number" id="solweig-wind_day_ms" step="0.1" min="0"></label>
       </div>
       <div class="lst-view-info" id="solweig-met-info"></div>
+      <!-- Shown while a KNMI'23 scenario is selected (Scenarios panel / year): the
+           weather above moved into it; Calculate then stores a scenario run. -->
+      <div class="lst-view-info solweig-scenario" id="solweig-scenario" hidden
+           data-scenario-met-url="{% url 'urban_heat:solweig_scenario_met' %}"
+           data-runs-url="{% url 'map:climate_runs' %}"></div>
       <div class="lst-view-info" id="solweig-view-info"></div>
       <button class="lst-btn lst-btn-primary" id="solweig-calculate" disabled>Calculate thermal comfort</button>
       <div class="lst-status" id="solweig-status" role="status"></div>
@@ -654,6 +659,7 @@
         <button class="year-btn" data-year="2027">2027</button>
         <button class="year-btn" data-year="2030">2030</button>
         <button class="year-btn" data-year="2050">2050</button>
+        <button class="year-btn" data-year="2100" title="Trend extrapolation of the CBS projection (which ends in 2050)">2100</button>
       </div>
     </div>
   </div>

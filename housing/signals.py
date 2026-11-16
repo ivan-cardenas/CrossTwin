@@ -296,3 +296,19 @@ def project_deleted(sender, instance, **kwargs):
             materialise.remove(instance.pk)
     except Exception:   # noqa: BLE001
         logger.exception("Removing the generated layout of housing project %s failed", instance.pk)
+
+
+
+@receiver(post_save, sender="weather.ClimateScenarioRun", dispatch_uid="housing_climate_run_saved")
+def climate_run_saved(sender, instance, raw=False, **kwargs):
+    """
+    DAG edges: Total_Population, Household_Size -> Housing_Demand, for the
+    population of a stored climate scenario run (its year, variant, growth).
+    A snapshot: never bulk-written, so no deferral; HousingSupplyDemand is
+    not touched.
+    """
+    from .models import ScenarioHousingNeed
+
+    if raw or instance.status == "failed":
+        return
+    _resave([ScenarioHousingNeed.objects.get_or_create(run=instance)[0]])

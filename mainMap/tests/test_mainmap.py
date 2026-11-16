@@ -128,12 +128,16 @@ class PopulationDockTests(TestCase):
         # The 67% interval reflects the original CBS prediction, unaffected by the what-if slider.
         self.assertContains(response, '67% interval: 11,400 – 12,600')
 
-    def test_year_outside_the_data_says_so_instead_of_faking_a_projection(self):
+    def test_year_beyond_the_data_is_labelled_trend_extrapolation(self):
+        # Same value the indicator panels use (population.extrapolate), never shown as a CBS forecast.
         response = self.get(year=2040)
-        self.assertContains(response, 'No projection for this year.')
-        self.assertNotContains(response, 'id="pop-value-projected"')
+        self.assertContains(response, 'id="pop-value-projected"')
+        self.assertContains(response, 'trend extrapolation')
+        self.assertNotContains(response, '67% interval:')
         self.assertContains(response, '<svg class="pop-graph"')
-        self.assertNotContains(response, 'pop-marker-line')
+        # the dashed trend reaches the year, with its marker
+        self.assertContains(response, 'pop-curve-trend')
+        self.assertContains(response, 'pop-marker-line')
 
     def test_controls_are_in_the_dock_and_reflect_the_current_choice(self):
         response = self.get(pop_scenario='low', pop_growth='1.5')

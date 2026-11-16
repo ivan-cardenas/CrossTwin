@@ -763,3 +763,62 @@ def meteorology_changed(sender, instance, raw=False, **kwargs):
     if raw or instance.reference_et_mm is None:
         return
     refresh_freshwater(pks=_sources_near_stations([instance.station_id]))
+
+
+# ── Stored climate scenario runs (weather.ClimateScenarioRun) ─────────
+#
+# A run is created by a staff POST, never bulk-written or imported, so these
+# receivers need no deferral. The results are a snapshot: later soil, land
+# cover, KNMI or CBS changes do not touch them (the run shows them as stale;
+# "Recalculate" re-saves the run). Observed rows are never written here.
+
+def _sources_of_run(run):
+    """AvailableFreshWater sources intersecting the run's unit (all of them without a unit geometry)."""
+    unit = run.unit()
+    geom = getattr(unit, "geom", None)
+    sources = AvailableFreshWater.objects.all()
+    return sources.filter(geom__intersects=geom) if geom is not None else sources.none()
+
+
+@receiver(post_save, sender="weather.ClimateScenarioRun", dispatch_uid="water_climate_run_freshwater")
+def climate_run_freshwater(sender, instance, raw=False, **kwargs):
+    """
+    DAG edge: Climate_Change -> Meteorology -> Available_FW
+    One ScenarioFreshWater per source of the unit, re-saved so its save()
+    recomputes the recharge with the scenario's rain and ET.
+    """
+    from .models import ScenarioFreshWater
+
+    if raw or instance.status == "failed":
+        return
+    _resave(ScenarioFreshWater.objects.get_or_create(run=instance, source=source)[0]
+            for source in _sources_of_run(instance))
+
+
+@receiver(post_save, sender="weather.ClimateScenarioRun", dispatch_uid="water_climate_run_security")
+def climate_run_security(sender, instance, raw=False, **kwargs):
+    """
+    DAG edges: Total_Population -> Total_Water_Demand -> Supply_Security
+    (the run's population year, variant and growth). Connected after
+    climate_run_freshwater, so it sums the fresh scenario recharge.
+    """
+    from .models import ScenarioWaterSecurity
+
+    if raw or instance.status == "failed":
+        return
+    _resave([ScenarioWaterSecurity.objects.get_or_create(run=instance)[0]])
+
+
+@receiver(post_save, sender="watersupply.ScenarioFreshWater", dispatch_uid="water_scenario_freshwater_saved")
+def scenario_freshwater_saved(sender, instance, raw=False, **kwargs):
+    """
+    DAG edge: Available_FW -> (scenario recharge beside the extraction)
+    A source recomputed alone (e.g. from the admin) updates its run's
+    security; while a run is being created the security row does not exist
+    yet and is made once by climate_run_security.
+    """
+    from .models import ScenarioWaterSecurity
+
+    if raw:
+        return
+    _resave(ScenarioWaterSecurity.objects.filter(run_id=instance.run_id))

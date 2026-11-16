@@ -2075,6 +2075,10 @@
 .pop-swatch-curve { width: 16px; height: 2px; background: #f2f2f0; }
 .pop-swatch-band { width: 16px; height: 9px; background: var(--accent); opacity: 0.5; }
 .pop-swatch-base { width: 16px; border-top: 1px dashed rgba(255, 255, 255, 0.6); }
+/* Population beyond the imported CBS years: the trend extrapolated (dashed) */
+.pop-curve.pop-curve-trend { stroke-dasharray: 5 4; }
+.pop-edge.pop-edge-trend { stroke-opacity: 0.5; }
+.pop-swatch-trend { width: 16px; border-top: 2px dashed var(--accent); }
 .pop-empty { font-size: 0.82rem; color: var(--text-tertiary); padding: 10px 2px; }
 
 /* what-if */

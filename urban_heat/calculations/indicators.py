@@ -214,8 +214,18 @@ def calculate_canyon_aspect(adminUnit):
 
 # ── Thermal Index Statistics (raster) ────────────────────────────────
 
+# Raster tables that also hold results of stored climate scenario runs
+# (weather.ClimateScenarioRun via climate_run_id): the dashboards read only
+# their observed rows.
+SCENARIO_RASTER_TABLES = {
+    'urban_heat_meanradianttemperature', 'urban_heat_pet', 'urban_heat_utci',
+    'urban_heat_wetbulbglobetemperature',
+}
+
+
 def _raster_stats_sql(table, raster_col, geom_wkt, srid):
-    """Get min/max/mean/stddev from a raster clipped to a geometry."""
+    """Get min/max/mean/stddev from the latest observed raster clipped to a geometry."""
+    observed = "AND r.climate_run_id IS NULL" if table in SCENARIO_RASTER_TABLES else ""
     sql = f"""
         SELECT
             (stats).min,
@@ -228,7 +238,7 @@ def _raster_stats_sql(table, raster_col, geom_wkt, srid):
                 ST_Clip(r.{raster_col}, ST_GeomFromText(%s, %s))
             ) AS stats
             FROM {table} r
-            WHERE ST_Intersects(r.{raster_col}, ST_GeomFromText(%s, %s))
+            WHERE ST_Intersects(r.{raster_col}, ST_GeomFromText(%s, %s)) {observed}
             ORDER BY r.date_time DESC
             LIMIT 1
         ) sub

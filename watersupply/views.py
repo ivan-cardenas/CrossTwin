@@ -9,7 +9,7 @@ from django.apps import apps
 from .models import *
 from .calculations import chain
 from administrative.admin_units import resolve_admin_unit
-from administrative.calculations.population import DEFAULT_SCENARIO, get_population, population_params
+from administrative.calculations.population import DEFAULT_SCENARIO, get_population, is_extrapolated, population_params
 from .calculations.indicators import (
     _get_consumption_capita,
     consumption_data_years,
@@ -107,6 +107,7 @@ def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, po
     return {
         'province':             adminUnit,
         'population':           get_population(adminUnit, year, pop_scenario, pop_growth),
+        'population_extrapolated': is_extrapolated(adminUnit, year),
         'consumption_capita':   _get_consumption_capita(adminUnit, year),
         # years the consumption comes from, when not `year` itself (closest earlier survey)
         'consumption_years':    [y for y in consumption_data_years(adminUnit, year) if y != year],
@@ -205,10 +206,7 @@ def _recharge_indicators(infiltration, area_m2, climate_key=climate.CURRENT):
                 Climate_Change -> Meteorology (scenario what-if)
     """
     met = infiltration.get('water_balance')
-    balance = met and chain.yearly_water_balance_mm(
-        climate.apply_to_daily_rain(met['daily_rain_mm'], met.get('daily_months'), climate_key),
-        climate.apply_to_et(met['et_ref_mm'], climate_key),
-        infiltration.get('composition', []))
+    balance = chain.scenario_water_balance(met, infiltration.get('composition', []), climate_key)
     if not balance:
         return {'recharge_mm_yr': None}
     rain = balance['rain_mm']
@@ -331,6 +329,7 @@ def _build_indicators(data, consumption_override=None, rain_mm=None, climate_key
     return {
         # ── Existing indicators ──
         'population':            data['population'],
+        'population_extrapolated': data.get('population_extrapolated', False),
         'consumption_capita':    consumption,
         # shown next to the slider while it still holds the stored value
         'consumption_years':     [] if consumption_override else data.get('consumption_years', []),

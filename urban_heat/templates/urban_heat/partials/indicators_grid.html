@@ -21,7 +21,7 @@
       🔥 KNMI'23 {{ indicators.climate.label }} · warmest day of the year ({{ indicators.climate_station }}):
     {% else %}
     <div class="climate-note" title="Delta-change: the observed weather plus the {{ indicators.climate_season }} change of KNMI'23 Table 1 (average daily maximum by day, minimum by night; radiation scaled by the seasonal mean change). The hottest days warm more than the average: choose 'Warmest day of the year' in the Scenarios panel for a heat wave.">
-      🌍 KNMI'23 {{ indicators.climate.label }} · {{ indicators.climate_season }} change:
+      🌍 KNMI'23 {{ indicators.climate.label }} · {{ indicators.climate_season }} change{% if indicators.climate_heat == 'average' %} (observed season){% endif %}:
     {% endif %}
       {% if indicators.climate_delta.ta_c != None %}{{ indicators.climate_delta.ta_c|stringformat:"+.1f" }} °C{% endif %}{% if indicators.climate_delta.rh_pct != None %} · {{ indicators.climate_delta.rh_pct|stringformat:"+.1f" }} % RH{% endif %}{% if indicators.climate_delta.wind_ms != None %} · {{ indicators.climate_delta.wind_ms|stringformat:"+.1f" }} m/s{% endif %}{% if indicators.climate_delta.kdown_wm2 != None %} · {{ indicators.climate_delta.kdown_wm2|stringformat:"+.0f" }} W/m²{% endif %}
     </div>
@@ -64,7 +64,7 @@
     {% localize off %}
     <div id="heat-weather-state" hidden
          data-whatif="{% if indicators.weather_whatif or indicators.climate.active %}1{% else %}0{% endif %}"
-         data-climate="{% if indicators.climate.active %}{{ indicators.climate.short }}{% if indicators.climate_heat == 'warmest' %} · warmest day{% endif %}{% endif %}"
+         data-climate="{% if indicators.climate.active %}{{ indicators.climate.short }}{% if indicators.climate_heat == 'warmest' %} · warmest day{% elif indicators.climate_heat != 'average' %} · {{ indicators.climate_heat }}{% endif %}{% endif %}"
          data-ta_c="{{ indicators.weather.ta_c|default_if_none:'' }}"
          data-rh_pct="{{ indicators.weather.rh_pct|default_if_none:'' }}"
          data-wind_ms="{{ indicators.weather.wind_ms|default_if_none:'' }}"

@@ -517,3 +517,106 @@ class HumidityRaster(InterpolatedRasterBase):
         return ('min_humidity_percent', 'max_humidity_percent', 
                 'mean_humidity_percent', '%')
         
+
+
+class ClimateScenarioRun(models.Model):
+    """
+    One stored KNMI'23 climate scenario run for an administrative unit: the
+    Climate_Change driver of core/DAG.dot with everything a rerun needs
+    (scenario, season / heat-wave day, key-figure station, population
+    variant, growth and year, the analysed hour, the map view). Created by
+    the Scenarios panel's "Run scenario" (mainMap/views_climate.py, staff).
+
+    Downstream apps subscribe to its post_save and store their own results
+    (watersupply.ScenarioFreshWater / ScenarioWaterSecurity,
+    housing.ScenarioHousingNeed, urban_heat.ScenarioHeat + a SOLWEIG
+    ThermalComfortRun); weather imports none of them. The results are a
+    snapshot of the inputs at creation: "Recalculate" re-saves the run.
+    Observed rows are never changed. LST is not calculated (it depends on the
+    surface reflectance a satellite measures) and SUHII stays observed.
+
+    DAG node: Climate_Change (save() derives the station and population year).
+    Not a map layer (registry_hidden).
+    """
+    registry_hidden = True
+
+    STATUS_CHOICES = [("created", "Created"), ("failed", "Failed")]
+
+    scenario = models.CharField(max_length=10, help_text="KNMI'23 scenario key, e.g. 2050_Hd (weather/calculations/climate.py)")
+    heat_mode = models.CharField(max_length=10, default="average", help_text="Season whose Table 1 change applies (average = the observed season, winter ... autumn) or warmest = heat-wave day")
+    station = models.CharField(max_length=20, blank=True, default="", help_text="KNMI'23 key-figure station nearest to the unit (derived)")
+    knmi_source = models.TextField(blank=True, default="", help_text="KNMI'23 tables the changes come from (derived)")
+    method_version = models.CharField(max_length=20, blank=True, default="", help_text="weather/calculations/climate.py SCENARIO_RUN_VERSION (derived)")
+    unit_level = models.CharField(max_length=20, help_text="province | city | district | neighborhood")
+    unit_name = models.CharField(max_length=200)
+    city = models.ForeignKey(City, on_delete=models.DO_NOTHING, null=True, blank=True, related_name="+",
+                             help_text="City of the unit (water and housing are per city)")
+    area = models.PolygonField(srid=COORDINATE_SYSTEM, null=True, blank=True, help_text="Map view of the heat model (storage CRS)")
+    bbox_wgs84 = models.JSONField(null=True, blank=True, help_text="Map view: [west, south, east, north]")
+    population_variant = models.CharField(max_length=10, default="prognose", help_text="CBS forecast variant: prognose | low | high")
+    population_growth_pct = models.FloatField(default=0.0, help_text="Extra population growth, %/yr from the reference year")
+    baseline_year = models.IntegerField(default=2025, help_text="Year of the current-climate comparison")
+    population_year = models.IntegerField(null=True, blank=True, help_text="Population year of the scenario (derived: its horizon)")
+    population_extrapolated = models.BooleanField(default=False, help_text="The population year is past the imported CBS years: trend extrapolation (derived)")
+    analysis_datetime = models.DateTimeField(null=True, blank=True, help_text="Observed hour the heat model shifts into the scenario (local, aware)")
+    parameters = models.JSONField(default=dict, blank=True, help_text="Request parameters: resolution, run_heat, observed met and its source")
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="created")
+    message = models.TextField(blank=True, default="")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    created = models.DateTimeField(auto_now_add=True)
+    recalculated = models.DateTimeField(null=True, blank=True, help_text="Last time the results were recomputed")
+
+    class Meta:
+        verbose_name = "Climate Scenario Run"
+        verbose_name_plural = "Climate Scenario Runs"
+        ordering = ["-created"]
+
+    def __str__(self):
+        return f"Climate scenario {self.scenario} ({self.heat_mode}) for {self.unit_name}"
+
+    def unit(self):
+        """The administrative unit of the run, or None."""
+        from administrative.admin_units import resolve_admin_unit
+        return resolve_admin_unit(self.unit_level, self.unit_name)
+
+    def thermal_runs_active(self):
+        """Whether one of its heat-model (SOLWEIG) runs is still queued or running."""
+        from urban_heat.models import ThermalComfortRun  # downstream app, read only
+        return ThermalComfortRun.objects.filter(climate_run=self, status__in=("queued", "running")).exists()
+
+    def describe(self):
+        """Display data: climate.describe() plus the heat mode's label."""
+        from .calculations import climate
+        return {**climate.describe(self.scenario), "heat_label": climate.HEAT_MODES[climate.normalize_heat(self.heat_mode)]}
+
+    def save(self, *args, **kwargs):
+        """
+        DAG node: Climate_Change. Derives the key-figure station nearest to
+        the unit, the population year (the scenario's horizon) and whether it
+        is a trend extrapolation, the unit's city, and records the KNMI'23 tables and method
+        version, so a run can be recomputed later.
+        """
+        from administrative.admin_units import city_of
+        from administrative.calculations.population import is_extrapolated
+
+        from .calculations import climate
+
+        self.scenario = climate.normalize(self.scenario)
+        self.heat_mode = climate.normalize_heat(self.heat_mode)
+        self.population_year = climate.population_year(self.scenario)
+        unit = self.unit()
+        if self.city_id is None and unit is not None:
+            self.city = city_of(unit)
+        point = getattr(unit, "geom", None)
+        if point is not None:
+            p = point.point_on_surface.transform(4326, clone=True)
+            self.station = climate.nearest_station(p.y, p.x)
+        elif self.bbox_wgs84:
+            west, south, east, north = self.bbox_wgs84
+            self.station = climate.nearest_station((south + north) / 2, (west + east) / 2)
+        else:
+            self.station = self.station or climate.DEFAULT_STATION
+        self.population_extrapolated = is_extrapolated(unit, self.population_year)
+        self.knmi_source = f"{climate.KNMI23_SOURCE} | {climate.STATIONS_SOURCE}"
+        self.method_version = climate.SCENARIO_RUN_VERSION
+        super().save(*args, **kwargs)

@@ -5,6 +5,13 @@
 //   GET  urban_heat/solweig/met/    nearest KNMI station / ERA5 values (prefill)
 //   POST urban_heat/solweig/calculate/ -> a run in the background, polled at
 //   GET  urban_heat/solweig/runs/<id>/ until done; then its three layers are added.
+// While a KNMI'23 scenario is selected (window.CLIMATE_SCENARIO, Scenarios panel
+// or the Actions menu year; event crosstwin:climate-changed) the card previews
+// the weather moved into it (urban_heat/solweig/scenario-met/) and Calculate
+// stores a climate scenario run instead (POST /api/climate/runs/, format=json:
+// one SOLWEIG run on the shifted hour; the current values come from an observed
+// run of the same hour, e.g. one made here before); the scenario's run is polled
+// and shown like a normal one.
 // Also owns the stale-results mark: after a building edit (feature-saved,
 // backup-restored) or a map move it asks urban_heat/solweig/stale/ which SVF
 // and thermal-comfort results in view are older than a building change, and
@@ -41,6 +48,7 @@
       info: document.getElementById('solweig-view-info'),
       calculate: document.getElementById('solweig-calculate'),
       status: document.getElementById('solweig-status'),
+      scenario: document.getElementById('solweig-scenario'),
     };
     const met = Object.fromEntries(MET_FIELDS.map(f => [f, document.getElementById(`solweig-${f}`)]));
     const canCalculate = card.dataset.canCalculate === '1';
@@ -76,9 +84,94 @@
       el.status.className = `lst-status ${kind}`;
     }
 
+    function scenarioActive() {
+      return (window.CLIMATE_SCENARIO || 'current') !== 'current';
+    }
+
+    let scenarioLabel = '';
+
     function refreshButton() {
       el.calculate.disabled = busy || !ready || !canCalculate;
-      el.calculate.textContent = stale.thermal.length ? 'Recalculate thermal comfort' : 'Calculate thermal comfort';
+      el.calculate.textContent = scenarioActive()
+        ? `Calculate for ${scenarioLabel || window.CLIMATE_SCENARIO}`
+        : (stale.thermal.length ? 'Recalculate thermal comfort' : 'Calculate thermal comfort');
+    }
+
+    // ---- climate scenario ------------------------------------------------
+
+    function metParams() {
+      const p = new URLSearchParams({ bbox: viewBbox(), datetime: when() });
+      MET_FIELDS.forEach(f => { if (met[f].value !== '') p.set(f, met[f].value); });
+      return p;
+    }
+
+    const signed = (v, digits = 1) => (v == null ? '' : ` (${v >= 0 ? '+' : ''}${Number(v).toFixed(digits)})`);
+
+    let scenarioRequest = null;
+
+    async function refreshScenario() {
+      if (!el.scenario) return;
+      if (!scenarioActive()) {
+        el.scenario.hidden = true;
+        scenarioLabel = '';
+        refreshButton();
+        return;
+      }
+      scenarioRequest?.abort();
+      scenarioRequest = new AbortController();
+      const p = metParams();
+      p.set('climate', window.CLIMATE_SCENARIO);
+      p.set('heat', window.CLIMATE_HEAT || 'average');
+      try {
+        const d = await readJson(await fetch(`${el.scenario.dataset.scenarioMetUrl}?${p}`, { signal: scenarioRequest.signal }));
+        scenarioLabel = d.label;
+        const s = d.scenario, dl = d.delta;
+        const warmest = d.heat_label.startsWith('Warmest');
+        let text = `🌍 KNMI'23 ${d.label} · ${d.heat_label.toLowerCase()} (${warmest ? d.station : d.season}): ` +
+          `Ta ${s.ta_c} °C${signed(dl.ta_c)}, RH ${s.rh_pct} %${signed(dl.rh_pct, 0)}, ` +
+          `wind ${s.wind_ms} m/s${signed(dl.wind_ms)}, Kdown ${s.kdown_wm2} W/m²${signed(dl.kdown_wm2, 0)}`;
+        if (s.tmax_c != null) text += `; day Tmax ${s.tmax_c} °C${signed(dl.tmax_c)}, Tmin ${s.tmin_c} °C${signed(dl.tmin_c)}`;
+        text += '. Calculate stores a scenario run: one SOLWEIG run with these values. For the comparison, first run this hour without a scenario.';
+        if (!d.month_fits) text += ` ⚠ Pick a date in ${d.season} for '${d.heat_label}'.`;
+        el.scenario.textContent = text;
+        el.scenario.hidden = false;
+      } catch (error) {
+        if (error.name === 'AbortError') return;
+        el.scenario.textContent = `KNMI'23 ${window.CLIMATE_SCENARIO}: ${error.message}`;
+        el.scenario.hidden = false;
+      }
+      refreshButton();
+    }
+
+    async function calculateScenario() {
+      const body = metParams();
+      body.set('format', 'json');
+      body.set('climate', window.CLIMATE_SCENARIO);
+      body.set('heat', window.CLIMATE_HEAT || 'average');
+      body.set('level', window.ACTIVE_LEVEL || '');
+      body.set('location', window.ACTIVE_LOCATION || '');
+      body.set('pop_scenario', window.POP_SCENARIO || 'prognose');
+      body.set('pop_growth', window.POP_GROWTH || 0);
+      body.set('resolution', el.resolution.value);
+      body.set('met_source', 'manual');      // the values in the form, as fetched or typed
+      body.set('met_label', metLabel);
+      body.set('run_heat', '1');
+      const stored = await fetch(el.scenario.dataset.runsUrl, {
+        method: 'POST', headers: { 'X-CSRFToken': csrfToken() }, body,
+      });
+      if (!stored.ok) throw new Error((await stored.text()) || `HTTP ${stored.status}`);
+      const run = await stored.json();
+      if (!run.thermal_run) throw new Error(run.heat_message || 'The heat model was not started.');
+      setStatus(`Scenario run ${run.id} stored (${run.label}); SOLWEIG with the scenario weather…`, 'working');
+      const thermal = await poll(run.thermal_run, Date.now());
+      if (thermal.status === 'failed') throw new Error(thermal.message);
+      const s = thermal.stats;
+      setStatus(`Scenario run ${run.id} · ${run.label}: Tmrt ${s.tmrt.min}–${s.tmrt.max} °C, ` +
+                `UTCI ${s.utci.min}–${s.utci.max} °C, PET ${s.pet.min}–${s.pet.max} °C` +
+                (s.wbgt ? `, WBGT ${s.wbgt.min}–${s.wbgt.max} °C` : '') +
+                '. The comparison with the observed weather is in the Scenarios panel.', 'ok');
+      await showLayers(thermal);
+      document.body.dispatchEvent(new CustomEvent('climate-run-changed'));
     }
 
     async function readJson(response) {
@@ -181,6 +274,7 @@
         el.metInfo.textContent = error.message;
       }
       el.fetch.disabled = false;
+      refreshScenario();
     }
 
     // ---- open / close ----------------------------------------------------
@@ -192,6 +286,7 @@
       if (typeof setActionsMenuOpen === 'function') setActionsMenuOpen(false);
       loadInfo();
       if (metLabel === 'manual' && el.source.value !== 'manual') fetchMet();
+      else refreshScenario();
     }
 
     function close() {
@@ -203,7 +298,7 @@
 
     async function showLayers(run) {
       const replaced = run.stats?.replaced || {};
-      const models = { mrt: 'MeanRadiantTemperature', utci: 'UTCI', pet: 'PET' };
+      const models = { mrt: 'MeanRadiantTemperature', utci: 'UTCI', pet: 'PET', wbgt: 'WetBulbGlobeTemperature' };
       Object.entries(models).forEach(([key, model]) => (replaced[key] || []).forEach(id => {
         if (typeof removeLayer === 'function') removeLayer(`raster-urban_heat-${model}-${id}`);
       }));
@@ -244,6 +339,21 @@
 
     async function calculate() {
       if (busy || !ready || !canCalculate) return;
+      if (scenarioActive()) {
+        busy = true;
+        card.classList.add('busy');
+        refreshButton();
+        setStatus('Storing the scenario run…', 'working');
+        try {
+          await calculateScenario();
+        } catch (error) {
+          setStatus(error.message, 'error');
+        }
+        busy = false;
+        card.classList.remove('busy');
+        refreshButton();
+        return;
+      }
       const body = new URLSearchParams({
         bbox: viewBbox(), datetime: when(), resolution: el.resolution.value, source: metLabel,
       });
@@ -285,11 +395,19 @@
         el.source.value = 'manual';
         el.metInfo.textContent = 'Manual values (edited).';
       }
+      clearTimeout(refreshScenario.timer);
+      refreshScenario.timer = setTimeout(refreshScenario, 300);
     }));
+    // The scenario chosen in the Scenarios panel or by the Actions menu year
+    window.addEventListener('crosstwin:climate-changed', () => {
+      if (card.classList.contains('visible')) refreshScenario();
+      else refreshButton();
+    });
     [el.date, el.hour, el.resolution].forEach(input => input.addEventListener('change', () => {
       if (!card.classList.contains('visible')) return;
       loadInfo();
       if (input !== el.resolution && el.source.value !== 'manual') fetchMet();
+      else refreshScenario();
     }));
 
     // A building edit or a Restore can make results stale.

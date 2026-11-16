@@ -86,24 +86,81 @@ document.getElementById('settingsBtn')?.addEventListener('click', () => {
   // Open settings panel
 });
 
+// Sets the active year (population projection year) as if its button were
+// clicked: highlights the button, updates the Actions label, the panel URLs,
+// the open panel and the population dock. Also called by the Scenarios panel
+// (Panels.js): current climate -> 2025, 2050 / 2100 scenarios -> that year,
+// with {refreshPanel: false} so the Scenarios panel is not replaced.
+function setActiveYear(year, {refreshPanel = true} = {}) {
+  year = parseInt(year);
+  if (!year || year === window.ACTIVE_YEAR) return;
+  document.querySelectorAll('.year-btn').forEach(b =>
+    b.classList.toggle('active', parseInt(b.dataset.year) === year));
+  window.ACTIVE_YEAR = year;
+
+  // The Actions button shows the active year while the menu is collapsed
+  const yearLabel = document.getElementById('actions-menu-year');
+  if (yearLabel) yearLabel.textContent = String(year);
+
+  // Update panel button URLs with new year
+  syncPanelBtns();
+
+  // If an admin-unit-driven panel is already open, reload it with new context
+  if (refreshPanel) refreshActivePanel();
+  if (typeof loadPopulationPanel === 'function') loadPopulationPanel();   // no-op unless the dock is open
+}
+window.setActiveYear = setActiveYear;
+
+// The other direction: a year chosen in the Actions menu sets the climate
+// scenario of that period (weather/calculations/climate.py::population_year):
+// 2050 / 2100 -> that horizon, keeping the chosen pathway (High, dry when
+// none), any other year -> the current climate. The heat mode is kept.
+const CLIMATE_HORIZONS = [2050, 2100];
+const CLIMATE_PATHWAY_LABELS = { Ld: 'Low, dry', Ln: 'Low, wet', Hd: 'High, dry', Hn: 'High, wet' };
+
+function climateKeyForYear(year) {
+  if (!CLIMATE_HORIZONS.includes(year)) return 'current';
+  const current = window.CLIMATE_SCENARIO || 'current';
+  const pathway = current.includes('_') ? current.split('_')[1] : 'Hd';
+  return `${year}_${pathway}`;
+}
+
+// The Scenarios button's badge, as the panel renders it (climate_panel.html data-climate-label).
+function climateBadgeLabel(key) {
+  if (key === 'current') return '';
+  const [horizon, pathway] = key.split('_');
+  const heat = window.CLIMATE_HEAT || 'average';
+  const suffix = heat === 'warmest' ? ' · warmest day' : (heat !== 'average' ? ` · ${heat}` : '');
+  return `${horizon} ${CLIMATE_PATHWAY_LABELS[pathway] || pathway}${suffix}`;
+}
+
+function scenariosPanelOpen() {
+  return !!document.querySelector('#panel-body #climate-panel') &&
+    document.getElementById('side-panel')?.classList.contains('visible');
+}
+
+function syncClimateToYear(year) {
+  const key = climateKeyForYear(year);
+  if (key === (window.CLIMATE_SCENARIO || 'current')) return false;
+  window.CLIMATE_SCENARIO = key;
+  if (typeof renderClimateBadge === 'function') renderClimateBadge(climateBadgeLabel(key));
+  syncPanelBtns();
+  // An open Scenarios panel re-renders with the new scenario (its afterSwap
+  // sees the same key, so it does not set the year back).
+  if (scenariosPanelOpen() && typeof showScenarios === 'function') showScenarios();
+  window.dispatchEvent(new CustomEvent('crosstwin:climate-changed',
+    { detail: { key, heat: window.CLIMATE_HEAT || 'average' } }));
+  return true;
+}
+
 document.querySelectorAll('.year-btn').forEach(btn => {
   btn.addEventListener('click', () => {
-    // Update active state
-    document.querySelectorAll('.year-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-
-    window.ACTIVE_YEAR = parseInt(btn.dataset.year);
-
-    // The Actions button shows the active year while the menu is collapsed
-    const yearLabel = document.getElementById('actions-menu-year');
-    if (yearLabel) yearLabel.textContent = btn.dataset.year;
-
-    // Update panel button URLs with new year
-    syncPanelBtns();
-
-    // If an admin-unit-driven panel is already open, reload it with new context
-    refreshActivePanel();
-    if (typeof loadPopulationPanel === 'function') loadPopulationPanel();   // no-op unless the dock is open
+    const year = parseInt(btn.dataset.year);
+    const sameYear = year === window.ACTIVE_YEAR;
+    const climateChanged = syncClimateToYear(year);
+    setActiveYear(year, { refreshPanel: !scenariosPanelOpen() });
+    // setActiveYear does nothing for the same year: refresh for the new climate here
+    if (sameYear && climateChanged && !scenariosPanelOpen()) refreshActivePanel();
   });
 });
 

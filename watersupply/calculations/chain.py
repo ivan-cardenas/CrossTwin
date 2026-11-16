@@ -174,6 +174,28 @@ def yearly_water_balance_mm(daily_rain_mm, et_ref_mm_yr, composition):
     }
 
 
+def scenario_water_balance(balance, composition, climate_key):
+    """
+    yearly_water_balance_mm of a station year (`balance` from
+    weather.calculations.water_balance.yearly_water_balance) moved into a
+    KNMI'23 scenario by delta-change: each day's rain x (1 + its season's
+    precipitation change), the year's Makkink ET x (1 + the yearly change)
+    (weather/calculations/climate.py). The current climate gives the observed
+    balance. Used by the water dashboard's recharge card and the stored
+    watersupply.ScenarioFreshWater. None without a balance or curve numbers.
+
+    DAG edges:  Climate_Change -> Meteorology -> Available_FW
+    """
+    from weather.calculations import climate
+
+    if not balance:
+        return None
+    return yearly_water_balance_mm(
+        climate.apply_to_daily_rain(balance['daily_rain_mm'], balance.get('daily_months'), climate_key),
+        climate.apply_to_et(balance['et_ref_mm'], climate_key),
+        composition)
+
+
 # ── Unavoidable Annual Real Losses and the Infrastructure Leakage Index ──
 #
 # UARL [L/day] = (18 Lm + 0.8 Nc + 25 Lp) x P   (Lambert et al. 1999, IWA Water

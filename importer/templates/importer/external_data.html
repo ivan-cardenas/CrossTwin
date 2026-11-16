@@ -662,8 +662,12 @@ document.addEventListener('DOMContentLoaded', function () {
         // Show mode-switcher only when a draw_bbox dataset (pdok_cities) is selected
         const needsDraw = selected.some(k => catalog[k] && catalog[k].draw_bbox);
         modeToolbar.classList.toggle('hidden', !needsDraw);
-        // Auto-activate draw mode when pdok_cities is selected and city mode makes no sense yet
-        if (needsDraw && !needsBbox) setDrawMode(false);  // reset if deselected
+        // No draw_bbox dataset left: the toggle is hidden, so return to click mode
+        // and drop a drawn rectangle (area picks are kept).
+        if (!needsDraw) {
+            if (drawMode) setDrawMode(false);
+            if (selectedAreas.size === 0 && currentBbox) clearBbox();
+        }
 
         // Show openEO credentials panel if any Sentinel-2 openEO dataset is selected
         // (Sentinel-2 also has WMS/WCS datasets that don't need credentials — only

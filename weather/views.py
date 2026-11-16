@@ -339,6 +339,10 @@ def climate_panel(request):
     station = climate.nearest_station(lat, lng)
     # Query kept by the panel's buttons: the map centre, then the heat mode.
     loc = f"&lat={lat:.4f}&lng={lng:.4f}" if lat is not None else ""
+    # The selected unit, for the stored scenario runs (mainMap/views_climate.py).
+    from urllib.parse import urlencode
+    level, location = request.GET.get("level") or "", request.GET.get("location") or ""
+    unit_q = "&" + urlencode({"level": level, "location": location}) if level else ""
     pathways = [
         {"code": code, **info} for code, info in climate.PATHWAYS.items()
     ]
@@ -364,7 +368,16 @@ def climate_panel(request):
         "rows": climate.scenario_table(key),
         "summer": climate.deltas(key, "summer"),
         "heat": heat,
+        # A chosen season (or summer for the heat-wave day); None = the observation's own season
+        "season": None if heat == climate.HEAT_AVERAGE else climate.season_for(heat),
+        "season_deltas": (climate.deltas(key, climate.season_for(heat))
+                          if heat != climate.HEAT_AVERAGE else {}),
         "heat_modes": climate.HEAT_MODES,
+        "heat_label": climate.HEAT_MODES[heat],
+        "level": level,
+        "location": location,
+        "unit_q": unit_q,
+        "is_staff": request.user.is_staff,
         "loc": loc,
         "station": station,
         "stations": climate.station_table(key, station),

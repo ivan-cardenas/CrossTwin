@@ -2,7 +2,7 @@ from django.shortcuts import render
 from django.http import JsonResponse
 
 from administrative.admin_units import resolve_admin_unit, ADMIN_LEVELS
-from administrative.calculations.population import DEFAULT_SCENARIO, get_population, population_params
+from administrative.calculations.population import DEFAULT_SCENARIO, get_population, is_extrapolated, population_params
 from .calculations import chain
 from .calculations.indicators import (
     calculate_household_size,
@@ -51,6 +51,7 @@ def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, po
     return {
         'adminUnit': adminUnit,
         'population': get_population(adminUnit, year, pop_scenario, pop_growth),
+        'population_extrapolated': is_extrapolated(adminUnit, year),
         'population_baseline': get_population(adminUnit, year),
         'household': household,
         'dwellings': dwellings,
@@ -185,6 +186,7 @@ def _build_indicators(data, household_size_override=None):
 
     return {
         'population': data.get('population'),
+        'population_extrapolated': data.get('population_extrapolated', False),
         # -- Household size (CBS persons per home; the slider) --
         'household_size': round(size, 2) if size else None,
         'household_size_stored': round(stored_size, 2) if stored_size else None,

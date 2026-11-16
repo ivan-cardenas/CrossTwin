@@ -112,6 +112,71 @@ class HousingSupplyDemand(models.Model):
         verbose_name = "Housing Supply and Demand"
         verbose_name_plural = "Housing Supply and Demand Records"
           
+class ScenarioHousingNeed(models.Model):
+    """
+    Homes needed for the population of a stored KNMI'23 climate scenario run
+    (weather.ClimateScenarioRun: its population year, CBS variant and extra
+    growth; 2100 = trend extrapolation), against the current stock and the
+    baseline year. Same equation as HousingSupplyDemand (chain.demand_units);
+    the household size is HouseholdSize.for_year, i.e. the latest CBS year
+    held constant beyond it. HousingSupplyDemand is not changed. Created by
+    housing/signals.py when a run is saved. Not a map layer.
+    """
+    registry_hidden = True
+
+    run = models.OneToOneField("weather.ClimateScenarioRun", on_delete=models.CASCADE, related_name="housing_need")
+    city = models.ForeignKey("administrative.City", on_delete=models.DO_NOTHING, null=True, blank=True, related_name="+")
+    year = models.IntegerField(null=True, blank=True)
+    population = models.IntegerField(null=True, blank=True)
+    population_extrapolated = models.BooleanField(default=False)
+    household_size = models.FloatField(null=True, blank=True)
+    household_size_year = models.IntegerField(null=True, blank=True, help_text="Year of the CBS household size used (held constant after it)")
+    dwellings_needed = models.IntegerField(null=True, blank=True)
+    stock_units = models.IntegerField(null=True, blank=True, help_text="Latest HousingSupplyDemand.supply_units up to the baseline year")
+    stock_year = models.IntegerField(null=True, blank=True)
+    gap_units = models.IntegerField(null=True, blank=True, help_text="dwellings_needed - stock_units (negative = surplus)")
+    baseline_population = models.IntegerField(null=True, blank=True)
+    baseline_dwellings_needed = models.IntegerField(null=True, blank=True)
+    last_updated = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        verbose_name = "Scenario Housing Need"
+        verbose_name_plural = "Scenario Housing Needs"
+
+    def save(self, *args, **kwargs):
+        """
+        DAG edges: Total_Population, Household_Size -> Housing_Demand
+        dwellings_needed = chain.demand_units(population of the run's year, household size)
+        gap = chain.dwelling_gap(needed, stock)
+        """
+        from administrative.calculations.population import get_population, is_extrapolated
+
+        run = self.run
+        if self.city_id is None:
+            self.city = run.city
+        self.year = run.population_year
+        if self.city is not None:
+            self.population = get_population(self.city, self.year, run.population_variant, run.population_growth_pct)
+            self.population_extrapolated = is_extrapolated(self.city, self.year)
+            self.baseline_population = get_population(self.city, run.baseline_year, run.population_variant, 0)
+            size = HouseholdSize.for_year(self.city, self.year)
+            if size is not None:
+                self.household_size = round(size.average_size, 3)
+                self.household_size_year = size.year
+                self.dwellings_needed = chain.demand_units(self.population, size.average_size)
+                baseline_size = HouseholdSize.for_year(self.city, run.baseline_year)
+                self.baseline_dwellings_needed = chain.demand_units(
+                    self.baseline_population, baseline_size.average_size if baseline_size else None)
+            stock = (HousingSupplyDemand.objects.filter(city=self.city, year__lte=run.baseline_year)
+                     .order_by('-year', '-id').first()
+                     or HousingSupplyDemand.objects.filter(city=self.city).order_by('year', 'id').first())
+            if stock is not None:
+                self.stock_units, self.stock_year = stock.supply_units, stock.year
+            self.gap_units = chain.dwelling_gap(self.dwellings_needed, self.stock_units)
+        self.last_updated = timezone.now()
+        super().save(*args, **kwargs)
+
+
 class HousingProject(models.Model):
     id=models.AutoField(primary_key=True)
     neighborhood = models.ForeignKey("administrative.Neighborhood", verbose_name="Neighborhood", on_delete=models.DO_NOTHING)

@@ -226,7 +226,7 @@ function initPopulationHover() {
     const readout = svg.parentElement.querySelector('.pop-readout');
     if (readout) {
       readout.textContent =
-        `${nearest.year} · low ${fmt(nearest.low)} · median ${fmt(nearest.median)} · high ${fmt(nearest.high)}`;
+        `${nearest.year}${nearest.trend ? ' · trend extrapolation' : ''} · low ${fmt(nearest.low)} · median ${fmt(nearest.median)} · high ${fmt(nearest.high)}`;
     }
   });
 
@@ -242,8 +242,8 @@ function initPopulationHover() {
 /**
  * Scenarios panel: the KNMI'23 climate scenarios of the Klimaateffectatlas,
  * rendered by the server (weather/views.py::climate_panel). The chosen one is
- * kept in window.CLIMATE_SCENARIO, the heat mode ('average' | 'warmest' =
- * heat-wave day) in window.CLIMATE_HEAT; both go to the Urban Heat and Water
+ * kept in window.CLIMATE_SCENARIO, the heat mode ('average' = observed
+ * season | 'winter' … 'autumn' | 'warmest' = heat-wave day) in window.CLIMATE_HEAT; both go to the Urban Heat and Water
  * Supply panels (climateParam / syncPanelBtns in mainMap.js). The map centre
  * picks the station marked nearest in the panel's heat table.
  */
@@ -253,7 +253,10 @@ function showScenarios() {
   const heat = encodeURIComponent(window.CLIMATE_HEAT || 'average');
   const c = (typeof map !== 'undefined' && map.getCenter) ? map.getCenter() : null;
   const loc = c ? `&lat=${c.lat.toFixed(4)}&lng=${c.lng.toFixed(4)}` : '';
-  htmx.ajax('GET', `/weather/climate/panel/?climate=${key}&heat=${heat}${loc}`, {
+  const unit = window.ACTIVE_LEVEL
+    ? `&level=${encodeURIComponent(window.ACTIVE_LEVEL)}&location=${encodeURIComponent(window.ACTIVE_LOCATION || '')}`
+    : '';
+  htmx.ajax('GET', `/weather/climate/panel/?climate=${key}&heat=${heat}${loc}${unit}`, {
     target: '#panel-body',
     swap: 'innerHTML',
     source: document.getElementById('btn-scenarios'),
@@ -277,22 +280,168 @@ function renderClimateBadge(label) {
 }
 
 // After the panel is swapped in, adopt its scenario: every panel URL gets
-// ?climate= from now on. Choosing a scenario only changes the what-if.
-document.body.addEventListener('htmx:afterSwap', function (evt) {
+// ?climate= from now on. Choosing a scenario only changes the what-if, and
+// moves the population year with it (current -> 2025, 2050 / 2100 -> that
+// year, data-climate-year). If effects were shown, they are recalculated.
+document.addEventListener('htmx:afterSwap', function (evt) {
   const panel = evt.detail.target?.querySelector?.('#climate-panel');
   if (!panel) return;
   const key = panel.dataset.climate || 'current';
   const heat = panel.dataset.climateHeat || 'average';
-  if (key === (window.CLIMATE_SCENARIO || 'current') && heat === (window.CLIMATE_HEAT || 'average')) return;
-  window.CLIMATE_SCENARIO = key;
-  window.CLIMATE_HEAT = heat;
-  renderClimateBadge(panel.dataset.climateLabel);
-  if (typeof syncPanelBtns === 'function') syncPanelBtns();
+  const changed = key !== (window.CLIMATE_SCENARIO || 'current') || heat !== (window.CLIMATE_HEAT || 'average');
+  const keyChanged = key !== (window.CLIMATE_SCENARIO || 'current');
+  if (changed) {
+    window.CLIMATE_SCENARIO = key;
+    window.CLIMATE_HEAT = heat;
+    renderClimateBadge(panel.dataset.climateLabel);
+    if (typeof syncPanelBtns === 'function') syncPanelBtns();
+    // Tools that follow the scenario (SolweigTool.js) listen to this
+    window.dispatchEvent(new CustomEvent('crosstwin:climate-changed', { detail: { key, heat } }));
+  }
+  if (keyChanged && typeof setActiveYear === 'function') setActiveYear(panel.dataset.climateYear, {refreshPanel: false});
+  if (changed && window.CLIMATE_EFFECTS_SHOWN) loadClimateEffects();
 });
 
-// "Applied in the panels" buttons open that tool's indicator panel.
-document.body.addEventListener('click', function (evt) {
-  const open = evt.target.closest?.('#climate-panel [data-open-tool]');
-  if (!open) return;
-  document.querySelector(`.tool-button[data-tool="${open.dataset.openTool}"]`)?.click();
+/**
+ * "Calculate effects": the Water Supply and Urban Heat indicators of the
+ * selected unit, current climate (2025 population) vs the chosen scenario
+ * (its horizon year's population), from mainMap/views.py::climate_effects.
+ */
+function loadClimateEffects() {
+  const target = document.getElementById('climate-effects');
+  if (!target) return;
+  window.CLIMATE_EFFECTS_SHOWN = true;
+  const params = new URLSearchParams({
+    climate: window.CLIMATE_SCENARIO || 'current',
+    heat: window.CLIMATE_HEAT || 'average',
+    level: window.ACTIVE_LEVEL || 'province',
+    location: window.ACTIVE_LOCATION || 'Demo',
+    pop_scenario: window.POP_SCENARIO || 'prognose',
+    pop_growth: window.POP_GROWTH || 0,
+  });
+  target.innerHTML = '<div class="climate-effects-loading">Calculating…</div>';
+  htmx.ajax('GET', `/api/climate/effects/?${params}`, {
+    target: '#climate-effects',
+    swap: 'innerHTML',
+  });
+}
+
+// ── Stored scenario runs (mainMap/views_climate.py) ──────────────────
+
+function climateCsrf() {
+  return document.querySelector('#climate-panel [name=csrfmiddlewaretoken]')?.value || '';
+}
+
+/** POST to a run endpoint and show the returned run partial in #climate-effects. */
+async function climateRunPost(url, body) {
+  const target = document.getElementById('climate-effects');
+  const response = await fetch(url, {
+    method: 'POST', body: body || new FormData(),
+    headers: { 'X-CSRFToken': climateCsrf(), 'HX-Request': 'true' },
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    if (target) {
+      const error = document.createElement('div');
+      error.className = 'climate-run-error';
+      error.setAttribute('role', 'alert');
+      error.textContent = text || `Error ${response.status}`;
+      target.replaceChildren(error);
+    }
+    return null;
+  }
+  if (target) {
+    target.innerHTML = text;
+    htmx.process(target);
+  }
+  // HX-Trigger of fetch() responses is not read by htmx: fire it ourselves.
+  const trigger = response.headers.get('HX-Trigger');
+  if (trigger) {
+    try {
+      const events = trigger.trim().startsWith('{') ? JSON.parse(trigger) : { [trigger]: null };
+      for (const [name, detail] of Object.entries(events)) {
+        document.body.dispatchEvent(new CustomEvent(name, { detail: detail || {} }));
+      }
+    } catch (e) { /* malformed trigger: ignore */ }
+  }
+  return text;
+}
+
+/** "Calculate effects" (staff): store a scenario run for the selected unit and the map view. */
+async function runClimateScenario(btn) {
+  const panel = document.getElementById('climate-panel');
+  if (!panel || btn.disabled) return;
+  const body = new FormData();
+  body.set('climate', window.CLIMATE_SCENARIO || 'current');
+  body.set('heat', window.CLIMATE_HEAT || 'average');
+  body.set('level', window.ACTIVE_LEVEL || '');
+  body.set('location', window.ACTIVE_LOCATION || '');
+  body.set('pop_scenario', window.POP_SCENARIO || 'prognose');
+  body.set('pop_growth', window.POP_GROWTH || 0);
+  if (typeof map !== 'undefined' && map.getBounds) {
+    const b = map.getBounds();
+    body.set('bbox', [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map(v => v.toFixed(6)).join(','));
+  }
+  const value = (id) => document.getElementById(id)?.value || '';
+  body.set('datetime', value('climate-run-datetime'));
+  body.set('met_source', value('climate-run-met') || 'knmi');
+  body.set('resolution', value('climate-run-resolution') || '2');
+  body.set('run_heat', document.getElementById('climate-run-heat')?.checked === false ? '0' : '1');
+  const target = document.getElementById('climate-effects');
+  if (target) target.innerHTML = '<div class="climate-effects-loading">Calculating and storing the scenario run…</div>';
+  btn.disabled = true;
+  try {
+    await climateRunPost('/api/climate/runs/', body);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/** Add a scenario raster (Tmrt / UTCI / PET / WBGT) to the map, as the LST tool does. */
+async function addClimateRunLayer(layer) {
+  if (typeof availableLayers !== 'undefined' && !availableLayers.some(l => l.key === layer.key)) {
+    availableLayers.push(layer);
+  }
+  if (typeof layerVisibility !== 'undefined') layerVisibility[layer.key] = true;
+  if (typeof renderLayerList === 'function') renderLayerList();
+  if (typeof addLayer === 'function') await addLayer(layer);
+}
+
+document.addEventListener('click', function (evt) {
+  const t = evt.target;
+  if (t.closest?.('#climate-effects-btn')) { loadClimateEffects(); return; }
+  const run = t.closest?.('#climate-run-btn');
+  if (run) { runClimateScenario(run); return; }
+  const open = t.closest?.('.climate-run-open');
+  if (open) {
+    htmx.ajax('GET', open.dataset.url, { target: '#climate-effects', swap: 'innerHTML' });
+    return;
+  }
+  const chip = t.closest?.('.climate-run-layer');
+  if (chip) {
+    try { addClimateRunLayer(JSON.parse(chip.dataset.layer)); } catch (e) { console.warn('Bad layer entry', e); }
+    return;
+  }
+  const action = t.closest?.('[data-climate-run-action]');
+  if (action && !action.disabled) {
+    const kind = action.dataset.climateRunAction;
+    if (kind === 'delete') {
+      // No browser confirm() dialog: a second click within 4 s confirms.
+      if (action.dataset.armed !== '1') {
+        action.dataset.armed = '1';
+        action.textContent = 'Click again to delete';
+        setTimeout(() => { action.dataset.armed = ''; action.textContent = 'Delete'; }, 4000);
+        return;
+      }
+    }
+    action.disabled = true;
+    climateRunPost(action.dataset.url).finally(() => { action.disabled = false; });
+  }
+});
+
+// A deleted run's layers leave the map.
+document.addEventListener('climate-run-deleted', function (evt) {
+  (evt.detail?.layers || []).forEach(key => {
+    if (key && typeof removeLayer === 'function') removeLayer(key);
+  });
 });

@@ -212,6 +212,23 @@ def projection_years(unit):
     ))
 
 
+# Label of a population outside the imported CBS horizon (panels, dock, effects).
+EXTRAPOLATION_LABEL = "trend extrapolation"
+
+
+def is_extrapolated(unit, year):
+    """
+    True when the population of `unit` in `year` is not a published CBS value
+    but `extrapolate`'s trend (outside the imported years, e.g. 2100). False
+    without a year or without at least two imported years (then the current
+    population is used, which is no projection either).
+    """
+    if year is None or unit is None:
+        return False
+    years = projection_years(unit)
+    return len(years) >= 2 and not years[0] <= year <= years[-1]
+
+
 def population_curve(unit, scenario=DEFAULT_SCENARIO, growth_adjust_pct=0.0):
     """[{'year', 'population'}, ...] over every projected year; [] if none imported."""
     years = projection_years(unit)

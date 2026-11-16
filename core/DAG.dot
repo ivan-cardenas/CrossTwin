@@ -202,7 +202,8 @@ digraph CrossTwin {
 
     Climate_Change      -> Meteorology;
     Anthropogenic_Heat  -> Meteorology;
-    Canyon_Aspect       -> Meteorology;
+    // Canyon_Aspect -> Meteorology replaced by DSM -> PET (2026-11-16): PET's urban heat
+    // island and 1.2 m wind read the urban form off the DSM, not the stored street H/W.
 
     Meteorology         -> Tmrt;
     Meteorology         -> PET;
@@ -210,6 +211,7 @@ digraph CrossTwin {
     Meteorology         -> Available_FW;
 
     DSM                 -> SVF;
+    DSM                 -> PET;   // UHI source areas + 1.2 m wind (pet-adjusted, frontal areas)
     SVF                 -> Tmrt;
     SVF                 -> PET;
 

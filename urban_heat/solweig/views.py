@@ -13,6 +13,8 @@ Tmrt, UTCI and PET for the area in view and one hour.
          -> starts a ThermalComfortRun in the background; returns its id
     GET  /urban_heat/solweig/runs/<id>/
          -> status; when done, the layer-catalog entries of Tmrt, UTCI and PET
+    GET  /urban_heat/solweig/scenario-met/?bbox=&datetime=&climate=&heat=&<met fields>
+         -> the met moved into a KNMI'23 scenario (preview while a scenario is selected)
     GET  /urban_heat/solweig/stale/?bbox=
          -> SVF and thermal-comfort results that building edits made stale
 
@@ -174,13 +176,52 @@ def solweig_met(request):
     return _run(view)
 
 
+@require_GET
+def solweig_scenario_met(request):
+    """
+    The form's met moved into the KNMI'23 scenario of the Scenarios panel
+    (`?climate=2050_Hd&heat=summer`): climate.apply_to_weather for the hour,
+    apply_to_day_values for PET's day values, with the key-figure station
+    nearest to the view centre and the month of `datetime`. Pure: a preview,
+    nothing is stored. {observed, scenario, delta, label, station}.
+    """
+    def view():
+        from weather.calculations import climate
+
+        bbox = _bbox(request.GET.get("bbox"))
+        when = _when(request.GET.get("datetime"), bbox)
+        key = climate.normalize(request.GET.get("climate"))
+        heat = climate.normalize_heat(request.GET.get("heat"))
+        observed = {}
+        for name, default, low, high, unit in MET_FIELDS:
+            observed[name] = _number(request.GET, name, default, low, high, unit)
+        for name, low, high, unit in DAY_FIELDS:
+            observed[name] = _optional_number(request.GET, name, low, high, unit)
+        lon, lat = centre(bbox)
+        station = climate.nearest_station(lat, lon)
+        shifted = climate.apply_to_weather(observed, key, when.month, heat, station)
+        shifted = climate.apply_to_day_values(shifted, key, heat, when.month, station)
+        delta = {name: (round(shifted[name] - observed[name], 1)
+                        if shifted.get(name) is not None and observed.get(name) is not None else None)
+                 for name in observed}
+        scenario = climate.describe(key)
+        return JsonResponse({
+            "active": scenario["active"], "label": scenario["short"], "heat_label": climate.HEAT_MODES[heat],
+            "season": climate.season_for(heat, when.month), "station": station,
+            "month_fits": climate.month_fits_heat_mode(when.month, heat),
+            "observed": observed, "scenario": shifted, "delta": delta,
+        })
+
+    return _run(view)
+
+
 def _run_json(run):
     from mainMap.views import raster_layer_entry
 
     from .pipeline import run_state
 
     status, message = run_state(run)
-    layers = [raster_layer_entry(r) for r in (run.mrt, run.utci, run.pet)
+    layers = [raster_layer_entry(r) for r in (run.mrt, run.utci, run.pet, run.wbgt)
               if status == "done" and r is not None and r.cog_path]
     return {
         "id": run.pk, "status": status, "message": message, "device": run.device,
@@ -231,8 +272,8 @@ def solweig_run(request, run_id):
     from urban_heat.models import ThermalComfortRun
 
     # The catalog entries need the result rows but not their raster bands (MBs each).
-    runs = (ThermalComfortRun.objects.select_related("mrt", "utci", "pet")
-            .defer("mrt__raster", "utci__raster", "pet__raster"))
+    runs = (ThermalComfortRun.objects.select_related("mrt", "utci", "pet", "wbgt")
+            .defer("mrt__raster", "utci__raster", "pet__raster", "wbgt__raster"))
     run = get_object_or_404(runs, pk=run_id)
     return JsonResponse(_run_json(run))
 

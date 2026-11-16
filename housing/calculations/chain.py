@@ -94,3 +94,15 @@ def housed_residents(dwellings, average_size):
     if not dwellings or not average_size:
         return 0
     return round(dwellings * average_size)
+
+
+def dwelling_gap(needed, stock):
+    """
+    Homes still to build for a population: needed - stock (negative = surplus).
+    None without both.
+
+    DAG edge: Housing_Demand -> Housing_Gap (scenario runs)
+    """
+    if needed is None or stock is None:
+        return None
+    return needed - stock
