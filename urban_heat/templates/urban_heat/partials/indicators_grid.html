@@ -141,6 +141,7 @@
       {{ indicators.pet_category }}
     </div>
     {% endif %}
+    {% include 'urban_heat/partials/thermal_run_note.html' with coverage=indicators.pet_coverage_pct %}
   </div>
 
   <!-- ── UTCI ── -->
@@ -178,6 +179,7 @@
       {{ indicators.utci_category }}
     </div>
     {% endif %}
+    {% include 'urban_heat/partials/thermal_run_note.html' with coverage=indicators.utci_coverage_pct %}
   </div>
 
   <!-- ── WBGT ── -->

@@ -190,6 +190,7 @@ MOCK_DATA = {
         'wbgt':  {'min': 19.0, 'max': 27.5, 'mean': 23.4, 'stddev': 2.1, 'count': 48000},
         'svf':  {'min': 0.12, 'max': 0.98, 'mean': 0.62, 'stddev': 0.18, 'count': 48000},
         'suhii': {'min': 0.5, 'max': 5.2, 'mean': 2.8, 'stddev': 1.1, 'count': 48000},
+        'run': None,
     },
     'nbs': {
         'polygon_count': 45,
@@ -313,6 +314,12 @@ def _build_indicators(data, weather_override=None, climate_key=climate.CURRENT,
         'suhii_mean': suhii_mean,
         'suhii_min':  suhii_stats['min'] if suhii_stats else None,
         'suhii_max':  suhii_stats['max'] if suhii_stats else None,
+
+        # The SOLWEIG run behind Tmrt/PET/UTCI (one run, same hour and extent)
+        'thermal_run':          thermal.get('run'),
+        'tmrt_coverage_pct':    tmrt_stats.get('coverage_pct') if tmrt_stats else None,
+        'pet_coverage_pct':     pet_stats.get('coverage_pct') if pet_stats else None,
+        'utci_coverage_pct':    utci_stats.get('coverage_pct') if utci_stats else None,
 
         # ── Vegetation ──
         'vegetation_pct':     vegetation.get('vegetation_coverage_pct', 0),

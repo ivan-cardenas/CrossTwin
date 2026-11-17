@@ -1,4 +1,4 @@
-{% comment %}
+{% load indicator_help %}{% comment %}
 Scenarios panel (map side panel): the KNMI'23 climate scenarios as the
 Klimaateffectatlas shows them. Choosing one re-renders this partial; the
 root's data-climate / data-climate-heat are then picked up by
@@ -9,172 +9,192 @@ data-climate-year sets the population year (2025 current, else the horizon).
 weather.ClimateScenarioRun -> the receivers of watersupply, housing,
 urban_heat); "Quick what-if" loads mainMap/views.py::climate_effects (nothing
 stored). Both land in #climate-effects. View: weather/views.py::climate_panel.
+
+Flow, top to bottom: 1 pick a scenario (atlas quick picks, all eight in a
+fold-out), 2 pick the heat day, 3 read the change, 4 calculate the effects.
+Explanations live behind the "?" buttons (core/indicator_help.py, climate.*).
+Colours: climate.change_tone (Table 1) and mainMap.views.change_tone (effects).
 {% endcomment %}
 <div class="climate-panel" id="climate-panel" data-climate="{{ scenario.key }}" data-climate-heat="{{ heat }}"
      data-climate-year="{{ scenario.year }}"
      data-climate-label="{% if scenario.active %}{{ scenario.short }}{% if heat == 'warmest' %} · warmest day{% elif season %} · {{ season }}{% endif %}{% endif %}">
 
-  <div style="font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:rgba(232,244,255,0.45); margin-bottom:4px;">
-    Climate change scenarios · KNMI'23
-  </div>
-  <div style="font-family:var(--font-base); font-size:1.1rem; font-weight:700;">
-    {{ scenario.label }}
-    <span style="color:rgba(232,244,255,0.4); font-size:0.85rem;">· {{ scenario.period }}</span>
-  </div>
-  {% if scenario.active %}
-  <div style="margin-top:4px; font-size:0.75rem; color:rgba(232,244,255,0.55);">
-    {{ scenario.emissions|capfirst }} emissions, {{ scenario.variant }} variant · +{{ scenario.global_warming_c }} °C global warming vs 1850-1900
-  </div>
-  {% else %}
-  <div style="margin-top:4px; font-size:0.75rem; color:rgba(232,244,255,0.55);">
-    The panels use the observed weather (reference climate 1991-2020).
-  </div>
-  {% endif %}
-  <div style="margin-top:4px; font-size:0.75rem; color:rgba(232,244,255,0.55);">
-    Population year: <b>{{ scenario.year }}</b>
-  </div>
+  <header class="climate-head{% if scenario.active %} is-{{ scenario.variant }}{% endif %}">
+    <div class="climate-head-text">
+      <h3 class="climate-title">{{ scenario.label }}</h3>
+      <p class="climate-sub">
+        {% if scenario.active %}{{ scenario.emissions|capfirst }} emissions, {{ scenario.variant }} variant · +{{ scenario.global_warming_c }} °C global warming vs 1850-1900
+        {% else %}Observed weather, reference climate 1991-2020{% endif %}
+      </p>
+      <dl class="climate-facts">
+        <div><dt>Period</dt><dd>{{ scenario.period }}</dd></div>
+        <div><dt>Population year</dt><dd>{{ scenario.year }}</dd></div>
+      </dl>
+    </div>
+    {% info_help "climate.scenario" %}
+  </header>
 
-  <div class="climate-cta">
-    {% csrf_token %}
-    {% if is_staff and scenario.active %}
-    <button type="button" class="climate-cta-btn" id="climate-run-btn">
-      Calculate effects: {{ scenario.short }}{% if heat != 'average' %} · {{ heat_label|lower }}{% endif %}
-      <span>Stores a scenario run for the selected area: heat model (PET, UTCI, WBGT), water availability and demand, homes needed for the {{ scenario.year }} population. Triggers the connected calculations; observed data stay unchanged.</span>
-    </button>
-    <details class="climate-cta-options">
-      <summary>Options</summary>
-      <label>Observed hour (local) <input type="datetime-local" id="climate-run-datetime" step="3600"></label>
-      <small>Empty = the 15th of the season's middle month, 14:00, last year{% if heat == 'warmest' %} (pick a hot day){% endif %}.</small>
-      <label>Weather of that hour
-        <select id="climate-run-met">
-          <option value="knmi">Nearest KNMI station</option>
-          <option value="era5">ERA5</option>
-        </select>
-      </label>
-      <label>Cell size
-        <select id="climate-run-resolution">
-          <option value="1">1 m</option><option value="2" selected>2 m</option><option value="5">5 m</option>
-        </select>
-      </label>
-      <label class="climate-cta-check"><input type="checkbox" id="climate-run-heat" checked> Run the heat model (SOLWEIG) over the map view</label>
+  <section class="climate-step" aria-labelledby="climate-step-pick">
+    <h4 id="climate-step-pick">Scenario</h4>
+    <div class="climate-presets" role="group" aria-label="Klimaateffectatlas scenarios">
+      {% for p in presets %}
+      <button type="button" class="climate-btn{% if p.key == scenario.key %} is-active{% endif %}"
+              aria-pressed="{% if p.key == scenario.key %}true{% else %}false{% endif %}"
+              hx-get="{% url 'weather:climate_panel' %}?climate={{ p.key }}&heat={{ heat }}{{ loc }}{{ unit_q }}"
+              hx-target="#panel-body" hx-swap="innerHTML" data-panel-title="SCENARIOS">
+        <b>{{ p.kea_label }}</b>
+        <small>{% if p.active %}{{ p.pathway }}{% else %}today{% endif %}</small>
+      </button>
+      {% endfor %}
+    </div>
+
+    <details class="climate-more"{% if not scenario.kea_preset %} open{% endif %}>
+      <summary>All eight KNMI'23 scenarios</summary>
+      <table class="climate-grid">
+        <thead>
+          <tr><th></th>{% for p in pathways %}<th title="{{ p.emissions|capfirst }} emissions, {{ p.variant }}">{{ p.label }}</th>{% endfor %}</tr>
+        </thead>
+        <tbody>
+          {% for row in grid %}
+          <tr>
+            <th title="{{ row.period }}">{{ row.horizon }}</th>
+            {% for c in row.cells %}
+            <td>
+              <button type="button" class="climate-btn is-{{ c.variant }}{% if c.key == scenario.key %} is-active{% endif %}"
+                      aria-pressed="{% if c.key == scenario.key %}true{% else %}false{% endif %}"
+                      aria-label="{{ c.label }}, {{ c.period }}"
+                      title="{{ c.label }} · {{ c.period }} · +{{ c.global_warming_c }} °C global"
+                      hx-get="{% url 'weather:climate_panel' %}?climate={{ c.key }}&heat={{ heat }}{{ loc }}{{ unit_q }}"
+                      hx-target="#panel-body" hx-swap="innerHTML" data-panel-title="SCENARIOS">
+                <b>+{{ c.global_warming_c }}°</b>
+              </button>
+            </td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="climate-legend"><i class="is-dry"></i> dry variant <i class="is-wet"></i> wet variant · number = global warming</p>
     </details>
-    <button type="button" class="climate-btn climate-cta-secondary" id="climate-effects-btn">Quick what-if (not stored)</button>
-    {% elif scenario.active %}
-    <button type="button" class="climate-cta-btn" id="climate-effects-btn">
-      Calculate effects: {{ scenario.short }}
-      <span>Water supply and urban heat, {{ scenario.year }} vs current (2025). A what-if; log in as staff to store a scenario run.</span>
-    </button>
-    {% else %}
-    <div class="climate-cta-hint">Choose a 2050 or 2100 scenario below to calculate its effects.</div>
+  </section>
+
+  {% if scenario.active %}
+  <section class="climate-step" aria-labelledby="climate-step-day">
+    <h4 id="climate-step-day">Heat day {% info_help "climate.heat_day" %}</h4>
+    <div class="climate-segments" role="group" aria-label="Season or heat-wave day">
+      {% for mode, label in heat_modes.items %}
+      <button type="button" class="climate-seg{% if mode == heat %} is-active{% endif %}{% if mode == 'warmest' %} is-warmest{% endif %}"
+              aria-pressed="{% if mode == heat %}true{% else %}false{% endif %}"
+              hx-get="{% url 'weather:climate_panel' %}?climate={{ scenario.key }}&heat={{ mode }}{{ loc }}{{ unit_q }}"
+              hx-target="#panel-body" hx-swap="innerHTML" data-panel-title="SCENARIOS">{{ label }}</button>
+      {% endfor %}
+    </div>
+    {% if season_deltas %}
+    <dl class="climate-applied" aria-label="{{ season|capfirst }} change">
+      <dt>{{ season|capfirst }} change</dt>
+      <dd class="tone-heat-2">Tx {{ season_deltas.tx_c|stringformat:"+.1f" }} °C</dd>
+      <dd class="tone-heat-1">Tn {{ season_deltas.tn_c|stringformat:"+.1f" }} °C</dd>
+      <dd>rain {{ season_deltas.precip_pct|stringformat:"+d" }}%</dd>
+      <dd>RH {{ season_deltas.rh_pp|stringformat:"+.1f" }} pp</dd>
+      <dd>wind {{ season_deltas.wind_ms|stringformat:"+.1f" }} m/s</dd>
+      <dd>sun {{ season_deltas.kdown_wm2|stringformat:"+.0f" }} W/m²</dd>
+    </dl>
     {% endif %}
-  </div>
+  </section>
+
+  {% if rows %}
+  <section class="climate-step" aria-labelledby="climate-step-change">
+    <h4 id="climate-step-change">Change vs 1991-2020</h4>
+    <div class="climate-table-wrap">
+      <table class="climate-table climate-change-table">
+        <thead>
+          <tr><th>Netherlands</th>{% for period in periods %}<th{% if period == season %} class="is-season" title="The season the heat panel applies"{% endif %}>{{ period }}</th>{% endfor %}</tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            <td>{{ row.label }} <span class="unit">{{ row.unit }}</span></td>
+            {% for cell in row.cells %}{% with tone=row.tones|slice:forloop.counter|last %}<td class="{% if tone %}tone-{{ tone }}{% endif %}">{{ cell }}</td>{% endwith %}{% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="climate-caption">Summer extremes: 1-day rain once per 10 yr {{ summer.rain_1d_10y_pct|stringformat:"+d" }}%, hourly rain once per yr {{ summer.rain_1h_1y_pct|stringformat:"+d" }}%</p>
+
+    {% if stations %}
+    <details class="climate-more"{% if heat == 'warmest' %} open{% endif %}>
+      <summary>Heat key figures per station</summary>
+      <div class="climate-table-wrap">
+        <table class="climate-table climate-stations">
+          <thead>
+            <tr><th>Station</th>{% for indicator, label, unit in station_rows %}<th>{{ label }}{% if unit != '°C' %} <span class="unit">{{ unit }}</span>{% endif %}</th>{% endfor %}</tr>
+          </thead>
+          <tbody>
+            {% for row in stations %}
+            <tr{% if row.nearest %} class="is-nearest" title="Nearest to the selected area: used by the heat-wave day"{% endif %}>
+              <td>{{ row.station }}{% if row.nearest %} <span class="climate-tag">nearest</span>{% endif %}</td>
+              {% for c in row.cells %}<td class="{% if c.change > 0 %}tone-heat-{% if c.unit == '°C' %}2{% else %}1{% endif %}{% endif %}" title="1991-2020: {{ c.reference }} → {{ c.future }}">{% if c.unit == '°C' %}{{ c.change|stringformat:"+.1f" }} °C{% else %}{{ c.change|stringformat:"+g" }}{% endif %}</td>{% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="climate-caption">Hover a cell for the 1991-2020 value and the scenario value.</p>
+    </details>
+    {% endif %}
+  </section>
+  {% endif %}{# rows #}
+  {% endif %}{# scenario.active #}
+
+  <section class="climate-cta" aria-labelledby="climate-step-effects">
+    {% csrf_token %}
+    {% if scenario.active %}
+    <h4 id="climate-step-effects">Effects in {{ scenario.year }} {% info_help "climate.effects" %}</h4>
+    {% if is_staff %}
+    <button type="button" class="climate-cta-btn" id="climate-run-btn">
+      Calculate and store effects
+      <span>Heat model, water and housing for the selected area</span>
+    </button>
+    <div class="climate-cta-row">
+      <button type="button" class="climate-btn climate-cta-secondary" id="climate-effects-btn">Quick what-if <small>not stored</small></button>
+      <details class="climate-cta-options">
+        <summary>Options</summary>
+        <div class="climate-cta-options-body">
+          <label>Observed hour (local) <input type="datetime-local" id="climate-run-datetime" step="3600"></label>
+          <small>Empty = the 15th of the season's middle month, 14:00, last year{% if heat == 'warmest' %} (pick a hot day){% endif %}.</small>
+          <label>Weather of that hour
+            <select id="climate-run-met">
+              <option value="knmi">Nearest KNMI station</option>
+              <option value="era5">ERA5</option>
+            </select>
+          </label>
+          <label>Cell size
+            <select id="climate-run-resolution">
+              <option value="1">1 m</option><option value="2" selected>2 m</option><option value="5">5 m</option>
+            </select>
+          </label>
+          <label class="climate-cta-check"><input type="checkbox" id="climate-run-heat" checked> Run the heat model over the map view</label>
+        </div>
+      </details>
+    </div>
+    {% else %}
+    <button type="button" class="climate-cta-btn" id="climate-effects-btn">
+      Calculate effects
+      <span>Water supply and urban heat, {{ scenario.year }} vs 2025. Log in as staff to store a run.</span>
+    </button>
+    {% endif %}
+    {% else %}
+    <h4 id="climate-step-effects">Effects</h4>
+    <p class="climate-cta-hint">Pick 2050 high, 2100 high or another future scenario above to compare it with today.</p>
+    {% endif %}
+  </section>
   <div id="climate-effects" aria-live="polite"></div>
   <div id="climate-runs" hx-get="{% url 'map:climate_runs' %}?level={{ level|urlencode }}&location={{ location|urlencode }}"
        hx-trigger="load, climate-run-changed from:body" hx-swap="innerHTML"></div>
 
-  <h4>Klimaateffectatlas</h4>
-  <div class="climate-presets" role="group" aria-label="Klimaateffectatlas scenarios">
-    {% for p in presets %}
-    <button type="button" class="climate-btn{% if p.key == scenario.key %} is-active{% endif %}"
-            aria-pressed="{% if p.key == scenario.key %}true{% else %}false{% endif %}"
-            hx-get="{% url 'weather:climate_panel' %}?climate={{ p.key }}&heat={{ heat }}{{ loc }}{{ unit_q }}"
-            hx-target="#panel-body" hx-swap="innerHTML" data-panel-title="SCENARIOS">
-      <b>{{ p.kea_label }}</b>
-      <small>{% if p.active %}{{ p.pathway }} · {{ p.period }}{% else %}{{ p.period }}{% endif %}</small>
-    </button>
-    {% endfor %}
-  </div>
-
-  <h4>All KNMI'23 scenarios</h4>
-  <table class="climate-grid">
-    <thead>
-      <tr><th></th>{% for p in pathways %}<th title="{{ p.emissions|capfirst }} emissions, {{ p.variant }}">{{ p.label }}</th>{% endfor %}</tr>
-    </thead>
-    <tbody>
-      {% for row in grid %}
-      <tr>
-        <th title="{{ row.period }}">{{ row.horizon }}</th>
-        {% for c in row.cells %}
-        <td>
-          <button type="button" class="climate-btn is-{{ c.variant }}{% if c.key == scenario.key %} is-active{% endif %}"
-                  aria-pressed="{% if c.key == scenario.key %}true{% else %}false{% endif %}"
-                  title="{{ c.label }} · {{ c.period }} · +{{ c.global_warming_c }} °C global"
-                  hx-get="{% url 'weather:climate_panel' %}?climate={{ c.key }}&heat={{ heat }}{{ loc }}{{ unit_q }}"
-                  hx-target="#panel-body" hx-swap="innerHTML" data-panel-title="SCENARIOS">
-            <b>{{ c.code }}</b>
-          </button>
-        </td>
-        {% endfor %}
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-  {% if rows %}
-  <h4>Change vs 1991-2020 (national average)</h4>
-  <div class="climate-table-wrap">
-    <table class="climate-table">
-      <thead>
-        <tr><th>Indicator</th>{% for period in periods %}<th{% if period == season %} class="is-season" title="The season the heat panel applies"{% endif %}>{{ period }}</th>{% endfor %}</tr>
-      </thead>
-      <tbody>
-        {% for row in rows %}
-        <tr><td>{{ row.label }} <span style="opacity:.5;">{{ row.unit }}</span></td>{% for cell in row.cells %}<td>{{ cell }}</td>{% endfor %}</tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  <div style="margin-top:6px; font-size:0.72rem; color:rgba(232,244,255,0.6);">
-    Summer extremes: 1-day rain (once per 10 yr) {{ summer.rain_1d_10y_pct|stringformat:"+d" }}% · hourly rain (once per yr) {{ summer.rain_1h_1y_pct|stringformat:"+d" }}%
-  </div>
-  {% endif %}
-
-  <h4>Season / heat day</h4>
-  <div class="climate-presets climate-heat-modes" role="group" aria-label="Season or heat-wave day">
-    {% for mode, label in heat_modes.items %}
-    <button type="button" class="climate-btn{% if mode == heat %} is-active{% endif %}"
-            aria-pressed="{% if mode == heat %}true{% else %}false{% endif %}"
-            hx-get="{% url 'weather:climate_panel' %}?climate={{ scenario.key }}&heat={{ mode }}{{ loc }}{{ unit_q }}"
-            hx-target="#panel-body" hx-swap="innerHTML" data-panel-title="SCENARIOS">
-      <b>{{ label }}</b>
-      <small>{% if mode == 'warmest' %}heat wave · nearest KNMI station{% elif mode == 'average' %}season of the observed weather{% else %}{{ mode }} mean daily max / min{% endif %}</small>
-    </button>
-    {% endfor %}
-  </div>
-  {% if season_deltas %}
-  <div style="margin-top:6px; font-size:0.72rem; color:rgba(232,244,255,0.6);">
-    {{ season|capfirst }} change: Tx {{ season_deltas.tx_c|stringformat:"+.1f" }} °C · Tn {{ season_deltas.tn_c|stringformat:"+.1f" }} °C · rain {{ season_deltas.precip_pct|stringformat:"+d" }}% · RH {{ season_deltas.rh_pp|stringformat:"+.1f" }} pp · wind {{ season_deltas.wind_ms|stringformat:"+.1f" }} m/s · radiation {{ season_deltas.kdown_wm2|stringformat:"+.0f" }} W/m²
-  </div>
-  {% endif %}
-  {% if stations %}
-  <div class="climate-table-wrap">
-    <table class="climate-table climate-stations">
-      <thead>
-        <tr><th>Station</th>{% for indicator, label, unit in station_rows %}<th>{{ label }}{% if unit != '°C' %} <span style="opacity:.5;">{{ unit }}</span>{% endif %}</th>{% endfor %}</tr>
-      </thead>
-      <tbody>
-        {% for row in stations %}
-        <tr{% if row.nearest %} class="is-nearest" title="Nearest to the map centre: used by the heat-wave day"{% endif %}>
-          <td>{{ row.station }}{% if row.nearest %} ◂{% endif %}</td>
-          {% for c in row.cells %}<td title="1991-2020: {{ c.reference }} → {{ c.future }}">{% if c.unit == '°C' %}{{ c.change|stringformat:"+.1f" }} °C{% else %}{{ c.change|stringformat:"+g" }}{% endif %}</td>{% endfor %}
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  <div style="margin-top:6px; font-size:0.72rem; color:rgba(232,244,255,0.6);">
-    Change vs 1991-2020 (hover a cell for the values). The heat-wave day adds the warmest-day change of the station nearest to the selected unit to the observed weather, by day and night; apply it to a hot observed day.
-  </div>
-  {% endif %}
-
   <p class="climate-source">
-    Source: {{ source }} — <a href="{{ source_url }}" target="_blank" rel="noopener">knmi.nl/klimaatscenarios</a>.
-    The Klimaateffectatlas viewer offers the current climate, 2050 high and 2100 high; "high" is taken as the dry variant (Hd), the heat and drought case.
-    Delta-change on the observed weather: a what-if, never stored.
-    "Observed season" and the season buttons add the change of the <em>average</em> daily maximum (minimum at night) of that season, which understates heat waves: the hottest days warm more.
-    A season button applies that season's change to the observed weather whatever its date; a stored scenario run asks for a date in the season.
-    "Warmest day of the year" uses KNMI's key figures per station: {{ stations_source }} — <a href="{{ stations_url }}" target="_blank" rel="noopener">klimaatscenarios-data.knmi.nl</a>.
-    The portal does not define the warmest day; its 1991-2020 values match the warmest daily mean temperature.
-    The rain event uses KNMI's extreme-rain figure.
+    <a href="{{ source_url }}" target="_blank" rel="noopener" title="{{ source }}">KNMI'23 climate scenarios</a> ·
+    <a href="{{ stations_url }}" target="_blank" rel="noopener" title="{{ stations_source }}">station key figures</a>
   </p>
 </div>

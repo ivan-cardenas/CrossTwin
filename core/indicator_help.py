@@ -159,7 +159,7 @@ HELP = {
     "heat.pet": {
         "title": "PET (Physiological Equivalent Temperature)",
         "what": "The air temperature of a standard indoor room at which a person would feel the same heat load as outdoors here. It folds sun, wind and humidity into one °C value.",
-        "how": "From the latest PET raster, computed by the Thermal Comfort tool (SOLWEIG for the radiation, then the person's heat balance with pet-adjusted, including an urban heat island and wind at 1.2 m). The card shows the raster's mean, min and max over the area.",
+        "how": "From the PET raster computed by the Thermal Comfort tool (SOLWEIG for the radiation, then the person's heat balance with pet-adjusted, including an urban heat island and wind at 1.2 m). The card shows the raster's mean, min and max over the area. PET and UTCI come from the same run: the Thermal Comfort run that covers most of the area, the latest hour among equal ones. The line below the gauge names the run, its hour and the share of the area it covers.",
         "eq": [
             "Heat in = heat out:  M + R + C + E + S = 0",
             "PET = room temperature giving the same skin and core temperature",
@@ -175,7 +175,7 @@ HELP = {
     "heat.utci": {
         "title": "UTCI (Universal Thermal Climate Index)",
         "what": "The temperature of a reference environment (light wind, shade, 50 % humidity) that causes the same body response as the real conditions.",
-        "how": "From the latest UTCI raster, computed by the Thermal Comfort tool (SOLWEIG-GPU) with a polynomial fitted to a multi-node model of human thermoregulation. The card shows the raster's mean, min and max over the area.",
+        "how": "From the UTCI raster computed by the Thermal Comfort tool (SOLWEIG-GPU) with a polynomial fitted to a multi-node model of human thermoregulation. The card shows the raster's mean, min and max over the area. PET and UTCI come from the same run: the Thermal Comfort run that covers most of the area, the latest hour among equal ones. The line below the gauge names the run, its hour and the share of the area it covers.",
         "eq": ["UTCI = Ta + offset(Ta, Tmrt − Ta, wind, vapour pressure)"],
         "where": [
             ("Ta", "air temperature"),
@@ -385,5 +385,48 @@ HELP = {
         "what": "Schools, hospitals, fire and police stations, markets and transport nodes serving the area.",
         "how": "Facilities in the unit's neighborhoods, set against the projected population for the selected year.",
         "eq": ["Facilities per 10 000 = {facilities | population} × 10 000"],
+    },
+    # ── Scenarios panel (weather/partials/climate_panel.html, mainMap climate partials) ──
+    "climate.scenario": {
+        "title": "KNMI'23 climate scenarios",
+        "what": "How the Dutch climate may change by 2050 (2036-2065) or 2100 (2086-2115), compared with 1991-2020. Four pathways: low or high emissions, each with a dry and a wet variant. The quick picks are the three the Klimaateffectatlas viewer offers; its \"high\" is taken as High, dry (Hd), the heat and drought case. High, wet is the heavy-rain case.",
+        "how": "KNMI's national-average changes per season (Table 1 of KNMI Publication 23-03) are added to the observed weather (delta change). Picking a scenario also sets the population year: 2025 for the current climate, else the horizon year. The table shows the change of every season; the highlighted column is the one the heat panel applies.",
+        "eq": [
+            "Scenario temperature = observed temperature + change",
+            "Scenario rain = observed rain × (1 + {change (%) | 100})",
+            "Scenario humidity = observed humidity + change (%-points)",
+        ],
+        "note": "A what-if: choosing a scenario writes nothing. The Urban Heat and Water Supply panels apply it until you pick Current. Summer extremes: KNMI's change of the 1-day rain that falls once per 10 years scales the Rain Event. Colours: red warmer, blue cooler; teal wetter, ochre drier. Source: KNMI'23 climate scenarios, knmi.nl/klimaatscenarios.",
+    },
+    "climate.heat_day": {
+        "title": "Season / heat day",
+        "what": "Which change is added to the observed weather when the heat panel and the effects table move it into the scenario.",
+        "how": "Observed season adds the change of the season the observed weather falls in; a season button adds that season's change whatever the date (a stored run asks for a date in that season). Both use the change of the average daily maximum by day and the average daily minimum by night, which understates heat waves: the hottest days warm more. Warmest day of the year adds the change of the warmest day at the KNMI key-figure station nearest to the selected area (De Bilt, Den Helder, Groningen, Maastricht or Vlissingen); apply it to a hot observed day.",
+        "eq": [
+            "Day temperature = observed + change of the daily maximum",
+            "Night temperature = observed + change of the daily minimum",
+            "Heat-wave day = observed + change of the warmest day (nearest station)",
+        ],
+        "note": "Station key figures: klimaatscenarios-data.knmi.nl. The portal does not define the warmest day; its 1991-2020 values match the warmest daily mean temperature.",
+    },
+    "climate.effects": {
+        "title": "Scenario effects",
+        "what": "The selected area today (2025 population, observed weather) next to the chosen scenario (its horizon year's population, scenario weather).",
+        "how": "Calculate effects stores a scenario run: the heat model (SOLWEIG: Tmrt, UTCI, PET, WBGT) over the map view on one observed hour moved into the scenario, water availability and demand, and the homes needed for the scenario population. Observed data stay unchanged. Quick what-if computes the weather-only heat stress (no shading or surfaces) and the water balance in the browser request and stores nothing.",
+        "eq": [
+            "Change = scenario value − current value",
+            "WBGT = 0.7 × wet-bulb + 0.2 × globe + 0.1 × air temperature",
+        ],
+        "note": "Change colours: red = worse, teal = better, uncoloured = no judgement (population, humidity, wind). A strong colour marks a change of 10 % or more of today's value. LST is not projected (it depends on the surface reflectance a satellite measures); SUHII stays observed. Years past the CBS projection are a trend extrapolation (*).",
+    },
+    "climate.run_actions": {
+        "title": "Update results or rerun the heat simulation",
+        "what": "A stored run is a snapshot. Two buttons bring it up to date, depending on what changed.",
+        "how": "Update results recomputes water, housing and the comparison from the data stored now, in seconds; it reuses the heat simulation already done (and picks up an observed Thermal Comfort run of the same hour for the current column). Rerun heat simulation runs SOLWEIG again on the GPU, which takes minutes; needed after buildings, land cover, soil or the DSM changed (the button turns amber then).",
+        "eq": [
+            "Update results: water + housing + current column, from stored data",
+            "Rerun heat simulation: Tmrt, UTCI, PET, WBGT of the scenario hour",
+        ],
+        "note": "Delete removes the run and its scenario layers; a second click within 4 s confirms.",
     },
 }

@@ -360,8 +360,34 @@ def scenario_table(key):
         rows.append({
             "label": label, "unit": unit,
             "cells": ["—" if v is None else fmt.format(v) for v in cells],
+            "tones": [change_tone(name, v) for v in cells],
         })
     return rows
+
+
+# Colour of a Table 1 change in the Scenarios panel: (warmer/wetter tone,
+# cooler/drier tone, change per colour step). Display only, no equation uses it.
+# More evaporation dries the soil, so it takes the dry tone. Wind has no tone.
+TABLE_TONES = {
+    "t_c": ("heat", "cool", 1.0),
+    "tx_c": ("heat", "cool", 1.0),
+    "tn_c": ("heat", "cool", 1.0),
+    "kdown_wm2": ("heat", "cool", 4.0),
+    "precip_pct": ("wet", "dry", 8.0),
+    "rh_pp": ("wet", "dry", 2.0),
+    "et_pct": ("dry", "wet", 5.0),
+}
+TONE_STEPS = 3
+
+
+def change_tone(name, value):
+    """CSS tone of a Table 1 change: 'heat-2', 'dry-1', … or '' (no tone, zero or unknown)."""
+    spec = TABLE_TONES.get(name)
+    if spec is None or not value:
+        return ""
+    up, down, step = spec
+    level = min(TONE_STEPS, max(1, math.ceil(abs(value) / step)))
+    return f"{up if value > 0 else down}-{level}"
 
 
 def season_of_month(month):

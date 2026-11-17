@@ -1,4 +1,4 @@
-{% load humanize %}
+{% load humanize indicator_help %}
 {% comment %}
 One stored KNMI'23 climate scenario run (weather.ClimateScenarioRun) and the
 results the other apps stored for it. View: mainMap/views_climate.py.
@@ -8,7 +8,7 @@ core/static/js/Panels.js (data-climate-run-action, .climate-run-layer).
 <div class="climate-run" id="climate-run-{{ run.pk }}" data-run-id="{{ run.pk }}"
      {% if heat_pending %}hx-get="{% url 'map:climate_run_detail' run.pk %}" hx-trigger="every 5s" hx-swap="outerHTML"{% endif %}>
   <div class="climate-run-head">
-    <b>Run {{ run.pk }} · {{ scenario.short }} · {{ scenario.heat_label|lower }}</b>
+    <b>Run {{ run.pk }} · {{ scenario.short }} · {{ scenario.heat_label|lower }} {% info_help "climate.effects" %}</b>
     <span>{{ run.unit_name }} · population {{ run.population_year }}{% if run.population_extrapolated %} (trend extrapolation){% endif %} · {{ run.created|date:"Y-m-d H:i" }}{% if run.created_by %} · {{ run.created_by }}{% endif %}</span>
   </div>
 
@@ -24,15 +24,15 @@ core/static/js/Panels.js (data-climate-run-action, .climate-run-layer).
   </div>
   {% endif %}
   {% if heat and heat.status == 'done' and not heat.thermal_baseline %}
-  <div class="climate-run-note">The current column has no heat-model values: no observed SOLWEIG run of {{ run.analysis_datetime|date:"Y-m-d H:i" }} covers this view. Run the Thermal Comfort tool for that hour without a scenario, then Recalculate.</div>
+  <div class="climate-run-note">The current column has no heat-model values: no observed SOLWEIG run of {{ run.analysis_datetime|date:"Y-m-d H:i" }} covers this view. Run the Thermal Comfort tool for that hour without a scenario, then Update results.</div>
   {% endif %}
   {% if heat_inputs_changed %}
   <div class="climate-run-stale" role="status">
-    ⚠ {{ heat_inputs_changed|join:", "|capfirst }} changed after this heat model ran: rerun the heat model.
+    ⚠ {{ heat_inputs_changed|join:", "|capfirst }} changed after this heat model ran: rerun the heat simulation.
   </div>
   {% endif %}
   {% if water_stale %}
-  <div class="climate-run-stale" role="status">⚠ A fresh-water source was recomputed after this run: recalculate it.</div>
+  <div class="climate-run-stale" role="status">⚠ A fresh-water source was recomputed after this run: update the results.</div>
   {% endif %}
 
   {% if rows %}
@@ -55,7 +55,7 @@ core/static/js/Panels.js (data-climate-run-action, .climate-run-layer).
           <td>{{ r.label }} <span style="opacity:.5;">{{ r.unit }}</span></td>
           <td>{% if r.now is None %}—{% else %}{{ r.now|floatformat:r.decimals|intcomma }}{% endif %}</td>
           <td>{% if r.future is None %}—{% else %}{{ r.future|floatformat:r.decimals|intcomma }}{% endif %}</td>
-          <td>{% if r.change is None %}—{% elif r.change == 0 %}0{% else %}{% if r.change > 0 %}+{% endif %}{{ r.change|floatformat:r.decimals|intcomma }}{% endif %}</td>
+          <td class="climate-change{% if r.tone %} is-{{ r.tone|cut:' strong' }}{% if 'strong' in r.tone %} is-strong{% endif %}{% endif %}">{% if r.change is None %}—{% elif r.change == 0 %}0{% else %}{% if r.change > 0 %}+{% endif %}{{ r.change|floatformat:r.decimals|intcomma }}{% endif %}</td>
         </tr>
         {% endfor %}
         {% endfor %}
@@ -78,16 +78,19 @@ core/static/js/Panels.js (data-climate-run-action, .climate-run-layer).
   {% endif %}
 
   <p class="climate-source">
-    Stored snapshot: water (scenario rain and evapotranspiration on the soil × land-cover balance; production as today), housing (homes for the scenario population at the latest CBS household size) and the heat model (one SOLWEIG run on the hour {% if run.analysis_datetime %}{{ run.analysis_datetime|date:"Y-m-d H:i" }}{% endif %} moved into the scenario; the current column reuses an observed run of that hour when one covers the view; WBGT from Tmrt, ISO 7243 with Stull wet bulb).
-    {% if run.population_extrapolated %}* Population {{ run.population_year }}: trend extrapolation of the CBS projection.{% endif %}
-    Key-figure station {{ run.station }}; variant {{ run.population_variant }}{% if run.population_growth_pct %}, {{ run.population_growth_pct|floatformat:1 }}%/yr extra{% endif %}; method v{{ run.method_version }}.
+    {% if run.population_extrapolated %}* Population {{ run.population_year }}: trend extrapolation of the CBS projection. {% endif %}Station {{ run.station }} · population {{ run.population_variant }}{% if run.population_growth_pct %} +{{ run.population_growth_pct|floatformat:1 }}%/yr{% endif %} · method v{{ run.method_version }}{% if run.analysis_datetime %} · hour {{ run.analysis_datetime|date:"Y-m-d H:i" }}{% endif %}
   </p>
 
   {% if is_staff %}
-  <div class="climate-run-actions">
-    <button type="button" class="climate-btn" data-climate-run-action="recalculate" data-url="{% url 'map:climate_run_recalculate' run.pk %}">Recalculate</button>
-    <button type="button" class="climate-btn{% if heat_inputs_changed %} is-attention{% endif %}" data-climate-run-action="heat" data-url="{% url 'map:climate_run_heat' run.pk %}"{% if heat_pending %} disabled{% endif %}>Rerun heat model</button>
-    <button type="button" class="climate-btn" data-climate-run-action="delete" data-url="{% url 'map:climate_run_delete' run.pk %}"{% if heat_pending %} disabled{% endif %}>Delete</button>
+  <div class="climate-run-actions" role="group" aria-label="Bring this run up to date">
+    <button type="button" class="climate-action" data-climate-run-action="recalculate" data-url="{% url 'map:climate_run_recalculate' run.pk %}">
+      <b>Update results</b><small>water, housing, comparison · seconds</small>
+    </button>
+    <button type="button" class="climate-action{% if heat_inputs_changed %} is-attention{% endif %}" data-climate-run-action="heat" data-url="{% url 'map:climate_run_heat' run.pk %}"{% if heat_pending %} disabled{% endif %}>
+      <b>Rerun heat simulation</b><small>SOLWEIG on the GPU · minutes</small>
+    </button>
+    {% info_help "climate.run_actions" %}
+    <button type="button" class="climate-action is-danger" data-climate-run-action="delete" data-url="{% url 'map:climate_run_delete' run.pk %}"{% if heat_pending %} disabled{% endif %}>Delete</button>
   </div>
   {% endif %}
 </div>

@@ -1,4 +1,4 @@
-{% load humanize %}
+{% load humanize indicator_help %}
 {% comment %}
 Effects table of the Scenarios panel (#climate-effects): the Water Supply and
 Urban Heat indicators of the selected unit under the current climate with the
@@ -7,7 +7,8 @@ population. A what-if, nothing stored. View: mainMap/views.py::climate_effects.
 {% endcomment %}
 <div class="climate-effects">
   <div class="climate-effects-head">
-    {{ unit_name }} · {{ scenario.short }}{% if scenario.active %} · {{ heat_label|lower }}{% endif %}
+    <span>{{ unit_name }} · {{ scenario.short }}{% if scenario.active %} · {{ heat_label|lower }}{% endif %} · quick what-if, not stored</span>
+    {% info_help "climate.effects" %}
   </div>
   <div class="climate-table-wrap">
     <table class="climate-table climate-effects-table">
@@ -28,7 +29,7 @@ population. A what-if, nothing stored. View: mainMap/views.py::climate_effects.
           <td>{{ r.label }} <span style="opacity:.5;">{{ r.unit }}</span></td>
           <td>{% if r.now is None %}—{% else %}{{ r.now|floatformat:r.decimals|intcomma }}{% endif %}</td>
           <td>{% if r.future is None %}—{% else %}{{ r.future|floatformat:r.decimals|intcomma }}{% endif %}</td>
-          <td class="{% if r.change > 0 %}up{% elif r.change < 0 %}down{% endif %}">{% if r.change is None %}—{% elif r.change == 0 %}0{% else %}{% if r.change > 0 %}+{% endif %}{{ r.change|floatformat:r.decimals|intcomma }}{% endif %}</td>
+          <td class="climate-change{% if r.tone %} is-{{ r.tone|cut:' strong' }}{% if 'strong' in r.tone %} is-strong{% endif %}{% endif %}">{% if r.change is None %}—{% elif r.change == 0 %}0{% else %}{% if r.change > 0 %}+{% endif %}{{ r.change|floatformat:r.decimals|intcomma }}{% endif %}</td>
         </tr>
         {% endfor %}
         {% endfor %}
@@ -36,9 +37,6 @@ population. A what-if, nothing stored. View: mainMap/views.py::climate_effects.
     </table>
   </div>
   <p class="climate-source">
-    Heat: the observed weather{% if weather_source %} ({{ weather_source }}){% endif %} plus the scenario's change, weather-only heat stress (no shading or surfaces).
-    Water: the stored supply against the projected demand; rain event, runoff and recharge with the scenario's rain and evapotranspiration.
-    {% if future_extrapolated %}* Population {{ future_year }}: trend extrapolation of the CBS projection.{% endif %}
-    Open the Water Supply or Urban Heat panel for the full dashboards with this scenario.
+    {% if weather_source %}Weather: {{ weather_source }} plus the scenario's change. {% endif %}{% if future_extrapolated %}* Population {{ future_year }}: trend extrapolation of the CBS projection. {% endif %}Open the Water Supply or Urban Heat panel for the full dashboards with this scenario.
   </p>
 </div>

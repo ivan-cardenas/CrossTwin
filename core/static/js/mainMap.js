@@ -20,6 +20,20 @@ document.addEventListener("DOMContentLoaded", () => {
 const actionsMenuBtn = document.getElementById('actions-menu-btn');
 const actionsMenu = document.getElementById('actions-menu');
 
+// Overlays (side panel, population dock, tool cards, legends) stop at
+// --bottom-clear so they never cover the bottom bar's Dashboard / Scenarios
+// buttons. The bar wraps to two rows on phones, so measure it.
+function syncBottomClear() {
+  const bar = document.querySelector('.bottom-bar');
+  if (!bar) return;
+  document.documentElement.style.setProperty('--bottom-clear', `${Math.ceil(bar.offsetHeight) + 6}px`);
+}
+syncBottomClear();
+if (window.ResizeObserver) {
+  const bar = document.querySelector('.bottom-bar');
+  if (bar) new ResizeObserver(syncBottomClear).observe(bar);
+}
+
 function positionActionsMenu() {
   const wrap = actionsMenu.offsetParent;   // .map-wrapper; null while the menu is hidden
   if (!wrap) return;

@@ -298,6 +298,41 @@ CLIMATE_EFFECT_ROWS = (
 )
 
 
+# Which way is worse, per effects-table label (what-if and stored runs): the
+# Change column is coloured red when the change makes things worse, teal when
+# better, uncoloured when the label is not listed (no judgement, e.g.
+# population, humidity, wind). Display only.
+CHANGE_WORSE_WHEN_UP = frozenset({
+    "Air temperature", "Solar radiation", "Feels like, shade", "Feels like, sun",
+    "WBGT (estimate)", "WBGT", "Mean radiant temperature", "UTCI", "PET",
+    "Water demand", "Design rain event", "Event runoff", "Homes to build",
+})
+CHANGE_BETTER_WHEN_UP = frozenset({
+    "Supply − demand", "Supply security", "Event infiltration", "Groundwater recharge",
+})
+# A change of at least this share of the current value gets the strong colour.
+CHANGE_STRONG_SHARE = 0.10
+
+
+def change_tone(label, now, change):
+    """
+    Pure: CSS tone of an effects-table change, 'worse' / 'better' plus
+    ' strong' for a change of ≥ CHANGE_STRONG_SHARE of the current value;
+    '' for no change, an unknown change or a label without a direction.
+    """
+    if not change:
+        return ""
+    if label in CHANGE_WORSE_WHEN_UP:
+        tone = "worse" if change > 0 else "better"
+    elif label in CHANGE_BETTER_WHEN_UP:
+        tone = "better" if change > 0 else "worse"
+    else:
+        return ""
+    if not now or abs(change) >= CHANGE_STRONG_SHARE * abs(now):
+        tone += " strong"
+    return tone
+
+
 def _heat_effects(indicators):
     """The weather (with the scenario's change) and its heat stress, from urban_heat's _build_indicators."""
     return {**(indicators.get('weather') or {}), **(indicators.get('weather_stress') or {})}
@@ -319,6 +354,7 @@ def climate_effect_rows(now, future):
             'now': None if a is None else round(a, decimals),
             'future': None if b is None else round(b, decimals),
             'change': change,
+            'tone': change_tone(label, a, change),
         })
     return rows
 

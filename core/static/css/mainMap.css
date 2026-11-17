@@ -27,6 +27,10 @@
     --overlay-bg:     rgba(17, 17, 17, 0.78);   /* --bg-1 at 78% */
     --overlay-blur:   blur(8px);
     --overlay-shadow: var(--shadow-soft);
+    /* Height of the bottom bar + a gap: overlays stop above it so they never
+       cover the Dashboard / Scenarios buttons. mainMap.js::syncBottomClear()
+       measures the bar (it wraps to two rows on phones); 56px is the fallback. */
+    --bottom-clear:   56px;
 }
 
 /* ============================================================
@@ -84,7 +88,7 @@
 .actions-menu {
     position: absolute;
     left: 12px;
-    bottom: 52px;               /* above the bottom bar */
+    bottom: var(--bottom-clear); /* above the bottom bar */
     width: 320px;
     max-width: calc(100% - 16px);
     padding: 10px;
@@ -705,7 +709,7 @@
     position: absolute;
     right: 12px;
     top: 12px;
-    bottom: 12px;
+    bottom: var(--bottom-clear); /* stops above the bottom bar's Dashboard / Scenarios buttons */
     width: 460px;
     max-width: 76vw;
     padding: 12px 14px;
@@ -1319,7 +1323,7 @@
 .legend-stack {
     position: absolute;
     right: 10px;
-    bottom: 66px;
+    bottom: calc(var(--bottom-clear) + 10px);
     z-index: 13;
     display: none;
     flex-direction: column-reverse;
@@ -1968,7 +1972,7 @@
     position: absolute;
     left: 76px;                 /* right of the toolbar */
     right: 12px;
-    bottom: 52px;               /* above the bottom bar */
+    bottom: var(--bottom-clear); /* above the bottom bar */
     max-height: min(400px, 68vh);
     padding: 10px 14px 12px;
     background: var(--overlay-bg);
@@ -2211,7 +2215,7 @@
 .lst-card {
     position: absolute;
     left: 12px;
-    bottom: 52px;               /* above the bottom bar, where the Actions menu opens */
+    bottom: var(--bottom-clear); /* above the bottom bar, where the Actions menu opens */
     width: 340px;
     max-width: calc(100% - 24px);
     max-height: min(560px, 72vh);

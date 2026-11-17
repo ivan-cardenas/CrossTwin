@@ -91,18 +91,20 @@ def _gap(results):
 
 def run_effect_rows(results):
     """Pure (given the result objects): the effects table rows of a stored run."""
-    from .views import climate_effect_rows  # noqa: F401  (same row shape as the what-if)
+    from .views import change_tone  # same row shape and colours as the what-if
 
     rows = []
     for section, label, unit, decimals, get in RUN_ROWS:
         now, future = get(results)
         if now is None and future is None:
             continue
+        change = round(future - now, decimals) if now is not None and future is not None else None
         rows.append({
             "section": section, "label": label, "unit": unit, "decimals": decimals,
             "now": None if now is None else round(now, decimals),
             "future": None if future is None else round(future, decimals),
-            "change": round(future - now, decimals) if now is not None and future is not None else None,
+            "change": change,
+            "tone": change_tone(label, now, change),
         })
     return rows
 
@@ -272,27 +274,63 @@ def climate_run_create(request):
     return response
 
 
+def _fill_missing_met(run):
+    """
+    A run stored while SOLWEIG was missing has no observed weather (_heat_inputs
+    skips the fetch), so a rerun would fail at once. Fetch it now from the
+    run's recorded source, view and hour, and store it in run.parameters with
+    update() (no receivers: the rerun queues the heat model itself).
+    """
+    from weather.models import ClimateScenarioRun
+
+    params = dict(run.parameters or {})
+    if params.get("met_observed") or not params.get("run_heat", True):
+        return
+    if not run.bbox_wgs84 or run.analysis_datetime is None:
+        raise ValueError("The run has no map view or hour for the heat model.")
+    source = params.get("met_source") or "knmi"
+    if source == "manual":
+        raise ValueError("This run's weather was entered by hand and was not stored: start a new run.")
+    resolution = float(params.get("resolution") or DEFAULT_RESOLUTION_M)
+    area, met = _heat_inputs(list(run.bbox_wgs84), run.analysis_datetime, resolution, {"met_source": source})
+    if met is None:
+        return   # SOLWEIG still missing and no weather: queue_scenario_heat records why
+    params["met_observed"] = met
+    ClimateScenarioRun.objects.filter(pk=run.pk).update(parameters=params, area=area)
+    run.parameters, run.area = params, area
+
+
 def _heat_inputs(bbox, when, resolution, data):
     """(area, observed met dict) of the heat model: the SOLWEIG plan of the view and the hour's weather."""
-    from django.utils import timezone as tz
+    from datetime import timezone as tz
 
     from physicalEnv.calculations.svf import _storage_box, wgs84_to_storage
     from urban_heat.solweig import inputs, met as met_module, pipeline
     from urban_heat.solweig.views import DAY_FIELDS, MET_FIELDS, _number, _optional_number
 
-    if not pipeline.solweig_available():
-        # The run is stored anyway; its heat results say SOLWEIG is missing.
-        return _storage_box(wgs84_to_storage(bbox)), None
-    plan = inputs.plan(wgs84_to_storage(bbox), cell=resolution)   # refuse a too-large view now
+    available = pipeline.solweig_available()
+    if available:
+        plan = inputs.plan(wgs84_to_storage(bbox), cell=resolution)   # refuse a too-large view now
     source = data.get("met_source") or "knmi"
     lon, lat = pipeline.centre(bbox)
-    if source == "manual":
-        met = met_module.Met(**{n: _number(data, n, d, lo, hi, u) for n, d, lo, hi, u in MET_FIELDS},
-                             **{n: _optional_number(data, n, lo, hi, u) for n, lo, hi, u in DAY_FIELDS},
-                             source=(data.get("met_label") or "manual")[:60])
-    else:
-        fetch = met_module.era5_hourly if source == "era5" else met_module.knmi_hourly
-        met, _station = fetch(when.astimezone(tz.utc), lon, lat)
+    try:
+        if source == "manual":
+            met = met_module.Met(**{n: _number(data, n, d, lo, hi, u) for n, d, lo, hi, u in MET_FIELDS},
+                                 **{n: _optional_number(data, n, lo, hi, u) for n, lo, hi, u in DAY_FIELDS},
+                                 source=(data.get("met_label") or "manual")[:60])
+        else:
+            fetch = met_module.era5_hourly if source == "era5" else met_module.knmi_hourly
+            met, _station = fetch(when.astimezone(tz.utc), lon, lat)
+    except Exception:
+        if available:
+            raise
+        # SOLWEIG missing: the run is stored anyway (its heat results say so);
+        # a rerun fetches the weather again (_fill_missing_met).
+        logger.warning("Weather of the scenario run's hour not fetched", exc_info=True)
+        met = None
+    if not available:
+        # Keep the weather, so "Rerun heat simulation" works once SOLWEIG is installed.
+        return _storage_box(wgs84_to_storage(bbox)), met.as_dict() if met else None
     return _storage_box(plan["covered"]), met.as_dict()
 
 
@@ -354,6 +392,10 @@ def climate_run_heat(request, run_id):
     run = get_object_or_404(ClimateScenarioRun, pk=run_id)
     if run.thermal_runs_active():
         return _bad("The heat model of this run is still running.")
+    try:
+        _fill_missing_met(run)
+    except Exception as e:  # SolweigError, MetError, ValueError: shown as-is
+        return _bad(str(e))
     _delete_heat_outputs(run)
     heat, _ = ScenarioHeat.objects.get_or_create(run=run)
     heat.thermal_baseline = heat.thermal_run = None

@@ -435,7 +435,8 @@ document.addEventListener('click', function (evt) {
       }
     }
     action.disabled = true;
-    climateRunPost(action.dataset.url).finally(() => { action.disabled = false; });
+    action.classList.add('is-busy');
+    climateRunPost(action.dataset.url).finally(() => { action.disabled = false; action.classList.remove('is-busy'); });
   }
 });
 

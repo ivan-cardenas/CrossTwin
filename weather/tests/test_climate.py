@@ -298,3 +298,26 @@ class SeasonModeTests(TestCase):
             self.assertContains(response, label)
         self.assertContains(response, 'data-climate-heat="autumn"')
         self.assertContains(response, "Autumn change")
+
+
+class ChangeToneTests(TestCase):
+    """Colours of the Scenarios panel: Table 1 tones and the effects' worse/better."""
+
+    def test_table_tone_follows_sign_and_size(self):
+        self.assertEqual(climate.change_tone("tx_c", 0.4), "heat-1")
+        self.assertEqual(climate.change_tone("tx_c", 5.0), "heat-3")
+        self.assertEqual(climate.change_tone("precip_pct", -20), "dry-3")
+        self.assertEqual(climate.change_tone("et_pct", 4), "dry-1")    # more evaporation dries
+        self.assertEqual(climate.change_tone("wind_ms", 0.3), "")      # no tone
+        self.assertEqual(climate.change_tone("t_c", None), "")
+        row = climate.scenario_table("2100_Hd")[0]
+        self.assertEqual(len(row["tones"]), len(row["cells"]))
+
+    def test_effects_tone_is_the_consequence(self):
+        from mainMap.views import change_tone
+        self.assertEqual(change_tone("Air temperature", 20.0, 1.0), "worse")
+        self.assertEqual(change_tone("Air temperature", 20.0, 3.0), "worse strong")
+        self.assertEqual(change_tone("Supply security", 110.0, -2.0), "worse")
+        self.assertEqual(change_tone("Groundwater recharge", 200.0, 30.0), "better strong")
+        self.assertEqual(change_tone("Population", 1000, 100), "")
+        self.assertEqual(change_tone("Air temperature", 20.0, 0), "")

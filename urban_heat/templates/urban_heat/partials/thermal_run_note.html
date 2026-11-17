@@ -1,0 +1,12 @@
+{% comment %}
+Which SOLWEIG run a Tmrt/PET/UTCI card shows and how much of the unit it covers
+(urban_heat/calculations/indicators.py::get_thermal_indices). `coverage` = the card's share.
+{% endcomment %}
+{% if indicators.thermal_run %}
+<div style="font-size:9px; color:rgba(232,244,255,0.45); font-family:var(--font-mono);"
+     title="Tmrt, PET and UTCI come from the same SOLWEIG run{% if indicators.thermal_run.met_source %} ({{ indicators.thermal_run.met_source }}){% endif %}">
+  Run #{{ indicators.thermal_run.id }} · {{ indicators.thermal_run.date_time|date:"Y-m-d H:i" }}{% if coverage != None %} · {{ coverage }}% of area{% endif %}
+</div>
+{% elif coverage != None %}
+<div style="font-size:9px; color:rgba(232,244,255,0.45); font-family:var(--font-mono);">{{ coverage }}% of area</div>
+{% endif %}

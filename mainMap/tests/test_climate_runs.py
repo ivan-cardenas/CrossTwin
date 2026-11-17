@@ -82,15 +82,24 @@ class ClimateRunViewTests(TestCase):
 
 class RasterLabelTests(SimpleTestCase):
     def test_scenario_rasters_are_labelled(self):
+        from datetime import datetime
         from types import SimpleNamespace
 
-        from mainMap.styles.rasterStyles import climate_run_suffix
+        from mainMap.styles.rasterStyles import raster_display_name
 
-        self.assertEqual(climate_run_suffix(SimpleNamespace(climate_run_id=None)), "")
-        self.assertEqual(climate_run_suffix(SimpleNamespace(climate_run_id=3, source="SOLWEIG DSM 1: KNMI23 2050_Hd")),
-                         " · KNMI'23 run 3")
-        self.assertEqual(climate_run_suffix(SimpleNamespace(climate_run_id=3, source="SOLWEIG DSM 1: KNMI 290")),
-                         " · run 3 (current climate)")
+        july = datetime(2026, 7, 15, 14)
+        mrt = "urban_heat.MeanRadiantTemperature"
+        self.assertEqual(raster_display_name(SimpleNamespace(climate_run_id=None, date_time=july), mrt),
+                         "Mean Radiant Temperature - 07-26")
+        self.assertEqual(raster_display_name(SimpleNamespace(
+            climate_run_id=3, date_time=july, source="SOLWEIG DSM 1: KNMI23 2100_Hd warmest on KNMI 290"), mrt),
+            "Tmrt - simulation Summer 2100")
+        self.assertEqual(raster_display_name(SimpleNamespace(
+            climate_run_id=3, date_time=datetime(2026, 4, 1, 12), source="SOLWEIG DSM 1: KNMI23 2050_Ld average on x"),
+            "urban_heat.UTCI"), "UTCI - simulation Spring 2050")
+        self.assertEqual(raster_display_name(SimpleNamespace(
+            climate_run_id=3, date_time=july, source="SOLWEIG DSM 1: KNMI 290"), "urban_heat.PET"),
+            "PET - simulation current climate")
 
 
 class ThermalComfortToolScenarioTests(TestCase):
@@ -133,3 +142,49 @@ class ThermalComfortToolScenarioTests(TestCase):
         run = ClimateScenarioRun.objects.get(pk=data["id"])
         self.assertEqual(run.unit_level, "")
         self.assertEqual(run.station, "Groningen")   # nearest key-figure station to the view (Enschede)
+        self.assertEqual(run.parameters["met_observed"]["ta_c"], 25)   # kept for a later rerun
+
+    def test_rerun_fetches_the_weather_a_run_stored_without_solweig_lacks(self):
+        """A run stored while SOLWEIG was missing has no weather; the rerun fetches it and queues SOLWEIG."""
+        from unittest import mock
+
+        from mainMap import views_climate
+
+        self.client.force_login(self.staff)
+        with mock.patch("urban_heat.solweig.pipeline.solweig_available", return_value=False):
+            data = self.client.post(reverse("map:climate_runs"), {
+                "format": "json", "climate": "2050_Hd", "heat": "summer", "bbox": self.BBOX,
+                "datetime": "2025-07-15T15:00", "met_source": "manual",
+                "ta_c": 25, "rh_pct": 50, "wind_ms": 2, "wind_dir_deg": 240, "kdown_wm2": 700,
+                "pressure_kpa": 101.3}).json()
+        run = ClimateScenarioRun.objects.get(pk=data["id"])
+        met = run.parameters["met_observed"]
+        params = {**run.parameters, "met_observed": None, "met_source": "knmi"}   # as runs stored before the fix
+        ClimateScenarioRun.objects.filter(pk=run.pk).update(parameters=params)
+
+        with mock.patch("urban_heat.solweig.pipeline.solweig_available", return_value=True),                 mock.patch.object(views_climate, "_heat_inputs", return_value=(run.area, met)) as fetch,                 mock.patch("urban_heat.solweig.pipeline.start_run") as start:
+            response = self.client.post(reverse("map:climate_run_heat", args=[run.pk]))
+        self.assertEqual(response.status_code, 200, response.content)
+        fetch.assert_called_once()
+        start.assert_called_once()
+        run.refresh_from_db()
+        self.assertEqual(run.parameters["met_observed"], met)
+        self.assertEqual(run.heat.status, "queued")
+        self.assertGreater(run.heat.thermal_run.met["ta_c"], 25)   # the scenario's warmer hour
+
+    def test_heat_inputs_fetch_the_station_hour_in_utc(self):
+        """_heat_inputs itself (not mocked): the KNMI fetch gets the hour in UTC."""
+        from datetime import datetime, timezone
+        from unittest import mock
+        from zoneinfo import ZoneInfo
+
+        from mainMap import views_climate
+        from urban_heat.solweig.met import Met
+
+        met = Met(ta_c=25, rh_pct=50, wind_ms=2, wind_dir_deg=240, kdown_wm2=700, source="KNMI test")
+        when = datetime(2025, 7, 15, 15, tzinfo=ZoneInfo("Europe/Amsterdam"))
+        bbox = [float(v) for v in self.BBOX.split(",")]
+        with mock.patch("urban_heat.solweig.pipeline.solweig_available", return_value=False),                 mock.patch("urban_heat.solweig.met.knmi_hourly", return_value=(met, "290")) as fetch:
+            _area, observed = views_climate._heat_inputs(bbox, when, 2.0, {"met_source": "knmi"})
+        self.assertEqual(fetch.call_args.args[0], datetime(2025, 7, 15, 13, tzinfo=timezone.utc))
+        self.assertEqual(observed["ta_c"], 25)

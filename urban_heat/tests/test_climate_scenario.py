@@ -76,12 +76,15 @@ class ScenarioHeatTests(TestCase):
             area=area or self.area, bbox_wgs84=self.BBOX, analysis_datetime=self.WHEN,
             parameters={"run_heat": True, "met_observed": dict(self.MET), "resolution": 2.0})
 
-    def _observed_run(self, ta_c=25.0):
+    def _observed_run(self, ta_c=25.0, when=None, bbox=None):
+        from physicalEnv.calculations.svf import _storage_box, wgs84_to_storage
         from urban_heat.models import ThermalComfortRun
         from urban_heat.solweig import pipeline
 
+        bbox = bbox or self.BBOX
         run = ThermalComfortRun.objects.create(
-            area=self.area, bbox_wgs84=self.BBOX, date_time=self.WHEN, met={**self.MET, "ta_c": ta_c}, resolution=2.0)
+            area=_storage_box(wgs84_to_storage(bbox)), bbox_wgs84=bbox, date_time=when or self.WHEN,
+            met={**self.MET, "ta_c": ta_c}, resolution=2.0)
         return pipeline.execute(run.pk)
 
     def _queued_runs(self, start_run):
@@ -157,6 +160,45 @@ class ScenarioHeatTests(TestCase):
             self.make_run("2100_Hd", "warmest")
             self._queued_runs(start_run)
         self.assertEqual(get_thermal_indices(self.city)["utci"]["mean"], 30.0)   # observed Ta 25 + 5
+
+    def test_card_reads_tmrt_pet_and_utci_from_one_run(self, *_):
+        """Tmrt, PET and UTCI describe the same hour: the latest run of equal extent."""
+        from datetime import timedelta
+
+        from urban_heat.calculations.indicators import get_thermal_indices
+
+        self._observed_run(ta_c=25.0)
+        later = self._observed_run(ta_c=30.0, when=self.WHEN + timedelta(hours=1))
+        indices = get_thermal_indices(self.city)
+        self.assertEqual(indices["run"]["id"], later.pk)
+        self.assertEqual(indices["tmrt"]["mean"], 50.0)   # Ta + 20
+        self.assertEqual(indices["pet"]["mean"], 40.0)    # Tmrt - 10
+        self.assertEqual(indices["utci"]["mean"], 35.0)   # Ta + 5
+
+    def test_larger_coverage_beats_a_newer_hour(self, *_):
+        from datetime import timedelta
+
+        from urban_heat.calculations.indicators import get_thermal_indices
+        from watersupply.tests.factories import make_city
+        from django.contrib.gis.geos import MultiPolygon
+
+        full = self._observed_run(ta_c=25.0)
+        city = make_city(cityName="Tightville", geom=MultiPolygon(full.area, srid=full.area.srid))
+        small = self._observed_run(ta_c=30.0, when=self.WHEN + timedelta(hours=1),
+                                   bbox=[6.8930, 52.2200, 6.8935, 52.2203])
+        self.assertLess(small.area.area, full.area.area)
+        indices = get_thermal_indices(city)
+        self.assertEqual(indices["run"]["id"], full.pk)
+        self.assertEqual(indices["run"]["coverage_pct"], 100)
+        self.assertEqual(indices["utci"]["mean"], 30.0)
+        self.assertEqual(indices["utci"]["coverage_pct"], 100)
+
+    def test_no_run_reports_no_run(self, *_):
+        from urban_heat.calculations.indicators import get_thermal_indices
+
+        indices = get_thermal_indices(self.city)
+        self.assertIsNone(indices["run"])
+        self.assertIsNone(indices["utci"])
 
     def test_deleting_the_run_removes_its_rasters(self, *_):
         from urban_heat.models import UTCI, ThermalComfortRun

@@ -18,6 +18,7 @@ function renderLayerList() {
   // Group by app_label
   const groups = {};
   availableLayers.forEach(layer => {
+    if (isWeatherPillLayer(layer)) return;   // the rain radar: weather pill only
     if (!groups[layer.app_label]) groups[layer.app_label] = [];
     groups[layer.app_label].push(layer);
   });

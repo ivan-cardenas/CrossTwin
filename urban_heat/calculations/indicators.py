@@ -223,28 +223,47 @@ SCENARIO_RASTER_TABLES = {
 }
 
 
-def _raster_stats_sql(table, raster_col, geom_wkt, srid):
-    """Get min/max/mean/stddev from the latest observed raster clipped to a geometry."""
+# The card's Tmrt, PET and UTCI come from one SOLWEIG run. Runs are ranked by
+# the share of the unit they cover, in steps of this many percent, and the
+# latest analysed hour wins within a step, so a run that covers a sliver more
+# does not hide a newer one of practically the same extent.
+COVERAGE_RANK_STEP_PCT = 1
+
+
+def _raster_stats_sql(table, raster_col, geom_wkt, srid, pk=None):
+    """Min/max/mean/stddev of one raster clipped to a geometry, plus its coverage.
+
+    With `pk` the raster row is that one; otherwise the latest observed row
+    (climate scenario rows left out) that intersects the geometry.
+    `coverage_pct` = valid cells x cell area / unit area x 100: the share of
+    the unit the statistics describe (cell area in the storage CRS's units).
+    """
     observed = "AND r.climate_run_id IS NULL" if table in SCENARIO_RASTER_TABLES else ""
+    pick = "AND r.id = %s" if pk is not None else ""
     sql = f"""
         SELECT
             (stats).min,
             (stats).max,
             (stats).mean,
             (stats).stddev,
-            (stats).count
+            (stats).count,
+            (stats).count * cell_area / NULLIF(ST_Area(ST_GeomFromText(%s, %s)), 0) * 100
         FROM (
             SELECT ST_SummaryStats(
                 ST_Clip(r.{raster_col}, ST_GeomFromText(%s, %s))
-            ) AS stats
+            ) AS stats,
+            ABS(ST_ScaleX(r.{raster_col}) * ST_ScaleY(r.{raster_col})) AS cell_area
             FROM {table} r
-            WHERE ST_Intersects(r.{raster_col}, ST_GeomFromText(%s, %s)) {observed}
-            ORDER BY r.date_time DESC
+            WHERE ST_Intersects(r.{raster_col}, ST_GeomFromText(%s, %s)) {observed} {pick}
+            ORDER BY r.date_time DESC, r.id DESC
             LIMIT 1
         ) sub
     """
+    params = [geom_wkt, srid, geom_wkt, srid, geom_wkt, srid]
+    if pk is not None:
+        params.append(pk)
     with connection.cursor() as cursor:
-        cursor.execute(sql, [geom_wkt, srid, geom_wkt, srid])
+        cursor.execute(sql, params)
         row = cursor.fetchone()
     if row and row[0] is not None:
         return {
@@ -253,59 +272,92 @@ def _raster_stats_sql(table, raster_col, geom_wkt, srid):
             'mean': round(row[2], 2),
             'stddev': round(row[3], 2),
             'count': row[4],
+            'coverage_pct': round(min(row[5], 100), 1) if row[5] is not None else None,
         }
     return None
 
 
+def select_thermal_run(adminUnit):
+    """The observed SOLWEIG run whose Tmrt, PET and UTCI the heat card shows.
+
+    Done runs of the map's tool (no climate scenario) with at least one stored
+    raster, intersecting the unit; ranked by covered share of the unit
+    (in COVERAGE_RANK_STEP_PCT steps), then the latest analysed hour, then the
+    latest run. Returns (run, coverage_pct) or (None, None).
+    """
+    from urban_heat.models import ThermalComfortRun
+
+    geom = getattr(adminUnit, 'geom', None)
+    if geom is None:
+        return None, None
+    table = ThermalComfortRun._meta.db_table
+    sql = f"""
+        WITH unit AS (SELECT ST_GeomFromEWKB(%(geom)s) AS geom),
+        c AS (
+            SELECT t.id, t.date_time,
+                   ST_Area(ST_Intersection(t.area, u.geom)) / NULLIF(ST_Area(u.geom), 0) * 100 AS cov
+            FROM "{table}" t, unit u
+            WHERE t.status = 'done' AND t.climate_run_id IS NULL
+              AND (t.mrt_id IS NOT NULL OR t.pet_id IS NOT NULL OR t.utci_id IS NOT NULL)
+              AND t.area && u.geom AND ST_Intersects(t.area, u.geom)
+        )
+        SELECT id, cov FROM c
+        ORDER BY FLOOR(cov / %(step)s) DESC, date_time DESC, id DESC
+        LIMIT 1
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(sql, {'geom': bytes(geom.ewkb), 'step': COVERAGE_RANK_STEP_PCT})
+        row = cursor.fetchone()
+    if not row:
+        return None, None
+    return ThermalComfortRun.objects.get(pk=row[0]), round(min(row[1] or 0, 100), 1)
+
+
 def get_thermal_indices(adminUnit):
-    """Aggregate raster statistics for all thermal indices.
+    """Statistics over the stored thermal rasters inside the unit (read only).
 
-    DAG edges:  Meteorology → Tmrt, PET, UTCI
-                DSM → SVF → Tmrt, PET
-                Tmrt → PET, UTCI
+    Implements no DAG edge: it reads the nodes LST, Tmrt, PET, UTCI, SVF and
+    SUHII (+ WBGT, not a node) after they were computed on demand by
+    urban_heat/lst/ (RS_Imagery, LandCover -> LST), physicalEnv/calculations/
+    svf.py (DSM -> SVF) and urban_heat/solweig/ (Meteorology, DSM, SVF ->
+    Tmrt -> PET, UTCI). No stored node consumes these statistics, so they have
+    no receiver (CLAUDE.md, dashboard-only statistics).
 
-    WBGT is not a DAG node: it is an observed measure imported from KNMI
-    (importer KNMIImporter), read here as-is like the other rasters.
+    Tmrt, PET and UTCI come from one SOLWEIG run (`select_thermal_run`), so
+    the three describe the same hour, weather and extent; `indices['run']`
+    names it. Without a run (rasters imported outside the tool) each falls back
+    to its latest raster. Every other index is its latest raster over the unit.
+    Each stats dict carries `coverage_pct`, the share of the unit it describes.
     """
     geom_wkt = adminUnit.geom.wkt
     srid = adminUnit.geom.srid
 
+    def stats(table, pk=None):
+        return _raster_stats_sql(table, 'raster', geom_wkt, srid, pk=pk)
+
     indices = {}
+    run, run_cov = select_thermal_run(adminUnit)
+    if run is not None:
+        indices['run'] = {
+            'id': run.pk,
+            'date_time': run.date_time,
+            'coverage_pct': run_cov,
+            'met_source': (run.met or {}).get('source', ''),
+        }
+        indices['tmrt'] = stats('urban_heat_meanradianttemperature', run.mrt_id) if run.mrt_id else None
+        indices['pet'] = stats('urban_heat_pet', run.pet_id) if run.pet_id else None
+        indices['utci'] = stats('urban_heat_utci', run.utci_id) if run.utci_id else None
+    else:
+        indices['run'] = None
+        indices['tmrt'] = stats('urban_heat_meanradianttemperature')
+        indices['pet'] = stats('urban_heat_pet')
+        indices['utci'] = stats('urban_heat_utci')
 
-    # LST (Land Surface Temperature)
-    indices['lst'] = _raster_stats_sql(
-        'urban_heat_landsurfacetemperature', 'raster', geom_wkt, srid
-    )
-
-    # Tmrt (Mean Radiant Temperature)
-    indices['tmrt'] = _raster_stats_sql(
-        'urban_heat_meanradianttemperature', 'raster', geom_wkt, srid
-    )
-
-    # PET (Physiological Equivalent Temperature)
-    indices['pet'] = _raster_stats_sql(
-        'urban_heat_pet', 'raster', geom_wkt, srid
-    )
-
-    # UTCI (Universal Thermal Climate Index)
-    indices['utci'] = _raster_stats_sql(
-        'urban_heat_utci', 'raster', geom_wkt, srid
-    )
-
-    # WBGT (Wet Bulb Globe Temperature, latest KNMI import)
-    indices['wbgt'] = _raster_stats_sql(
-        WetBulbGlobeTemperature._meta.db_table, 'raster', geom_wkt, srid
-    )
-
-    # SVF (Sky View Factor)
-    indices['svf'] = _raster_stats_sql(
-        'urban_heat_skyviewfactor', 'raster', geom_wkt, srid
-    )
-
-    # SUHII (Surface Urban Heat Island Intensity)
-    indices['suhii'] = _raster_stats_sql(
-        'urban_heat_surfaceurbanheatislandintensity', 'raster', geom_wkt, srid
-    )
+    indices['lst'] = stats('urban_heat_landsurfacetemperature')
+    # WBGT: latest KNMI import (scenario rows left out)
+    indices['wbgt'] = stats(WetBulbGlobeTemperature._meta.db_table)
+    indices['svf'] = stats('urban_heat_skyviewfactor')
+    indices['suhii'] = stats('urban_heat_surfaceurbanheatislandintensity')
 
     return indices
 

@@ -93,9 +93,8 @@
   // ---- Radar toggle (KNMI radar nowcast WMS layer) ---------------------
 
   function radarLayer() {
-    if (typeof availableLayers === 'undefined') return null;
-    return availableLayers.find(l =>
-      l.layer_type === 'wms' && l.has_time_dimension && /radar/i.test(l.key)) || null;
+    if (typeof availableLayers === 'undefined' || typeof isWeatherPillLayer !== 'function') return null;
+    return availableLayers.find(isWeatherPillLayer) || null;
   }
 
   let radarLoading = false;       // switched on here, addAnimatedWmsLayer still fetching its time steps
@@ -124,8 +123,6 @@
     const show = !radarVisible(layer.key);
     radarLoading = show;
     toggleLayerVisibility(layer.key, show);
-    const cb = el(`toggle-${layer.key}`);   // keep the layers panel in step
-    if (cb) cb.checked = show;
     renderRadarButton();
   }
 
@@ -218,14 +215,6 @@
     if (!pill) return;
     pill.addEventListener('click', openHeatPanel);
     el('weather-pill-radar')?.addEventListener('click', toggleRadar);
-    // The layers panel's checkbox for the radar layer: keep the button in step
-    document.addEventListener('change', evt => {
-      const layer = radarLayer();
-      if (layer && evt.target.id === `toggle-${layer.key}`) {
-        radarLoading = evt.target.checked;
-        renderRadarButton();
-      }
-    });
     // Rain and snow are style properties: a basemap switch (setStyle) drops them
     map.on('style.load', () => applyPrecipEffect(true));
     window.matchMedia?.('(prefers-reduced-motion: reduce)')

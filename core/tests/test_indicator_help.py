@@ -9,7 +9,7 @@ from django.test import SimpleTestCase
 from core.indicator_help import HELP
 from core.templatetags.indicator_help import friendly_equation
 
-TEMPLATE_DIRS = ("watersupply", "urban_heat", "housing", "builtup", "Templates")
+TEMPLATE_DIRS = ("watersupply", "urban_heat", "housing", "builtup", "weather", "mainMap", "Templates")
 USED_KEY = re.compile(r'\{%\s*info_help\s+"([^"]+)"\s*%\}')
 
 
