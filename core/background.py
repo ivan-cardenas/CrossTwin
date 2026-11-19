@@ -1,6 +1,6 @@
 """
 Coalescing background workers for derived data that a map edit must not wait
-for (physicalEnv/dsm_edited.py: the edited DSM COG; builtup/urbanisation.py:
+for (physicalEnv/calculations/dsm_edited.py: the edited DSM COG; builtup/calculations/urbanisation.py:
 the Degree of Urbanisation grid).
 
 One daemon thread per worker and process. Items submitted while the thread

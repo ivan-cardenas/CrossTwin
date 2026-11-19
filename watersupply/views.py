@@ -7,10 +7,10 @@ from django.db.models import Sum, Avg
 from django.apps import apps
 
 from .models import *
-from . import chain
+from .calculations import chain
 from administrative.admin_units import resolve_admin_unit
-from administrative.population import DEFAULT_SCENARIO, get_population, population_params
-from .calculations import (
+from administrative.calculations.population import DEFAULT_SCENARIO, get_population, is_extrapolated, population_params
+from .calculations.indicators import (
     _get_consumption_capita,
     consumption_data_years,
     calculate_supply_security,
@@ -27,7 +27,8 @@ from .calculations import (
     calculate_drought_area,
     calculate_infiltration,
 )
-from physicalEnv.soil import DEFAULT_SEASON, SEASONS, SOIL_GROUP_ORDER, SOIL_GROUPS, summarize_infiltration
+from weather.calculations import climate
+from physicalEnv.calculations.soil import DEFAULT_SEASON, SEASONS, SOIL_GROUP_ORDER, SOIL_GROUPS, summarize_infiltration
 from django.contrib.gis.db.models.functions import Intersection, Length
 from django.contrib.gis.measure import D
 
@@ -106,6 +107,7 @@ def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, po
     return {
         'province':             adminUnit,
         'population':           get_population(adminUnit, year, pop_scenario, pop_growth),
+        'population_extrapolated': is_extrapolated(adminUnit, year),
         'consumption_capita':   _get_consumption_capita(adminUnit, year),
         # years the consumption comes from, when not `year` itself (closest earlier survey)
         'consumption_years':    [y for y in consumption_data_years(adminUnit, year) if y != year],
@@ -120,6 +122,7 @@ def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, po
         'apparent_losses_m3_d': nrw['apparent_losses_m3_d'],
         'real_losses_m3_d':     nrw['real_losses_m3_d'],
         'ili':                  nrw['ili'],
+        'uarl_reliable':        nrw['uarl_reliable'],
         # ── New DAG-derived fields ──
         'extraction_m3_d':      extraction_m3_d,
         'energy_kwh_day':       energy_kwh_day,
@@ -148,6 +151,7 @@ MOCK_DATA = {
     'apparent_losses_m3_d': 1_200,
     'real_losses_m3_d':     2_000,
     'ili':                  3.5,
+    'uarl_reliable':        True,
     'extraction_m3_d':      18_000,
     'energy_kwh_day':       4_500,
     'co2_kg_day':           2_250,
@@ -164,6 +168,7 @@ MOCK_DATA = {
     'coverage':             {
         'covered_area_km2': 42.5, 'households_covered': 4_200,
         'households_total': 5_000, 'coverage_pct': 84.0,
+        'urban_area_km2': 30.0, 'uncovered_urban_km2': 1.8, 'uncovered_urban_pct': 6.0,
     },
     'drought':              {'total_area_km2': 12.3, 'max_sensibility': 2},
     'infiltration':         {
@@ -182,7 +187,7 @@ MOCK_DATA = {
 }
 
 # ── shared calculation ────────────────────────────────────────────────
-def _recharge_indicators(infiltration, area_m2):
+def _recharge_indicators(infiltration, area_m2, climate_key=climate.CURRENT):
     """
     Yearly groundwater recharge of the unit: the same water balance that
     AvailableFreshWater.save() stores (chain.recharge_depth_cm_yr), over the
@@ -190,13 +195,18 @@ def _recharge_indicators(infiltration, area_m2):
     The rain-event slider does not enter; the season switch does, through the
     composition (the stored value uses the wet season, the default).
 
+    A KNMI'23 climate scenario (`climate_key`, weather/calculations/climate.py)
+    scales each day's rain by its season's precipitation change and the
+    year's Makkink ET by its change (delta-change; what-if, never stored).
+    The current climate equals the stored value.
+
     DAG edges:  Meteorology -> Available_FW
                 LandCover   -> Infiltration -> Available_FW
                 Soil_Type   -> Infiltration -> Available_FW
+                Climate_Change -> Meteorology (scenario what-if)
     """
     met = infiltration.get('water_balance')
-    balance = met and chain.yearly_water_balance_mm(
-        met['daily_rain_mm'], met['et_ref_mm'], infiltration.get('composition', []))
+    balance = chain.scenario_water_balance(met, infiltration.get('composition', []), climate_key)
     if not balance:
         return {'recharge_mm_yr': None}
     rain = balance['rain_mm']
@@ -219,7 +229,7 @@ def _recharge_indicators(infiltration, area_m2):
     }
 
 
-def _infiltration_indicators(infiltration, rain_mm):
+def _infiltration_indicators(infiltration, rain_mm, climate_key=climate.CURRENT):
     """SCS infiltration of a rain event of `rain_mm` over the unit's soil x land cover."""
     scs = summarize_infiltration(infiltration.get('composition', []), rain_mm)
     groups = infiltration.get('soil_groups_m2', {})
@@ -230,7 +240,7 @@ def _infiltration_indicators(infiltration, rain_mm):
     season = infiltration.get('season', DEFAULT_SEASON)
     classified_m2 = scs['classified_m2']
     return {
-        **_recharge_indicators(infiltration, classified_m2),
+        **_recharge_indicators(infiltration, classified_m2, climate_key),
         # the rain event: depth that runs off (comparable across units of any size)
         'event_runoff_mm':           round(scs['runoff_m3'] / classified_m2 * 1000, 1) if classified_m2 else None,
         'rain_mm':                   rain_mm,
@@ -261,12 +271,44 @@ def _infiltration_indicators(infiltration, rain_mm):
     }
 
 
-def _build_indicators(data, consumption_override=None, rain_mm=RAIN_MM_DEFAULT):
-    """Pure function: takes DB data dict, returns indicators dict."""
+def _climate_indicators(climate_key, observed_year=None):
+    """
+    The KNMI'23 scenario applied to the panel's rain and recharge (display
+    data): the changes added to the station year `observed_year` (minus what
+    that year already holds); the rain event keeps the full change (a design value).
+    """
+    scenario = climate.describe(climate_key)
+    if not scenario['active']:
+        return {'climate': scenario}
+    year = climate.deltas(climate_key, 'year', observed_year)
+    summer = climate.deltas(climate_key, 'summer', observed_year)
+    winter = climate.deltas(climate_key, 'winter', observed_year)
+    return {
+        'climate': scenario,
+        'climate_observed_year': observed_year,
+        'climate_rain_event_pct': climate.deltas(climate_key, 'summer')['rain_1d_10y_pct'],
+        'climate_precip_summer_pct': summer['precip_pct'],
+        'climate_precip_winter_pct': winter['precip_pct'],
+        'climate_precip_year_pct': year['precip_pct'],
+        'climate_et_pct': year['et_pct'],
+    }
+
+
+def _build_indicators(data, consumption_override=None, rain_mm=None, climate_key=climate.CURRENT):
+    """
+    Pure function: takes DB data dict, returns indicators dict.
+
+    `rain_mm` is the Rain Event slider; without it the design event
+    (RAIN_MM_DEFAULT) of the climate scenario `climate_key` is used.
+    """
+    climate_key = climate.normalize(climate_key)
+    if rain_mm is None:
+        rain_mm = climate.design_rain_mm(RAIN_MM_DEFAULT, climate_key)
     consumption  = (consumption_override or data['consumption_capita'])
-    # Same chain as the stored records (watersupply/chain.py), fed with the
+    # Same chain as the stored records (watersupply/calculations/chain.py), fed with the
     # request's population what-if instead of the baseline projection.
     demand_m3_d  = chain.demand_m3_d(consumption, data['population'])
+    residential_m3_d = chain.residential_demand_m3_d(consumption, data['population'])
     supply_m3_d  = data['supply_m3_d']
     opex_total   = data['opex_total']
 
@@ -293,6 +335,7 @@ def _build_indicators(data, consumption_override=None, rain_mm=RAIN_MM_DEFAULT):
     return {
         # ── Existing indicators ──
         'population':            data['population'],
+        'population_extrapolated': data.get('population_extrapolated', False),
         'consumption_capita':    consumption,
         # shown next to the slider while it still holds the stored value
         'consumption_years':     [] if consumption_override else data.get('consumption_years', []),
@@ -301,6 +344,9 @@ def _build_indicators(data, consumption_override=None, rain_mm=RAIN_MM_DEFAULT):
         'total_demand_Mm3':      round(demand_Mm3_yr, 2),
         'supply_m3_d':           round(supply_m3_d),
         'demand_m3_d':           round(demand_m3_d),
+        'residential_demand_m3_d': round(residential_m3_d),
+        'small_business_demand_m3_d': round(demand_m3_d - residential_m3_d),
+        'small_business_factor': chain.SMALL_BUSINESS_DEMAND_FACTOR,
         'supply_bar_pct':        round(supply_Mm3_yr / balance_scale * 100, 1) if balance_scale else 0,
         'demand_bar_pct':        round(demand_Mm3_yr / balance_scale * 100, 1) if balance_scale else 0,
         'balance_Mm3':           round(supply_Mm3_yr - demand_Mm3_yr, 2),
@@ -316,6 +362,7 @@ def _build_indicators(data, consumption_override=None, rain_mm=RAIN_MM_DEFAULT):
         'apparent_losses_m3_d':  round(data.get('apparent_losses_m3_d', 0), 1),
         'real_losses_m3_d':      round(data.get('real_losses_m3_d', 0), 1),
         'ili':                   data.get('ili'),
+        'uarl_reliable':         data.get('uarl_reliable', False),
         # ── New DAG indicators ──
         'extraction_m3_d':       round(data.get('extraction_m3_d', 0), 1),
         'energy_kwh_day':        round(data.get('energy_kwh_day', 0), 1),
@@ -335,19 +382,30 @@ def _build_indicators(data, consumption_override=None, rain_mm=RAIN_MM_DEFAULT):
         'covered_area_km2':      cov.get('covered_area_km2', 0),
         'households_covered':    cov.get('households_covered', 0),
         'households_total':      cov.get('households_total', 0),
+        'population_served':     cov.get('population_served'),
+        'population_total':      cov.get('population_total'),
         'coverage_pct':          cov.get('coverage_pct'),
+        'urban_area_km2':        cov.get('urban_area_km2'),
+        'uncovered_urban_km2':   cov.get('uncovered_urban_km2'),
+        'uncovered_urban_pct':   cov.get('uncovered_urban_pct'),
         # Drought
         'drought_area_km2':      drought.get('total_area_km2', 0),
         'drought_sensibility':   drought.get('max_sensibility', 0),
         # Infiltration (SCS Curve Number, rain-event what-if)
-        **_infiltration_indicators(data.get('infiltration', {}), rain_mm),
+        **_infiltration_indicators(data.get('infiltration', {}), rain_mm, climate_key),
+        **_climate_indicators(climate_key, ((data.get('infiltration') or {}).get('water_balance') or {}).get('year')),
     }
 
 
 # ── views ─────────────────────────────────────────────────────────────
-def _population_context(pop_scenario, pop_growth):
-    """Template context that lets the panel's own controls keep the population what-if."""
-    return {'pop_scenario': pop_scenario, 'pop_growth': pop_growth}
+def _population_context(pop_scenario, pop_growth, climate_key=climate.CURRENT):
+    """Template context that lets the panel's own controls keep the population and climate what-ifs."""
+    return {'pop_scenario': pop_scenario, 'pop_growth': pop_growth, 'climate_key': climate_key}
+
+
+def _climate_param(params):
+    """KNMI'23 scenario of the Scenarios panel (`?climate=2050_Hd`); the current climate when absent or invalid."""
+    return climate.normalize(params.get('climate'))
 
 
 def _season_param(params):
@@ -358,6 +416,7 @@ def _season_param(params):
 
 def water_indicators(request, level, location, year):
     pop_scenario, pop_growth = population_params(request.GET)
+    climate_key = _climate_param(request.GET)
     data = _get_adminUnit_data(level, location, year, pop_scenario, pop_growth, _season_param(request.GET))
     if data is None:
         data = MOCK_DATA
@@ -367,8 +426,8 @@ def water_indicators(request, level, location, year):
         'level':      level,
         'location':   location,
         'year':       year,
-        'indicators': _build_indicators(data),
-        **_population_context(pop_scenario, pop_growth),
+        'indicators': _build_indicators(data, climate_key=climate_key),
+        **_population_context(pop_scenario, pop_growth, climate_key),
     }
 
     if request.headers.get('HX-Request'):
@@ -377,11 +436,11 @@ def water_indicators(request, level, location, year):
 
 
 def _rain_param(params):
-    """Rain depth (mm) of the infiltration what-if; the default when absent or invalid."""
+    """Rain depth (mm) of the infiltration what-if; None (the scenario's design event) when absent or invalid."""
     try:
-        return min(max(float(params.get('rain_mm', RAIN_MM_DEFAULT)), 1.0), 200.0)
-    except (TypeError, ValueError):
-        return RAIN_MM_DEFAULT
+        return min(max(float(params['rain_mm']), 1.0), 200.0)
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def recalculate_indicators(request, level, location, year):
@@ -392,6 +451,27 @@ def recalculate_indicators(request, level, location, year):
     if data is None:
         data = MOCK_DATA
 
-    indicators = _build_indicators(data, consumption_override=consumption, rain_mm=rain_mm)
+    indicators = _build_indicators(
+        data, consumption_override=consumption, rain_mm=rain_mm, climate_key=_climate_param(request.GET))
 
     return render(request, 'watersupply/partials/indicators_grid.html', {'indicators': indicators})
+
+
+def unserved_homes(request):
+    """
+    Map layer of the homes no pipe reaches (residents outside the service
+    buffer; the complement of UsersLocation.populationServed), as WGS84
+    GeoJSON points. `?bbox=minLng,minLat,maxLng,maxLat` limits it to the view.
+    """
+    from django.http import HttpResponse, HttpResponseBadRequest
+
+    from mainMap.views import _parse_bbox
+    from .calculations.users import unserved_properties
+
+    bbox = None
+    if request.GET.get('bbox'):
+        try:
+            bbox = _parse_bbox(request.GET['bbox'])
+        except ValueError as exc:
+            return HttpResponseBadRequest(str(exc))
+    return HttpResponse(unserved_properties(bbox), content_type='application/json')

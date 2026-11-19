@@ -314,3 +314,147 @@ def live_weather(request):
     response = JsonResponse(values)
     response["Cache-Control"] = "private, max-age=300"
     return response
+
+
+# Size of the Scenarios panel's change curve (SVG user units).
+CURVE_W, CURVE_H = 300, 150
+CURVE_PAD = {"left": 30, "right": 8, "top": 8, "bottom": 20}
+CURVE_X_TICKS = (2030, 2050, 2075, 2100)
+
+
+def _scenario_curve(climate, key, heat, station, today):
+    """
+    The four pathways' temperature change against the year, as SVG geometry
+    for the Scenarios panel: 0 at the 1991-2020 mid-point, the published 2050
+    and 2100 values and the interpolated decades (climate.SCENARIO_YEARS). The
+    variable is the one the heat panel applies: the warmest day at the
+    nearest station for the heat-wave day, else the daily maximum of the
+    chosen season (summer for the observed season). `today` marks the year
+    of today's weather and the change it already holds (climate.observed_offset,
+    the part a scenario no longer adds). Display only.
+    """
+    warmest = heat == climate.HEAT_WARMEST
+    season = climate.season_for(heat)
+
+    def change(k):
+        return climate.warmest_day_change(k, station) if warmest else climate.DELTAS[k][season]["tx_c"]
+
+    x0, x1 = climate.REFERENCE_MID_YEAR, climate.SCENARIO_YEARS[-1]
+    top = max(change(f"{y}_{p}") for y in climate.SCENARIO_YEARS for p in climate.PATHWAYS)
+    y_max = max(1, int(top) + 1)
+    plot_w = CURVE_W - CURVE_PAD["left"] - CURVE_PAD["right"]
+    plot_h = CURVE_H - CURVE_PAD["top"] - CURVE_PAD["bottom"]
+
+    def sx(year):
+        return round(CURVE_PAD["left"] + (year - x0) / (x1 - x0) * plot_w, 1)
+
+    def sy(value):
+        return round(CURVE_PAD["top"] + (1 - value / y_max) * plot_h, 1)
+
+    series = []
+    for code, info in climate.PATHWAYS.items():
+        points = [{"x": sx(x0), "y": sy(0.0), "year": x0, "value": 0.0, "key": None}]
+        for year in climate.SCENARIO_YEARS:
+            k = f"{year}_{code}"
+            v = change(k)
+            points.append({"x": sx(year), "y": sy(v), "year": year, "value": v, "key": k,
+                           "published": year in climate.PUBLISHED_HORIZONS, "selected": k == key})
+        series.append({"code": code, "label": info["label"], "variant": info["variant"],
+                       "emissions": info["emissions"],
+                       "path": " ".join(f"{p['x']},{p['y']}" for p in points), "points": points[1:]})
+    step = 1 if y_max <= 4 else 2
+    offset = (climate.station_offset(station, "warmest_day_c", today) if warmest
+              else climate.observed_offset(season, "tx_c", today))
+    return {
+        "today": {"year": today, "x": sx(today), "y": sy(offset), "offset": offset},
+        "width": CURVE_W, "height": CURVE_H, "series": series,
+        "label": (f"Warmest day of the year, {station}" if warmest
+                  else f"Daily maximum, {season}") + " (°C vs 1991-2020)",
+        "y_ticks": [{"y": sy(v), "label": v} for v in range(0, y_max + 1, step)],
+        "x_ticks": [{"x": sx(y), "label": y} for y in (x0,) + CURVE_X_TICKS],
+        "plot": {"left": CURVE_PAD["left"], "right": CURVE_W - CURVE_PAD["right"],
+                 "top": CURVE_PAD["top"], "bottom": CURVE_H - CURVE_PAD["bottom"]},
+    }
+
+
+def climate_panel(request):
+    """
+    The map's Scenarios panel: the KNMI'23 climate scenarios of the
+    Klimaateffectatlas (weather/calculations/climate.py) and the changes of
+    the chosen one (`?climate=2050_Hd`), plus the heat mode (`&heat=average|warmest`,
+    warmest = heat-wave day) and the heat key figures per station, the one
+    nearest to the map centre (`&lat=&lng=`) first. Choosing one only sets the
+    what-if the Urban Heat and Water Supply panels apply; nothing is written.
+    URL: /weather/climate/panel/
+    """
+    from django.shortcuts import render
+
+    from .calculations import climate
+
+    from django.utils import timezone
+
+    key = climate.normalize(request.GET.get("climate"))
+    heat = climate.normalize_heat(request.GET.get("heat"))
+    # The heat panel moves today's weather: the applied change is the scenario's
+    # minus what today's climate already holds (climate.observed_offset).
+    today = timezone.localdate().year
+    try:
+        lat, lng = float(request.GET["lat"]), float(request.GET["lng"])
+    except (KeyError, TypeError, ValueError):
+        lat = lng = None
+    station = climate.nearest_station(lat, lng)
+    # Query kept by the panel's buttons: the map centre, then the heat mode.
+    loc = f"&lat={lat:.4f}&lng={lng:.4f}" if lat is not None else ""
+    # The selected unit, for the stored scenario runs (mainMap/views_climate.py).
+    from urllib.parse import urlencode
+    level, location = request.GET.get("level") or "", request.GET.get("location") or ""
+    unit_q = "&" + urlencode({"level": level, "location": location}) if level else ""
+    pathways = [
+        {"code": code, **info} for code, info in climate.PATHWAYS.items()
+    ]
+    grid = [
+        {
+            "horizon": str(year),
+            "period": climate.HORIZONS.get(str(year), "interpolated"),
+            "interpolated": year not in climate.PUBLISHED_HORIZONS,
+            "cells": [
+                {**climate.describe(f"{year}_{p['code']}"), "code": p["code"]}
+                for p in pathways
+            ],
+        }
+        for year in climate.SCENARIO_YEARS
+    ]
+    return render(request, "weather/partials/climate_panel.html", {
+        "scenario": climate.describe(key),
+        "presets": [
+            {**climate.describe(k), "kea_label": climate.KEA_LABELS[k]}
+            for k in climate.KEA_PRESETS
+        ],
+        "pathways": pathways,
+        "grid": grid,
+        "curve": _scenario_curve(climate, key, heat, station, today),
+        "today": today,
+        "interpolation_method": climate.INTERPOLATION_METHOD,
+        "periods": climate.TABLE_PERIODS,
+        "rows": climate.scenario_table(key),
+        "summer": climate.deltas(key, "summer"),
+        "heat": heat,
+        # A chosen season (or summer for the heat-wave day); None = the observation's own season
+        "season": None if heat == climate.HEAT_AVERAGE else climate.season_for(heat),
+        "season_deltas": (climate.deltas(key, climate.season_for(heat), today)
+                          if heat != climate.HEAT_AVERAGE else {}),
+        "heat_modes": climate.HEAT_MODES,
+        "heat_label": climate.HEAT_MODES[heat],
+        "level": level,
+        "location": location,
+        "unit_q": unit_q,
+        "is_staff": request.user.is_staff,
+        "loc": loc,
+        "station": station,
+        "stations": climate.station_table(key, station),
+        "station_rows": climate.STATION_ROWS,
+        "source": climate.KNMI23_SOURCE,
+        "source_url": climate.KNMI23_URL,
+        "stations_source": climate.STATIONS_SOURCE,
+        "stations_url": climate.STATIONS_URL,
+    })

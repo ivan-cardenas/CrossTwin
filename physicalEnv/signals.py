@@ -4,18 +4,19 @@ from contextlib import contextmanager
 
 from django.db import connection, transaction
 from django.db.models.signals import post_save, post_delete, pre_save
-from django.dispatch import receiver
+from django.dispatch import Signal, receiver
 from django.db.models import Max, Q
 from django.utils import timezone
 
 from core.cache import bump_layer_version
-from .dsm_patches import (DEFAULT_FOREST_CANOPY_M, building_height, record_change,
+from .calculations.dsm_patches import (DEFAULT_FOREST_CANOPY_M, TREE_CLEARANCE_M, building_height, record_change,
                           record_vegetation_change, tree_crown, tree_height)
-from .dsm_edited import schedule_refresh as schedule_dsm_refresh
-from .landcover import green_area, refresh_percentages, release_green_area, release_ring, urbanize_around
+from .calculations.dsm_edited import schedule_refresh as schedule_dsm_refresh
+from .calculations.landcover import (green_area, refresh_percentages, release_green_area, release_ring, release_street,
+                                     street_area, urbanize_around)
 from .models import (DigitalSurfaceModel, DSMBuildingPatch, DSMEdit, DSMVegetationPatch, LandCoverClasses, LandCoverVector,
                      SatelliteImagery)
-from builtup.models import Building
+from builtup.models import Building, Street
 from nature.models import Forests, GreenSpaces, Tree
 from administrative.models import Neighborhood, District, City, Province
 # Reused from administrative's own population cascade rather than
@@ -26,6 +27,11 @@ from administrative.signals import _recompute_population
 logger = logging.getLogger(__name__)
 
 URBAN_AREA_KEYWORDS = ["urban fabric", "road", "rail", "transport"]
+
+# Sent (city_id=...) after a city's neighborhood urban_area was rewritten with
+# update(), which fires no post_save. Downstream apps subscribe to it, e.g.
+# watersupply's urban area outside the pipe network (DAG edge CityArea -> Network).
+urban_area_changed = Signal()
 
 # Per-thread set of city ids whose recompute is postponed; None when not deferring.
 _deferred = threading.local()
@@ -121,6 +127,7 @@ def _recompute_neighborhood_urban_area(city_id):
     if not district_ids:
         return
     bump_layer_version(Neighborhood)
+    urban_area_changed.send(sender=Neighborhood, city_id=city_id)
 
     city_pk = None
     for district_id in district_ids:
@@ -205,7 +212,7 @@ def landcover_percentage(sender, instance, raw=False, **kwargs):
 @receiver(pre_save, sender=LandCoverVector, dispatch_uid="physicalEnv_landcover_albedo")
 def landcover_albedo(sender, instance, raw=False, **kwargs):
     """
-    Albedo bookkeeping on every save (physicalEnv/albedo.py):
+    Albedo bookkeeping on every save (physicalEnv/calculations/albedo.py):
     - no material: the class's default material (its albedo is the polygon's
       default, LandCoverVector.effective_albedo);
     - a changed geometry drops a measured albedo: the satellite saw the old
@@ -230,7 +237,7 @@ def albedo_imagery_saved(sender, instance, raw=False, **kwargs):
     ALBEDO raster writes its zonal mean onto the land-cover polygons it
     covers (albedo.measure). A failure never blocks the import.
     """
-    from .albedo import ALBEDO_INDEX, measure
+    from .calculations.albedo import ALBEDO_INDEX, measure
     if raw or (instance.index or "").upper() != ALBEDO_INDEX or instance.raster is None:
         return
     _guarded(lambda: measure(instance), f"Albedo from imagery {instance.pk}")
@@ -320,9 +327,11 @@ def building_created(sender, instance, created, raw=False, **kwargs):
     (landcover.urbanize_around); moving it gives the old ring's land back
     (landcover.release_ring) and urbanizes around the new footprint. Only
     editor buildings (negative id): BAG imports already match the land
-    cover, and an attribute-only edit leaves it alone.
+    cover, and an attribute-only edit leaves it alone. Buildings of a
+    generated neighbourhood (source_project) get no ring: the project's
+    outline is their urban fabric (landcover.project_area).
     """
-    if raw or not _is_editor_building(instance) or not instance.geom:
+    if raw or not _is_editor_building(instance) or not instance.geom or instance.source_project is not None:
         return
     if created:
         _land_cover_step(instance, lambda: _urbanize(instance), "creation")
@@ -345,7 +354,7 @@ def building_deleted(sender, instance, **kwargs):
     the editor's backup restore runs: it puts the land-cover rows back itself.
     """
     from core.editing import is_restoring
-    if not _is_editor_building(instance) or is_restoring():
+    if not _is_editor_building(instance) or is_restoring() or instance.source_project is not None:
         return
     _land_cover_step(instance, lambda: release_ring(instance.pk), "release")
 
@@ -401,6 +410,68 @@ def green_space_deleted(sender, instance, **kwargs):
     if not is_editor_change() or is_restoring():
         return
     _guarded(lambda: release_green_area(instance.pk), f"Green area release for green space {instance.pk}")
+
+
+@receiver(pre_save, sender=Street, dispatch_uid="physicalEnv_street_presave")
+def street_presave(sender, instance, raw=False, **kwargs):
+    """Remember the stored line and width of a street the editor changes, so post_save can tell a move from a rename."""
+    from core.editing import is_editor_change
+    if raw or not is_editor_change() or instance.pk is None:
+        return
+    instance._stored = Street.objects.filter(pk=instance.pk).values("geom", "width", "classification").first()
+
+
+def _street_width(street):
+    """Street.width when typed in, else the class default of the canyon equations (builtup/calculations/chain.py)."""
+    from builtup.calculations.chain import DEFAULT_WIDTH_M, FALLBACK_WIDTH_M
+    if street.width and street.width > 0:
+        return float(street.width)
+    return DEFAULT_WIDTH_M.get(street.classification, FALLBACK_WIDTH_M)
+
+
+def _pave(street):
+    city_id = City.objects.filter(geom__intersects=street.geom).values_list("pk", flat=True).first()
+    if city_id:
+        street_area(street.geom, city_id, street.pk, _street_width(street), name=street.name)
+
+
+@receiver(post_save, sender=Street, dispatch_uid="physicalEnv_street_landcover_saved")
+def street_landcover_saved(sender, instance, created, raw=False, **kwargs):
+    """
+    DAG edge: Streets -> LandCover. A street drawn, generated or reshaped in
+    the map editor turns its surface (line buffered by half its width) into
+    road land cover in the city's latest year (landcover.street_area); a move
+    or a new width/class first gives the old surface back (release_street).
+    Imports and raw saves are skipped: imported streets already lie on the
+    imported land cover.
+    """
+    from core.editing import is_editor_change
+    if raw or not is_editor_change() or not instance.geom:
+        return
+    if created:
+        _guarded(lambda: _pave(instance), f"Road surface for street {instance.pk}")
+        return
+    stored = getattr(instance, "_stored", None)
+    if stored is not None and stored["geom"] is not None and stored["geom"].equals_exact(instance.geom, tolerance=1e-6)             and stored["width"] == instance.width and stored["classification"] == instance.classification:
+        return
+
+    def move():
+        release_street(instance.pk)
+        _pave(instance)
+    _guarded(move, f"Road surface move for street {instance.pk}")
+
+
+@receiver(post_delete, sender=Street, dispatch_uid="physicalEnv_street_landcover_deleted")
+def street_landcover_deleted(sender, instance, **kwargs):
+    """
+    DAG edge: Streets -> LandCover (inverse). Deleting a street in the editor
+    gives its road surface back to the polygons it was cut from. Skipped while
+    the editor's backup restore runs (it restores the rows).
+    """
+    from core.editing import is_editor_change, is_restoring
+    if not is_editor_change() or is_restoring():
+        return
+    _guarded(lambda: release_street(instance.pk), f"Road surface release for street {instance.pk}")
 
 
 @receiver(post_save, sender=Building, dispatch_uid="physicalEnv_building_dsm_saved")
@@ -469,8 +540,10 @@ def dsm_patch_changed(sender, instance, **kwargs):
     if not geoms:
         return
     extents = [g.extent for g in geoms]
-    area = Polygon.from_bbox((min(e[0] for e in extents), min(e[1] for e in extents),
-                              max(e[2] for e in extents), max(e[3] for e in extents)))
+    # a building patch also clears trees within TREE_CLEARANCE_M of its footprint
+    pad = TREE_CLEARANCE_M if sender is DSMBuildingPatch else 0.0
+    area = Polygon.from_bbox((min(e[0] for e in extents) - pad, min(e[1] for e in extents) - pad,
+                              max(e[2] for e in extents) + pad, max(e[3] for e in extents) + pad))
     area.srid = geoms[0].srid
     DSMEdit.objects.create(area=area)
     # Burn the change into the DSM the map shows once the edit commits

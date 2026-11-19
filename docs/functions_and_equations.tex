@@ -6,6 +6,7 @@
 \usepackage{booktabs}
 \usepackage{longtable}
 \usepackage{array}
+\usepackage{xltabular}
 \usepackage{hyperref}
 \usepackage{xcolor}
 \usepackage{enumitem}
@@ -48,10 +49,10 @@ Units follow the project convention: population counts are dimensionless integer
 \section{Administrative app --- population projection}
 \label{sec:administrative}
 
-Source: \code{administrative/population.py}, \code{administrative/models.py}. Population data originates from CBS table 85173NED (\textit{Regionale prognose 2023--2050}), published per \textit{gemeente} (city) \cite{CBS85173NED}.
+Source: \code{administrative/calculations/population.py}, \code{administrative/models.py}. Population data originates from CBS table 85173NED (\textit{Regionale prognose 2023--2050}), published per \textit{gemeente} (city) \cite{CBS85173NED}.
 
 \subsection{Compound annual growth rate --- \code{extrapolate()}}
-\textbf{Location:} \code{administrative/population.py:67}
+\textbf{Location:} \code{administrative/calculations/population.py:67}
 
 Projects a city's population for a year outside the imported CBS horizon, using the compound annual growth rate implied by the earliest and latest imported years.
 
@@ -71,7 +72,7 @@ Projects a city's population for a year outside the imported CBS horizon, using 
 \textbf{DAG edge:} \dagedge{Population\_Growth $\rightarrow$ Total\_Population} --- \statusdone{}
 
 \subsection{City-level growth factor --- \code{\_city\_growth\_factor()}}
-\textbf{Location:} \code{administrative/population.py:103}
+\textbf{Location:} \code{administrative/calculations/population.py:103}
 
 Ratio of a city's CBS-projected population between a baseline year and a target year, used to scale District/Neighbourhood populations without relying on possibly-incomplete local administrative coverage.
 
@@ -83,13 +84,13 @@ Ratio of a city's CBS-projected population between a baseline year and a target 
 \textbf{DAG edge:} \dagedge{Population\_Growth $\rightarrow$ Total\_Population} (District/Neighbourhood level) --- \statusdone{}
 
 \subsection{District/Neighbourhood projection --- \code{population\_by\_year()}}
-\textbf{Location:} \code{administrative/population.py:124}
+\textbf{Location:} \code{administrative/calculations/population.py:124}
 
 \begin{equation}
   P_{\text{unit}}(y) = P_{\text{unit}}^{\text{current}} \times f(y)
 \end{equation}
 
-Applied to the unit's own accurate current population rather than its share of \code{city.currentPopulation}, because the latter reflects only the districts/neighbourhoods imported locally, not CBS's whole-city total (see docstring, \code{administrative/population.py:11--22}).
+Applied to the unit's own accurate current population rather than its share of \code{city.currentPopulation}, because the latter reflects only the districts/neighbourhoods imported locally, not CBS's whole-city total (see docstring, \code{administrative/calculations/population.py:11--22}).
 
 Fallback (fewer than two imported years for the city): share-of-city approach,
 \begin{equation}
@@ -99,7 +100,7 @@ Fallback (fewer than two imported years for the city): share-of-city approach,
 \textbf{DAG edge:} \dagedge{Population\_Growth $\rightarrow$ Total\_Population} --- \statusdone{}
 
 \subsection{Province projection}
-\textbf{Location:} \code{administrative/population.py:132--138}
+\textbf{Location:} \code{administrative/calculations/population.py:132--138}
 
 \begin{equation}
   P_{\text{province}}(y) = \sum_{c \,\in\, \text{cities of province}} P_c(y)
@@ -108,15 +109,15 @@ Fallback (fewer than two imported years for the city): share-of-city approach,
 \textbf{DAG edge:} \dagedge{Population\_Growth $\rightarrow$ Total\_Population} --- \statusdone{}
 
 \subsection{What-if growth adjustment --- \code{\_adjust()}}
-\textbf{Location:} \code{administrative/population.py:59}
+\textbf{Location:} \code{administrative/calculations/population.py:59}
 
 \begin{equation}
   v_{\text{adjusted}} = v \times \left(1 + \frac{g}{100}\right)^{\max(y - 2025,\ 0)}
 \end{equation}
-where $g$ is \code{growth\_adjust\_pct}, a user-supplied what-if slider bounded to $[-5, +5]$ (\code{population\_params()}, \code{administrative/population.py:205}).
+where $g$ is \code{growth\_adjust\_pct}, a user-supplied what-if slider bounded to $[-5, +5]$ (\code{population\_params()}, \code{administrative/calculations/population.py:205}).
 
 \subsection{City annual growth rate --- \code{annual\_growth\_rate()}}
-\textbf{Location:} \code{administrative/population.py:90} (as of the \code{City.popGrowthRate} implementation)
+\textbf{Location:} \code{administrative/calculations/population.py:90} (as of the \code{City.popGrowthRate} implementation)
 
 \begin{equation}
   \texttt{popGrowthRate} = \left(\left(\frac{v_1}{v_0}\right)^{\frac{1}{y_1-y_0}} - 1\right) \times 100
@@ -152,7 +153,7 @@ A \code{physicalEnv.LandCoverVector} polygon qualifies if its \code{land\_cover\
 
 \subsection{Urban-fabric buffer around new buildings --- \code{urbanize\_around()}, \code{release\_ring()}}
 \label{sec:urban-fabric-buffer}
-Source: \code{physicalEnv/landcover.py}, receiver in \code{physicalEnv/signals.py}. When a building is drawn in the map editor (negative id), the land cover of its city's latest year is rewritten around it:
+Source: \code{physicalEnv/calculations/landcover.py}, receiver in \code{physicalEnv/signals.py}. When a building is drawn in the map editor (negative id), the land cover of its city's latest year is rewritten around it:
 \begin{align}
   B &= \mathrm{buffer}(\mathrm{geom}_{\text{building}},\ 10\ \si{m}) \cap \mathrm{geom}_{\text{city}} \\
   \mathcal{L}' &= \{\, P \setminus B : P \in \mathcal{L},\ P \setminus B \neq \emptyset \,\} \cup \{ B \text{ as urban fabric} \} \\
@@ -179,7 +180,41 @@ The new polygon has class \emph{Green urban areas} (CORINE 1.4.1 \cite{CORINE}),
 
 \textbf{DAG edge:} \dagedge{New\_Green\_Area $\rightarrow$ LandCover} --- \statusdone{} (map-editor green spaces; a separate Response node, since \dagedge{LandCover $\rightarrow$ Green\_Area} already exists and the reverse edge would close a cycle)
 
-\subsection{Surface albedo --- \code{physicalEnv/albedo.py}}
+\subsection{Road surface of editor streets --- \code{street\_area()}, \code{release\_street()}}
+A street $s$ (\code{builtup.Street}) drawn, generated or reshaped in the map editor (\code{street\_landcover\_saved}, only inside \code{core.editing.editor\_change()}) turns its surface into road land cover with the same cut / give-back mechanics as the building ring:
+\begin{align}
+  S_s &= \mathrm{buffer}_{\text{flat}}(\mathrm{line}_s,\ W_s / 2) \cap \text{city}, \qquad
+  W_s = \begin{cases} \code{width}_s & \text{when typed in} \ W_{\text{class}} & \text{otherwise (8 / 12 / 20 m)} \end{cases} \
+  \mathcal{L}' &= \{\, P \setminus S_s : P \in \mathcal{L},\ P \setminus S_s \neq \emptyset \,\} \cup \{ S_s \text{ as road and rail networks} \}
+\end{align}
+The buffer has flat ends and mitred joins; $W_{\text{class}}$ is the canyon default of \code{builtup/calculations/chain.py::DEFAULT\_WIDTH\_M}. The new polygon has class \emph{Road and rail networks and associated land} (CORINE 1.2.2 \cite{CORINE}) and \code{source\_street}; its cuts carry \code{owner\_street}. A changed line, width or class first runs \code{release\_street(s)} (the release equations above), a rename does not. Imported streets never trigger either step.
+
+\textbf{DAG edge:} \dagedge{Streets $\rightarrow$ LandCover} --- \statusdone{} (2026-11-12)
+
+\subsection{Neighbourhood generator --- \code{generative.generate()}, \code{materialise.materialise()}}
+\label{sec:neighbourhood-generator}
+Source: \code{builtup/calculations/generative.py} (pure geometry, shapely), \code{builtup/calculations/materialise.py} (storage), receiver \code{housing/signals.py::project\_saved}. An outline $O$ (a \code{housing.HousingProject}) is laid out in a frame rotated by $\theta$, the angle of the longest edge of $O$'s minimum rotated rectangle (or a given angle), following procedural block subdivision \cite{Vanegas2012}:
+\begin{align}
+  \Sigma &= \partial\big(O \ominus W/2\big) \ \cup\ \{\, x = x_0 + k\,p_x \,\} \cup \{\, y = y_0 + k\,p_y \,\}, \quad p = \frac{\text{span}}{\mathrm{round}\big((\text{span} + W)/(\ell + W)\big)} \
+  \mathcal{B} &= \{\, b \in O \setminus \mathrm{buffer}_{\text{flat}}(\Sigma, W/2) : |b| \geq 400\ \si{m^2} \,\}
+\end{align}
+with $\Sigma$ the street centre lines (ring street on $O$ inset by half the street width $W$, plus a grid of block length $\ell_x$ and depth $\ell_y$, evenly spaced) and $\mathcal{B}$ the blocks. Per typology, plots and footprints fill each block (rows on both long edges when the block is at least $1.6\times$ the plot depth): row houses (plot width $\times$ building depth behind the front setback, a path every \code{row\_length}$+1$ plots, one dwelling each), semi-detached (pairs sharing a wall), detached (plot minus side setbacks), perimeter blocks ($b \setminus (b \ominus d)$, mitred, cut into pieces of at most \SI{30}{m}) and slabs (depth $d$, spaced $H \cdot r$ with $r = 1$ for a \ang{45} daylight angle, split past \SI{60}{m}). Heights are $H = n_{\text{floors}} \times \SI{3}{m}$. Apartments hold $\max(1, \lfloor \mathrm{GFA} / A_{\text{unit}} \rfloor)$ dwellings ($A_{\text{unit}} = \SI{80}{m^2}$); with a target, the fewest floors in $[1, 20]$ whose dwellings reach it are chosen. Metrics (\code{chain.layout\_metrics}, Spacematrix \cite{BerghauserPont2010}):
+\begin{align}
+  \mathrm{FSI} = \frac{\sum \mathrm{GFA}}{|O|}, \qquad \mathrm{GSI} = \frac{\sum |\text{footprint}|}{|O|}, \qquad \text{density} = \frac{\text{dwellings}}{|O| / 10^4}
+\end{align}
+\textbf{Version 2 (2026-11-12).} \emph{Styles} (\code{STYLES}: plain, Vinex, garden city, urban block, modernist) set a typology, a street pattern and shape options; \emph{variation} $v \in [0,1]$ (default $0.5$ for every style) and \emph{seed} drive one \code{random.Random(seed)} drawn in a fixed order, so a layout is reproducible from its stored parameters. Street patterns \cite{ParishMuller2001}: \emph{grid} (above), \emph{curved} (rings $O \ominus (W/2 + k\,p_y)$ with corners rounded at radius $0.6\,p_y$, plus spokes bowed by $\pm 0.12$ of their length that stop at the innermost ring) and \emph{radial} (spokes at equal angles around a central square of one block depth plus mitred rings). Low-rise plots follow the block edges: along every edge (longest first) plots of width $w$ and depth $\min(d_{\text{plot}}, \tfrac12 \text{block depth})$ are laid perpendicular inward and a plot overlapping earlier ones by more than 15\,\% is dropped, which forms the block corners. Shapes: row houses in terraces of 4--8 with fronts staggered by $\pm 1.5\,v$\,m, rear extensions and an occasional extra floor; detached and semi-detached houses L-shaped and turned by up to $\pm v \cdot \theta$; perimeter rings with chamfered corners, taller corners and a courtyard gate; slab rows spaced by the \emph{taller} neighbour, $\Delta y = d + \max(\max(H_i, H_{i+1}) \cdot r, 10\,\si{m})$, point towers ($+4$ floors) spaced along their row by their own height, an L wing on the last row.
+
+\textbf{Dwellings per building.} $n = 1$ when \code{dwelling\_mode} is \emph{single}, or \emph{auto} for row, semi-detached and detached houses of at most two floors; otherwise $n = \max(1, \lfloor |\text{footprint}| \cdot n_{\text{floors}} / A_{\text{unit}} \rfloor)$. $A_{\text{unit}}$ may not be below the Bbl minimum (below).
+
+\textbf{Building rules (indicative, \code{regulations.py}).} $A_{\text{unit,min}} = 18 / 0.55 / 0.8 \approx \SI{41}{m^2}$ gross: \SI{18}{m^2} of living space per dwelling, living space $\geq 55\,\%$ of the usable area (Bbl art.\ 4.163 lid 2), usable area $\approx 0.8 \times$ gross (NEN 2580) \cite{Bbl,IPLOindeelbaarheid,IPLOwoning,NEN2580}. Separate buildings closer than \SI{5}{m} need fire-resistant facades (brandoverslag, NEN 6068) and are reported \cite{IPLObrand,NEN6068}; the daylight check is a rule of thumb, Bbl \S4.3.10 works per room \cite{IPLOdaglicht}; facing slabs and towers closer than their height ($45^\circ$ daylight angle) are reported; the omgevingsplan (heights, building lines, parking) is not checked.
+
+\textbf{Site check (\code{site.py}).} $\text{buildable} = O \setminus \bigcup \{ P \cap O : P \text{ Natura 2000 or NNN} \}$ (\code{nature.ProtectedArea}; catalog \code{pdok\_natura2000}, \code{bij12\_nnn} \cite{BIJ12IKN}); the layout is generated on the buildable part, and nothing buildable blocks Store. Other protected areas, non-residential zoning (HILUCS outside 5) and existing BAG buildings are warnings. The summary (protected-area ids, zoning codes, datasets) is stored in \code{generator\_params["site\_check"]}.
+
+The map's preview is a what-if and writes nothing. When the project is \code{completed} with \code{generator\_params} (all resolved parameters and \code{generator\_version}, so the layout can be regenerated), \code{materialise()} replaces its rows: $O \cap$ city becomes one urban-fabric polygon (\code{project\_area}, owner \code{source\_project}, albedo by \code{ring\_albedo} over the footprints; generated buildings get no ring of their own), then streets (cutting their road surface out of it), buildings (negative ids, \emph{woonfunctie}, floors, height, completion year, \code{source\_project}) and one \code{Property} per dwelling, all as journalled editor changes inside \code{deferred\_cascades()}. Setting the project back to \code{planned} or deleting it removes them and releases the polygon.
+
+\textbf{DAG edges:} \dagedge{New\_Units $\rightarrow$ Buildings} --- \statusdone{}; \dagedge{Streets $\rightarrow$ Buildings} --- \statuspartial{} (footprints fill the blocks of the generated street layout; editing a street afterwards does not re-place the buildings; the edge was \code{Buildings $\rightarrow$ Streets} until 2026-11-12, \code{docs/DAG\_REVISIONS.md}); \dagedge{Buildings $\rightarrow$ LandCover} for the project's buildings at once.
+
+\subsection{Surface albedo --- \code{physicalEnv/calculations/albedo.py}}
 Every land-cover polygon has an effective albedo
 \begin{equation}
   \alpha_P = \begin{cases} \alpha_P^{\text{meas}} & \text{measured or estimated albedo stored on } P \\ \alpha(\text{material}_P) & \text{otherwise} \end{cases}
@@ -205,10 +240,11 @@ Source: \code{physicalEnv/dsm\_patches.py}, receivers \code{building\_dsm\_saved
 The DSM COG is never rewritten. Every read of a DSM window for analysis (\code{svf.load\_dsm}: the SVF tool and the SOLWEIG tool) applies the patches that touch it, on the window's grid:
 \begin{align}
   z'(x) &= g(x) && x \in \textstyle\bigcup F_0 \\
+  z'(x) &= g(x) && x \in \textstyle\bigcup_{F \neq F_0} (F \oplus d) \setminus B,\ z(x) - g(x) > 2.5\,\si{m} \quad \text{(tree clearance)} \\
   z'(x) &= \operatorname{median}_{y \in F} g(y) + h && x \in F \quad \text{(flat roof, applied after the clearing)} \\
   z'(x) &= z(x) && \text{otherwise}
 \end{align}
-where $z$ is the DSM and $g$ the ground: the DEM read on the same grid, or without a DEM the minimum filter of $z$ over a \SI{40}{m} window (\code{estimate\_ground}). Cells are assigned by their centre (\code{rasterio.features.rasterize}). Patches are journalled for the editor's backup (\code{dsm\_patch\_rewriting}/\code{dsm\_patch\_created}), so Restore reverts them with the buildings. Every change of a patch, Restore included, appends a \code{DSMEdit} with the bounding box of the old and new footprints; an SVF raster or a SOLWEIG run older than an overlapping \code{DSMEdit} is flagged as stale on the map (\code{urban\_heat/solweig/pipeline.py::stale\_results}).
+where $z$ is the DSM and $g$ the ground: the DEM read on the same grid, or without a DEM the minimum filter of $z$ over a \SI{40}{m} window (\code{estimate\_ground}). A building that is new or stands on a new footprint ($F \neq F_0$) clears the tall vegetation (more than \code{MIN\_CANOPY\_M} = \SI{2.5}{m} above ground) within $d$ = \code{TREE\_CLEARANCE\_M} = \SI{10}{m} of its footprint ($F \oplus d$, \code{clearance\_zone}), outside the stored building footprints $B$; a height-only change keeps the trees. This is a modelling assumption (construction site and facade strip kept free of trees), not a cited rule. The clearance runs before the vegetation patches, so a tree the editor plants next to the new building is kept. Cells are assigned by their centre (\code{rasterio.features.rasterize}). Patches are journalled for the editor's backup (\code{dsm\_patch\_rewriting}/\code{dsm\_patch\_created}), so Restore reverts them with the buildings. Every change of a patch, Restore included, appends a \code{DSMEdit} with the bounding box of the old and new footprints, padded by $d$; an SVF raster or a SOLWEIG run older than an overlapping \code{DSMEdit} is flagged as stale on the map (\code{urban\_heat/solweig/pipeline.py::stale\_results}).
 
 \textbf{DAG edge:} \dagedge{Buildings $\rightarrow$ DSM} --- \statusdone{} (editor changes as an overlay on the DSM; flat roofs)
 
@@ -231,10 +267,10 @@ with $C = V_0$ for a tree (its whole old crown) and $C = V_0 \setminus V$ for a 
 \section{Physical environment app --- soil hydrology and infiltration}
 \label{sec:physicalenv}
 
-Source: \code{physicalEnv/soil.py}, \code{physicalEnv/hilucs.py}, \code{physicalEnv/models.py}. Soil polygons come from the Dutch soil map 1:50\,000 (\textit{Bodemkaart}, 2025 edition) and groundwater depths from the groundwater-level grids of BIS Nederland \cite{BISNederland}; land cover is the CORINE-classified BRT \textit{Bodemgebruik} layer \cite{CORINE}. Together they implement the \texttt{LandCover}$\to$\texttt{Infiltration} and \texttt{Soil\_Type}$\to$\texttt{Infiltration} edges with the SCS Curve Number method \cite{TR55,NEH630ch7,NEH630ch10}. Everything except the spatial composition query (\S\ref{sec:soil-composition}) is pure Python, so the dashboard re-evaluates the equations for any rain depth without querying the database.
+Source: \code{physicalEnv/calculations/soil.py}, \code{physicalEnv/hilucs.py}, \code{physicalEnv/models.py}. Soil polygons come from the Dutch soil map 1:50\,000 (\textit{Bodemkaart}, 2025 edition) and groundwater depths from the groundwater-level grids of BIS Nederland \cite{BISNederland}; land cover is the CORINE-classified BRT \textit{Bodemgebruik} layer \cite{CORINE}. Together they implement the \texttt{LandCover} $\to$ \texttt{Infiltration} and \texttt{Soil\_Type} $\to$ \texttt{Infiltration} edges with the SCS Curve Number method \cite{TR55,NEH630ch7,NEH630ch10}. Everything except the spatial composition query (\S\ref{sec:soil-composition}) is pure Python, so the dashboard re-evaluates the equations for any rain depth without querying the database.
 
 \subsection{Hydrologic soil group --- \code{classify\_soil\_group()}, \code{SoilType.save()}}
-\textbf{Location:} \code{physicalEnv/soil.py:82}, \code{physicalEnv/models.py:61}
+\textbf{Location:} \code{physicalEnv/calculations/soil.py:82}, \code{physicalEnv/models.py:61}
 
 The soil map names each unit in Dutch with the texture of its layers (e.g.\ \textit{Koopveengronden op zand}: peat on sand). Each texture word $w$ found in the name $n$ maps to a hydrologic soil group $g(w)$, and the most restrictive layer sets the group, since the least transmissive layer limits infiltration \cite{NEH630ch7}:
 \begin{equation}
@@ -273,7 +309,7 @@ D & $0$--$1.3$ & high \\
 \textbf{DAG edge:} \dagedge{Soil\_Type $\rightarrow$ Infiltration} --- \statusdone{} (together with \S\ref{sec:soil-composition}--\ref{sec:scs-summary})
 
 \subsection{Curve number --- \code{curve\_number()}}
-\textbf{Location:} \code{physicalEnv/soil.py:138}
+\textbf{Location:} \code{physicalEnv/calculations/soil.py:138}
 
 The curve number $\mathrm{CN}(c, G)$ of a land-cover class $c$ on soil group $G$ is read from the TR-55 tables for antecedent moisture condition II \cite{TR55}. CORINE class names are matched by keyword at a word start (so \textit{road} does not match \textit{broad-leaved forest}); the first matching cover type wins:
 
@@ -307,7 +343,7 @@ Imperviousness of built-up land enters through these curve numbers; a class with
 
 \subsection{Shallow groundwater and drained land --- \code{soil\_landcover\_composition()}}
 \label{sec:soil-composition}
-\textbf{Location:} \code{physicalEnv/soil.py:206}; constants \code{SHALLOW\_GROUNDWATER\_CM} (\code{:30}), \code{SEASONS} (\code{:34}), \code{DRAINED\_LAND\_COVER} (\code{:48})
+\textbf{Location:} \code{physicalEnv/calculations/soil.py:206}; constants \code{SHALLOW\_GROUNDWATER\_CM} (\code{:30}), \code{SEASONS} (\code{:34}), \code{DRAINED\_LAND\_COVER} (\code{:48})
 
 A soil whose water table lies within $h^\ast = \SI{60}{cm}$ of the surface belongs to group D whatever its texture; NEH~630 gives such soils a dual group (A/D, B/D, C/D), the texture letter applying where the land is drained \cite{NEH630ch7}. The query intersects the unit $u$ with the soil map and the most recent land-cover year, and splits every piece $p$ by the area where the season's groundwater depth $h_s$ is shallower than $h^\ast$:
 \begin{align}
@@ -320,7 +356,7 @@ A soil whose water table lies within $h^\ast = \SI{60}{cm}$ of the surface belon
 where $s \in \{\text{wet}, \text{dry}\}$ selects $h_\text{wet} = \text{GHG}$ (mean highest groundwater level) or $h_\text{dry} = \text{GLG}$ (mean lowest), and $\mathcal{D}$ is the set of drained land covers (urban fabric, industrial/commercial units, road and rail networks, port areas, airports). GHG and GLG are 50\,m grids in \si{cm} below ground level, capped at 254 (``254\,cm or deeper''); cells without a value (255) are not shallow. BIS Nederland leaves most built-up cells (85\,\% in Enschede) and water bodies without a value, consistent with drained, impervious land; water and wetlands need no rule since their curve number is independent of the soil group. The cells are reclassified to shallow/deep and dissolved into polygons (\code{ST\_Reclass}, \code{ST\_DumpAsPolygons}, \code{ST\_Union}) before the intersection, so each piece is split once rather than per cell. The function returns the area of every $(G', c)$ combination, the texture-only group areas, $|S_s \cap \bigcup_{c \notin \mathcal{D}} p|$ (moved to D) and $|S_s \cap \bigcup_{c \in \mathcal{D}} p|$ (kept as drained).
 
 \subsection{SCS runoff and infiltration coefficient --- \code{scs\_runoff\_mm()}, \code{infiltration\_coefficient()}}
-\textbf{Location:} \code{physicalEnv/soil.py:149, 165}
+\textbf{Location:} \code{physicalEnv/calculations/soil.py:149, 165}
 \begin{align}
   S &= \frac{25400}{\mathrm{CN}} - 254, \qquad I_a = 0.2\,S \\
   Q &= \begin{cases} \dfrac{(P - I_a)^2}{P - I_a + S} & P > I_a \\[4pt] 0 & P \le I_a \end{cases} \\
@@ -330,7 +366,7 @@ where $P$ is the rain depth of one event (\si{mm}), $S$ the potential maximum re
 
 \subsection{Area-weighted unit summary --- \code{summarize\_infiltration()}}
 \label{sec:scs-summary}
-\textbf{Location:} \code{physicalEnv/soil.py:172}
+\textbf{Location:} \code{physicalEnv/calculations/soil.py:172}
 
 For the pieces $i$ of a unit, with area $A_i$ and curve number $\mathrm{CN}_i = \mathrm{CN}(c_i, G'_i)$:
 \begin{align}
@@ -343,7 +379,7 @@ Runoff is computed per piece before weighting: since $Q$ is convex in CN, evalua
 
 \subsection{Stored infiltration rate --- \code{weighted\_infiltration\_rate\_mm\_h()}}
 \label{sec:infiltration-rate}
-\textbf{Location:} \code{physicalEnv/soil.py::weighted\_infiltration\_rate\_mm\_h}, called by \code{AvailableFreshWater.save()} (\code{watersupply/models.py})
+\textbf{Location:} \code{physicalEnv/calculations/soil.py::weighted\_infiltration\_rate\_mm\_h}, called by \code{AvailableFreshWater.save()} (\code{watersupply/models.py})
 
 For the pieces $i$ of a fresh-water source polygon (wet-season groundwater, so $G'_i$ includes the shallow-groundwater rule), with $\bar f(G)$ the middle of the group's final rate range (group A: $f_{\min} = 7.6$\,\si{mm/h}, it has no upper bound) and $s(c)$ the sealed share of land-cover class $c$:
 \begin{equation}
@@ -364,7 +400,7 @@ Zoning elements of the INSPIRE Planned Land Use feed reference their land use as
 
 \section{Built-up app --- Degree of Urbanisation}
 \label{sec:degurba}
-Source: \code{builtup/degurba.py} (grid rules), \code{builtup/urbanisation.py} (allocation, refresh, what-if), \code{builtup/chain.py} (unit class, rate), \code{builtup.Urbanisation.save()}. Method, deviations and decision log: \code{docs/DEGREE\_OF\_URBANISATION.md}. Replaces the former \code{Urbanization} node (\code{docs/DAG\_REVISIONS.md}).
+Source: \code{builtup/calculations/degurba.py} (grid rules), \code{builtup/calculations/urbanisation.py} (allocation, refresh, what-if), \code{builtup/calculations/chain.py} (unit class, rate), \code{builtup.Urbanisation.save()}. Method, deviations and decision log: \code{docs/DEGREE\_OF\_URBANISATION.md}. Replaces the former \code{Urbanization} node (\code{docs/DAG\_REVISIONS.md}).
 
 \subsection{Allocation: people $\rightarrow$ residential properties $\rightarrow$ cells --- \code{allocate()}}
 \begin{align}
@@ -399,22 +435,23 @@ $P_k$ from the unit's allocation rows; $t_0$ the earliest stored CrossTwin year 
 \section{Water supply app}
 \label{sec:watersupply}
 
-Source: \code{watersupply/calculations.py}, \code{watersupply/models.py}, \code{watersupply/signals.py}.
+Source: \code{watersupply/calculations/indicators.py}, \code{watersupply/models.py}, \code{watersupply/signals.py}.
 
 \subsection{Per-capita consumption --- \code{\_get\_consumption\_capita()}}
-\textbf{Location:} \code{watersupply/calculations.py:16}
+\textbf{Location:} \code{watersupply/calculations/indicators.py:16}
 \begin{equation}
   \bar{c} = \operatorname{avg}_{\,c\, \in\, \text{cities}(u)}\big(\texttt{consumption\_capita\_L\_d}\big), \qquad [\bar{c}] = \si{L/person/day}
 \end{equation}
 
 \subsection{Total water demand --- \code{calculate\_total\_demand()}, \code{TotalWaterDemand.save()}}
-\textbf{Location:} \code{watersupply/calculations.py:27}; \code{watersupply/models.py:70}
+\textbf{Location:} \code{watersupply/calculations/indicators.py:27}; \code{watersupply/models.py:70}
 \begin{align}
-  D_{\text{day}} &= \frac{\bar{c}}{1000} \times P \qquad [\si{m^3/day}] \\
-  \texttt{demandDay} &= \frac{P \times \bar{c}}{10^9} \qquad [\si{Mm^3/day}] \\
+  D_{\text{res}} &= \frac{\bar{c}}{1000} \times P \qquad [\si{m^3/day}] \\
+  D_{\text{day}} &= f_{\text{sb}} \times D_{\text{res}}, \qquad f_{\text{sb}} = 1.2 \\
+  \texttt{demandDay} &= \frac{f_{\text{sb}} \times P \times \bar{c}}{10^9} \qquad [\si{Mm^3/day}] \\
   \texttt{demandYR} &= \texttt{demandDay} \times 365
 \end{align}
-where $P$ is \code{city.currentPopulation}. Note the two representations differ by a factor of $10^6$ ($\si{m^3}$ vs.\ $\si{Mm^3}$); \code{calculate\_supply\_security()} converts explicitly (\S\ref{sec:supplysecurity}).
+where $P$ is the baseline population of the record's year (\code{chain.baseline\_population}) and $f_{\text{sb}}$ the small business factor (\code{watersupply/calculations/chain.py::SMALL\_BUSINESS\_DEMAND\_FACTOR}, \code{demand\_m3\_d}; Vitens reports and calculations): small businesses on household-type connections add 20\,\% to the residential demand. It is stored per record in \texttt{small\_business\_factor}. \texttt{ConsumptionCapita.total\_consumption\_m3\_yr} stays residential ($D_{\text{res}} \times 365$). Note the two representations differ by a factor of $10^6$ ($\si{m^3}$ vs.\ $\si{Mm^3}$); \code{calculate\_supply\_security()} converts explicitly (\S\ref{sec:supplysecurity}).
 
 \textbf{DAG edges:} \dagedge{Total\_Population $\rightarrow$ Total\_Water\_Demand}, \dagedge{ConsumptionCapita $\rightarrow$ Total\_Water\_Demand} --- \statusdone{}
 
@@ -426,14 +463,14 @@ where $P$ is \code{city.currentPopulation}. Note the two representations differ 
 \textbf{DAG edges:} \dagedge{Total\_Population $\rightarrow$ Total\_Consumption}, \dagedge{ConsumptionCapita $\rightarrow$ Total\_Consumption} --- \statusdone{}
 
 \subsection{Source recharge --- \code{AvailableFreshWater.save()}}
-\textbf{Location:} \code{watersupply/chain.py::recharge\_Mm3\_yr}, called by \code{AvailableFreshWater.save()} (\code{watersupply/models.py})
+\textbf{Location:} \code{watersupply/calculations/chain.py::recharge\_Mm3\_yr}, called by \code{AvailableFreshWater.save()} (\code{watersupply/models.py})
 \begin{equation}
   Y = \frac{d_{\text{inf}}}{100} \times \frac{A}{10^6}, \qquad [d_{\text{inf}}] = \si{cm/yr}\ (\texttt{infiltrationDepth\_cm}),\ [A] = \si{m^2},\ [Y] = \si{Mm^3/yr}\ (\texttt{yield\_Mm3\_year})
 \end{equation}
 $A$ is the source polygon's area in the storage CRS. Recalculated on every save when $d_{\text{inf}}$ is known; otherwise a supplied yield is kept. \texttt{infiltrationRate\_cm\_h} is a capacity during rain, not a yearly amount, and is not used.
 
 \subsection{Yearly recharge depth --- \code{recharge\_depth\_cm\_yr()}}
-\textbf{Location:} \code{watersupply/chain.py::recharge\_depth\_cm\_yr}, called by \code{AvailableFreshWater.save()}; meteorology from \code{weather/water\_balance.py::yearly\_water\_balance}, imported by \code{weather/knmi.py} (catalog \texttt{knmi\_daily\_water\_balance})
+\textbf{Location:} \code{watersupply/calculations/chain.py::recharge\_depth\_cm\_yr}, called by \code{AvailableFreshWater.save()}; meteorology from \code{weather/water\_balance.py::yearly\_water\_balance}, imported by \code{weather/knmi.py} (catalog \texttt{knmi\_daily\_water\_balance})
 
 With $P_d$ the daily precipitation (KNMI \texttt{RH}) and $E$ the year's Makkink reference evapotranspiration (sum of KNMI \texttt{EV24}) at the nearest station with a complete year ($\geq 360$ days; \texttt{recharge\_year}, else its latest), and the pieces $i$ of the source as in \S\ref{sec:infiltration-rate}:
 \begin{equation}
@@ -444,20 +481,21 @@ $Q$ per piece and day as in \S\ref{sec:scs-summary}. Simplifications: crop facto
 \textbf{DAG edges:} \dagedge{Infiltration $\rightarrow$ Available\_FW}, \dagedge{Meteorology $\rightarrow$ Available\_FW} --- \statusdone{} (refreshed by \code{watersupply/signals.py} on daily \code{Meteorology} rows and on \code{weather.knmi.daily\_water\_balance\_changed})
 
 \subsection{Total extraction --- \code{calculate\_total\_extraction()}}
-\textbf{Location:} \code{watersupply/calculations.py} (\code{calculate\_total\_extraction}, \code{watershed\_share})
+\textbf{Location:} \code{watersupply/calculations/indicators.py} (\code{calculate\_total\_extraction}, \code{watershed\_share})
 
 A well's water belongs to its watershed $h(w)$ (the \code{watershed} of its \code{AvailableFreshWater} source, else the watershed containing the well) and is shared by the population of that watershed, wherever the well lies. Neighborhoods are assigned to one watershed by their point on surface:
 \begin{align}
   E_u &= \sum_{h} s_{u,h} \sum_{w:\,h(w)=h} V_w \;+\; \sum_{w:\,h(w)=\varnothing,\ w \,\cap\, \text{geom}(u)} V_w \\
-  s_{u,h} &= \frac{\sum_{n \,\in\, u,\ \text{pos}(n) \in h} P_n}{\sum_{\text{pos}(n) \in h} P_n}
+  s_{u,h} &= \frac{\sum_{n \,\in\, u,\ \text{pos}(n) \in h} P_n}{\max\!\big(\sum_{\text{pos}(n) \in h} P_n,\ P^{\text{served}}_h\big)}
   \quad\text{(area share } |u \cap h| / |h| \text{ when the watershed has no neighborhood population)}
 \end{align}
-$V_w$ (\code{ExtractionWater.volume\_m3\_d()}, also used by \code{TotalWaterProduction}) is the first known of \texttt{current\_extraction\_Mm3\_yr} $\times 10^6 / 365$, $q_w \times t_w \times 3600$ ($t_w$ = \texttt{OperationTime\_h\_day}) and $q_w \times 86400$, with $[q_w] = \si{m^3/s}$; $[V_w] = [E_u] = \si{m^3/day}$; $\sum_u s_{u,h} = 1$ over the neighborhoods of a watershed. Wells without a watershed keep the location rule.
+$P^{\text{served}}_h$ = \texttt{Watershed.population\_served} (input with \texttt{population\_source} and \texttt{population\_year}: the residents the watershed supplies, e.g.\ the utility's service-area population), ignored when empty or smaller than the stored neighborhoods' population (\code{watersupply/calculations/chain.py::watershed\_population\_share}). Without it, the stored neighborhoods split the whole extraction even when only one city of a regional supply area is imported.
+$V_w$ (\code{ExtractionWater.volume\_m3\_d()}, also used by \code{TotalWaterProduction}) is the first known of \texttt{current\_extraction\_Mm3\_yr} $\times 10^6 / 365$, $q_w \times t_w \times 3600$ ($t_w$ = \texttt{OperationTime\_h\_day}) and $q_w \times 86400$, with $[q_w] = \si{m^3/s}$; $[V_w] = [E_u] = \si{m^3/day}$; $\sum_u s_{u,h} \le 1$ over the neighborhoods of a watershed ($= 1$ without $P^{\text{served}}_h$). Wells without a watershed keep the location rule.
 
 \textbf{DAG edge:} \dagedge{Available\_FW $\rightarrow$ Total\_Extraction} --- \statusdone{}; the share also makes \dagedge{Total\_Population} of every city in the watershed an input of its neighbours' supply security (receivers \code{city\_population\_cascaded}, \code{city\_saved}, \code{watershed\_changed}, \code{extraction\_changed} in \code{watersupply/signals.py}).
 
 \subsection{Total production --- \code{calculate\_total\_production\_day()}}
-\textbf{Location:} \code{watersupply/calculations.py:51}
+\textbf{Location:} \code{watersupply/calculations/indicators.py:51}
 \begin{equation}
   \Pi = E + I, \qquad I = \sum_{\,\text{active imports}} \texttt{quantity\_m3\_d}
 \end{equation}
@@ -465,9 +503,12 @@ $V_w$ (\code{ExtractionWater.volume\_m3\_d()}, also used by \code{TotalWaterProd
 
 \subsection{Supply security \& service time}
 \label{sec:supplysecurity}
-\textbf{Location:} \code{calculate\_supply\_security()} (\code{watersupply/calculations.py:73}); \code{SupplySecurity.save()} (\code{watersupply/models.py:107})
+\textbf{Location:} \code{calculate\_supply\_security()} (\code{watersupply/calculations/indicators.py:73}); \code{SupplySecurity.save()} (\code{watersupply/models.py:107})
 \begin{align}
-  D_{\si{m^3/day}} &= \texttt{demandDay} \times 10^6 \\
+  D_{\si{m^3/day}} &= \begin{cases}
+    \sum_{\text{cities}} \texttt{demandDay} \times 10^6 & u \text{ a city or province (stored \code{TotalWaterDemand})} \\
+    c_u \cdot N_{u,y} / 1000 & u \text{ a district or neighborhood (\code{chain.demand\_m3\_d}, its own population)}
+  \end{cases} \\
   S &= \frac{\Pi}{D_{\si{m^3/day}}} \qquad \text{(ratio; } \times 100 \text{ for \%)}\\
   T_{\text{service}} &=
   \begin{cases}
@@ -479,7 +520,7 @@ $V_w$ (\code{ExtractionWater.volume\_m3\_d()}, also used by \code{TotalWaterProd
 \textbf{DAG edges:} \dagedge{Total\_Water\_Demand $\rightarrow$ Supply\_Security}, \dagedge{Total\_Water\_Prod $\rightarrow$ Supply\_Security}, \dagedge{Supply\_Security $\rightarrow$ Service\_Time} --- \statusdone{}
 
 \subsection{Energy consumption --- \code{calculate\_energy\_consumption()}}
-\textbf{Location:} \code{watersupply/calculations.py:100}
+\textbf{Location:} \code{watersupply/calculations/indicators.py:100}
 \begin{equation}
   K = \sum_{w} \big(\texttt{pumpEnergyRate\_kWh\_h}_w \times \texttt{OperationTime\_h\_day}_w\big) + 1000 \times \sum \texttt{EnergyConsumption\_MW\_day}
 \end{equation}
@@ -505,21 +546,22 @@ $[K] = \si{kWh/day}$. \textbf{DAG edges:} \dagedge{Total\_Extraction $\rightarro
 \subsection{Consolidated OPEX --- \code{OPEX.save()}}
 \textbf{Location:} \code{watersupply/models.py:640}
 \begin{align}
-  \text{Cost}_{\text{extraction}} &= \sum \big(\texttt{opex\_EUR\_m3} \times \texttt{current\_extraction\_Mm3\_yr} \times 10^6\big) \\
+  \text{Cost}_{\text{extraction}} &= \sum_{w} \big(\texttt{opex\_EUR\_m3}_w - e_w\big) \times \texttt{current\_extraction\_Mm3\_yr}_w \times 10^6, \quad e_w = \texttt{energy\_EUR\_m3}_w \text{ if } w \text{ has pump energy data, else } 0 \\
+  \text{Cost}_{\text{energy}} &= \sum_{w} \texttt{pumpEnergyRate\_kWh\_h}_w \times \texttt{OperationTime\_h\_day}_w \times 365 \times p_{\text{prov}(w),\,\text{year}} \\
   \text{Cost}_{\text{imported}} &= \sum \big(\texttt{quantity\_m3\_d} \times 365 \times \texttt{price\_EUR\_m3}\big) \\
   \text{Cost}_{\text{treatment}} &= \overline{\texttt{UnitaryOPEX\_EUR\_m3}}_{\,\text{year}} \times V_{\text{yr}} \\
   \text{Cost}_{\text{network}} &= \sum \big(\texttt{maitenanceCost\_EUR\_km} \times \texttt{length\_km}\big) \\
-  \texttt{totalOPEX\_EUR} &= \text{Cost}_{\text{extraction}} + \text{Cost}_{\text{imported}} + \text{Cost}_{\text{treatment}} + \text{Cost}_{\text{network}} \\
+  \texttt{totalOPEX\_EUR} &= \text{Cost}_{\text{extraction}} + \text{Cost}_{\text{energy}} + \text{Cost}_{\text{imported}} + \text{Cost}_{\text{treatment}} + \text{Cost}_{\text{network}} \\
   \texttt{UnitaryOPEX\_EUR\_m3} &= \frac{\texttt{totalOPEX\_EUR}}{V_{\text{yr}}}, \qquad V_{\text{yr}} = V_{\text{extraction}} + V_{\text{imported}}
 \end{align}
-\code{TotalWaterProduction}'s own energy cost is deliberately excluded, since it is already embedded in $\texttt{opex\_EUR\_m3}$ (see inline comment, \code{watersupply/models.py}).
+$p$ = \code{ElectricityCost.price()} (EUR/kWh of the well's province in the OPEX year, else a national row, else the assumed default 0.15). The derived pumping cost replaces each well's stored energy share $e_w$; $\text{Cost}_{\text{energy}}$ is computed by \code{watersupply/calculations/chain.py::energy\_cost\_EUR\_yr}. Treatment energy is taken to be inside the treatment \texttt{UnitaryOPEX}. \code{TotalWaterProduction}'s cost is not added (it would count the same pump energy twice). An \code{ElectricityCost} save/delete re-saves the OPEX and production records of its year (\code{electricity\_changed}).
 \begin{equation}
   \texttt{OPEX\_recovered\_PCT} = \frac{\sum \texttt{Recovery\_EUR}}{\texttt{totalOPEX\_EUR}} \times 100
 \end{equation}
-\textbf{DAG edges:} \dagedge{Total\_Extraction/Total\_Water\_Prod $\rightarrow$ OPEX}, \dagedge{Imported\_Water $\rightarrow$ OPEX}, \dagedge{WT\_Cost $\rightarrow$ OPEX}, \dagedge{Network $\rightarrow$ OPEX}, \dagedge{Metered\_Res\_Water $\rightarrow$ OPEX\_Recovery} --- \statusdone{}
+\textbf{DAG edges:} \dagedge{Total\_Extraction/Total\_Water\_Prod $\rightarrow$ OPEX}, \dagedge{Energy\_Consumption $\rightarrow$ OPEX}, \dagedge{Imported\_Water $\rightarrow$ OPEX}, \dagedge{WT\_Cost $\rightarrow$ OPEX}, \dagedge{Network $\rightarrow$ OPEX}, \dagedge{Metered\_Res\_Water $\rightarrow$ OPEX\_Recovery} --- \statusdone{}
 
 \subsection{OPEX recovery (dashboard) --- \code{calculate\_opex\_recovery()}}
-\textbf{Location:} \code{watersupply/calculations.py:205}
+\textbf{Location:} \code{watersupply/calculations/indicators.py:205}
 \begin{equation}
   \text{Recovery\%} = \frac{\sum_{\text{metered users}} \texttt{Recovery\_EUR}}{\texttt{totalOPEX\_EUR}_{\,\text{year}}} \times 100
 \end{equation}
@@ -535,41 +577,61 @@ $[K] = \si{kWh/day}$. \textbf{DAG edges:} \dagedge{Total\_Extraction $\rightarro
 Uses the city's most recent \code{ConsumptionCapita} record (not filtered by year), applied to local \code{populationServed} rather than the whole-city \code{total\_consumption\_m3\_yr}.
 
 \subsection{Collection ratio --- \code{calculate\_collection\_ratio()}}
-\textbf{Location:} \code{watersupply/calculations.py:184}
+\textbf{Location:} \code{watersupply/calculations/indicators.py:184}
 \begin{equation}
   \text{CR\%} = \frac{\sum \texttt{collected\_meters}}{\sum \texttt{installed\_meters}} \times 100
 \end{equation}
 \textbf{DAG edges:} \dagedge{Metered\_Res\_Water $\rightarrow$ CollectionRatio}, \dagedge{User\_Acceptance\_WS $\rightarrow$ CollectionRatio}, \dagedge{Water\_Tariff\_Afford $\rightarrow$ CollectionRatio} --- \statuspartial{} (ignores \code{userAffordability\_PCT} and acceptance rate despite the docstring)
 
-\subsection{Coverage --- \code{calculate\_coverage()}, \code{CoverageWaterSupply.save()}}
-\textbf{Location:} \code{watersupply/calculations.py:239}; \code{watersupply/models.py:448}
+\subsection{Water supply users --- \code{UsersLocation.save()}}
+\textbf{Location:} \code{watersupply/models.py::UsersLocation.save}; \code{watersupply/calculations/users.py::neighborhood\_users}
+A users location is each property (home); its users are its residents $r_k$ (\code{builtup.Property.residents}, the city's CBS persons per home). For neighbourhood $n$ with properties $K_n$ and service distance $b$ (\code{buffer\_m} of the city's latest \code{CoverageWaterSupply}, default 50\,\si{m}):
 \begin{align}
-  G_{\text{buffer}} &= \bigcup_{\,p\, \in\, \text{pipes}(c)} \operatorname{buffer}(p,\ 500\,\si{m}) \\
-  A_{\text{covered}} &= \frac{\operatorname{area}(G_{\text{buffer}})}{10^6}\ [\si{km^2}] \\
-  \text{Coverage\%} &= \frac{H_{\text{covered}}}{H_{\text{total}}} \times 100
+  U_n &= \operatorname{round}\Big(\sum_{k \in K_n} r_k\Big) \
+  S_n &= \operatorname{round}\Big(\sum_{k \in K_n,\ \min_{p} d(k, p) \le b} r_k\Big)
 \end{align}
-where $H_{\text{covered}}$ counts households in \code{UsersLocation} points spatially within $G_{\text{buffer}}$, and $H_{\text{total}}$ sums \code{usersTotal} across the city's neighbourhoods. \textbf{DAG edges:} \dagedge{Network $\rightarrow$ Coverage\_WS\_Area}, \dagedge{CityArea $\rightarrow$ Coverage\_WS\_Area}, \dagedge{NumberUsers $\rightarrow$ Coverage\_WS} --- \statusdone{}
+($d(k,p)$: distance of the property point to pipe $p$, \code{ST\_DWithin}; equivalent to the point lying in $G_{\text{buffer}}$). Without properties with residents the stored counts are kept. \textbf{DAG edges:} \dagedge{Total\_Population $\rightarrow$ NumberUsers}, \dagedge{Coverage\_WS\_Area $\rightarrow$ NumberUsers} --- \statusdone{}
+
+\subsection{Coverage --- \code{calculate\_coverage()}, \code{CoverageWaterSupply.save()}}
+\textbf{Location:} \code{watersupply/calculations/indicators.py::calculate\_coverage}; \code{watersupply/models.py::CoverageWaterSupply.save}; \code{watersupply/calculations/chain.py::coverage\_pct}
+\begin{align}
+  G_{\text{buffer}} &= \bigcup_{\,p\, \in\, \text{pipes}(c)} \operatorname{buffer}(p,\ b) \
+  A_{\text{covered}} &= \frac{\operatorname{area}(G_{\text{buffer}})}{10^6}\ [\si{km^2}] \
+  \text{Coverage\%} &= \frac{\sum_{n \in c} S_n}{\sum_{n \in c} U_n} \times 100
+\end{align}
+\code{households\_covered}/\code{households\_total} count the city's dwellings within $b$ of a pipe / in total. Cities whose users locations are stored inputs (no properties) keep the former rule: households of neighbourhoods intersecting $G_{\text{buffer}}$ over $\sum$ \code{usersTotal}. \textbf{DAG edges:} \dagedge{Network $\rightarrow$ Coverage\_WS\_Area}, \dagedge{CityArea $\rightarrow$ Coverage\_WS\_Area}, \dagedge{NumberUsers $\rightarrow$ Coverage\_WS} --- \statusdone{}
+
+\subsection{Urban area outside the network --- \code{CoverageWaterSupply.save()}}
+\textbf{Location:} \code{watersupply/calculations/network\_gap.py::urban\_gap}; \code{watersupply/models.py::CoverageWaterSupply.\_set\_urban\_gap}; receiver \code{watersupply/signals.py::urban\_area\_updated} $\leftarrow$ \code{physicalEnv.signals.urban\_area\_changed}
+
+With $L_c$ the city's urban land-cover polygons (classes matching \code{URBAN\_AREA\_KEYWORDS}, the same as the neighbourhoods' \code{urban\_area}) of the latest land-cover year up to the record's year $y$ (else the earliest later one, stored as \code{urban\_landcover\_year}) and $G_{\text{buffer}}$ the record's service area:
+\begin{align}
+  A_{\text{urban}} &= \sum_{l \in L_c} |l|, \qquad
+  A_{\text{uncovered}} = \sum_{l \in L_c} |l \setminus G_{\text{buffer}}|, \qquad
+  \text{share} = \frac{A_{\text{uncovered}}}{A_{\text{urban}}} \times 100
+\end{align}
+(no network: $A_{\text{uncovered}} = A_{\text{urban}}$; no land cover: fields empty). Stored as \code{urban\_area\_km2}, \code{uncovered\_urban\_km2}, \code{uncovered\_urban\_pct}; the dashboard sums each city's latest record. It flags urban growth the network has not followed; it does not extend the network. \textbf{DAG edge:} \dagedge{CityArea $\rightarrow$ Network} --- \statuspartial{}
 
 \subsection{Non-Revenue Water and ILI}
-\textbf{Location:} \code{calculate\_nrw()} (\code{watersupply/calculations.py:275}); \code{NonRevenueWater.save()} (\code{watersupply/models.py:551})
+\textbf{Location:} \code{calculate\_nrw()} (\code{watersupply/calculations/indicators.py}); \code{LeakageIndex.save()} (\code{watersupply/models.py}); \code{uarl\_m3\_d()}, \code{ili()} (\code{watersupply/calculations/chain.py}); inputs per city in \code{watersupply/calculations/leakage.py}
 \begin{align}
   \text{NRW}_{\text{apparent}} &= \sum_{\,\text{type}=A} \texttt{loss\_Quantity\_m3} \\
   \text{NRW}_{\text{real}} &= \sum_{\,\text{type}=R} \texttt{loss\_Quantity\_m3} \\
   \text{CARL} &= \sum_{\,\text{type}=R,\ \text{year}} \texttt{loss\_Quantity\_m3} \\
-  \text{UARL} &= \sum_{\,\text{type}=R,\ \text{year}} \texttt{loss\_Quantity\_m3} \times \frac{\texttt{UnavoidableLossses\_PCT}}{100} \\
+  \text{UARL} &= \frac{1}{1000} \sum_{c} \left(18\,L_{m,c} + 0.8\,N_{c,c} + 25\,L_{p,c}\right) P_c \quad [\si{m^3/day}] \\
   \text{ILI} &= \frac{\text{CARL}}{\text{UARL}}
 \end{align}
-The Infrastructure Leakage Index formulation follows the IWA Water Loss Task Force methodology \cite{IWA_WLTF}. \textbf{DAG edges:} \dagedge{Real\_Losses $\rightarrow$ NRW, ILI}, \dagedge{Apparent\_Losses $\rightarrow$ NRW, ILI} --- \statuspartial{} (ILI is only defined for Real losses; \dagedge{Apparent\_Losses $\rightarrow$ ILI} is unimplemented). \dagedge{Network $\rightarrow$ Real\_Losses} --- \statusdone{}: every real \code{NonRevenueWater} record must point (\code{pipe} FK, enforced in \code{clean()}) to the \code{PipeNetwork} where the leakage is presumed, apparent losses may not; \code{calculate\_nrw()} reports \code{real\_losses\_by\_pipe} (\si{m^3/day} and \si{m^3/km/day}) and, per admin unit, weights each real loss by the share of its pipe's length inside the unit, splits apparent losses by the unit's share of \code{UsersLocation.usersTotal}, and recomputes ILI over the unit's real losses.
+The Infrastructure Leakage Index follows the IWA Water Loss Task Force methodology \cite{IWA_WLTF}: per city $c$, $L_m$ = mains length inside the city (km), $N_c$ = service connections (dwellings within the service buffer, \code{CoverageWaterSupply.households\_covered} of the city's latest record up to the year), $L_p = N_c \times$ \code{private\_pipe\_m\_per\_conn} / 1000 (km; default 5 m), $P_c$ = \code{CoverageWaterSupply.avg\_pressure\_m} (m; editable per city, default 30 m). Pipes outside every city count with 30 m and no connections. \code{LeakageIndex} stores one row per year with these inputs (\code{city\_inputs}) and \code{uarl\_reliable} ($N_c \ge 3000$, $N_c/L_m \ge 20$, $P \ge 25$ m). Apparent losses enter neither CARL nor UARL; \code{UnavoidableLossses\_PCT} no longer feeds the ILI. \textbf{DAG edges:} \dagedge{Real\_Losses $\rightarrow$ NRW, ILI}, \dagedge{Apparent\_Losses $\rightarrow$ NRW}, \dagedge{Network $\rightarrow$ ILI} --- \statusdone{} (\dagedge{Apparent\_Losses $\rightarrow$ ILI} removed from the DAG on 2026-11-15). \dagedge{Network $\rightarrow$ Real\_Losses} --- \statusdone{}: every real \code{NonRevenueWater} record must point (\code{pipe} FK, enforced in \code{clean()}) to the \code{PipeNetwork} where the leakage is presumed, apparent losses may not; \code{calculate\_nrw()} reports \code{real\_losses\_by\_pipe} (\si{m^3/day} and \si{m^3/km/day}) and, per admin unit, weights each real loss by the share of its pipe's length inside the unit, splits apparent losses by the unit's share of \code{UsersLocation.usersTotal}, and recomputes ILI over the unit's real losses.
 
 \subsection{Water quality --- \code{calculate\_water\_quality()}}
-\textbf{Location:} \code{watersupply/calculations.py:144}
+\textbf{Location:} \code{watersupply/calculations/indicators.py:144}
 \begin{equation}
   \text{Compliance\%} = \frac{\sum \texttt{samplesWaterQuality\_OK}}{\sum \texttt{samplesWaterQualityTaken}} \times 100
 \end{equation}
 \textbf{DAG edges:} \dagedge{WT\_Efficiency $\rightarrow$ Samples\_WQ}, \dagedge{Samples\_Taken $\rightarrow$ Samples\_WQ}, \dagedge{Samples\_WQ $\rightarrow$ User\_Acceptance\_WS} --- \statusgap{} (\code{acceptance\_rate} in the return value is $\operatorname{avg}(\texttt{acceptanceRate})$, an independent stored field unrelated to the computed compliance percentage)
 
 \subsection{Available fresh water and drought area}
-\textbf{Location:} \code{watersupply/calculations.py:308, 323}
+\textbf{Location:} \code{watersupply/calculations/indicators.py:308, 323}
 \begin{align}
   \text{AFW} &= \sum_{\,\text{intersecting } u} \texttt{totalQuantity\_Mm3} \\
   A_{\text{drought}} &= \sum_{\,\text{intersecting } u,\ \text{year}} \texttt{areaAffected\_km2}
@@ -578,7 +640,7 @@ The Infrastructure Leakage Index formulation follows the IWA Water Loss Task For
 
 \subsection{Infiltration indicator (dashboard) --- \code{calculate\_infiltration()}, \code{\_infiltration\_indicators()}}
 \label{sec:infiltration-indicator}
-\textbf{Location:} \code{watersupply/calculations.py:383}, \code{watersupply/views.py:177}
+\textbf{Location:} \code{watersupply/calculations/indicators.py:383}, \code{watersupply/views.py:177}
 
 The water dashboard's Infiltration card evaluates \S\ref{sec:physicalenv} for the administrative unit $u$ with two what-if controls: the \textit{Rain Event} slider sets $P \in [1, 100]$\,\si{mm} (default 25; KNMI's daily classes mark \emph{heavy} from 25\,mm and \emph{extreme} from 50\,mm), and the \textit{Groundwater} switch sets the season $s$ (wet = GHG, default; dry = GLG). $P$ enters only the pure functions and the spatial composition depends on $s$ alone, so the composition could be cached per season; the current implementation recomputes it on every request, together with the rest of \code{\_get\_adminUnit\_data()}. Displayed: $C_{\text{inf},u}$ (\%), $\overline{\mathrm{CN}}$, $V_{\text{inf}}$ and $V_{\text{run}}$ (\si{m^3}), the classified and unclassified areas, the share of the classified area moved to D by shallow groundwater and the share kept as drained, and the texture-only soil-group shares with their rate ranges $[f_{\min}, f_{\max}]$.
 
@@ -593,19 +655,19 @@ The water dashboard's Infiltration card evaluates \S\ref{sec:physicalenv} for th
 \section{Housing app}
 \label{sec:housing}
 
-Source: \code{housing/calculations.py}, \code{housing/models.py}.
+Source: \code{housing/calculations/indicators.py}, \code{housing/models.py}.
 
 \subsection{Supply/demand deficit}
-\textbf{Location:} \code{calculate\_supply\_demand()} (\code{housing/calculations.py:14}), \code{calculate\_supply\_demand\_for\_unit()} (\code{:43})
+\textbf{Location:} \code{calculate\_supply\_demand()}, \code{calculate\_supply\_demand\_for\_unit()} (city, province), \code{supply\_demand\_from\_dwellings()} (district, neighborhood) in \code{housing/calculations/indicators.py}
 \begin{align}
   \text{Deficit} &= D - S \\
   \text{Deficit\%} &= \frac{D - S}{D} \times 100
 \end{align}
-where $S = \texttt{supply\_units}$ (CBS housing stock, 86098NED) and $D = \texttt{demand\_units}$ (derived, below). \textbf{DAG edges:} \dagedge{Total\_Population $\rightarrow$ Housing\_Demand}, \dagedge{New\_Units $\rightarrow$ Housing\_Supply}, \dagedge{Housing\_Demand $\rightarrow$ House\_Price\_Index} --- \statuspartial{} (demand is derived, below; \code{Housing\_Demand $\rightarrow$ House\_Price\_Index} is not implemented; the former \code{Urbanization $\rightarrow$ Housing\_Demand} edge was removed on 2026-11-10)
+where, for a city or province, $S = \texttt{supply\_units}$ (CBS dwelling stock at the end of Q4, 86098NED \code{EindstandVoorraad\_22}; before 2026-11-19 the import stored the quarter's net change \code{SaldoVoorraad\_21}) and $D = \texttt{demand\_units}$ (derived, below). CBS has no stock below the municipality, so for a district or neighborhood $S$ = the mapped dwellings (BAG residential function, \code{calculate\_dwellings()}) and $D = P_{\text{unit}} / h$ (\code{chain.demand\_units}, the unit's baseline population over the city's persons per home). \textbf{DAG edges:} \dagedge{Total\_Population $\rightarrow$ Housing\_Demand}, \dagedge{New\_Units $\rightarrow$ Housing\_Supply}, \dagedge{Housing\_Demand $\rightarrow$ House\_Price\_Index} --- \statuspartial{} (demand is derived, below; \code{Housing\_Demand $\rightarrow$ House\_Price\_Index} is not implemented; the former \code{Urbanization $\rightarrow$ Housing\_Demand} edge was removed on 2026-11-10)
 
 \subsubsection{Household size and housing demand --- \code{HouseholdSize.save()}, \code{HousingSupplyDemand.save()}}
 \label{sec:household-size}
-\textbf{Location:} \code{housing/chain.py} (the equations, one copy for the stored and the dashboard path), \code{housing/models.py}, \code{housing/signals.py}. With $P$ the median population forecast of the city and year (\code{PopulationProjection}, CBS 85173NED, imported once for the whole project) and $H$ the number of private households (CBS 86291NED, the only housing import), both whole-gemeente, so the ratio is right even when only some neighborhoods are imported:
+\textbf{Location:} \code{housing/calculations/chain.py} (the equations, one copy for the stored and the dashboard path), \code{housing/models.py}, \code{housing/signals.py}. With $P$ the median population forecast of the city and year (\code{PopulationProjection}, CBS 85173NED, imported once for the whole project) and $H$ the number of private households (CBS 86291NED, the only housing import), both whole-gemeente, so the ratio is right even when only some neighborhoods are imported:
 \begin{align}
   \bar{s} &= P / H \qquad \text{(persons per home, \code{HouseholdSize.average\_size})} \\
   D_{c,y} &= \operatorname{round}\!\left(P^{\text{base}}_{c,y} / \bar{s}_{c,y}\right) \qquad \text{(\code{demand\_units})} \\
@@ -618,7 +680,7 @@ $P^{\text{base}}_{c,y}$ is the population stored with that year's \code{Househol
 \textbf{Receivers} (\code{housing/signals.py}): \code{City}/\code{city\_population\_changed}, median \code{PopulationProjection}, \code{HouseholdSize}, \code{Property}/\code{ResidentialProperty}; bulk imports defer them (\code{deferred\_housing\_refresh}). \textbf{DAG edges:} \dagedge{Total\_Population $\rightarrow$ Housing\_Demand}, \dagedge{Household\_Size $\rightarrow$ Housing\_Demand}, \dagedge{Household\_Size $\rightarrow$ Property} --- \statusdone{}
 
 \subsection{Pipeline units --- \code{calculate\_new\_units()}}
-\textbf{Location:} \code{housing/calculations.py:66}
+\textbf{Location:} \code{housing/calculations/indicators.py:66}
 \begin{align}
   U_{\text{completed}} &= \sum_{\,\texttt{year\_expected\_completion} \le y} \texttt{project\_units} \\
   U_{\text{pipeline}} &= \sum_{\,\texttt{year\_expected\_completion} > y} \texttt{project\_units}
@@ -627,7 +689,7 @@ $P^{\text{base}}_{c,y}$ is the population stored with that year's \code{Househol
 
 \subsubsection{Pipeline land take --- \code{calculate\_pipeline\_land\_take()}}
 \label{sec:pipeline-land-take}
-\textbf{Location:} \code{housing/calculations.py}. With $F_c = \bigcup$ footprints of the pipeline projects ($\texttt{year\_expected\_completion} > y$) of city $c$, overlapping projects counted once, and $\mathcal{L}_c$ the city's latest land-cover year:
+\textbf{Location:} \code{housing/calculations/indicators.py}. With $F_c = \bigcup$ footprints of the pipeline projects ($\texttt{year\_expected\_completion} > y$) of city $c$, overlapping projects counted once, and $\mathcal{L}_c$ the city's latest land-cover year:
 \begin{align}
   A_k &= \sum_c \sum_{P \in \mathcal{L}_c,\ \text{class}(P) = k} |P \cap F_c| \\
   A_{\text{greenfield}} &= \sum_{k \notin \mathcal{U}} A_k, \qquad A_{\text{infill}} = \sum_{k \in \mathcal{U}} A_k, \qquad A_{\text{uncovered}} = \textstyle\sum_c |F_c| - \sum_k A_k
@@ -635,7 +697,7 @@ $P^{\text{base}}_{c,y}$ is the population stored with that year's \code{Househol
 where $\mathcal{U}$ are the classes that already count as urban area (\emph{urban fabric, road, rail, transport}). Greenfield is the land the new units would turn into urban fabric. Dashboard only (housing \emph{New Housing Units} card), nothing is written: observed land cover is not overwritten by plans. \textbf{DAG edge:} \dagedge{New\_Units $\rightarrow$ LandCover} --- \statusdone{}
 
 \subsection{Mortgage indicators --- \code{calculate\_mortgage\_indicators()}}
-\textbf{Location:} \code{housing/calculations.py:123}
+\textbf{Location:} \code{housing/calculations/indicators.py:123}
 \begin{equation}
   \overline{m} = \operatorname{avg}(\texttt{monthlyPayment}), \quad
   \bar{\iota} = \operatorname{avg}(\texttt{interestRate}), \quad
@@ -644,7 +706,7 @@ where $\mathcal{U}$ are the classes that already count as urban area (\emph{urba
 plus province-level policy fields (\code{interest\_rate}, \code{LTV\_limit}, \code{LTI\_limit}, \code{mortgageRate}) read as-is. \textbf{DAG edges:} \dagedge{Central\_Bank $\rightarrow$ Mortgage}, \dagedge{Credit\_Supply $\rightarrow$ Mortgage}, \dagedge{Mortgage $\rightarrow$ Affordability\_Stress}, \dagedge{Mortgage $\rightarrow$ Income\_Expenses} --- \statusgap{} for the two outgoing edges (averages are exposed on the dashboard but never fed back into \code{HousingAffordability})
 
 \subsection{House Price Index --- \code{calculate\_house\_price\_index()}}
-\textbf{Location:} \code{housing/calculations.py:200}
+\textbf{Location:} \code{housing/calculations/indicators.py:200}
 \begin{equation}
   \Delta_{\text{YoY}}\% = \frac{\overline{\text{HPI}}_{y} - \overline{\text{HPI}}_{y-1}}{\overline{\text{HPI}}_{y-1}} \times 100
 \end{equation}
@@ -659,7 +721,7 @@ plus province-level policy fields (\code{interest\_rate}, \code{LTV\_limit}, \co
 The house-price-to-income ratio formulation is the standard affordability metric used in comparative housing-affordability studies (e.g.\ Demographia's Median Multiple) \cite{Demographia}. \textbf{DAG edges:} \dagedge{Property $\rightarrow$ Affordability\_Stress}, \dagedge{Income\_Expenses $\rightarrow$ Affordability\_Stress}, \dagedge{Mortgage $\rightarrow$ Affordability\_Stress}, \dagedge{Water\_Tariff\_Afford $\rightarrow$ Income\_Expenses}, \dagedge{Rent $\rightarrow$ Income\_Expenses}, \dagedge{Mortgage $\rightarrow$ Income\_Expenses} --- \statusgap{} (computed only from this model's own stored fields; never reads \code{Mortgage}, \code{Rentals}, or watersupply tariff data --- an open TODO in \code{housing/models.py} also questions whether disposable income should replace median income in the numerator's denominator)
 
 \subsection{Zoning composition --- \code{calculate\_zoning()}}
-\textbf{Location:} \code{housing/calculations.py:297}; groups \code{ZONING\_GROUPS} (\code{:289})
+\textbf{Location:} \code{housing/calculations/indicators.py:297}; groups \code{ZONING\_GROUPS} (\code{:289})
 \begin{equation}
   \text{Area\%}_{t} = \frac{\sum_{\,z \,:\, \texttt{zone\_type}(z) \in K_t} \texttt{area}(z)}{\sum_{\text{all zones}} \texttt{area}(z)} \times 100
 \end{equation}
@@ -667,7 +729,7 @@ The house-price-to-income ratio formulation is the standard affordability metric
 \textbf{DAG edges:} \dagedge{Housing\_Demand $\rightarrow$ Zoning\_Status}, \dagedge{Zoning\_Status $\rightarrow$ Property}, \dagedge{Zoning\_Status $\rightarrow$ New\_Units} --- \statusgap{} (descriptive aggregation only; no model consumes \code{Zoning\_Status} as an input)
 
 \subsection{Property market and vacancy --- \code{calculate\_property\_indicators()}}
-\textbf{Location:} \code{housing/calculations.py:236}
+\textbf{Location:} \code{housing/calculations/indicators.py:236}
 \begin{equation}
   \overline{p} = \operatorname{avg}(\texttt{salePrice\_EUR}), \qquad
   \overline{p}_{\si{EUR/m^2}} = \operatorname{avg}(\texttt{unitaryPrice\_EUR\_per\_sqm}), \qquad
@@ -692,7 +754,7 @@ with parks the park space: \code{nature.GreenSpaces} rows of type \code{park} pl
 
 \subsection{Street canyon aspect ratio --- \code{builtup.StreetCanyon}, \code{calculate\_canyon\_aspect()}}
 \label{sec:canyon}
-\textbf{Location:} \code{builtup/chain.py} (equations), \code{builtup/canyon.py::street\_inputs} (inputs, one SQL statement for many streets), \code{builtup/signals.py} (receivers), \code{urban\_heat/calculations.py::calculate\_canyon\_aspect} (dashboard).
+\textbf{Location:} \code{builtup/calculations/chain.py} (equations), \code{builtup/calculations/canyon.py::street\_inputs} (inputs, one SQL statement for many streets), \code{builtup/signals.py} (receivers), \code{urban\_heat/calculations.py::calculate\_canyon\_aspect} (dashboard).
 Each street line is trimmed by \SI{10}{m} at both ends of every part (the buildings of a crossing street do not count) and cut into pieces $s$ of at most \SI{100}{m}. Each piece gets a single-sided buffer $L_s$, $R_s$ of \SI{30}{m} on its left and right. With $b$ the buildings, $h_b$ = \code{height\_m}, else $3\,\si{m} \times$ \code{numberFloors} (buildings with neither are skipped):
 \begin{align}
   H_{s}^{\text{side}} &= \frac{\sum_b |b \cap \text{side}_s|\, h_b}{\sum_b |b \cap \text{side}_s|} \quad (0 \text{ without buildings}), &
@@ -709,7 +771,7 @@ An open side counts as height 0 (Oke's symmetric canyon \cite{Oke1987}). The res
   \left.\frac{H}{W}\right|_U = \frac{\sum_i (H/W)_i\, |l_i \cap U|}{\sum_i |l_i \cap U|}
 \end{equation}
 with the shares of that length below 0.5 (open) and at or above 2 (deep). Without stored canyons it falls back to $\overline{h}_{\text{buildings}} / \overline{\code{width}}_{\text{streets}}$.
-\textbf{DAG edges:} \dagedge{Buildings $\rightarrow$ Canyon\_Aspect}, \dagedge{Streets $\rightarrow$ Canyon\_Aspect} --- \statusdone{}. \dagedge{Canyon\_Aspect $\rightarrow$ DSM} was removed from the DAG: $H/W$ is read off the buildings, which reach the DSM through \dagedge{Buildings $\rightarrow$ DSM}.
+\textbf{DAG edges:} \dagedge{Buildings $\rightarrow$ Canyon\_Aspect}, \dagedge{Streets $\rightarrow$ Canyon\_Aspect} --- \statusdone{}. \dagedge{Canyon\_Aspect $\rightarrow$ DSM} was removed from the DAG: $H/W$ is read off the buildings, which reach the DSM through \dagedge{Buildings $\rightarrow$ DSM}. \dagedge{Canyon\_Aspect $\rightarrow$ Meteorology} was replaced by \dagedge{DSM $\rightarrow$ PET}: PET's local wind and urban heat island are computed from the DSM, not from the stored $H/W$.
 
 \subsection{Raster statistics --- \code{\_raster\_stats\_sql()}, \code{get\_thermal\_indices()}}
 \textbf{Location:} \code{urban\_heat/calculations.py:112, 145}
@@ -792,7 +854,7 @@ with $g$ the ground as above. The land cover of the latest year is mapped to SOL
 \end{align}
 $\overline{\mathrm{SVF}}$ and $\overline{F_{veg}}$ are averaged over the cell's upwind source area, $f(d, h)$ is the diurnal factor of the date and UTC hour (1 April -- 30 September only), $S_{\downarrow}$, $T_{max}$, $T_{min}$ and $\bar u$ are the day's mean shortwave radiation, extreme temperatures and mean wind (\code{met.Met} day fields, from the KNMI station or ERA5), and $\lambda_b$, $\lambda_t$, $H$ are the frontal area densities of buildings and trees and their mean height (Macdonald). DSM = \code{Building\_DSM} + \code{Trees}; vegetation = SOLWEIG's trees and grass. Without the day's values or outside the diurnal table's months, $T_a = T_{ref}$ (the 1.2\,m wind is kept). Building cells are nodata.
 
-Output: one \code{MeanRadiantTemperature}, \code{UTCI} and \code{PET} raster in \si{\celsius} (nodata $-9999$, COGs via \code{core/signals.py}), replacing earlier SOLWEIG rows of the same hour inside the view. Computed on demand, not by a receiver. \textbf{DAG edges:} \dagedge{DSM $\rightarrow$ SVF $\rightarrow$ Tmrt, PET}, \dagedge{Meteorology $\rightarrow$ Tmrt, PET, UTCI}, \dagedge{Tmrt $\rightarrow$ PET, UTCI} --- \statusdone{} (on demand; meteorology uniform over the view for Tmrt and UTCI; PET has the urban heat island and 1.2\,m wind, with source areas truncated at the window's 50\,m halo)
+Output: one \code{MeanRadiantTemperature}, \code{UTCI} and \code{PET} raster in \si{\celsius} (nodata $-9999$, COGs via \code{core/signals.py}), replacing earlier SOLWEIG rows of the same hour inside the view. Computed on demand, not by a receiver. \textbf{DAG edges:} \dagedge{DSM $\rightarrow$ SVF $\rightarrow$ Tmrt, PET}, \dagedge{DSM $\rightarrow$ PET} ($\lambda_b$, $\lambda_t$, $H$ and the source areas), \dagedge{Meteorology $\rightarrow$ Tmrt, PET, UTCI}, \dagedge{Tmrt $\rightarrow$ PET, UTCI} --- \statusdone{} (on demand; meteorology uniform over the view for Tmrt and UTCI; PET has the urban heat island and 1.2\,m wind, with source areas truncated at the window's 50\,m halo)
 
 \subsection{Nature-Based Solutions coverage --- \code{calculate\_nbs\_coverage()}}
 \textbf{Location:} \code{urban\_heat/calculations.py:283}
@@ -880,6 +942,62 @@ No equations; behaviour relevant to reproducing results:
   \item The \code{feature-saved} and \code{backup-restored} HTMX events reload the affected layers (\code{reloadLayer()}), so the map always shows the stored state.
 \end{itemize}
 
+\section{Climate change scenarios (weather app, KNMI'23)}
+\label{sec:climate-scenarios}
+
+Source: \code{weather/calculations/climate.py} (\code{apply\_to\_weather()}, \code{design\_rain\_mm()}, \code{apply\_to\_daily\_rain()}, \code{apply\_to\_et()}, \code{scenario\_table()}, \code{nearest\_station()}, \code{warmest\_day\_change()}, \code{station\_table()}); panel \code{weather/views.py::climate\_panel}; used by \code{urban\_heat/views.py::\_climate\_weather} and \code{watersupply/views.py::\_recharge\_indicators}. Status: \textbf{implemented} --- \code{Climate\_Change -> Meteorology} as the panels' what-if and as stored scenario runs (\code{weather.ClimateScenarioRun}, Section~\ref{sec:climate-runs}); observed records keep the observed weather.
+
+The scenarios are those of KNMI'23~\cite{KNMI2023}: low (L) or high (H) emissions, each with a dry (d) and a wet (n) variant, for 2050 (2036--2065) and 2100 (2086--2115). The Klimaateffectatlas viewer offers the current climate, 2050 high and 2100 high; ``high'' is taken as Hd. In the default heat mode (\emph{average day}) the temperature change is that of the average daily maximum or minimum: the hottest days warm more, so heat-wave stress is understated (Table~1 has no national warmest-day figure). The \emph{heat-wave day} mode (below) uses KNMI's key figures per station instead. The changes $\Delta$ are the national averages of Table~1 of~\cite{KNMI2023}, relative to 1991--2020, per season $s$ (DJF, MAM, JJA, SON) of the observation's month (summer when unknown). Delta-change on the observed weather:
+\begin{align}
+T_a' &= T_a + \begin{cases} \Delta T_{x,s} & K_\downarrow > 1~\mathrm{W\,m^{-2}} \\ \Delta T_{n,s} & \text{otherwise} \end{cases} \\
+RH' &= \min\!\left(100, \max(0, RH + \Delta RH_s)\right) \\
+u' &= \max(0, u + \Delta u_s) \\
+K_\downarrow' &= K_\downarrow \, \frac{\bar K_s + \Delta K_s}{\bar K_s}
+\end{align}
+with $\bar K_s$ the 1991--2020 seasonal mean radiation (34, 161, 206, 77~W\,m$^{-2}$). The heat panel's sliders start at $(T_a', RH', u', K_\downarrow')$; the weather-only heat stress (Steadman, BoM WBGT) follows from them.
+
+Decades between the horizons (\code{weather/calculations/climate.py::interpolate}, \code{SCENARIO\_YEARS} = 2030, 2040, \ldots, 2100; keys \code{<year>\_<pathway>}): KNMI'23 publishes 2050 and 2100 only, so the other decades are interpolated linearly in time from no change at $y_0 = 2005$ (mid-point of 1991--2020), for every season, indicator and station key figure:
+\begin{equation}
+  \Delta(y) = \begin{cases}
+    \Delta_{2050}\,\dfrac{y - y_0}{2050 - y_0} & y \leq 2050\\[6pt]
+    \Delta_{2050} + (\Delta_{2100} - \Delta_{2050})\,\dfrac{y - 2050}{50} & y > 2050
+  \end{cases}
+\end{equation}
+rounded to 0.01. The 2050 and 2100 keys are the published values exactly; the low pathways are flat after 2050 (Table~1 has $\Delta_{2050} = \Delta_{2100}$). Not a KNMI product (the path follows global warming, not time); interpolated decades carry no global-warming label, and a stored run of one records the method in \code{ClimateScenarioRun.knmi\_source} (\code{SCENARIO\_RUN\_VERSION} 2). The Scenarios panel draws the four pathways' change of the applied temperature (season daily maximum, or the warmest day at the nearest station) against the year, \code{weather/views.py::\_scenario\_curve}. \textbf{Status:} implemented (what-if and stored runs).
+
+Warming already in the observed weather (\code{climate.observed\_offset}, \code{station\_offset}, argument \code{observed\_year} of \code{deltas}, \code{apply\_to\_weather}, \code{apply\_to\_day\_values}, \code{warmest\_day\_change}, \code{apply\_to\_daily\_rain}, \code{apply\_to\_et}): the changes are relative to 1991--2020, but the observed weather of year $y_{\mathrm{obs}}$ already holds part of them. That part does not depend on the future pathway, so it is one value for all four, the mean of their interpolated changes:
+\begin{equation}
+  \Delta_{\mathrm{applied}}(p, y) = \begin{cases}
+    \Delta_p(y) - \tfrac{1}{4}\sum_{q \in \{Ld, Ln, Hd, Hn\}} \Delta_q\big(\min(\max(y_{\mathrm{obs}}, 2005), 2100)\big) & y > y_{\mathrm{obs}}\\
+    0 & y \leq y_{\mathrm{obs}}
+  \end{cases}
+\end{equation}
+for every season, indicator and station key figure (e.g.\ summer $T_x$ in 2025: offset $1.625 \times 20/45 = 0.72$~$^\circ$C, so 2050 Hd adds 1.48 instead of 2.2~$^\circ$C). $y_{\mathrm{obs}}$ = the year of the heat panel's live/station weather, of a stored run's observed hour (\code{ClimateScenarioRun.analysis\_datetime}) or of the KNMI station year of the water balance. Not applied to the design rain event (a reference-climate value) or to the panel's ``change vs 1991--2020'' table. \code{SCENARIO\_RUN\_VERSION} 3.
+
+Heat-wave day (\code{heat = "warmest"}): $T_a' = T_a + \Delta T_{\mathrm{wd},k}$ by day and by night, with $\Delta T_{\mathrm{wd},k}$ the change of the warmest day of the year at the key-figure station $k$ nearest to the unit's point on surface (De Bilt, Den Helder/De Kooy, Groningen/Eelde, Maastricht/Beek, Vlissingen; equirectangular distance; De Bilt without a point), from the KNMI'23 data portal~\cite{KNMI2023stations}; $RH'$, $u'$ and $K_\downarrow'$ use the summer changes ($s$ = JJA) whatever the month. The portal does not define the indicator; its 1991--2020 values (De Bilt 25.5~$^\circ$C) are those of the warmest daily mean temperature, hence one change for day and night. For example 2100 Hd: $\Delta T_{\mathrm{wd}}$ = +6.9~$^\circ$C at De Bilt and +7.4~$^\circ$C at Maastricht, against +5.4~$^\circ$C for the national average summer daily maximum. The mode is meant for a hot observed day; the panel also lists the stations' changes in days with $T_x \geq 30$ and $\geq 35~^\circ$C and tropical nights ($T_n \geq 20~^\circ$C).
+
+Water: the design rain event $P_e' = P_e (1 + \Delta P_{1d,10y})$ with the change of the summer 1-day rain exceeded once in 10 years (central value). The yearly recharge (Section on infiltration) runs on scaled daily rain $P_d' = P_d (1 + \Delta P_{s(d)})$ and Makkink ET $ET' = ET (1 + \Delta ET_{\mathrm{year}})$. Extremes are not scaled separately in the daily series.
+
+\paragraph{Season or heat-wave day.} The heat mode chooses the season $s$ of the changes: \code{average} = the season of the observation's month, \code{winter}\ldots\code{autumn} = that season whatever the month, \code{warmest} = summer with the warmest-day change (\code{season\_for()}). The temperature change is $\Delta T = \Delta T_{x,s}$ by day ($K_\downarrow > 1$~W\,m$^{-2}$), $\Delta T_{n,s}$ by night, or $\Delta T_{\mathrm{wd},k}$ for the heat-wave day (\code{temperature\_change()}). SOLWEIG's day values for PET move alike (\code{apply\_to\_day\_values()}): $T_{\max}' = T_{\max} + \Delta T(\text{day})$, $T_{\min}' = T_{\min} + \Delta T(\text{night})$, $K_{\mathrm{day}}' = K_{\mathrm{day}} (K_{\mathrm{ref},s} + \Delta K_s)/K_{\mathrm{ref},s}$, $u_{\mathrm{day}}' = \max(0, u_{\mathrm{day}} + \Delta u_s)$.
+
+\subsection{Stored scenario runs}
+\label{sec:climate-runs}
+
+Source: \code{weather.ClimateScenarioRun} (created by \code{mainMap/views\_climate.py::climate\_run\_create}, staff) and the receivers of \code{watersupply/signals.py}, \code{housing/signals.py}, \code{urban\_heat/signals.py}. Status: \textbf{implemented}. The run records the scenario, heat mode, key-figure station, population variant, growth and year $y$ ($y$ = 2025 for the current climate, else the horizon, \code{population\_year()}; 2100 is the CBS trend extrapolated), the analysed hour and its observed weather, and \code{SCENARIO\_RUN\_VERSION}. Its results are a snapshot of the inputs at creation; \emph{Recalculate} re-saves the run.
+
+\begin{itemize}
+  \item Water (\code{ScenarioFreshWater}, per source): the yearly balance of \code{AvailableFreshWater} with $P_d' = P_d (1 + \Delta P_{s(d)})$ and $ET' = ET (1 + \Delta ET)$, \code{watersupply/calculations/chain.py::scenario\_water\_balance} (also the dashboard's recharge card); yield $= R'/1000 \cdot A / 10^6$ Mm$^3$/yr.
+  \item Water demand (\code{ScenarioWaterSecurity}): $D = c \cdot N_y / 1000$ m$^3$/day with $N_y$ the run's population, supply security $= Q/D \cdot 100$, service time as for \code{SupplySecurity}; production $Q$ as today.
+  \item Housing (\code{ScenarioHousingNeed}): homes needed $H = \mathrm{round}(N_y / \bar{h})$ with $\bar{h}$ the CBS household size of $y$ or the latest year before it; gap $= H - S$ with $S$ the stock of the latest year $\leq 2025$ (\code{housing/calculations/chain.py::dwelling\_gap}).
+  \item Heat (\code{ScenarioHeat}): one SOLWEIG run of the map view on the observed hour moved into the scenario (Tmrt, UTCI, PET; the current values come from the latest observed run of that hour covering the view, \code{urban\_heat/solweig/scenario.py::find\_baseline}, no second run), plus WBGT per cell (\code{urban\_heat/calculations/chain.py::wbgt\_outdoor\_c}):
+  \begin{equation}
+    \mathrm{WBGT} = 0.7\,T_{nwb} + 0.2\,T_g + 0.1\,T_a,\qquad
+    T_{mrt}^4 = (T_g + 273.15)^4 + \frac{1.1\cdot10^8\,v^{0.6}}{\varepsilon D^{0.4}}(T_g - T_a)
+  \end{equation}
+  (ISO 7243 outdoors; ISO 7726 globe, $\varepsilon = 0.95$, $D = 0.15$~m, solved for $T_g$ by Newton; $T_{nwb}$ approximated by the psychrometric wet bulb of Stull (2011), which understates the natural wet bulb in the sun by $\sim$0.5--1~$^\circ$C; $v$ = the wind at 1.2~m per cell, the same as PET's: the 10~m wind reduced by the frontal areas of buildings and trees, \code{urban\_heat/solweig/pipeline.py::urban\_pet}, $\geq 0.1$~m/s; observed runs keep the WBGT mean in their stats for the current column).
+  \item LST is not calculated for a scenario: it depends on the surface reflectance a satellite measures. SUHII ($\mathrm{LST}_{\mathrm{urban}} - \mathrm{LST}_{\mathrm{rural}}$) stays the observed raster; a uniform shift leaves the difference unchanged.
+\end{itemize}
+
 \section{Imported climate-effect indicators (importer app, Klimaateffectatlas)}
 \label{sec:kea}
 
@@ -899,70 +1017,75 @@ Let $K$ be the set of stored keys of the join model (\code{Neighborhood.id} or \
 
 \section{Summary table}
 
-\begin{longtable}{p{3.2cm} p{4.6cm} p{3.5cm} c}
+\small
+\begin{xltabular}{\linewidth}{l X X r}
 \toprule
 \textbf{App} & \textbf{Function} & \textbf{DAG edge(s) (abbrev.)} & \textbf{Status} \\
 \midrule
 \endhead
-administrative & \code{extrapolate()} & Population\_Growth$\to$Total\_Pop & \statusdone{} \\
-administrative & \code{\_city\_growth\_factor()} & Population\_Growth$\to$Total\_Pop & \statusdone{} \\
-administrative & \code{annual\_growth\_rate()} & Population\_Growth$\to$Total\_Pop & \statusdone{} \\
+administrative & \code{extrapolate()} & Population\_Growth $\to$ Total\_Pop & \statusdone{} \\
+administrative & \code{\_city\_growth\_factor()} & Population\_Growth $\to$ Total\_Pop & \statusdone{} \\
+administrative & \code{annual\_growth\_rate()} & Population\_Growth $\to$ Total\_Pop & \statusdone{} \\
 administrative & \code{City.save()} / \code{Province.save()} & (population cascade) & \statusdone{} \\
-physicalEnv & \code{urbanize\_around()} / \code{release\_ring()} & New\_Units$\to$LandCover (editor buildings) & \statusdone{} \\
-physicalEnv & \code{dsm\_patches.record\_change()} / \code{apply\_patches()} & Buildings$\to$DSM (editor buildings) & \statusdone{} \\
-physicalEnv & \code{dsm\_patches.record\_vegetation\_change()} & Vegetation\_Coverage$\to$DSM (editor trees, forests) & \statusdone{} \\
-builtup & \code{StreetCanyon.save()} / \code{signals.refresh\_canyons()} & Buildings/Streets$\to$Canyon\_Aspect & \statusdone{} \\
-builtup & \code{degurba.classify()} / \code{Urbanisation.save()} & Total\_Population/Buildings/LandCover$\to$Degree\_Urbanisation & \statusdone{} \\
-physicalEnv & \code{urbanize\_around()} & Buildings$\to$LandCover & \statusdone{} \\
-physicalEnv & \code{\_recompute\_neighborhood\_urban\_area()} & LandCover$\to$CityArea & \statusdone{} \\
---- & --- & New\_Units$\to$Buildings, Buildings$\to$Streets, Streets$\to$LandCover & \statusgap{} \\
-watersupply & \code{calculate\_total\_demand()} / \code{TotalWaterDemand.save()} & Total\_Pop$\to$Total\_Water\_Demand & \statusdone{} \\
-watersupply & \code{ConsumptionCapita.save()} & Total\_Pop$\to$Total\_Consumption & \statusdone{} \\
-watersupply & \code{calculate\_total\_extraction()} & Available\_FW$\to$Total\_Extraction & \statusdone{} \\
-watersupply & \code{calculate\_total\_production\_day()} & Total\_Extraction/Imported\_Water$\to$Total\_Water\_Prod & \statusdone{} \\
-watersupply & \code{calculate\_supply\_security()} / \code{SupplySecurity.save()} & Total\_Water\_Demand/Prod$\to$Supply\_Security$\to$Service\_Time & \statusdone{} \\
-watersupply & \code{calculate\_energy\_consumption()} & Total\_Extraction/Prod$\to$Energy\_Consumption & \statuspartial{} \\
-watersupply & \code{ExtractionWater.save()} (emissions) & Total\_Extraction$\to$CO2\_Emission & \statusdone{} \\
-watersupply & \code{OPEX.save()} & Extraction/Imported/WT\_Cost/Network$\to$OPEX & \statusdone{} \\
-watersupply & \code{calculate\_opex\_recovery()} & OPEX/CollectionRatio/NRW$\to$OPEX\_Recovery & \statuspartial{} \\
-watersupply & \code{MeteredResidential.save()} & Metered\_Res\_Water$\to$OPEX\_Recovery & \statusdone{} \\
-watersupply & \code{calculate\_collection\_ratio()} & Metered\_Res\_Water/User\_Acceptance/Water\_Tariff$\to$CollectionRatio & \statuspartial{} \\
-watersupply & \code{calculate\_coverage()} / \code{CoverageWaterSupply.save()} & Network/CityArea$\to$Coverage\_WS\_Area & \statusdone{} \\
-watersupply & \code{calculate\_nrw()} / \code{NonRevenueWater.save()} & Real/Apparent\_Losses$\to$NRW, ILI & \statuspartial{} \\
-watersupply & \code{NonRevenueWater.pipe} / \code{calculate\_nrw()} & Network$\to$Real\_Losses & \statusdone{} \\
-watersupply & \code{calculate\_water\_quality()} & Samples\_WQ$\to$User\_Acceptance\_WS & \statusgap{} \\
-watersupply & \code{calculate\_available\_freshwater()} & Infiltration/Meteorology$\to$Available\_FW & \statusgap{} \\
-physicalEnv & \code{weighted\_infiltration\_rate\_mm\_h()} / \code{AvailableFreshWater.save()} & LandCover/Soil\_Type$\to$Infiltration (stored) & \statusdone{} \\
-watersupply & \code{recharge\_depth\_cm\_yr()} / \code{AvailableFreshWater.save()} & Infiltration/Meteorology$\to$Available\_FW & \statusdone{} \\
-physicalEnv & \code{classify\_soil\_group()} / \code{SoilType.save()} & Soil\_Type$\to$Infiltration & \statusdone{} \\
-physicalEnv & \code{soil\_landcover\_composition()} & LandCover/Soil\_Type (+ groundwater)$\to$Infiltration & \statusdone{} \\
-physicalEnv & \code{scs\_runoff\_mm()} / \code{summarize\_infiltration()} & LandCover/Soil\_Type$\to$Infiltration & \statusdone{} \\
-watersupply & \code{calculate\_infiltration()} (dashboard) & LandCover/Soil\_Type$\to$Infiltration & \statusdone{} \\
-housing & \code{calculate\_supply\_demand()} & Total\_Population$\to$Housing\_Demand & \statusdone{} \\
-housing & \code{calculate\_new\_units()} & New\_Units$\to$Housing\_Supply & \statuspartial{} \\
-housing & \code{calculate\_pipeline\_land\_take()} (dashboard) & New\_Units$\to$Buildings$\to$LandCover & \statusdone{} \\
-housing & \code{calculate\_mortgage\_indicators()} & Central\_Bank/Credit\_Supply$\to$Mortgage & \statuspartial{} \\
-housing & \code{calculate\_house\_price\_index()} & Housing\_Demand/Property$\to$HPI & \statusgap{} \\
-housing & \code{HousingAffordability.save()} & Rent/Mortgage/Water\_Tariff$\to$Income\_Expenses$\to$Affordability\_Stress & \statusgap{} \\
-housing & \code{calculate\_zoning()} & Zoning\_Status$\to$Property/New\_Units & \statusgap{} \\
-housing & \code{calculate\_property\_indicators()} & Housing\_Supply/Accessibility$\to$Property & \statusgap{} \\
-urban\_heat & \code{calculate\_green\_area()} / \code{calculate\_vegetation\_coverage()} & LandCover$\to$Green\_Area$\to$Vegetation\_Coverage & \statuspartial{} \\
+physicalEnv & \code{urbanize\_around()} / \code{release\_ring()} & Buildings $\to$ LandCover (editor buildings) & \statusdone{} \\
+physicalEnv & \code{dsm\_patches.record\_change()} / \code{apply\_patches()} & Buildings $\to$ DSM (editor buildings) & \statusdone{} \\
+physicalEnv & \code{dsm\_patches.record\_vegetation\_change()} & Vegetation\_Coverage $\to$ DSM (editor trees, forests) & \statusdone{} \\
+builtup & \code{StreetCanyon.save()} / \code{signals.refresh\_canyons()} & Buildings / Streets $\to$ Canyon\_Aspect & \statusdone{} \\
+builtup & \code{degurba.classify()} / \code{Urbanisation.save()} & Total\_Population / Buildings / LandCover $\to$ Degree\_Urbanisation & \statusdone{} \\
+physicalEnv & \code{urbanize\_around()} & Buildings $\to$ LandCover & \statusdone{} \\
+physicalEnv & \code{\_recompute\_neighborhood\_urban\_area()} & LandCover $\to$ CityArea & \statusdone{} \\
+housing / builtup & \code{signals.project\_saved()} / \code{materialise()} & New\_Units $\to$ Buildings & \statusdone{} \\
+builtup & \code{generative.generate()} & Streets $\to$ Buildings (generated layouts) & \statuspartial{} \\
+physicalEnv & \code{street\_area()} / \code{release\_street()} & Streets $\to$ LandCover (editor streets) & \statusdone{} \\
+watersupply & \code{calculate\_total\_demand()} / \code{TotalWaterDemand.save()} & Total\_Pop $\to$ Total\_Water\_Demand & \statusdone{} \\
+watersupply & \code{ConsumptionCapita.save()} & Total\_Pop $\to$ Total\_Consumption & \statusdone{} \\
+watersupply & \code{calculate\_total\_extraction()} & Available\_FW $\to$ Total\_Extraction & \statusdone{} \\
+watersupply & \code{calculate\_total\_production\_day()} & Total\_Extraction / Imported\_Water $\to$ Total\_Water\_Prod & \statusdone{} \\
+watersupply & \code{calculate\_supply\_security()} / \code{SupplySecurity.save()} & Total\_Water\_Demand / Prod $\to$ Supply\_Security $\to$ Service\_Time & \statusdone{} \\
+watersupply & \code{calculate\_energy\_consumption()} & Total\_Extraction / Prod $\to$ Energy\_Consumption & \statuspartial{} \\
+watersupply & \code{ExtractionWater.save()} (emissions) & Total\_Extraction $\to$ CO2\_Emission & \statusdone{} \\
+watersupply & \code{OPEX.save()} & Extraction / Energy / Imported / WT\_Cost / Network $\to$ OPEX & \statusdone{} \\
+watersupply & \code{calculate\_opex\_recovery()} & OPEX / CollectionRatio / NRW $\to$ OPEX\_Recovery & \statuspartial{} \\
+watersupply & \code{MeteredResidential.save()} & Metered\_Res\_Water $\to$ OPEX\_Recovery & \statusdone{} \\
+watersupply & \code{calculate\_collection\_ratio()} & Metered\_Res\_Water / User\_Acceptance / Water\_Tariff $\to$ CollectionRatio & \statuspartial{} \\
+watersupply & \code{calculate\_coverage()} / \code{CoverageWaterSupply.save()} & Network / CityArea $\to$ Coverage\_WS\_Area & \statusdone{} \\
+watersupply & \code{calculate\_nrw()} & Real / Apparent\_Losses $\to$ NRW & \statusdone{} \\
+watersupply & \code{LeakageIndex.save()} / \code{chain.uarl\_m3\_d()} & Real\_Losses / Network $\to$ ILI & \statusdone{} \\
+watersupply & \code{NonRevenueWater.pipe} / \code{calculate\_nrw()} & Network $\to$ Real\_Losses & \statusdone{} \\
+watersupply & \code{calculate\_water\_quality()} & Samples\_WQ $\to$ User\_Acceptance\_WS & \statusgap{} \\
+watersupply & \code{calculate\_available\_freshwater()} & Infiltration / Meteorology $\to$ Available\_FW & \statusgap{} \\
+physicalEnv & \code{weighted\_infiltration\_rate\_mm\_h()} / \code{AvailableFreshWater.save()} & LandCover / Soil\_Type $\to$ Infiltration (stored) & \statusdone{} \\
+watersupply & \code{recharge\_depth\_cm\_yr()} / \code{AvailableFreshWater.save()} & Infiltration / Meteorology $\to$ Available\_FW & \statusdone{} \\
+physicalEnv & \code{classify\_soil\_group()} / \code{SoilType.save()} & Soil\_Type $\to$ Infiltration & \statusdone{} \\
+physicalEnv & \code{soil\_landcover\_composition()} & LandCover / Soil\_Type (+ groundwater) $\to$ Infiltration & \statusdone{} \\
+physicalEnv & \code{scs\_runoff\_mm()} / \code{summarize\_infiltration()} & LandCover / Soil\_Type $\to$ Infiltration & \statusdone{} \\
+watersupply & \code{calculate\_infiltration()} (dashboard) & LandCover / Soil\_Type $\to$ Infiltration & \statusdone{} \\
+housing & \code{calculate\_supply\_demand()} & Total\_Population $\to$ Housing\_Demand & \statusdone{} \\
+housing & \code{calculate\_new\_units()} & New\_Units $\to$ Housing\_Supply & \statuspartial{} \\
+housing & \code{calculate\_pipeline\_land\_take()} (dashboard) & New\_Units $\to$ Buildings $\to$ LandCover & \statusdone{} \\
+housing & \code{calculate\_mortgage\_indicators()} & Central\_Bank / Credit\_Supply $\to$ Mortgage & \statuspartial{} \\
+housing & \code{calculate\_house\_price\_index()} & Housing\_Demand / Property $\to$ HPI & \statusgap{} \\
+housing & \code{HousingAffordability.save()} & Rent / Mortgage / Water\_Tariff $\to$ Income\_Expenses $\to$ Affordability\_Stress & \statusgap{} \\
+housing & \code{calculate\_zoning()} & Zoning\_Status $\to$ Property / New\_Units & \statusgap{} \\
+housing & \code{calculate\_property\_indicators()} & Housing\_Supply / Accessibility $\to$ Property & \statusgap{} \\
+urban\_heat & \code{calculate\_green\_area()} / \code{calculate\_vegetation\_coverage()} & LandCover $\to$ Green\_Area $\to$ Vegetation\_Coverage & \statuspartial{} \\
 urban\_heat & \code{calculate\_urban\_morphology()} & reads stored Canyon\_Aspect & \statusdone{} \\
-urban\_heat & \code{get\_thermal\_indices()} & DSM$\to$SVF$\to$Tmrt/PET$\to$UTCI & \statusgap{} \\
-urban\_heat & \code{lst.pipeline.calculate\_lst()} / \code{lst.smw} & RS\_Imagery/LandCover$\to$LST & \statusdone{} \\
-urban\_heat & \code{solweig.pipeline.calculate()} & DSM$\to$SVF$\to$Tmrt$\to$UTCI/PET; Meteorology$\to$Tmrt/PET/UTCI & \statusdone{} \\
-urban\_heat & \code{calculate\_nbs\_coverage()} & UTCI/PET$\to$NBS & \statusgap{} \\
+urban\_heat & \code{get\_thermal\_indices()} & DSM $\to$ SVF $\to$ Tmrt / PET $\to$ UTCI & \statusgap{} \\
+urban\_heat & \code{lst.pipeline.calculate\_lst()} / \code{lst.smw} & RS\_Imagery / LandCover $\to$ LST & \statusdone{} \\
+urban\_heat & \code{solweig.pipeline.calculate()} & DSM $\to$ SVF $\to$ Tmrt $\to$ UTCI / PET; Meteorology $\to$ Tmrt / PET / UTCI & \statusdone{} \\
+urban\_heat & \code{calculate\_nbs\_coverage()} & UTCI / PET $\to$ NBS & \statusgap{} \\
 mainMap & \code{feature\_form()} / \code{feature\_delete()} & (tooling: edits State objects via \code{save()}) & \statusdone{} \\
 mainMap & \code{journal()} / \code{restore\_backup()} & (tooling: what-if restore point) & \statusdone{} \\
 importer & \code{\_prepare\_features()} / \code{\_enrich\_rows()} (KEA) & (stored inputs; no edge) & \statusdone{} \\
 \bottomrule
-\end{longtable}
+\end{xltabular}
+\normalsize
 
 \section*{Notes on use}
 
-This document is generated from a manual audit of the codebase at the commit referenced in the accompanying \code{TODO.md}. Line numbers will drift as the code evolves; re-verify against \code{grep -n "def save"} in the relevant module before citing a location in a manuscript. The status tags mirror the coverage figures reported in the project's DPSIR gap analysis: of 103 edges in \code{core/DAG.dot} (one, \texttt{Total\_Water\_Prod}$\to$\texttt{OPEX}, is listed twice), 31 are backed by real derivation logic as of this audit; the three added since the original audit are \texttt{LandCover}$\to$\texttt{Infiltration}, the new \texttt{Soil\_Type}$\to$\texttt{Infiltration}, and \texttt{New\_Units}$\to$\texttt{LandCover} for buildings drawn in the map editor.
+This document is generated from a manual audit of the codebase at the commit referenced in the accompanying \code{TODO.md}. Line numbers will drift as the code evolves; re-verify against \code{grep -n "def save"} in the relevant module before citing a location in a manuscript. The status tags mirror the coverage figures reported in the project's DPSIR gap analysis: of 103 edges in \code{core/DAG.dot} (one, \texttt{Total\_Water\_Prod} $\to$ \texttt{OPEX}, is listed twice), 31 are backed by real derivation logic as of this audit; the three added since the original audit are \texttt{LandCover} $\to$ \texttt{Infiltration}, the new \texttt{Soil\_Type} $\to$ \texttt{Infiltration}, and \texttt{New\_Units} $\to$ \texttt{LandCover} for buildings drawn in the map editor.
 
-Beyond the CBS 85173NED forecasts used for the \texttt{Population\_Growth}$\to$\texttt{Total\_Population} projection, the external data catalog also offers a finer-grained, Google Earth Engine-hosted population source, the High Resolution Settlement Layer (HRSL) \cite{HRSL2016}, for direct raster ingestion where a sub-neighbourhood estimate is preferable to the CBS city-level forecast.
+Beyond the CBS 85173NED forecasts used for the \texttt{Population\_Growth} $\to$ \texttt{Total\_Population} projection, the external data catalog also offers a finer-grained, Google Earth Engine-hosted population source, the High Resolution Settlement Layer (HRSL) \cite{HRSL2016}, for direct raster ingestion where a sub-neighbourhood estimate is preferable to the CBS city-level forecast.
 
 \begin{thebibliography}{99}
 
@@ -1009,10 +1132,34 @@ Beyond the CBS 85173NED forecasts used for the \texttt{Population\_Growth}$\to$\
 
 \bibitem{Oke2017} Oke, T.R., Mills, G., Christen, A., Voogt, J.A. (2017). \textit{Urban Climates}. Cambridge University Press.
 
+\bibitem{ParishMuller2001} Parish, Y.I.H., M\"uller, P. (2001). Procedural modeling of cities. \textit{Proceedings of SIGGRAPH 2001}, 301--308.
+
+\bibitem{Bbl} \textit{Besluit bouwwerken leefomgeving} (Bbl), in force since 1 January 2024, art.\ 4.163 and \S4.3.10. \url{https://wetten.overheid.nl}.
+
+\bibitem{IPLOindeelbaarheid} Informatiepunt Leefomgeving. \textit{Vrije indeelbaarheid: regels bij nieuwbouw}. \url{https://iplo.nl/regelgeving/regels-voor-activiteiten/technische-bouwactiviteit/nieuwbouw/rijksregels/vrije-indeelbaarheid/}.
+
+\bibitem{IPLOwoning} Informatiepunt Leefomgeving (2026). \textit{Besluit bouwwerken leefomgeving en woning} (infoblad, February 2026). \url{https://iplo.nl/publish/pages/228127/infoblad-besluit-bouwwerken-leefomgeving-en-woning_200223-februari-2026.pdf}.
+
+\bibitem{IPLOdaglicht} Informatiepunt Leefomgeving. \textit{Daglichttoetreding: regels bij nieuwbouw} (NEN 2057). \url{https://iplo.nl/regelgeving/regels-voor-activiteiten/technische-bouwactiviteit/nieuwbouw/rijksregels/daglichttoetreding/}.
+
+\bibitem{IPLObrand} Informatiepunt Leefomgeving. \textit{Brandcompartiment: regels bij nieuwbouw}. \url{https://iplo.nl/regelgeving/regels-voor-activiteiten/technische-bouwactiviteit/nieuwbouw/rijksregels/brandcompartiment/}.
+
+\bibitem{NEN2580} NEN 2580:2007. \textit{Oppervlakten en inhouden van gebouwen --- Termen, definities en bepalingsmethoden}. NEN, Delft.
+
+\bibitem{NEN6068} NEN 6068. \textit{Bepaling van de weerstand tegen branddoorslag en brandoverslag tussen ruimten}. NEN, Delft.
+
+\bibitem{BIJ12IKN} BIJ12. \textit{Informatiekaart Natuur} (Natuurnetwerk Nederland, WFS \code{IMNa\_IKN:natuur\_netwerk\_nederland}). \url{https://ogc-geoservices.bij12.nl/geoserver/IMNa_IKN/wfs}.
+
+\bibitem{Vanegas2012} Vanegas, C.A., Kelly, T., Weber, B., Halatsch, J., Aliaga, D.G., M\"uller, P. (2012). Procedural generation of parcels in urban modeling. \textit{Computer Graphics Forum}, 31(2), 681--690.
+
+\bibitem{BerghauserPont2010} Berghauser Pont, M., Haupt, P. (2010). \textit{Spacematrix: Space, Density and Urban Form}. NAi Publishers.
+
 \bibitem{CORINE} European Environment Agency. \textit{CORINE Land Cover nomenclature}. \url{https://land.copernicus.eu/}.
 
 \bibitem{HILUCS} European Commission. \textit{INSPIRE Data Specification on Land Use (D2.8.III.4)}, Hierarchical INSPIRE Land Use Classification System (HILUCS). \url{http://inspire.ec.europa.eu/codelist/HILUCSValue}.
 
+\bibitem{KNMI2023} KNMI (2023). \textit{KNMI'23 climate scenarios for the Netherlands}. KNMI Publication 23-03, De Bilt. Table 1. \url{https://www.knmi.nl/klimaatscenarios}.
+\bibitem{KNMI2023stations} KNMI (2023). \textit{KNMI'23 climate scenarios, key figures per station} (table Temperatuur: warmest day of the year, days with $T_x \geq 30$ and $\geq 35~^\circ$C, tropical nights; change relative to 1991--2020). \url{https://klimaatscenarios-data.knmi.nl}, retrieved 2026-11-14.
 \end{thebibliography}
 
 \end{document}

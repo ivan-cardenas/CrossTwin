@@ -95,6 +95,7 @@
       document.getElementById('svf-card')?.classList.remove('visible');
       document.getElementById('solweig-card')?.classList.remove('visible');
       document.getElementById('degurba-card')?.classList.remove('visible');
+      document.getElementById('generator-card')?.classList.remove('visible');
       card.classList.add('visible');
       if (typeof setActionsMenuOpen === 'function') setActionsMenuOpen(false);
       if (!canCalculate) {

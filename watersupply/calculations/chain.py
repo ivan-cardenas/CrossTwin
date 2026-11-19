@@ -1,0 +1,293 @@
+"""
+The population -> consumption -> demand -> supply security -> service time
+chain of the water supply, written once and used by both paths:
+
+* the stored path: ConsumptionCapita / TotalWaterDemand / SupplySecurity
+  save() (re-run by watersupply/signals.py) with the *baseline* population of
+  the record's year, i.e. the CBS median forecast without extra growth;
+* the dashboard path: views._build_indicators with the population what-if of
+  the request (forecast variant + extra growth from the population dock),
+  which is never written to the database.
+
+So the population slider is a deviation from the stored baseline computed by
+the same equations, not a second implementation of them. Everything here is
+pure except baseline_population(), the one function that reads the database.
+
+DAG edges: Total_Population, ConsumptionCapita -> Total_Water_Demand
+           Total_Water_Demand, Total_Water_Prod -> Supply_Security -> Service_Time
+"""
+
+SERVICE_HOURS_MAX = 24
+
+# Total drinking-water demand = residential demand x this factor: small businesses
+# (shops, offices, small trade on household-type connections) add 20 % to the
+# residential use. Source: Vitens reports and calculations (core/data_sources.py, "Vitens small business").
+SMALL_BUSINESS_DEMAND_FACTOR = 1.2
+
+
+def baseline_population(city, year):
+    """
+    Population the stored chain uses for `city` in `year`: the CBS median
+    forecast without extra growth (the population dock's default), falling
+    back to the current population when no projection is imported. None when
+    the city has neither, so callers can keep a stored value instead of
+    writing zero.
+
+    DAG edge: Population_Growth -> Total_Population
+    """
+    from administrative.calculations.population import get_population  # avoid import cycle at startup
+
+    population = get_population(city, year)
+    if not population and city.currentPopulation is None:
+        return None
+    return population
+
+
+def residential_demand_m3_d(consumption_L_d, population):
+    """Daily residential water demand in m3/day: L/person/day / 1000 * persons."""
+    return consumption_L_d / 1000 * population
+
+
+def demand_m3_d(consumption_L_d, population, small_business_factor=None):
+    """
+    Daily total water demand in m3/day: residential demand x the small business
+    factor (default SMALL_BUSINESS_DEMAND_FACTOR, Vitens).
+
+    DAG edges: Total_Population, ConsumptionCapita -> Total_Water_Demand
+    """
+    if small_business_factor is None:
+        small_business_factor = SMALL_BUSINESS_DEMAND_FACTOR
+    return residential_demand_m3_d(consumption_L_d, population) * small_business_factor
+
+
+def watershed_population_share(unit_population, stored_population, population_served=None):
+    """
+    Share (0-1) of a watershed's extraction that goes to a unit:
+
+        share = P_unit / max(P_stored, P_served)
+
+    P_unit: the unit's neighborhoods in the watershed; P_stored: all stored
+    neighborhoods in the watershed; P_served: Watershed.population_served, the
+    residents the watershed actually supplies. Without P_served the stored
+    neighborhoods would split all the water among themselves even when only one
+    city of a regional supply area is imported. 0 when neither population is known.
+
+    DAG edges: Available_FW -> Total_Extraction (watershed allocation)
+    """
+    denominator = max(stored_population or 0, population_served or 0)
+    return (unit_population or 0) / denominator if denominator else 0.0
+
+
+def consumption_m3_yr(consumption_L_d, population):
+    """Yearly residential water consumption in m3/year (households only, no small business factor)."""
+    return residential_demand_m3_d(consumption_L_d, population) * 365
+
+
+def supply_security_pct(production_m3_d, demand):
+    """Production as a percentage of demand (0 when there is no demand)."""
+    return production_m3_d / demand * 100 if demand else 0
+
+
+def service_time_hours(production_m3_d, demand):
+    """
+    Hours of supply per day: full service when production covers demand,
+    otherwise the covered share of 24 h. Without demand, full service only if
+    something is produced.
+    """
+    if not demand:
+        return SERVICE_HOURS_MAX if production_m3_d > 0 else 0
+    if production_m3_d >= demand:
+        return SERVICE_HOURS_MAX
+    return round(SERVICE_HOURS_MAX * production_m3_d / demand, 1)
+
+
+DAYS_PER_YEAR = 365
+
+
+def energy_cost_EUR_yr(kwh_day, price_EUR_kWh):
+    """
+    Yearly electricity cost of pumping: kWh/day x 365 x EUR/kWh.
+
+    DAG edge: Energy_Consumption -> OPEX
+    """
+    return kwh_day * DAYS_PER_YEAR * price_EUR_kWh
+
+
+def share_pct(part, total):
+    """part / total in percent, one decimal (0 without a total)."""
+    return round(part / total * 100, 1) if total else 0
+
+
+def coverage_pct(served, total):
+    """
+    Share of the water users inside the network's service area, in percent
+    (0 without users). DAG edge: NumberUsers -> Coverage_WS
+    """
+    return round(served / total * 100, 1) if total else 0
+
+
+def recharge_Mm3_yr(infiltration_depth_cm_yr, area_m2):
+    """
+    Yearly recharge of a fresh-water source in Mm3/year: the depth of water
+    that infiltrates in a year over the source's area.
+        V = depth [cm/yr] / 100 * area [m2] / 1e6
+    The infiltration *rate* (cm/h) is a capacity during rain, not a yearly
+    amount, so it does not enter here.
+
+    DAG edge: Infiltration -> Available_FW
+    """
+    return infiltration_depth_cm_yr / 100 * area_m2 / 1e6
+
+
+def recharge_depth_cm_yr(daily_rain_mm, et_ref_mm_yr, composition):
+    """
+    Yearly recharge depth (cm/yr) of an area from a year of daily rain, a
+    year's reference evapotranspiration and its soil-group x land-cover
+    composition, as a simple yearly water balance:
+
+        runoff_d = sum over pieces of SCS Q(P_d, CN_piece) x area_piece / area
+        recharge = max(0, sum(P_d) - sum(runoff_d) - ET_ref) / 10
+
+    Q is computed per piece and day (physicalEnv.calculations.soil.scs_runoff_mm), because
+    it is non-linear in both P and CN. Simplifications: Makkink reference ET
+    with crop factor 1 for every surface, no soil-moisture store between days
+    (a dry year gives 0, not a deficit carried over), and pieces without a
+    curve number are left out of the area.
+
+    composition: [(soil_group, land_cover_class, area_m2), ...]
+    Returns None when no piece has a curve number.
+
+    DAG edges:  Meteorology  -> Available_FW
+                LandCover    -> Infiltration -> Available_FW
+                Soil_Type    -> Infiltration -> Available_FW
+    """
+    balance = yearly_water_balance_mm(daily_rain_mm, et_ref_mm_yr, composition)
+    return None if balance is None else balance['recharge_mm'] / 10
+
+
+def yearly_water_balance_mm(daily_rain_mm, et_ref_mm_yr, composition):
+    """
+    The yearly water balance behind recharge_depth_cm_yr, in mm over the
+    area: {'rain_mm', 'runoff_mm', 'et_mm', 'recharge_mm'}, where
+
+        recharge = max(0, rain - runoff - ET_ref)
+        et       = the part of ET_ref the rain left after runoff
+                   (min(ET_ref, rain - runoff)), so rain = runoff + et + recharge
+
+    None when no piece has a curve number. See recharge_depth_cm_yr for the
+    method and its simplifications.
+
+    DAG edges:  Meteorology  -> Available_FW
+                LandCover    -> Infiltration -> Available_FW
+                Soil_Type    -> Infiltration -> Available_FW
+    """
+    from physicalEnv.calculations.soil import curve_number, scs_runoff_mm
+
+    # Pieces with the same curve number behave alike: weight per CN.
+    area_by_cn = {}
+    for soil_group, land_cover_class, area_m2 in composition:
+        cn = curve_number(land_cover_class, soil_group)
+        if cn is None or area_m2 <= 0:
+            continue
+        area_by_cn[cn] = area_by_cn.get(cn, 0.0) + area_m2
+    total = sum(area_by_cn.values())
+    if not total:
+        return None
+    shares = [(cn, a / total) for cn, a in area_by_cn.items()]
+    rain = runoff = 0.0
+    for p in daily_rain_mm:
+        if not p or p <= 0:
+            continue
+        rain += p
+        runoff += sum(scs_runoff_mm(p, cn) * share for cn, share in shares)
+    et_ref = et_ref_mm_yr or 0.0
+    return {
+        'rain_mm':     rain,
+        'runoff_mm':   runoff,
+        'et_mm':       min(et_ref, rain - runoff),
+        'recharge_mm': max(0.0, rain - runoff - et_ref),
+    }
+
+
+def scenario_water_balance(balance, composition, climate_key):
+    """
+    yearly_water_balance_mm of a station year (`balance` from
+    weather.calculations.water_balance.yearly_water_balance) moved into a
+    KNMI'23 scenario by delta-change: each day's rain x (1 + its season's
+    precipitation change), the year's Makkink ET x (1 + the yearly change)
+    (weather/calculations/climate.py). The current climate gives the observed
+    balance. Used by the water dashboard's recharge card and the stored
+    watersupply.ScenarioFreshWater. None without a balance or curve numbers.
+
+    DAG edges:  Climate_Change -> Meteorology -> Available_FW
+    """
+    from weather.calculations import climate
+
+    if not balance:
+        return None
+    # The station year already holds part of the change (climate.observed_offset).
+    year = balance.get('year')
+    return yearly_water_balance_mm(
+        climate.apply_to_daily_rain(balance['daily_rain_mm'], balance.get('daily_months'), climate_key, year),
+        climate.apply_to_et(balance['et_ref_mm'], climate_key, year),
+        composition)
+
+
+# ── Unavoidable Annual Real Losses and the Infrastructure Leakage Index ──
+#
+# UARL [L/day] = (18 Lm + 0.8 Nc + 25 Lp) x P   (Lambert et al. 1999, IWA Water
+# Loss Task Force; Lm = mains km, Nc = service connections, Lp = km of private
+# pipe from the property boundary to the meter, P = average pressure in m).
+UARL_MAINS_L_KM_M = 18.0        # L / km of mains / day / m of pressure
+UARL_CONNECTION_L_M = 0.8       # L / service connection / day / m of pressure
+UARL_PRIVATE_L_KM_M = 25.0      # L / km of private pipe / day / m of pressure
+L_PER_M3 = 1000.0
+
+# The equation holds for larger systems only (Lambert & McKenzie 2002,
+# "Practical experience in using the Infrastructure Leakage Index"):
+UARL_MIN_CONNECTIONS = 3000     # service connections
+UARL_MIN_DENSITY_CONN_KM = 20   # connections per km of mains
+UARL_MIN_PRESSURE_M = 25        # m
+
+# No measured pressure or private-pipe data is imported yet. The pressure is an
+# editable value per city and year (CoverageWaterSupply.avg_pressure_m) that
+# starts at DEFAULT_PRESSURE_M: just above the equation's validity floor and
+# within Dutch distribution pressures (2.5-3.5 bar). The private pipe length
+# per connection is editable on each LeakageIndex row: 5 m is the typical
+# front-garden length to a meter in the meterkast of a Dutch dwelling.
+DEFAULT_PRESSURE_M = 30.0
+DEFAULT_PRIVATE_PIPE_M = 5.0
+
+
+def uarl_m3_d(mains_km, connections, private_pipe_km, pressure_m):
+    """
+    Unavoidable Annual Real Losses in m³/day (IWA, Lambert et al. 1999):
+    (18 Lm + 0.8 Nc + 25 Lp) x P / 1000.
+
+    DAG edge: Network -> ILI
+    """
+    litres = (UARL_MAINS_L_KM_M * mains_km
+              + UARL_CONNECTION_L_M * connections
+              + UARL_PRIVATE_L_KM_M * private_pipe_km) * pressure_m
+    return litres / L_PER_M3
+
+
+def ili(carl_m3_d, uarl_m3_d):
+    """
+    Infrastructure Leakage Index = CARL / UARL (two decimals; None without UARL).
+    Real losses only: apparent losses are no leakage and do not enter it.
+
+    DAG edges: Real_Losses -> ILI, Network -> ILI
+    """
+    if not uarl_m3_d or uarl_m3_d <= 0 or carl_m3_d is None:
+        return None
+    return round(carl_m3_d / uarl_m3_d, 2)
+
+
+def uarl_reliable(mains_km, connections, pressure_m):
+    """Whether the system is large and dense enough for the UARL equation."""
+    if not mains_km:
+        return False
+    return (connections >= UARL_MIN_CONNECTIONS
+            and connections / mains_km >= UARL_MIN_DENSITY_CONN_KM
+            and pressure_m >= UARL_MIN_PRESSURE_M)

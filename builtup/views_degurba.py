@@ -17,7 +17,7 @@ def _json(data, status=200):
 
 @require_GET
 def degurba_info(request):
-    from .urbanisation import status
+    from .calculations.urbanisation import status
 
     data = status()
     data["can_calculate"] = request.user.is_staff
@@ -28,7 +28,7 @@ def degurba_info(request):
 def degurba_calculate(request):
     if not request.user.is_staff:
         return _json({"error": "Log in as a staff user to calculate the Degree of Urbanisation."}, status=403)
-    from .urbanisation import rebuild, status
+    from .calculations.urbanisation import rebuild, status
 
     summary = rebuild()
     if summary is None:

@@ -1,9 +1,24 @@
+from unittest import mock
 from django.test import TestCase
 from django.urls import reverse
 
 from administrative.models import PopulationProjection
 
 from .factories import make_city, make_consumption_capita
+
+
+# These tests pin the population -> demand plumbing with residential demand only;
+# the small business factor has its own tests (test_small_business_demand.py).
+_factor_patch = mock.patch("watersupply.calculations.chain.SMALL_BUSINESS_DEMAND_FACTOR", 1.0)
+
+
+def setUpModule():
+    _factor_patch.start()
+
+
+def tearDownModule():
+    _factor_patch.stop()
+
 
 HX = {'HTTP_HX_REQUEST': 'true'}
 

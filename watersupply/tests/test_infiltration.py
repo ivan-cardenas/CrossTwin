@@ -3,7 +3,7 @@ from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
 from physicalEnv.models import LandCoverClasses, LandCoverVector, SoilArea, SoilType
-from physicalEnv.soil import scs_runoff_mm
+from physicalEnv.calculations.soil import scs_runoff_mm
 
 from .factories import make_city
 
@@ -102,7 +102,7 @@ class RechargeIndicatorTests(TestCase):
 
 class WaterBalanceEquationTests(SimpleTestCase):
     def test_the_parts_add_up_to_the_rain_and_recharge_matches_the_stored_equation(self):
-        from watersupply.chain import recharge_depth_cm_yr, yearly_water_balance_mm
+        from watersupply.calculations.chain import recharge_depth_cm_yr, yearly_water_balance_mm
 
         rain, pieces = [0.0] * 200 + [3.0] * 140 + [40.0] * 25, [("A", "pastures", 1.0), ("D", "urban fabric", 1.0)]
         balance = yearly_water_balance_mm(rain, 560.0, pieces)

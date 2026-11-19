@@ -20,5 +20,9 @@
     "anthropic-skills:docs": "off",
     "graphify": "user-invocable-only"
   },
-  "outputStyle": "Concise"
+  "outputStyle": "Concise",
+  "enabledMcpjsonServers": [
+    "context7",
+    "postgres"
+  ]
 }

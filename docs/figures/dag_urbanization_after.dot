@@ -13,7 +13,7 @@ digraph after {
     Zoning_Status [label="Zoning Status", fillcolor="#0097A7"]; New_Units [label="New Units\nCompleted", fillcolor="#0097A7"];
     Population_Growth -> Total_Population; Total_Population -> Housing_Demand;
     Housing_Demand -> Zoning_Status; Zoning_Status -> New_Units; New_Units -> Buildings;
-    Buildings -> Streets; Buildings -> LandCover; Streets -> LandCover; LandCover -> CityArea;
+    Streets -> Buildings; Buildings -> LandCover; Streets -> LandCover; LandCover -> CityArea;
     CityArea -> Network; Network -> New_Units [style=dashed, label=" lag 1", fontsize=9, fontcolor="#78909C"];
     Total_Population -> Degree_Urbanisation; Buildings -> Degree_Urbanisation; LandCover -> Degree_Urbanisation;
 }

@@ -15,8 +15,15 @@ Dependency chain implemented here (source -> dependent):
     and the population of every city sharing a watershed (it sets each city's
     share of the watershed's extraction) -> SupplySecurity
     WaterTreatment, MeteredResidential, PipeNetwork -> OPEX
-    PipeNetwork, UsersLocation -> CoverageWaterSupply
-    NonRevenueWater -> ILI of the same-year Real-loss records
+    ElectricityCost (Energy) -> TotalWaterProduction, OPEX of that year
+    Property.residents (housing: residents_changed), Property saved/deleted,
+    PipeNetwork, the latest CoverageWaterSupply.buffer_m
+        -> UsersLocation (users = residents, population served = residents
+           within the pipe buffer) -> CoverageWaterSupply, MeteredResidential
+    PipeNetwork -> CoverageWaterSupply (service area)
+    NonRevenueWater (real losses) -> LeakageIndex of that year (CARL)
+    PipeNetwork, CoverageWaterSupply (connections, pressure per city)
+        -> LeakageIndex (UARL; latest year, or the coverage year onwards)
     SoilArea, SoilType, LandCoverVector, GroundwaterDepth (soil x land cover)
     and daily Meteorology (rain, reference ET)
         -> AvailableFreshWater infiltration rate, recharge depth and yield
@@ -36,21 +43,25 @@ import threading
 from contextlib import contextmanager
 
 from django.core.exceptions import ValidationError
-from django.db.models.signals import m2m_changed, post_delete, post_save
+from django.db.models.signals import m2m_changed, post_delete, post_save, pre_save
 from django.dispatch import receiver
 from django.utils import timezone
 
 from administrative.models import City, PopulationProjection
-from administrative.population import DEFAULT_SCENARIO
+from administrative.calculations.population import DEFAULT_SCENARIO
 from administrative.signals import city_population_changed
-from physicalEnv.landcover import landcover_created
+from builtup.models import Property
+from Energy.models import ElectricityCost
+from builtup.signals import residents_changed
+from physicalEnv.calculations.landcover import landcover_created
+from physicalEnv.signals import urban_area_changed
 from physicalEnv.models import GroundwaterDepth, LandCoverVector, SoilArea, SoilType
 from weather.knmi import daily_water_balance_changed
 from weather.models import Meteorology
 
 from .models import (
     AvailableFreshWater, ConsumptionCapita, CoverageWaterSupply, ExtractionWater,
-    ImportedWater, MeteredResidential, NonRevenueWater, OPEX, PipeNetwork,
+    ImportedWater, LeakageIndex, MeteredResidential, NonRevenueWater, OPEX, PipeNetwork,
     SupplySecurity, TotalWaterDemand, TotalWaterProduction, UsersLocation,
     WaterTreatment, Watershed,
 )
@@ -107,6 +118,51 @@ def _refresh_watershed_neighbours(city_id):
     _refresh_latest_supply_security(_cities_in_watersheds(list(_watersheds_of_city(city_id))) - {city_id})
 
 
+# ── leakage index (ILI) refresh, batched ─────────────────────────────
+
+# Per-thread set of requested LeakageIndex refreshes while batching; None otherwise.
+# An entry is a year (refresh that year onwards) or LATEST (only the latest row).
+_leakage = threading.local()
+LATEST = 'latest'
+
+
+@contextmanager
+def _batched_leakage():
+    """Collect LeakageIndex refreshes inside the block and run each once at its end."""
+    if getattr(_leakage, "requests", None) is not None:
+        yield
+        return
+    _leakage.requests = set()
+    try:
+        yield
+    finally:
+        requests, _leakage.requests = _leakage.requests, None
+        _refresh_leakage_now(requests)
+
+
+def _refresh_leakage(request=LATEST):
+    pending = getattr(_leakage, "requests", None)
+    if pending is not None:
+        pending.add(request)
+        return
+    _refresh_leakage_now({request})
+
+
+def _refresh_leakage_now(requests):
+    if not requests:
+        return
+    years = {r for r in requests if r != LATEST}
+    rows = LeakageIndex.objects.none()
+    if years:
+        rows = LeakageIndex.objects.filter(year__gte=min(years))
+    pks = set(rows.values_list('pk', flat=True))
+    if LATEST in requests:
+        latest = LeakageIndex.objects.order_by('-year').values_list('pk', flat=True).first()
+        if latest is not None:
+            pks.add(latest)
+    _resave(LeakageIndex.objects.filter(pk__in=pks).order_by('year'))
+
+
 # ── population -> consumption -> demand -> supply security ───────────
 
 # Per-thread set of cities whose water refresh is postponed; None when not deferring.
@@ -128,24 +184,37 @@ def deferred_water_refresh():
     _deferred.pending = set()
     _deferred.security = set()
     _deferred.freshwater = set()
-    try:
-        yield
-    except BaseException:
-        pending, security, freshwater = _deferred.pending, _deferred.security, _deferred.freshwater
+    _deferred.users = set()
+    _deferred.coverage = set()
+
+    def take():
+        queued = (_deferred.pending, _deferred.security, _deferred.freshwater,
+                  _deferred.users, _deferred.coverage)
         _deferred.pending = _deferred.security = _deferred.freshwater = None
+        _deferred.users = _deferred.coverage = None
+        return queued
+
+    # The LeakageIndex refreshes requested by the block and by the flush below
+    # (pipes, coverage records) run once when it ends.
+    with _batched_leakage():
         try:
-            _flush_water_refresh(pending, security, freshwater)
-        except Exception:
-            # e.g. the transaction is already broken; don't mask the original error
-            logger.exception("Deferred water refresh failed after an aborted block")
-        raise
-    else:
-        pending, security, freshwater = _deferred.pending, _deferred.security, _deferred.freshwater
-        _deferred.pending = _deferred.security = _deferred.freshwater = None
-        _flush_water_refresh(pending, security, freshwater)
+            yield
+        except BaseException:
+            queued = take()
+            try:
+                _flush_water_refresh(*queued)
+            except Exception:
+                # e.g. the transaction is already broken; don't mask the original error
+                logger.exception("Deferred water refresh failed after an aborted block")
+            raise
+        else:
+            _flush_water_refresh(*take())
 
 
-def _flush_water_refresh(city_ids, security_city_ids=(), freshwater_ids=()):
+def _flush_water_refresh(city_ids, security_city_ids=(), freshwater_ids=(),
+                         users_neighborhood_ids=(), coverage_city_ids=()):
+    if users_neighborhood_ids or coverage_city_ids:
+        _refresh_users(users_neighborhood_ids, coverage_city_ids)
     security_city_ids = set(security_city_ids)
     if freshwater_ids:
         # Each source's post_save refreshes every city's supply security:
@@ -199,7 +268,7 @@ def city_population_cascaded(sender, city_id, **kwargs):
 def projection_changed(sender, instance, raw=False, **kwargs):
     """
     The stored chain uses the median forecast of each record's year as its
-    population (watersupply/chain.py::baseline_population), so a new or
+    population (watersupply/calculations/chain.py::baseline_population), so a new or
     corrected forecast is a population change. The low/high variants only feed
     the dashboard's what-if, which is computed per request.
 
@@ -311,44 +380,243 @@ def treatment_changed(sender, instance, raw=False, **kwargs):
         _resave(OPEX.objects.filter(year=instance.year))
 
 
+@receiver(post_save, sender=ElectricityCost, dispatch_uid="water_electricity_saved")
+@receiver(post_delete, sender=ElectricityCost, dispatch_uid="water_electricity_deleted")
+def electricity_changed(sender, instance, raw=False, **kwargs):
+    """
+    The electricity price of a year prices the pump energy of that year's
+    production and OPEX records.
+
+    DAG edges: Energy_Cost -> Total_Water_Prod
+               Energy_Consumption -> OPEX (the price turns the kWh into EUR)
+    """
+    if raw:
+        return
+    _resave(TotalWaterProduction.objects.filter(year=instance.year))
+    _resave(OPEX.objects.filter(year=instance.year))
+
+
 # ── network -> coverage, OPEX ────────────────────────────────────────
+
+# ── residents, pipes -> number of users -> coverage ──────────────────
+
+# Depth of the _refresh_users() calls running on this thread: while > 0 the
+# users and coverage receivers leave the coverage to the refresh, which
+# re-saves it once at the end (and so cannot re-enter itself).
+_users_batch = threading.local()
+
+
+def _in_users_refresh():
+    return getattr(_users_batch, "depth", 0) > 0
+
+
+def _refresh_users(neighborhood_ids, coverage_city_ids=()):
+    """
+    Re-save the UsersLocation of each given neighborhood (creating it where the
+    neighborhood holds properties with residents but has no row yet), then the
+    CoverageWaterSupply records of their cities and of `coverage_city_ids`.
+    Queued while deferred_water_refresh() is active.
+
+    DAG edges: Total_Population -> NumberUsers, Coverage_WS_Area -> NumberUsers,
+               NumberUsers -> Coverage_WS
+    """
+    neighborhood_ids = {n for n in neighborhood_ids if n is not None}
+    coverage_city_ids = {c for c in coverage_city_ids if c is not None}
+    if not neighborhood_ids and not coverage_city_ids:
+        return
+    pending = getattr(_deferred, "users", None)
+    if pending is not None:
+        pending.update(neighborhood_ids)
+        _deferred.coverage.update(coverage_city_ids)
+        return
+
+    _users_batch.depth = getattr(_users_batch, "depth", 0) + 1
+    try:
+        with _batched_leakage():
+            _refresh_users_now(neighborhood_ids, coverage_city_ids)
+    finally:
+        _users_batch.depth -= 1
+
+
+def _refresh_users_now(neighborhood_ids, coverage_city_ids):
+    from administrative.models import Neighborhood
+
+    from .calculations.users import neighborhoods_with_residents
+
+    if neighborhood_ids:
+        existing = list(UsersLocation.objects.filter(neighborhood_id__in=neighborhood_ids))
+        _resave(existing)
+        have = {u.neighborhood_id for u in existing}
+        for neighborhood_id in sorted(neighborhoods_with_residents(neighborhood_ids) - have):
+            _resave([UsersLocation(neighborhood_id=neighborhood_id)])
+        coverage_city_ids |= set(
+            Neighborhood.objects.filter(pk__in=neighborhood_ids, district__isnull=False)
+            .values_list('district__city_id', flat=True))
+    _resave(CoverageWaterSupply.objects.filter(city_id__in=coverage_city_ids - {None}))
+
+
+def _city_neighborhoods(city_id):
+    from administrative.models import Neighborhood
+
+    return Neighborhood.objects.filter(district__city_id=city_id).values_list('pk', flat=True)
+
+
+@receiver(residents_changed, dispatch_uid="water_residents_changed")
+def residents_updated(sender, city_id, **kwargs):
+    """
+    housing/signals.py rewrote Property.residents with update() (no post_save).
+
+    DAG edge: Total_Population -> NumberUsers (users = residents of each property)
+    """
+    _refresh_users(_city_neighborhoods(city_id))
+
+
+def _neighborhood_of_building(building_id):
+    from builtup.models import Building
+
+    return Building.objects.filter(pk=building_id).values_list('neighborhood_id', flat=True).first()
+
+
+# Not connected to one sender: proxies of Property (housing.ResidentialProperty)
+# send signals with themselves as sender, and watersupply must not import housing.
+@receiver(pre_save, dispatch_uid="water_property_presave")
+def property_presave(sender, instance, raw=False, **kwargs):
+    """Remember the stored neighborhood, so a moved property refreshes both."""
+    if raw or instance.pk is None or not isinstance(instance, Property):
+        return
+    instance._water_old_neighborhood = (
+        Property.objects.filter(pk=instance.pk)
+        .values_list('building__neighborhood_id', flat=True).first())
+
+
+@receiver(post_save, dispatch_uid="water_property_saved")
+@receiver(post_delete, dispatch_uid="water_property_deleted")
+def property_changed(sender, instance, raw=False, **kwargs):
+    """
+    A property (users location) added, moved or removed changes its
+    neighborhood's users and, by its distance to the pipes, the population served.
+
+    DAG edges: Total_Population -> NumberUsers, Coverage_WS_Area -> NumberUsers
+    """
+    if raw or not isinstance(instance, Property):
+        return
+    _refresh_users({_neighborhood_of_building(instance.building_id),
+                    getattr(instance, '_water_old_neighborhood', None)})
+
+
+def _max_service_buffer_m():
+    from django.db.models import Max
+
+    from .calculations.users import DEFAULT_SERVICE_BUFFER_M
+
+    stored = CoverageWaterSupply.objects.aggregate(m=Max('buffer_m'))['m']
+    return max(stored or 0, DEFAULT_SERVICE_BUFFER_M)
+
+
+@receiver(pre_save, sender=PipeNetwork, dispatch_uid="water_pipe_presave")
+def pipe_presave(sender, instance, raw=False, **kwargs):
+    """Remember the stored line, so the users near a moved pipe's old route are refreshed too."""
+    if raw or instance.pk is None:
+        return
+    instance._water_old_geom = PipeNetwork.objects.filter(pk=instance.pk).values_list('geom', flat=True).first()
+
 
 @receiver(post_save, sender=PipeNetwork, dispatch_uid="water_pipe_saved")
 @receiver(post_delete, sender=PipeNetwork, dispatch_uid="water_pipe_deleted")
 def pipe_changed(sender, instance, raw=False, **kwargs):
+    """
+    DAG edges: Network -> Coverage_WS_Area, Network -> Coverage_WS (cities the
+               pipe crosses); Coverage_WS_Area -> NumberUsers (the properties
+               within the service buffer of its old and new route)
+    """
+    from .calculations.users import neighborhoods_near
+
     if raw:
         return
-    _resave(CoverageWaterSupply.objects.filter(
-        city__isnull=False, city__geom__intersects=instance.geom))
-    _refresh_latest_opex()
+    geoms = [instance.geom, getattr(instance, '_water_old_geom', None)]
+    cities = set()
+    for geom in geoms:
+        if geom is not None:
+            cities.update(City.objects.filter(geom__intersects=geom).values_list('pk', flat=True))
+    with _batched_leakage():
+        _refresh_users(neighborhoods_near(geoms, _max_service_buffer_m()), cities)
+        _refresh_latest_opex()
+        _refresh_leakage(LATEST)   # DAG edge: Network -> ILI (mains length; pipes have no year)
+
+
+@receiver(post_save, sender=CoverageWaterSupply, dispatch_uid="water_coverage_saved")
+def coverage_saved(sender, instance, raw=False, **kwargs):
+    """
+    The users locations take their service buffer from the city's latest
+    coverage record: a new latest record or a changed buffer_m re-derives them.
+    Skipped while a users refresh is running (it re-saves the coverage itself).
+
+    DAG edge: Coverage_WS_Area -> NumberUsers
+    """
+    if raw or instance.city_id is None:
+        return
+    # DAG edge: Network -> ILI (the city's connections and pressure of this year
+    # are used by every later LeakageIndex until a newer coverage record exists)
+    _refresh_leakage(instance.year)
+    if _in_users_refresh():
+        return
+    latest = (CoverageWaterSupply.objects.filter(city_id=instance.city_id)
+              .order_by('-year', '-id').values_list('pk', flat=True).first())
+    if latest != instance.pk:
+        return
+    stale = (UsersLocation.objects
+             .filter(neighborhood__district__city_id=instance.city_id, buffer_m__isnull=False)
+             .exclude(buffer_m=instance.buffer_m))
+    if stale.exists():
+        _refresh_users(_city_neighborhoods(instance.city_id))
+
+
+@receiver(urban_area_changed, dispatch_uid="water_urban_area_changed")
+def urban_area_updated(sender, city_id, **kwargs):
+    """
+    physicalEnv rewrote the city's neighborhood urban_area from its land cover
+    (update(), no post_save): re-save the city's coverage records so their
+    urban area outside the service area follows. Deferred with the users.
+
+    DAG edge: CityArea -> Network (partial: flagged, not extended)
+    """
+    _refresh_users((), {city_id})
 
 
 @receiver(post_save, sender=UsersLocation, dispatch_uid="water_users_saved")
 @receiver(post_delete, sender=UsersLocation, dispatch_uid="water_users_deleted")
 def users_changed(sender, instance, raw=False, **kwargs):
-    if not raw:
-        _resave(CoverageWaterSupply.objects.filter(
-            city__isnull=False, city__district__neighborhood=instance.neighborhood_id
-        ).distinct())
+    """
+    DAG edges: NumberUsers -> Coverage_WS (the city's coverage records)
+               NumberUsers -> Metered_Res_Water (populationServed of the meters)
+    """
+    if raw:
+        return
+    if 'created' in kwargs:   # post_save: the meters of this location
+        _resave(MeteredResidential.objects.filter(userLocation=instance))
+    if _in_users_refresh():
+        return
+    _resave(CoverageWaterSupply.objects.filter(
+        city__isnull=False, city__district__neighborhood=instance.neighborhood_id
+    ).distinct())
 
 
-# ── non-revenue water -> ILI of the whole year ───────────────────────
+# ── non-revenue water -> ILI of the year ─────────────────────────────
 
 @receiver(post_save, sender=NonRevenueWater, dispatch_uid="water_nrw_saved")
 @receiver(post_delete, sender=NonRevenueWater, dispatch_uid="water_nrw_deleted")
 def nrw_changed(sender, instance, raw=False, **kwargs):
     """
-    ILI = CARL / UARL over all Real-loss records of the year, so every Real record
-    of that year shares it. NonRevenueWater.save() only computes its own row;
-    bring the siblings in line (update(): no save(), so no signal loop).
+    A real loss changes the year's CARL: re-save the year's LeakageIndex
+    (created on the first loss record of a year). Apparent losses do not
+    enter the ILI.
+
+    DAG edge: Real_Losses -> ILI
     """
-    if raw:
+    if raw or instance.type != NonRevenueWater.LossesTypes.Real:
         return
-    real = NonRevenueWater.objects.filter(year=instance.year, type=NonRevenueWater.LossesTypes.Real)
-    carl = sum(r.loss_Quantity_m3 for r in real)
-    uarl = sum(r.loss_Quantity_m3 * r.UnavoidableLossses_PCT / 100 for r in real)
-    ili = round(carl / uarl, 2) if uarl > 0 else None
-    real.update(ILI=ili, last_updated=timezone.now())
+    row = LeakageIndex.objects.filter(year=instance.year).first() or LeakageIndex(year=instance.year)
+    _resave([row])
 
 
 # ── soil, land cover, groundwater, meteorology -> available fresh water ─
@@ -446,7 +714,7 @@ def groundwater_changed(sender, instance, raw=False, **kwargs):
 
 @receiver(landcover_created, sender=LandCoverVector, dispatch_uid="water_landcover_created")
 def landcover_rows_created(sender, pks, **kwargs):
-    """Land cover inserted with raw SQL by the map editor (physicalEnv/landcover.py). DAG edge: LandCover -> Infiltration"""
+    """Land cover inserted with raw SQL by the map editor (physicalEnv/calculations/landcover.py). DAG edge: LandCover -> Infiltration"""
     from django.contrib.gis.db.models import Extent
 
     box = LandCoverVector.objects.filter(pk__in=pks).aggregate(e=Extent('geom'))['e']
@@ -456,12 +724,12 @@ def landcover_rows_created(sender, pks, **kwargs):
 def _sources_near_stations(station_ids):
     """
     Sources that may take their meteorology from one of these stations: those
-    with one of them among the stations weather.water_balance would try.
+    with one of them among the stations weather.calculations.water_balance would try.
     """
     from django.contrib.gis.db.models.functions import Distance
 
     from weather.models import WeatherStation
-    from weather.water_balance import MAX_STATIONS
+    from weather.calculations.water_balance import MAX_STATIONS
 
     station_ids = set(station_ids)
     daily = Meteorology.objects.filter(reference_et_mm__isnull=False).values('station_id')
@@ -495,3 +763,62 @@ def meteorology_changed(sender, instance, raw=False, **kwargs):
     if raw or instance.reference_et_mm is None:
         return
     refresh_freshwater(pks=_sources_near_stations([instance.station_id]))
+
+
+# ── Stored climate scenario runs (weather.ClimateScenarioRun) ─────────
+#
+# A run is created by a staff POST, never bulk-written or imported, so these
+# receivers need no deferral. The results are a snapshot: later soil, land
+# cover, KNMI or CBS changes do not touch them (the run shows them as stale;
+# "Recalculate" re-saves the run). Observed rows are never written here.
+
+def _sources_of_run(run):
+    """AvailableFreshWater sources intersecting the run's unit (all of them without a unit geometry)."""
+    unit = run.unit()
+    geom = getattr(unit, "geom", None)
+    sources = AvailableFreshWater.objects.all()
+    return sources.filter(geom__intersects=geom) if geom is not None else sources.none()
+
+
+@receiver(post_save, sender="weather.ClimateScenarioRun", dispatch_uid="water_climate_run_freshwater")
+def climate_run_freshwater(sender, instance, raw=False, **kwargs):
+    """
+    DAG edge: Climate_Change -> Meteorology -> Available_FW
+    One ScenarioFreshWater per source of the unit, re-saved so its save()
+    recomputes the recharge with the scenario's rain and ET.
+    """
+    from .models import ScenarioFreshWater
+
+    if raw or instance.status == "failed":
+        return
+    _resave(ScenarioFreshWater.objects.get_or_create(run=instance, source=source)[0]
+            for source in _sources_of_run(instance))
+
+
+@receiver(post_save, sender="weather.ClimateScenarioRun", dispatch_uid="water_climate_run_security")
+def climate_run_security(sender, instance, raw=False, **kwargs):
+    """
+    DAG edges: Total_Population -> Total_Water_Demand -> Supply_Security
+    (the run's population year, variant and growth). Connected after
+    climate_run_freshwater, so it sums the fresh scenario recharge.
+    """
+    from .models import ScenarioWaterSecurity
+
+    if raw or instance.status == "failed":
+        return
+    _resave([ScenarioWaterSecurity.objects.get_or_create(run=instance)[0]])
+
+
+@receiver(post_save, sender="watersupply.ScenarioFreshWater", dispatch_uid="water_scenario_freshwater_saved")
+def scenario_freshwater_saved(sender, instance, raw=False, **kwargs):
+    """
+    DAG edge: Available_FW -> (scenario recharge beside the extraction)
+    A source recomputed alone (e.g. from the admin) updates its run's
+    security; while a run is being created the security row does not exist
+    yet and is made once by climate_run_security.
+    """
+    from .models import ScenarioWaterSecurity
+
+    if raw:
+        return
+    _resave(ScenarioWaterSecurity.objects.filter(run_id=instance.run_id))

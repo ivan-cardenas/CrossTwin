@@ -11,9 +11,9 @@ from django.contrib.gis.geos import MultiPolygon, Polygon
 from django.test import SimpleTestCase, TestCase
 
 from physicalEnv.models import LandCoverClasses, LandCoverVector, SoilArea, SoilType
-from physicalEnv.soil import impervious_fraction, weighted_infiltration_rate_mm_h
+from physicalEnv.calculations.soil import impervious_fraction, weighted_infiltration_rate_mm_h
 from watersupply import signals
-from watersupply.chain import recharge_depth_cm_yr
+from watersupply.calculations.chain import recharge_depth_cm_yr
 from watersupply.models import AvailableFreshWater
 from weather.knmi import parse_knmi, rain_mm, select_stations, store_daily
 from weather.models import Meteorology, WeatherStation

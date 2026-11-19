@@ -106,6 +106,13 @@ def interpolate_raster(input_points, values, bounds, resolution, method='linear'
     return temp_path, driver
 
 
+# CRS of the exported COGs. Web Mercator, the map's tile grid: TiTiler reads
+# WebMercatorQuad tiles straight from the file instead of warping every tile
+# (as it had to for the EPSG:4326 COGs written before 2026-11-12, which still
+# work). Readers (svf.py, dsm_edited.py, the height fillers) use the file's crs.
+COG_CRS = 'EPSG:3857'
+
+
 def _cog_filename(instance):
     """
     Build a COG filename from whatever satellite/process metadata the raster
@@ -138,29 +145,23 @@ def _cog_filename(instance):
 
 def _reproject_and_cog(source_tiff_path, instance):
     """
-    Reproject a local GeoTIFF to EPSG:4326 and convert it to a COG on disk,
+    Reproject a local GeoTIFF to COG_CRS and convert it to a COG on disk,
     saving the result path onto `instance.cog_path`. Shared by
     export_raster_to_cog (source: bytes read back out of Postgres) and
     export_geotiff_to_cog (source: a file already on disk that was never
     loaded into Postgres at all) so both paths produce identically processed
     COGs regardless of where the source raster came from.
     """
-    # Transform to EPSG:4326 (what the COG's header below declares, and what
-    # TiTiler/core/views.py::get_raster_info expects bounds to be in). This
-    # used to pass dst_crs='EPSG:3857' to reproject() below while everything
-    # else here — the computed transform, width/height, and the output
-    # file's own 'crs' tag — targeted EPSG:4326, a leftover mismatch from an
-    # earlier rename. That silently corrupted every COG's georeferencing:
-    # pixels got warped into Web Mercator meters while the file claimed to
-    # be WGS84 degrees, so consumers reading the (false) CRS tag placed the
-    # data nowhere near where it actually was.
-    temp_4326 = tempfile.NamedTemporaryFile(suffix='_4326.tif', delete=False)
-    temp_4326.close()
+    # Every step below (transform, width/height, the file's own 'crs' tag and
+    # reproject's dst_crs) must use the same CRS: an earlier mismatch (warped
+    # to 3857, tagged 4326) silently misplaced every COG.
+    temp_reprojected = tempfile.NamedTemporaryFile(suffix='_web.tif', delete=False)
+    temp_reprojected.close()
 
     with rasterio.open(source_tiff_path) as src:
         transform, width, height = calculate_default_transform(
             src.crs,
-            'EPSG:4326',
+            COG_CRS,
             src.width,
             src.height,
             *src.bounds
@@ -169,14 +170,14 @@ def _reproject_and_cog(source_tiff_path, instance):
         # Update metadata for the reprojected raster
         kwargs = src.meta.copy()
         kwargs.update({
-            'crs': 'EPSG:4326',
+            'crs': COG_CRS,
             'transform': transform,
             'width': width,
             'height': height
         })
 
         # Reproject and write to temp file
-        with rasterio.open(temp_4326.name, 'w', **kwargs) as dst:
+        with rasterio.open(temp_reprojected.name, 'w', **kwargs) as dst:
             for i in range(1, src.count + 1):
                 reproject(
                     source=rasterio.band(src, i),
@@ -184,7 +185,7 @@ def _reproject_and_cog(source_tiff_path, instance):
                     src_transform=src.transform,
                     src_crs=src.crs,
                     dst_transform=transform,
-                    dst_crs='EPSG:4326',
+                    dst_crs=COG_CRS,
                     resampling=Resampling.nearest
                 )
 
@@ -200,7 +201,7 @@ def _reproject_and_cog(source_tiff_path, instance):
     output_profile = cog_profiles.get("DEFLATE")
 
     cog_translate(
-        source=temp_4326.name,
+        source=temp_reprojected.name,
         dst_path=cog_path,
         dst_kwargs=output_profile,
         overview_level=6,
@@ -208,7 +209,7 @@ def _reproject_and_cog(source_tiff_path, instance):
         use_cog_driver=True,
     )
 
-    os.unlink(temp_4326.name)
+    os.unlink(temp_reprojected.name)
 
     # --- Save COG path to the database ---
     instance.cog_path = cog_path.replace("\\", "/")

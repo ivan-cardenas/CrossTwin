@@ -2,12 +2,14 @@ from django.shortcuts import render
 from django.http import JsonResponse
 
 from administrative.admin_units import resolve_admin_unit, ADMIN_LEVELS
-from administrative.population import DEFAULT_SCENARIO, get_population, population_params
-from . import chain
-from .calculations import (
+from administrative.models import District, Neighborhood
+from administrative.calculations.population import DEFAULT_SCENARIO, get_population, is_extrapolated, population_params
+from .calculations import chain
+from .calculations.indicators import (
     calculate_household_size,
     calculate_dwellings,
     calculate_supply_demand_for_unit,
+    supply_demand_from_dwellings,
     calculate_new_units_for_unit,
     calculate_pipeline_land_take,
     calculate_mortgage_indicators,
@@ -38,7 +40,13 @@ def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, po
 
     household = calculate_household_size(adminUnit, year)
     dwellings = calculate_dwellings(adminUnit)
-    supply_demand = calculate_supply_demand_for_unit(adminUnit, year)
+    population_baseline = get_population(adminUnit, year)
+    if isinstance(adminUnit, (District, Neighborhood)):
+        # the CBS stock is per municipality: below the city, count the mapped dwellings
+        supply_demand = supply_demand_from_dwellings(
+            dwellings['dwellings'], population_baseline, household['average_size'])
+    else:
+        supply_demand = calculate_supply_demand_for_unit(adminUnit, year)
     new_units = calculate_new_units_for_unit(adminUnit, year)
     land_take = calculate_pipeline_land_take(adminUnit, year)
     mortgage = calculate_mortgage_indicators(adminUnit, year)
@@ -51,7 +59,8 @@ def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, po
     return {
         'adminUnit': adminUnit,
         'population': get_population(adminUnit, year, pop_scenario, pop_growth),
-        'population_baseline': get_population(adminUnit, year),
+        'population_extrapolated': is_extrapolated(adminUnit, year),
+        'population_baseline': population_baseline,
         'household': household,
         'dwellings': dwellings,
         'supply_demand': supply_demand,
@@ -76,7 +85,7 @@ MOCK_DATA = {
     'dwellings': {'dwellings': 180_000, 'estimated_residents': 414_000},
     'supply_demand': {
         'supply_units': 180_000, 'demand_units': 210_000,
-        'deficit': 30_000, 'deficit_pct': 14.3,
+        'deficit': 30_000, 'deficit_pct': 14.3, 'supply_source': 'cbs',
     },
     'new_units': {
         'completed_units': 2_500, 'completed_projects': 12,
@@ -185,6 +194,7 @@ def _build_indicators(data, household_size_override=None):
 
     return {
         'population': data.get('population'),
+        'population_extrapolated': data.get('population_extrapolated', False),
         # -- Household size (CBS persons per home; the slider) --
         'household_size': round(size, 2) if size else None,
         'household_size_stored': round(stored_size, 2) if stored_size else None,
@@ -197,6 +207,7 @@ def _build_indicators(data, household_size_override=None):
         'housed_residents': chain.housed_residents(sd['supply_units'], size),
         # -- Supply & Demand --
         'supply_units': sd['supply_units'],
+        'supply_source': sd.get('supply_source', 'cbs'),
         'demand_units': demand_units,
         'deficit': deficit,
         'deficit_pct': deficit_pct,

@@ -5,16 +5,27 @@
   
   <!-- ── Weather (live baseline + what-if) ── -->
   {% load l10n %}
-  <div class="card c3 wide heat-weather-card{% if indicators.weather_whatif %} is-whatif{% endif %}">
+  <div class="card c3 wide heat-weather-card{% if indicators.weather_whatif or indicators.climate.active %} is-whatif{% endif %}">
     <div class="gauge-header">
       <div class="card-icon">{{ indicators.weather_icon }}</div>
-      <div class="card-label">{% if indicators.weather_whatif %}Weather what-if{% else %}Current Weather{% endif %}</div>
+      <div class="card-label">{% if indicators.weather_whatif %}Weather what-if{% elif indicators.climate.active %}Weather in {{ indicators.climate.short }}{% else %}Current Weather{% endif %}</div>
       {% info_help "heat.weather" %}
     </div>
     <div class="heat-weather-source">
       {% if indicators.weather_whatif %}<span class="threshold-tag warn">What-if</span>{% endif %}
       {% if indicators.weather_source %}{{ indicators.weather_source }}{% if indicators.weather_description %} · {{ indicators.weather_description }}{% endif %}{% if indicators.weather_time %} · {{ indicators.weather_time }}{% endif %}{% else %}No weather data{% endif %}
     </div>
+    {% if indicators.climate.active and indicators.climate_delta %}
+    {% if indicators.climate_heat == 'warmest' %}
+    <div class="climate-note" title="Heat-wave day, delta-change: the observed weather plus the change of the warmest day of the year at the KNMI'23 key-figure station nearest to this unit ({{ indicators.climate_station }}), by day and night; humidity, wind and radiation change as in summer (KNMI'23 Table 1). Meant for a hot observed day: move the sliders to one.">
+      🔥 KNMI'23 {{ indicators.climate.label }} · warmest day of the year ({{ indicators.climate_station }}):
+    {% else %}
+    <div class="climate-note" title="Delta-change: the observed weather plus the {{ indicators.climate_season }} change of KNMI'23 Table 1 (average daily maximum by day, minimum by night; radiation scaled by the seasonal mean change). The hottest days warm more than the average: choose 'Warmest day of the year' in the Scenarios panel for a heat wave.">
+      🌍 KNMI'23 {{ indicators.climate.label }} · {{ indicators.climate_season }} change{% if indicators.climate_heat == 'average' %} (observed season){% endif %}:
+    {% endif %}
+      {% if indicators.climate_delta.ta_c != None %}{{ indicators.climate_delta.ta_c|stringformat:"+.1f" }} °C{% endif %}{% if indicators.climate_delta.rh_pct != None %} · {{ indicators.climate_delta.rh_pct|stringformat:"+.1f" }} % RH{% endif %}{% if indicators.climate_delta.wind_ms != None %} · {{ indicators.climate_delta.wind_ms|stringformat:"+.1f" }} m/s{% endif %}{% if indicators.climate_delta.kdown_wm2 != None %} · {{ indicators.climate_delta.kdown_wm2|stringformat:"+.0f" }} W/m²{% endif %}
+    </div>
+    {% endif %}
     <div class="heat-weather-values">
       <div>
         <div class="heat-weather-label">Air Temp</div>
@@ -52,7 +63,8 @@
     {% endif %}
     {% localize off %}
     <div id="heat-weather-state" hidden
-         data-whatif="{{ indicators.weather_whatif|yesno:'1,0' }}"
+         data-whatif="{% if indicators.weather_whatif or indicators.climate.active %}1{% else %}0{% endif %}"
+         data-climate="{% if indicators.climate.active %}{{ indicators.climate.short }}{% if indicators.climate_heat == 'warmest' %} · warmest day{% elif indicators.climate_heat != 'average' %} · {{ indicators.climate_heat }}{% endif %}{% endif %}"
          data-ta_c="{{ indicators.weather.ta_c|default_if_none:'' }}"
          data-rh_pct="{{ indicators.weather.rh_pct|default_if_none:'' }}"
          data-wind_ms="{{ indicators.weather.wind_ms|default_if_none:'' }}"
@@ -129,6 +141,7 @@
       {{ indicators.pet_category }}
     </div>
     {% endif %}
+    {% include 'urban_heat/partials/thermal_run_note.html' with coverage=indicators.pet_coverage_pct %}
   </div>
 
   <!-- ── UTCI ── -->
@@ -166,6 +179,7 @@
       {{ indicators.utci_category }}
     </div>
     {% endif %}
+    {% include 'urban_heat/partials/thermal_run_note.html' with coverage=indicators.utci_coverage_pct %}
   </div>
 
   <!-- ── WBGT ── -->

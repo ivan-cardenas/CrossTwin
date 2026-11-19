@@ -23,7 +23,7 @@ export const EDGES = [
     ['Supply_Security', 'Service_Time', true],
     ['Total_Population', 'Housing_Demand', true],
     ['Household_Size', 'Housing_Demand', true],
-    ['New_Units', 'Buildings', false],
+    ['New_Units', 'Buildings', true],
     ['Buildings', 'LandCover', true],
     ['Total_Population', 'Degree_Urbanisation', true],
     ['Buildings', 'Degree_Urbanisation', true],

@@ -20,6 +20,20 @@ document.addEventListener("DOMContentLoaded", () => {
 const actionsMenuBtn = document.getElementById('actions-menu-btn');
 const actionsMenu = document.getElementById('actions-menu');
 
+// Overlays (side panel, population dock, tool cards, legends) stop at
+// --bottom-clear so they never cover the bottom bar's Dashboard / Scenarios
+// buttons. The bar wraps to two rows on phones, so measure it.
+function syncBottomClear() {
+  const bar = document.querySelector('.bottom-bar');
+  if (!bar) return;
+  document.documentElement.style.setProperty('--bottom-clear', `${Math.ceil(bar.offsetHeight) + 6}px`);
+}
+syncBottomClear();
+if (window.ResizeObserver) {
+  const bar = document.querySelector('.bottom-bar');
+  if (bar) new ResizeObserver(syncBottomClear).observe(bar);
+}
+
 function positionActionsMenu() {
   const wrap = actionsMenu.offsetParent;   // .map-wrapper; null while the menu is hidden
   if (!wrap) return;
@@ -86,26 +100,145 @@ document.getElementById('settingsBtn')?.addEventListener('click', () => {
   // Open settings panel
 });
 
-document.querySelectorAll('.year-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    // Update active state
-    document.querySelectorAll('.year-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
+// Sets the active year (population projection year) as if its button were
+// clicked: highlights the button, updates the Actions label, the panel URLs,
+// the open panel and the population dock. Also called by the Scenarios panel
+// (Panels.js): current climate -> 2025, 2050 / 2100 scenarios -> that year,
+// with {refreshPanel: false} so the Scenarios panel is not replaced.
+function setActiveYear(year, {refreshPanel = true} = {}) {
+  year = parseInt(year);
+  if (!year || year === window.ACTIVE_YEAR) return;
+  window.ACTIVE_YEAR = year;
+  showYearInPicker(year);
 
-    window.ACTIVE_YEAR = parseInt(btn.dataset.year);
+  // The Actions button shows the active year while the menu is collapsed
+  const yearLabel = document.getElementById('actions-menu-year');
+  if (yearLabel) yearLabel.textContent = String(year);
 
-    // The Actions button shows the active year while the menu is collapsed
-    const yearLabel = document.getElementById('actions-menu-year');
-    if (yearLabel) yearLabel.textContent = btn.dataset.year;
+  // Update panel button URLs with new year
+  syncPanelBtns();
 
-    // Update panel button URLs with new year
-    syncPanelBtns();
+  // If an admin-unit-driven panel is already open, reload it with new context
+  if (refreshPanel) refreshActivePanel();
+  if (typeof loadPopulationPanel === 'function') loadPopulationPanel();   // no-op unless the dock is open
+}
+window.setActiveYear = setActiveYear;
 
-    // If an admin-unit-driven panel is already open, reload it with new context
-    refreshActivePanel();
-    if (typeof loadPopulationPanel === 'function') loadPopulationPanel();   // no-op unless the dock is open
+// The other direction: a year chosen in the Actions menu sets the climate
+// scenario of that period (weather/calculations/climate.py::population_year):
+// a decade of climate.SCENARIO_YEARS (2030-2100; 2050 and 2100 published,
+// the others interpolated) -> that year, keeping the chosen pathway (High,
+// dry when none), any other year -> the current climate. The heat mode is kept.
+const CLIMATE_HORIZONS = [2030, 2040, 2050, 2060, 2070, 2080, 2090, 2100];
+const CLIMATE_PATHWAY_LABELS = { Ld: 'Low, dry', Ln: 'Low, wet', Hd: 'High, dry', Hn: 'High, wet' };
+
+function climateKeyForYear(year) {
+  if (!CLIMATE_HORIZONS.includes(year)) return 'current';
+  const current = window.CLIMATE_SCENARIO || 'current';
+  const pathway = current.includes('_') ? current.split('_')[1] : 'Hd';
+  return `${year}_${pathway}`;
+}
+
+// The Scenarios button's badge, as the panel renders it (climate_panel.html data-climate-label).
+function climateBadgeLabel(key) {
+  if (key === 'current') return '';
+  const [horizon, pathway] = key.split('_');
+  const heat = window.CLIMATE_HEAT || 'average';
+  const suffix = heat === 'warmest' ? ' · warmest day' : (heat !== 'average' ? ` · ${heat}` : '');
+  return `${horizon} ${CLIMATE_PATHWAY_LABELS[pathway] || pathway}${suffix}`;
+}
+
+function scenariosPanelOpen() {
+  return !!document.querySelector('#panel-body #climate-panel') &&
+    document.getElementById('side-panel')?.classList.contains('visible');
+}
+
+function syncClimateToYear(year) {
+  const key = climateKeyForYear(year);
+  if (key === (window.CLIMATE_SCENARIO || 'current')) return false;
+  window.CLIMATE_SCENARIO = key;
+  if (typeof renderClimateBadge === 'function') renderClimateBadge(climateBadgeLabel(key));
+  syncPanelBtns();
+  // An open Scenarios panel re-renders with the new scenario (its afterSwap
+  // sees the same key, so it does not set the year back).
+  if (scenariosPanelOpen() && typeof showScenarios === 'function') showScenarios();
+  window.dispatchEvent(new CustomEvent('crosstwin:climate-changed',
+    { detail: { key, heat: window.CLIMATE_HEAT || 'average' } }));
+  return true;
+}
+
+// A year chosen in the Actions menu: the climate scenario follows, then the
+// population year, the panels and the dock.
+function chooseYear(year) {
+  const sameYear = year === window.ACTIVE_YEAR;
+  const climateChanged = syncClimateToYear(year);
+  setActiveYear(year, { refreshPanel: !scenariosPanelOpen() });
+  // setActiveYear does nothing for the same year: refresh for the new climate here
+  if (sameYear && climateChanged && !scenariosPanelOpen()) refreshActivePanel();
+  showYearInPicker(year);   // the status line names the (new) scenario
+}
+
+// ── Year picker (Actions menu): a slider over the picker's years ─────────
+const yearPicker = document.getElementById('year-picker');
+const PICKER_YEARS = yearPicker
+  ? yearPicker.dataset.years.split(',').map(Number) : [];
+const POPULATION_PROJECTION_END = 2050;   // CBS projection; later years are a trend extrapolation
+const CLIMATE_PUBLISHED = [2050, 2100];   // KNMI'23 horizons; other decades are interpolated
+
+// What a year means for the panels: population source and climate.
+function yearStatus(year) {
+  const population = year <= PICKER_YEARS[0] ? 'Current population'
+    : year <= POPULATION_PROJECTION_END ? 'CBS projection' : 'Population trend';
+  if (!CLIMATE_HORIZONS.includes(year)) return `${population} · current climate`;
+  const key = climateKeyForYear(year);
+  const pathway = CLIMATE_PATHWAY_LABELS[key.split('_')[1]] || '';
+  const kind = CLIMATE_PUBLISHED.includes(year) ? "KNMI'23" : "KNMI'23 interpolated";
+  return `${population} · ${kind} ${pathway.toLowerCase()}`;
+}
+
+// Moves the slider and readout to `year` without applying it.
+function showYearInPicker(year) {
+  if (!yearPicker) return;
+  const index = PICKER_YEARS.indexOf(year);
+  const slider = document.getElementById('year-slider');
+  if (index >= 0) {
+    slider.value = String(index);
+    slider.setAttribute('aria-valuetext', String(year));
+  }
+  document.getElementById('year-value').textContent = String(year);
+  document.getElementById('year-status').textContent = yearStatus(year);
+  yearPicker.classList.toggle('is-future', year > PICKER_YEARS[0]);
+}
+
+function initYearPicker() {
+  if (!yearPicker) return;
+  const slider = document.getElementById('year-slider');
+  slider.max = String(PICKER_YEARS.length - 1);
+  const ticks = document.getElementById('year-ticks');
+  const last = PICKER_YEARS.length - 1;
+  yearPicker.dataset.ticks.split(',').map(Number).forEach(year => {
+    const tick = document.createElement('span');
+    tick.textContent = String(year);
+    tick.style.left = `${PICKER_YEARS.indexOf(year) / last * 100}%`;
+    ticks.appendChild(tick);
   });
-});
+  // Dragging previews; releasing (or a key press, which fires change) applies.
+  slider.addEventListener('input', () => {
+    const year = PICKER_YEARS[parseInt(slider.value)];
+    document.getElementById('year-value').textContent = String(year);
+    document.getElementById('year-status').textContent = yearStatus(year);
+  });
+  slider.addEventListener('change', () => chooseYear(PICKER_YEARS[parseInt(slider.value)]));
+  yearPicker.querySelectorAll('.year-step').forEach(btn => btn.addEventListener('click', () => {
+    const index = PICKER_YEARS.indexOf(window.ACTIVE_YEAR) + parseInt(btn.dataset.step);
+    if (index >= 0 && index <= last) chooseYear(PICKER_YEARS[index]);
+  }));
+  showYearInPicker(window.ACTIVE_YEAR || PICKER_YEARS[0]);
+  // A pathway picked in the Scenarios panel changes the status line's climate.
+  window.addEventListener('crosstwin:climate-changed', () =>
+    showYearInPicker(window.ACTIVE_YEAR || PICKER_YEARS[0]));
+}
+initYearPicker();
 
 
 
@@ -207,6 +340,15 @@ function populationQuery() {
   return `?pop_scenario=${scenario}&pop_growth=${growth}`;
 }
 
+// KNMI'23 climate scenario chosen in the Scenarios panel (Panels.js,
+// weather/calculations/climate.py), passed on to the panels whose
+// meteorology it changes (heat: weather sliders; water: rain and recharge),
+// with the heat mode (average day | warmest = heat-wave day; heat panel only).
+function climateParam() {
+  return `climate=${encodeURIComponent(window.CLIMATE_SCENARIO || 'current')}` +
+    `&climate_heat=${encodeURIComponent(window.CLIMATE_HEAT || 'average')}`;
+}
+
 // Registry of toolbar panels driven by the selected administrative unit
 // (level/location[/year]). Add an entry here when wiring up a new
 // indicator panel (e.g. housing, energy) to admin-unit selection —
@@ -214,10 +356,10 @@ function populationQuery() {
 // changes needed in Map_init.js.
 const ADMIN_PANEL_TOOLS = {
   water: (level, location) =>
-    `/watersupply/indicators/${level}/${location}/${window.ACTIVE_YEAR}/${populationQuery()}`,
+    `/watersupply/indicators/${level}/${location}/${window.ACTIVE_YEAR}/${populationQuery()}&${climateParam()}`,
   // Urban heat has no year and does not depend on population.
   temperature: (level, location) =>
-    `/urban_heat/indicators/${level}/${location}/`,
+    `/urban_heat/indicators/${level}/${location}/?${climateParam()}`,
   // Same URL shape as water: housing/urls.py is indicators/<level>/<location>/<year>/.
   housing: (level, location) =>
     `/housing/indicators/${level}/${location}/${window.ACTIVE_YEAR}/${populationQuery()}`,

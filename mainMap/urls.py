@@ -1,7 +1,7 @@
 from django.urls import path, register_converter
-from .views import model_geojson, map_view, landing_view, available_layers, layer_bounds, admin_unit_at_point, dashboard_summary, population_panel
+from .views import model_geojson, map_view, landing_view, available_layers, layer_bounds, admin_unit_at_point, dashboard_summary, population_panel, climate_effects
 from core import editing
-from . import settings_views
+from . import settings_views, views_climate
 from core import views
 
 
@@ -32,6 +32,12 @@ urlpatterns = [
     path('api/admin-unit/', admin_unit_at_point, name='admin_unit_at_point'),
     path('api/dashboard/summary/', dashboard_summary, name='dashboard_summary'),
     path('api/population/panel/', population_panel, name='population_panel'),
+    path('api/climate/effects/', climate_effects, name='climate_effects'),
+    path('api/climate/runs/', views_climate.climate_runs, name='climate_runs'),
+    path('api/climate/runs/<int:run_id>/', views_climate.climate_run_detail, name='climate_run_detail'),
+    path('api/climate/runs/<int:run_id>/recalculate/', views_climate.climate_run_recalculate, name='climate_run_recalculate'),
+    path('api/climate/runs/<int:run_id>/heat/', views_climate.climate_run_heat, name='climate_run_heat'),
+    path('api/climate/runs/<int:run_id>/delete/', views_climate.climate_run_delete, name='climate_run_delete'),
 
     # Editing layer objects on the map (staff only, core/editing.py)
     path('api/layers/<str:app_label>/<str:model_name>/features/new/', editing.feature_form, name='feature_new'),

@@ -2,7 +2,7 @@ from django.shortcuts import render
 from django.db.models import Avg
 
 from administrative.admin_units import resolve_admin_unit
-from .calculations import (
+from .calculations.indicators import (
     calculate_vegetation_coverage,
     calculate_urban_morphology,
     get_thermal_indices,
@@ -13,7 +13,8 @@ from .calculations import (
     calculate_nbs_coverage,
     get_latest_meteorology,
 )
-from .chain import WEATHER_LIMITS, clamp_weather, weather_heat_stress
+from .calculations.chain import WEATHER_LIMITS, clamp_weather, weather_heat_stress
+from weather.calculations import climate
 
 
 # ── constants ─────────────────────────────────────────────────────────
@@ -34,6 +35,7 @@ def _get_adminUnit_data(level, location):
     thermal = get_thermal_indices(adminUnit)
     nbs = calculate_nbs_coverage(adminUnit)
     meteo = get_latest_meteorology(adminUnit)
+    point = _unit_point(adminUnit)
 
     return {
         'adminUnit': adminUnit,
@@ -42,23 +44,31 @@ def _get_adminUnit_data(level, location):
         'thermal': thermal,
         'nbs': nbs,
         'meteorology': meteo,
-        'weather': _baseline_weather(adminUnit, meteo),
+        'weather': _baseline_weather(point, meteo),
+        'point': point,
     }
 
 
-def _baseline_weather(adminUnit, meteo):
+def _unit_point(adminUnit):
+    """(lat, lng) of a point on the unit's surface in WGS84, None without a geometry."""
+    geom = getattr(adminUnit, 'geom', None)
+    if geom is None:
+        return None
+    point = geom.point_on_surface.transform(4326, clone=True)
+    return (point.y, point.x)
+
+
+def _baseline_weather(point, meteo):
     """
-    The weather the what-if starts from: live Open-Meteo values at a point of
-    the unit (weather/live.py), else the latest stored station reading,
-    else None. Keys: ta_c, rh_pct, wind_ms, kdown_wm2, source, time,
-    description, icon.
+    The weather the what-if starts from: live Open-Meteo values at `point`
+    ((lat, lng) on the unit, _unit_point; weather/live.py), else the latest
+    stored station reading, else None. Keys: ta_c, rh_pct, wind_ms,
+    kdown_wm2, source, time, description, icon.
     """
     from weather.live import current_weather_or_none
 
-    geom = getattr(adminUnit, 'geom', None)
-    if geom is not None:
-        point = geom.point_on_surface.transform(4326, clone=True)
-        live = current_weather_or_none(point.y, point.x)
+    if point is not None:
+        live = current_weather_or_none(*point)
         if live is not None:
             return live
     return _station_weather(meteo)
@@ -78,6 +88,72 @@ def _station_weather(meteo):
         'time': when.isoformat() if when else None,
         'description': None,
         'icon': '🌡️',
+    }
+
+
+def climate_param(params):
+    """KNMI'23 scenario of the Scenarios panel (`?climate=2050_Hd`); the current climate when absent or invalid."""
+    return climate.normalize(params.get('climate'))
+
+
+def climate_heat_param(params):
+    """Heat mode of the Scenarios panel (`?climate_heat=warmest` = heat-wave day); 'average' otherwise."""
+    return climate.normalize_heat(params.get('climate_heat'))
+
+
+def _month(when):
+    """Month (1-12) of an ISO date/time string, None when it has none."""
+    try:
+        return int(str(when)[5:7])
+    except (TypeError, ValueError):
+        return None
+
+
+def _year(when):
+    """Year of an ISO date/time string, None when it has none (the scenario change is then not reduced)."""
+    try:
+        return int(str(when)[:4])
+    except (TypeError, ValueError):
+        return None
+
+
+def _climate_weather(baseline, climate_key, heat=climate.HEAT_AVERAGE, point=None):
+    """
+    The observed baseline weather moved into a KNMI'23 scenario (delta-change
+    of the observation's season, or of the season chosen as heat mode;
+    weather/calculations/climate.py::season_for) and the
+    display data of the scenario. heat='warmest' (heat-wave day) uses the
+    warmest-day change of the key-figure station nearest to `point`
+    ((lat, lng); De Bilt without one). Pure; the current climate returns the
+    baseline unchanged.
+
+    DAG edge: Climate_Change -> Meteorology (what-if only, never stored)
+    """
+    scenario = climate.describe(climate_key)
+    heat = climate.normalize_heat(heat)
+    station = climate.nearest_station(*(point or (None, None)))
+    info = {
+        'climate': scenario,
+        'climate_heat': heat,
+        'climate_heat_label': climate.HEAT_MODES[heat],
+        'climate_station': station,
+    }
+    if not scenario['active'] or not baseline:
+        return baseline, info
+    month = _month(baseline.get('time'))
+    observed_year = _year(baseline.get('time'))
+    shifted = climate.apply_to_weather(baseline, climate_key, month, heat, station, observed_year)
+    season = climate.season_for(heat, month)
+    return shifted, {
+        **info,
+        'climate_season': season,
+        'climate_observed_year': observed_year,
+        'climate_observed': {name: baseline.get(name) for name in WEATHER_LIMITS},
+        'climate_delta': {
+            name: (round(shifted[name] - baseline[name], 1)
+                   if shifted.get(name) is not None and baseline.get(name) is not None else None)
+            for name in WEATHER_LIMITS
+        },
     }
 
 
@@ -124,6 +200,7 @@ MOCK_DATA = {
         'wbgt':  {'min': 19.0, 'max': 27.5, 'mean': 23.4, 'stddev': 2.1, 'count': 48000},
         'svf':  {'min': 0.12, 'max': 0.98, 'mean': 0.62, 'stddev': 0.18, 'count': 48000},
         'suhii': {'min': 0.5, 'max': 5.2, 'mean': 2.8, 'stddev': 1.1, 'count': 48000},
+        'run': None,
     },
     'nbs': {
         'polygon_count': 45,
@@ -147,7 +224,7 @@ def _weather_indicators(baseline, overrides):
     """
     Weather card + what-if: the values in use (baseline with any override),
     the baseline itself for the panel's reset, and the weather-only heat
-    stress (urban_heat/chain.py). Pure.
+    stress (urban_heat/calculations/chain.py). Pure.
     """
     baseline = baseline or {}
     overrides = overrides or {}
@@ -171,19 +248,25 @@ def _weather_indicators(baseline, overrides):
     }
 
 
-def _build_indicators(data, weather_override=None):
+def _build_indicators(data, weather_override=None, climate_key=climate.CURRENT,
+                      climate_heat=climate.HEAT_AVERAGE):
     """
     Pure function: takes raw data dict, returns display-ready indicators.
     weather_override: the heat panel's weather what-if (weather_overrides()),
     applied on top of data['weather']; never stored.
+    climate_key: a KNMI'23 scenario of the Scenarios panel; the sliders then
+    start at the observed weather plus the scenario's change (_climate_weather).
+    climate_heat: 'average' (Table 1 daily max/min) or 'warmest' (heat-wave day).
     """
     thermal = data.get('thermal', {})
     vegetation = data.get('vegetation', {})
     morphology = data.get('morphology', {})
     nbs = data.get('nbs', {})
     meteo = data.get('meteorology') or {}
-    weather = _weather_indicators(
-        data.get('weather') or _station_weather(data.get('meteorology')), weather_override)
+    baseline, climate_info = _climate_weather(
+        data.get('weather') or _station_weather(data.get('meteorology')), climate_key,
+        climate_heat, data.get('point'))
+    weather = _weather_indicators(baseline, weather_override)
     current = weather['weather']
 
     # Extract mean values from thermal indices (or None)
@@ -242,6 +325,12 @@ def _build_indicators(data, weather_override=None):
         'suhii_min':  suhii_stats['min'] if suhii_stats else None,
         'suhii_max':  suhii_stats['max'] if suhii_stats else None,
 
+        # The SOLWEIG run behind Tmrt/PET/UTCI (one run, same hour and extent)
+        'thermal_run':          thermal.get('run'),
+        'tmrt_coverage_pct':    tmrt_stats.get('coverage_pct') if tmrt_stats else None,
+        'pet_coverage_pct':     pet_stats.get('coverage_pct') if pet_stats else None,
+        'utci_coverage_pct':    utci_stats.get('coverage_pct') if utci_stats else None,
+
         # ── Vegetation ──
         'vegetation_pct':     vegetation.get('vegetation_coverage_pct', 0),
         'park_area_km2':      vegetation.get('park_area_km2', 0),
@@ -272,6 +361,7 @@ def _build_indicators(data, weather_override=None):
         'solar_radiation':    current['kdown_wm2'],
         'station_air_temp_C': meteo.get('temperature_C'),
         **weather,
+        **climate_info,
     }
 
 
@@ -286,11 +376,15 @@ def heat_indicators(request, level, location):
     if data is None:
         data = MOCK_DATA
 
+    climate_key = climate_param(request.GET)
+    climate_heat = climate_heat_param(request.GET)
     context = {
         'adminUnit': data['adminUnit'],
         'level': level,
         'location': location,
-        'indicators': _build_indicators(data, weather_overrides(request.GET)),
+        'climate_key': climate_key,
+        'climate_heat': climate_heat,
+        'indicators': _build_indicators(data, weather_overrides(request.GET), climate_key, climate_heat),
     }
 
     if request.headers.get('HX-Request'):
@@ -311,7 +405,8 @@ def recalculate_indicators(request, level, location):
 
     # Allow vegetation override for scenario analysis
     veg_override = request.GET.get('vegetation_pct')
-    indicators = _build_indicators(data, weather_overrides(request.GET))
+    indicators = _build_indicators(data, weather_overrides(request.GET), climate_param(request.GET),
+                                   climate_heat_param(request.GET))
 
     if veg_override is not None:
         indicators['vegetation_pct'] = float(veg_override)

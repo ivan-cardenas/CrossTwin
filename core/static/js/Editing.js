@@ -203,7 +203,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.body.addEventListener('feature-saved', (evt) => {
     const key = evt.detail?.layer;
     if (!key) return;
-    // The edit may change the DSM: reload it once the background rewrite is done (physicalEnv/dsm_edited.py)
+    // The edit may change the DSM: reload it once the background rewrite is done (physicalEnv/calculations/dsm_edited.py)
     refreshDsmAfterEdit();
     if (loadedLayers[key]) {
       reloadLayer(key);

@@ -90,7 +90,9 @@ FIELD_MAPPINGS = {
         "__year_field__": "year",
         "__city_source__": "RegioS",
         "__city_field__": "city",
-        "SaldoVoorraad_21": "supply_units",
+        # The dwelling stock at the end of the year (end of Q4). SaldoVoorraad_21, imported here
+        # before 2026-11-19, is only the net change of the quarter (Enschede 2025: 241 vs 78 448).
+        "EindstandVoorraad_22": "supply_units",
         # demand_units is derived (population / persons per home, HousingSupplyDemand.save()),
         # not the building permits (VergundeNieuwbouw_2) this used to import as demand.
     },
@@ -413,6 +415,15 @@ FIELD_MAPPINGS = {
         # The layer carries no reference year: store the year it was imported.
         "__static__": {"year": date.today().year},
     },
+    # BIJ12 Informatiekaart Natuur: feature id "natuur_netwerk_nederland.<id>.<date>.<province>"
+    "bij12_nnn": {
+        "__geometry__": "geom",
+        "__unique__": "@id",
+        "__unique_field__": "inspireID",
+        "@id": "inspireID",
+        "identificatie": "name",
+        "__static__": {"protection_type": "NNN"},
+    },
     "kea_klimaatbuffers": {
         "__geometry__": "geom",
         "__unique__": "@id",
@@ -511,7 +522,7 @@ EXTERNAL_DATA_CATALOG = [
       "requires_bbox": True,
       "params": {
           "filter": "Gebruiksfunctie eq 'A045364' and startswith(RegioS,'GM') and substringof('KW04',Perioden)",
-          "select": ["RegioS", "Perioden", "SaldoVoorraad_21"],
+          "select": ["RegioS", "Perioden", "EindstandVoorraad_22"],
       },
       "enabled": True,
     },
@@ -567,7 +578,7 @@ EXTERNAL_DATA_CATALOG = [
         "slow": True,
         "slow_reason": "BAG Panden is a very large dataset; even with a bounding box, it may take several minutes to load.",
         # BAG has no heights: they are measured from the DSM during the import
-        # (physicalEnv/building_heights.py), so the import page asks for the DSM first.
+        # (physicalEnv/calculations/building_heights.py), so the import page asks for the DSM first.
         "import_first": {
             "dataset": "pdok_dsm_ahn_raster",
             "model": "physicalEnv.DigitalSurfaceModel",
@@ -620,6 +631,20 @@ EXTERNAL_DATA_CATALOG = [
         "layer": "natura2000",
         "format": "wfs",
         "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
+        "enabled": True,
+    },
+    {
+        "key": "bij12_nnn",
+        "source": "bij12",
+        "category": "Nature & Environment",
+        "name": "Natuurnetwerk Nederland (NNN)",
+        "description": "The provinces' national nature network (Beschermd natuurgebied), from BIJ12's Informatiekaart Natuur. The neighbourhood generator keeps new buildings out of it.",
+        "target_model": "nature.ProtectedArea",
+        "url": "https://ogc-geoservices.bij12.nl/geoserver/IMNa_IKN/wfs",
+        "layer": "IMNa_IKN:natuur_netwerk_nederland",
+        "format": "wfs",
+        "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
+        "requires_bbox": True,
         "enabled": True,
     },
     {
@@ -1564,6 +1589,14 @@ SOURCE_INFO = {
         "auth_required": False,
     },
 
+    "bij12": {
+        "name": "BIJ12",
+        "full_name": "BIJ12 Informatiekaart Natuur (joint provinces)",
+        "description": "National map of where provincial and national nature rules apply (Natuurnetwerk Nederland, Natura 2000 management plans), served as an open WFS. No authentication required.",
+        "icon": "globe",
+        "color": "emerald",
+        "auth_required": False,
+    },
     "kea": {
         "name": "Klimaateffectatlas",
         "full_name": "Klimaateffectatlas (climate-effect atlas, Climate Adaptation Services)",

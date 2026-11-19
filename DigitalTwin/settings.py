@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 from pathlib import Path
 from dotenv import load_dotenv
 import os
+import re
 import sys
 
 # Load environment variables from .env file
@@ -61,7 +62,11 @@ if os.name == 'nt':
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get("SECRET_KEY")
 MAPBOX_ACCESS_TOKEN = os.environ.get("MAPBOX_ACCESS_TOKEN")
-TITILER_BASE_URL = os.environ.get("TITILER_BASE_URL")
+# TiTiler (uvicorn) listens on IPv4 only; on Windows "localhost" tries ::1 first
+# and each request then waits ~2 s for the refused connection. Use 127.0.0.1.
+TITILER_BASE_URL = re.sub(
+    r"^(https?://)localhost(?=[:/]|$)", r"\g<1>127.0.0.1", os.environ.get("TITILER_BASE_URL") or ""
+) or None
 
 # Default Copernicus Data Space (openEO) service credentials, used by the
 # Sentinel-2 importer (importer/external_data.py) when a request doesn't

@@ -15,7 +15,7 @@
     </div>
     {% if indicators.population %}
     <div id="panel-population" style="margin-top:4px; font-size:0.78rem; color:rgba(232,244,255,0.55);">
-      👥 {{ indicators.population|intcomma }} inhabitants
+      👥 {{ indicators.population|intcomma }} inhabitants{% if indicators.population_extrapolated %} <span class="pop-extrapolated" title="Beyond the imported CBS projection: the CBS trend (compound annual growth between its first and last year) continued">· trend extrapolation</span>{% endif %}
       <span style="opacity:.7;">· {{ pop_scenario|default:"prognose" }}{% if pop_growth %}, {{ pop_growth|floatformat:1 }}%/yr extra growth{% endif %}</span>
     </div>
     {% endif %}

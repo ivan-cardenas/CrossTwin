@@ -164,15 +164,16 @@ digraph CrossTwin {
     NumberUsers         -> Water_Tariff_Afford;
 
     // Urban growth (2026-11-10, docs/DAG_REVISIONS.md): the former Urbanization
-    // node is gone. More people need more homes, homes are buildings, buildings
-    // need streets, both change the land cover, and the urban area grows:
+    // node is gone. More people need more homes, homes are buildings placed on
+    // the plots the streets leave (Streets -> Buildings, flipped 2026-11-12),
+    // both change the land cover, and the urban area grows:
     //   Total_Population -> Housing_Demand -> Zoning_Status -> New_Units
-    //   -> Buildings -> Streets -> LandCover -> CityArea
+    //   -> Buildings -> LandCover -> CityArea;  Streets -> Buildings, Streets -> LandCover
     // Degree_Urbanisation measures the result; it causes nothing (no out-edges).
     Total_Population    -> Housing_Demand;
     New_Units           -> Buildings;
-    Buildings           -> Streets;
-    Buildings           -> LandCover;   // 10 m urban-fabric ring of an editor building (physicalEnv/landcover.py::urbanize_around)
+    Streets             -> Buildings;   // plots and footprints fill the blocks the street layout leaves (builtup/calculations/generative.py)
+    Buildings           -> LandCover;   // 10 m urban-fabric ring of an editor building (physicalEnv/calculations/landcover.py::urbanize_around)
     Streets             -> LandCover;
     LandCover           -> CityArea;    // neighborhood urban_area (physicalEnv/signals.py::_recompute_neighborhood_urban_area)
     Total_Population    -> Degree_Urbanisation;
@@ -201,7 +202,8 @@ digraph CrossTwin {
 
     Climate_Change      -> Meteorology;
     Anthropogenic_Heat  -> Meteorology;
-    Canyon_Aspect       -> Meteorology;
+    // Canyon_Aspect -> Meteorology replaced by DSM -> PET (2026-11-16): PET's urban heat
+    // island and 1.2 m wind read the urban form off the DSM, not the stored street H/W.
 
     Meteorology         -> Tmrt;
     Meteorology         -> PET;
@@ -209,6 +211,7 @@ digraph CrossTwin {
     Meteorology         -> Available_FW;
 
     DSM                 -> SVF;
+    DSM                 -> PET;   // UHI source areas + 1.2 m wind (pet-adjusted, frontal areas)
     SVF                 -> Tmrt;
     SVF                 -> PET;
 
@@ -219,7 +222,7 @@ digraph CrossTwin {
     
     
     Green_Area          -> Vegetation_Coverage;
-    Vegetation_Coverage -> DSM;   // editor tree / forest changes (physicalEnv/dsm_patches.py)
+    Vegetation_Coverage -> DSM;   // editor tree / forest changes (physicalEnv/calculations/dsm_patches.py)
 
     // Streets 
     Streets             -> Canyon_Aspect;
@@ -238,7 +241,7 @@ digraph CrossTwin {
     Zoning_Status       -> New_Units;
 
     New_Units           -> Housing_Supply;
-    New_Green_Area      -> LandCover;   // green space (e.g. park) drawn in the map editor (nature.GreenSpaces, physicalEnv/landcover.py::green_area)
+    New_Green_Area      -> LandCover;   // green space (e.g. park) drawn in the map editor (nature.GreenSpaces, physicalEnv/calculations/landcover.py::green_area)
     
     Property            -> Affordability_Stress;
     Property            -> Rent;
@@ -264,7 +267,6 @@ digraph CrossTwin {
 
 
     Total_Water_Prod    -> Supply_Security;
-    Total_Water_Prod    -> OPEX;
 
     Supply_Security     -> Service_Time;
 
@@ -297,7 +299,7 @@ digraph CrossTwin {
     Apparent_Losses     -> NRW;
 
     Real_Losses         -> ILI;
-    Apparent_Losses     -> ILI;
+    Network             -> ILI;
 
     // Water costs / tariff
     Energy_Cost         -> Energy_Consumption;

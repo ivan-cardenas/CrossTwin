@@ -53,7 +53,7 @@ def _number(data, name, default, low, high, unit="m"):
 
 
 def _params(data):
-    from .svf import DEFAULT_RADIUS_M
+    from .calculations.svf import DEFAULT_RADIUS_M
 
     return {
         "bbox_wgs84": _bbox(data.get("bbox")),
@@ -82,7 +82,7 @@ def _existing_json(record):
 
 def _run(view):
     """Map the tool's expected failures to 400 and anything else to 502."""
-    from .svf import SVFError
+    from .calculations.svf import SVFError
 
     try:
         return view()
@@ -96,7 +96,7 @@ def _run(view):
 @require_GET
 def svf_info(request):
     def view():
-        from . import svf
+        from .calculations import svf
 
         p = _params(request.GET)
         plan = svf.plan(svf.wgs84_to_storage(p["bbox_wgs84"]),
@@ -124,7 +124,7 @@ def svf_calculate(request):
     def view():
         from mainMap.views import raster_layer_entry
 
-        from .svf import calculate_svf
+        from .calculations.svf import calculate_svf
 
         result = calculate_svf(**_params(request.POST))
         record = result.record
@@ -146,9 +146,9 @@ def svf_calculate(request):
 def dsm_edited_status(request):
     """
     GET /physicalEnv/dsm/edited/status/ -> {"busy": bool}: whether map edits
-    are still being written into the edited DSM COG (physicalEnv/dsm_edited.py,
+    are still being written into the edited DSM COG (physicalEnv/calculations/dsm_edited.py,
     a background thread). The map reloads the DSM tiles once it reads false.
     """
-    from .dsm_edited import busy
+    from .calculations.dsm_edited import busy
 
     return JsonResponse({"busy": busy()})

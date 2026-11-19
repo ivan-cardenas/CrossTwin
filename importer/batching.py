@@ -23,7 +23,7 @@ from physicalEnv.signals import deferred_urban_area, schedule_urban_area_recompu
 from watersupply.signals import deferred_water_refresh, refresh_freshwater
 from housing.signals import deferred_housing_refresh
 from builtup.signals import deferred_canyon_refresh, schedule_streets, streets_in_extent
-from builtup.urbanisation import deferred_urbanisation_refresh
+from builtup.calculations.urbanisation import deferred_urbanisation_refresh
 
 logger = logging.getLogger(__name__)
 
@@ -103,14 +103,16 @@ def deferred_cascades():
         # population cascade directly), then the deferred population cascade
         # (which announces city_population_changed), and the water and housing
         # refreshes last, so they collect the cities of both and run once per city.
+        # Water exits after housing: the water users are the residents housing
+        # writes onto the dwellings (residents_changed).
         # The canyon refresh depends on no other cascade: its place is free.
         # The Degree of Urbanisation refresh reads the neighborhoods' own
         # population and land cover; entered first, it exits last, after every
         # other cascade has settled.
         stack.enter_context(deferred_urbanisation_refresh())
         stack.enter_context(deferred_canyon_refresh())
-        stack.enter_context(deferred_housing_refresh())
         stack.enter_context(deferred_water_refresh())
+        stack.enter_context(deferred_housing_refresh())
         stack.enter_context(deferred_population_cascade())
         stack.enter_context(deferred_urban_area())
         yield
@@ -139,8 +141,8 @@ def _refresh_canyons_over(rows):
 
 
 def _finalize_landcover(rows):
-    from physicalEnv.albedo import measure_missing, set_default_materials
-    from physicalEnv.landcover import refresh_percentages
+    from physicalEnv.calculations.albedo import measure_missing, set_default_materials
+    from physicalEnv.calculations.landcover import refresh_percentages
 
     for city_id in {row.city_id for row in rows if row.city_id}:
         refresh_percentages(city_id)      # replays the percentage pre_save
@@ -148,6 +150,17 @@ def _finalize_landcover(rows):
         measure_missing(city_id)          # RS_Imagery -> LandCover for an albedo raster imported earlier
         schedule_urban_area_recompute(city_id)
     _refresh_freshwater_over(rows)       # replays watersupply/signals.py
+    _mark_heat_input("land cover")       # replays urban_heat/signals.py
+
+
+def _finalize_soil(rows):
+    _refresh_freshwater_over(rows)       # replays watersupply/signals.py
+    _mark_heat_input("soil")             # replays urban_heat/signals.py
+
+
+def _mark_heat_input(name):
+    from urban_heat.signals import mark_heat_input_changed
+    mark_heat_input_changed(name)
 
 
 def _fill_tree_heights(rows):
@@ -155,7 +168,7 @@ def _fill_tree_heights(rows):
     from django.db.models import Q
 
     from nature.models import Tree
-    from physicalEnv.tree_heights import fill_from_dsm
+    from physicalEnv.calculations.tree_heights import fill_from_dsm
 
     pks = [row.pk for row in rows if row.pk is not None]
     keys = [row.sourceID for row in rows if row.pk is None and row.sourceID]
@@ -176,13 +189,13 @@ BULK_IMPORT_MODELS = {
     "physicalEnv.LandCoverVector": _finalize_landcover,   # replays physicalEnv/signals.py
     "builtup.Street": _refresh_canyons_over,              # replays builtup/signals.py
     "builtup.Facility": None,
-    "physicalEnv.SoilArea": _refresh_freshwater_over,     # replays watersupply/signals.py
+    "physicalEnv.SoilArea": _finalize_soil,               # replays watersupply/ and urban_heat/signals.py
     "nature.ProtectedArea": None,
     "nature.WaterWaysLN": None,
     "nature.WaterWaysPG": None,
     "nature.WaterBodies": None,
     "nature.Forests": None,
-    "nature.Tree": _fill_tree_heights,                    # height_m from the DSM (physicalEnv/tree_heights.py)
+    "nature.Tree": _fill_tree_heights,                    # height_m from the DSM (physicalEnv/calculations/tree_heights.py)
 }
 
 

@@ -34,8 +34,9 @@
     </div>
     {% if indicators.household_size %}
     <div style="font-size:9px; color:rgba(232,244,255,0.45);">
-      {{ indicators.housed_residents }} residents housed at {{ indicators.household_size }} per home
-      {% if indicators.dwellings %}· {{ indicators.dwellings }} mapped dwellings ≈ {{ indicators.estimated_residents }} residents{% endif %}
+      {% if indicators.supply_source == 'bag' %}Supply = mapped dwellings (BAG){% else %}Supply = CBS housing stock{% endif %}
+      · {{ indicators.housed_residents }} residents housed at {{ indicators.household_size }} per home
+      {% if indicators.dwellings and indicators.supply_source != 'bag' %}· {{ indicators.dwellings }} mapped dwellings ≈ {{ indicators.estimated_residents }} residents{% endif %}
     </div>
     {% endif %}
   </div>

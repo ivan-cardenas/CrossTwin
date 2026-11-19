@@ -12,6 +12,7 @@ urlpatterns = [
     path('solweig/met/', solweig_views.solweig_met, name='solweig_met'),
     path('solweig/calculate/', solweig_views.solweig_calculate, name='solweig_calculate'),
     path('solweig/runs/<int:run_id>/', solweig_views.solweig_run, name='solweig_run'),
+    path('solweig/scenario-met/', solweig_views.solweig_scenario_met, name='solweig_scenario_met'),
     path('solweig/stale/', solweig_views.solweig_stale, name='solweig_stale'),
     path('indicators/<str:level>/<str:location>/',
          views.heat_indicators,

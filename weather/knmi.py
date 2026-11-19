@@ -88,7 +88,7 @@ def radiation_w_m2(q_j_cm2):
 def vapour_pressure_hpa(ta_c, rh_pct):
     """
     Water vapour pressure (hPa) from air temperature and relative humidity
-    (Tetens/Magnus, same constants as urban_heat/chain.py::vapour_pressure_hpa;
+    (Tetens/Magnus, same constants as urban_heat/calculations/chain.py::vapour_pressure_hpa;
     weather is upstream of urban_heat, so it keeps its own copy). From the
     daily means TG and UG it slightly understates the mean of the day's
     hourly values, as e is convex in T.

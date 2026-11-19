@@ -1,5 +1,5 @@
 from django.http import JsonResponse
-from .utils import RASTER_REGISTRY
+from .utils import RASTER_REGISTRY, without_raster_data
 from mainMap.styles.rasterStyles import resolve_raster_style, colormap_legend_stops, discrete_colormap_param
 from django.conf import settings
 from urllib.parse import quote
@@ -9,13 +9,54 @@ import requests
 def displayed_cog_path(instance):
     """
     The COG the map shows for a raster row: a DSM's edited copy (the map
-    editor's building/vegetation changes burnt in, physicalEnv/dsm_edited.py)
+    editor's building/vegetation changes burnt in, physicalEnv/calculations/dsm_edited.py)
     when it exists, else cog_path.
     """
     import os
 
     edited = getattr(instance, "edited_cog_path", None)
     return edited if edited and os.path.exists(edited) else instance.cog_path
+
+
+def _cog_version(path):
+    """
+    The COG file's mtime in ms: added to tile URLs as `v=` so the browser may
+    cache tiles for good (tiler.py sends `immutable` for versioned URLs); a
+    rewritten COG gets a new URL. 0 when the file is missing.
+    """
+    import os
+
+    try:
+        return int(os.path.getmtime(path) * 1000)
+    except OSError:
+        return 0
+
+
+def _titiler_info(path):
+    """TiTiler's /cog/info of a COG, cached per file version (it never changes for one)."""
+    from django.core.cache import cache
+
+    key = f"titiler-info:v2:{path}:{_cog_version(path)}"
+    info = cache.get(key)
+    if info is None:
+        encoded_url = quote(f"file://{path}", safe="/:")
+        # info.geojson, not info: its bbox is always WGS84 (what Mapbox needs),
+        # while info's bounds are in the COG's own CRS (EPSG:3857 since COG_CRS).
+        response = requests.get(f"{settings.TITILER_BASE_URL}/cog/info.geojson?url={encoded_url}", timeout=30)
+        response.raise_for_status()
+        feature = response.json()
+        info = {**feature["properties"], "bounds": feature["bbox"]}
+        # info carries no zoom range (rio-tiler dropped it); the tilejson has
+        # the native maxzoom. Without it the map source defaults to 24 and
+        # Mapbox requests server tiles at every zoom instead of overzooming.
+        tj = requests.get(
+            f"{settings.TITILER_BASE_URL}/cog/WebMercatorQuad/tilejson.json?url={encoded_url}", timeout=30
+        )
+        tj.raise_for_status()
+        tilejson = tj.json()
+        info["minzoom"], info["maxzoom"] = tilejson.get("minzoom"), tilejson.get("maxzoom")
+        cache.set(key, info, 24 * 3600)
+    return info
 
 
 def get_raster_info(request, app_label, layer_name):
@@ -30,28 +71,26 @@ def get_raster_info(request, app_label, layer_name):
     raster_id = request.GET.get('id')
     
     if raster_id:
-        instance = model_class.objects.filter(id=raster_id).first()
+        instance = without_raster_data(model_class.objects.filter(id=raster_id)).first()
     else:
-        instance = model_class.objects.first()
+        instance = without_raster_data(model_class.objects.all()).first()
     
     if not instance or not instance.cog_path:
         return JsonResponse({"error": "No raster data found"}, status=404)
    
     
-    cog_url = f"file://{displayed_cog_path(instance)}"
-    encoded_url = quote(cog_url, safe="/:")
-    
     try:
-        info_url = f"{settings.TITILER_BASE_URL}/cog/info?url={encoded_url}"
-        info = requests.get(info_url).json()
-    
+        info = _titiler_info(displayed_cog_path(instance))
+
         return JsonResponse({
             "name": registry_key,
             "bounds": info['bounds'],
             "width": info['width'],
             "height": info['height'],
-            "minzoom": info.get('minzoom', 0),
-            "maxzoom": info.get('maxzoom', 24)
+            # minzoom stays 0: TiTiler's minzoom (where the whole COG fits one
+            # tile) would hide small rasters when zoomed out; overviews serve those.
+            "minzoom": 0,
+            "maxzoom": info.get('maxzoom') or 24,
         })
     except Exception as e:
         return JsonResponse({"error": f"Failed to get raster info: {e}"}, status=500)
@@ -71,9 +110,9 @@ def get_raster_tiles(request, app_label, layer_name):
     raster_id = request.GET.get('id')
     
     if raster_id:
-        instance = model_class.objects.filter(id=raster_id).first()
+        instance = without_raster_data(model_class.objects.filter(id=raster_id)).first()
     else:
-        instance = model_class.objects.first()
+        instance = without_raster_data(model_class.objects.all()).first()
     
     if not instance:
         return JsonResponse({"error": f"No data found for '{registry_key}'"}, status=404)
@@ -82,14 +121,14 @@ def get_raster_tiles(request, app_label, layer_name):
         return JsonResponse({"error": "COG not generated yet"}, status=404)
     
     # Step 3: Build the TiTiler tile URL
-    cog_url = f"file://{displayed_cog_path(instance)}"
-    encoded_url = quote(cog_url, safe="/:")
+    cog_path = displayed_cog_path(instance)
+    encoded_url = quote(f"file://{cog_path}", safe="/:")
 
     style = resolve_raster_style(instance, registry_key)
 
     tile_url = (
         f"{settings.TITILER_BASE_URL}/cog/tiles/WebMercatorQuad/{{z}}/{{x}}/{{y}}.png"
-        f"?url={encoded_url}"
+        f"?url={encoded_url}&v={_cog_version(cog_path)}"
     )
 
     # TiTiler defaults to nearest-neighbour resampling (blocky at high zoom);

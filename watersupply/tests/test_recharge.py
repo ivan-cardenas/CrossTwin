@@ -1,7 +1,7 @@
 """AvailableFreshWater.yield_Mm3_year = yearly infiltration depth x source area (chain.recharge_Mm3_yr)."""
 from django.test import SimpleTestCase, TestCase
 
-from watersupply.chain import recharge_Mm3_yr
+from watersupply.calculations.chain import recharge_Mm3_yr
 from watersupply.models import AvailableFreshWater
 
 from .factories import make_polygon

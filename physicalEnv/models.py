@@ -33,7 +33,7 @@ class LandCoverClasses(models.Model):
         "SurfaceMaterialProperties", on_delete=models.DO_NOTHING, null=True, blank=True,
         limit_choices_to=land_cover_materials,
         help_text="Surface material (and albedo) assumed for polygons of this class without a measured albedo; "
-                  "derived from the class name on save (physicalEnv/albedo.py)")
+                  "derived from the class name on save (physicalEnv/calculations/albedo.py)")
     last_updated = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
@@ -41,7 +41,7 @@ class LandCoverClasses(models.Model):
 
     def save(self, *args, **kwargs):
         if self.default_material_id is None:
-            from .albedo import default_material_for
+            from .calculations.albedo import default_material_for
             self.default_material = default_material_for(self.class_name)
         super().save(*args, **kwargs)
 
@@ -72,7 +72,7 @@ class SoilType(models.Model):
     A soil unit of the Dutch soil map (Bodemkaart 1:50 000, BIS Nederland),
     stored once and referenced by SoilArea. save() derives the hydrologic
     soil group from the soil name and its infiltration rate range from the
-    group (physicalEnv/soil.py).
+    group (physicalEnv/calculations/soil.py).
     """
     SOIL_GROUP_CHOICES = [
         ('A', 'A: sand, gravel (low runoff)'),
@@ -91,7 +91,7 @@ class SoilType(models.Model):
     infiltrationMax_mm_h = models.FloatField(null=True, blank=True, help_text="Upper bound of the final infiltration rate of the soil group, mm/h (empty for group A: no upper bound)")
 
     def save(self, *args, **kwargs):
-        from .soil import SOIL_GROUPS, classify_soil_group
+        from .calculations.soil import SOIL_GROUPS, classify_soil_group
         self.soilGroup = classify_soil_group(self.name)
         rates = SOIL_GROUPS.get(self.soilGroup, {})
         self.infiltrationMin_mm_h = rates.get('min_mm_h')
@@ -266,15 +266,21 @@ class LandCoverVector(models.Model):
                                  limit_choices_to=land_cover_materials,
                                  help_text="Surface material (Oke et al. 2017 Table 5.1); its albedo applies when no albedo was measured")
     # Set on the urban-fabric ring around a building drawn in the map editor
-    # (physicalEnv/landcover.py): moving or deleting that building releases
+    # (physicalEnv/calculations/landcover.py): moving or deleting that building releases
     # this ring. Plain id, not an FK: builtup already depends on physicalEnv.
     source_building = models.BigIntegerField(null=True, blank=True, db_index=True, help_text="Editor building whose 10 m urban-fabric buffer this polygon is")
     # Set on the green-area polygon of a green space (nature.GreenSpaces, a park
     # is one of type 'park') drawn in the map editor
-    # (physicalEnv/landcover.py::green_area); released like a building ring.
+    # (physicalEnv/calculations/landcover.py::green_area); released like a building ring.
     # Name kept from the former builtup.Park; the id is a nature.GreenSpaces id.
     source_park = models.IntegerField(null=True, blank=True, db_index=True, help_text="Editor green space (nature.GreenSpaces id) whose outline this green-area polygon is")
-    # Measured (Sentinel-2 broadband albedo, zonal mean: physicalEnv/albedo.py::measure)
+    # Set on the road polygon of a street drawn or generated in the map editor
+    # (physicalEnv/calculations/landcover.py::street_area, DAG edge Streets -> LandCover).
+    source_street = models.IntegerField(null=True, blank=True, db_index=True, help_text="Editor street (builtup.Street id) whose road surface this polygon is")
+    # Set on the urban-fabric polygon of a generated neighbourhood
+    # (physicalEnv/calculations/landcover.py::project_area): one polygon for all its buildings.
+    source_project = models.IntegerField(null=True, blank=True, db_index=True, help_text="Generated neighbourhood (housing.HousingProject id) whose urban fabric this polygon is")
+    # Measured (Sentinel-2 broadband albedo, zonal mean: physicalEnv/calculations/albedo.py::measure)
     # or estimated for editor polygons (building roof + paving). Empty: the
     # class default through `material` applies (effective_albedo).
     albedo = models.FloatField(null=True, blank=True, help_text="Shortwave broadband albedo (0-1) measured over this polygon, or estimated for editor polygons")
@@ -293,10 +299,24 @@ class LandCoverVector(models.Model):
         return self.material.albedo if self.material_id else None
 
 
+CUT_OWNER_FIELDS = ("owner_building", "owner_park", "owner_street", "owner_project")
+
+
+def _exactly_one_owner():
+    """Q: exactly one of CUT_OWNER_FIELDS is set (physicalEnv/calculations/landcover.py::OWNER_KINDS)."""
+    condition = None
+    for chosen in CUT_OWNER_FIELDS:
+        q = models.Q(**{f"{f}__isnull": f != chosen for f in CUT_OWNER_FIELDS})
+        condition = q if condition is None else condition | q
+    return condition
+
+
 class UrbanFabricCut(models.Model):
     """
     A piece an editor building's urban-fabric ring (or an editor green space's
-    green area; `owner_park` holds the nature.GreenSpaces id) cut out of another land-cover polygon (physicalEnv/landcover.py).
+    green area; `owner_park` holds the nature.GreenSpaces id, or an editor
+    street's road surface, `owner_street`, or a generated neighbourhood's urban
+    fabric, `owner_project`) cut out of another land-cover polygon (physicalEnv/calculations/landcover.py).
     Releasing the ring (the building or park moved or was deleted) gives each
     piece back to `target`, or recreates `target` with the attributes copied
     here when it was swallowed whole. Exactly one owner is set. Not a map
@@ -306,6 +326,8 @@ class UrbanFabricCut(models.Model):
 
     owner_building = models.BigIntegerField(null=True, blank=True, db_index=True, help_text="Editor building whose ring took this piece")
     owner_park = models.IntegerField(null=True, blank=True, db_index=True, help_text="Editor green space (nature.GreenSpaces id) whose green area took this piece")
+    owner_street = models.IntegerField(null=True, blank=True, db_index=True, help_text="Editor street (builtup.Street id) whose road surface took this piece")
+    owner_project = models.IntegerField(null=True, blank=True, db_index=True, help_text="Generated neighbourhood (housing.HousingProject id) whose urban fabric took this piece")
     target = models.IntegerField(db_index=True, help_text="Id of the LandCoverVector row the piece was cut from")
     city = models.ForeignKey("administrative.City", on_delete=models.DO_NOTHING, null=True, blank=True)
     year = models.IntegerField()
@@ -314,6 +336,8 @@ class UrbanFabricCut(models.Model):
     material = models.ForeignKey(SurfaceMaterialProperties, on_delete=models.DO_NOTHING, null=True, blank=True)
     source_building = models.BigIntegerField(null=True, blank=True, db_index=True, help_text="The target's own source_building (set when the target is another ring)")
     source_park = models.IntegerField(null=True, blank=True, db_index=True, help_text="The target's own source_park (set when the target is a green space's green area)")
+    source_street = models.IntegerField(null=True, blank=True, db_index=True, help_text="The target's own source_street (set when the target is a street's road surface)")
+    source_project = models.IntegerField(null=True, blank=True, db_index=True, help_text="The target's own source_project (set when the target is a generated neighbourhood's urban fabric)")
     albedo = models.FloatField(null=True, blank=True)
     albedo_source = models.CharField(max_length=100, null=True, blank=True)
     albedo_date = models.DateField(null=True, blank=True)
@@ -322,21 +346,21 @@ class UrbanFabricCut(models.Model):
     class Meta:
         constraints = [
             models.CheckConstraint(
-                condition=(models.Q(owner_building__isnull=False, owner_park__isnull=True)
-                           | models.Q(owner_building__isnull=True, owner_park__isnull=False)),
+                condition=_exactly_one_owner(),
                 name="urbanfabriccut_one_owner",
             ),
         ]
 
     def __str__(self):
-        owner = f"building {self.owner_building}" if self.owner_building is not None else f"park {self.owner_park}"
+        field = next((f for f in CUT_OWNER_FIELDS if getattr(self, f) is not None), CUT_OWNER_FIELDS[0])
+        owner = f"{field.removeprefix('owner_')} {getattr(self, field)}"
         return f"Cut of land cover {self.target} by {owner}"
 
 
 class DSMBuildingPatch(models.Model):
     """
     A map-editor change of one building, applied on top of every DSM when it is
-    read for analysis (physicalEnv/dsm_patches.py::apply_patches): the original
+    read for analysis (physicalEnv/calculations/dsm_patches.py::apply_patches): the original
     footprint goes back to ground level, then the current footprint is raised
     to ground + height_m. The measured DSM COG is never rewritten; the map
     shows a patched copy (dsm_edited.py, DigitalSurfaceModel.edited_cog_path). Not a map
@@ -360,7 +384,7 @@ class DSMVegetationPatch(models.Model):
     """
     A map-editor change of one tree (nature.Tree: its crown disc) or forest
     (nature.Forests: its polygon), applied on top of every DSM when it is read
-    for analysis (physicalEnv/dsm_patches.py::apply_patches):
+    for analysis (physicalEnv/calculations/dsm_patches.py::apply_patches):
 
         tree    original crown -> tall vegetation cleared to ground, then the
                 current crown is raised to ground + a paraboloid of canopy_m
@@ -479,7 +503,7 @@ class GroundwaterDepth(models.Model):
     Groundwater depth statistic (GHG/GLG/GVG) of the BIS Nederland
     groundwater model, 50 m cells in cm below ground level. Values are
     capped at 254 (= 254 cm or deeper); 255 is nodata. Kept in Postgres (no
-    SKIP_RASTER_DB_STORAGE): physicalEnv/soil.py reads GHG with PostGIS
+    SKIP_RASTER_DB_STORAGE): physicalEnv/calculations/soil.py reads GHG with PostGIS
     raster SQL to mark shallow groundwater for the SCS soil groups.
     """
     STATISTIC_CHOICES = [
@@ -536,7 +560,7 @@ class DigitalSurfaceModel(models.Model):
     dsm_raster = models.RasterField(srid=CoordinateSystem, null=True, blank=True, help_text="Raster file containing surface elevation values")
     cog_path = models.CharField(max_length=500, null=True, blank=True, help_text="Path to the exported Cloud-Optimized GeoTIFF served by TiTiler")
     # Buildings -> DSM, Vegetation_Coverage -> DSM: the map editor's patches
-    # written into a copy of the COG (physicalEnv/dsm_edited.py). The map shows
+    # written into a copy of the COG (physicalEnv/calculations/dsm_edited.py). The map shows
     # it; cog_path stays the measured surface, which analyses read + patches.
     edited_cog_path = models.CharField(max_length=500, null=True, blank=True, help_text="COG with the map editor's building and vegetation changes burnt in (shown on the map)")
     edited_upto = models.BigIntegerField(null=True, blank=True, help_text="Last DSMEdit id written into edited_cog_path")

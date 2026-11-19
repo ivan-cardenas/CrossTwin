@@ -27,7 +27,7 @@
         <div class="balance-track"><div class="balance-fill" style="width: {{ indicators.supply_bar_pct }}%;"></div></div>
       </div>
       <div class="balance-row demand" role="row"
-           title="Demand: {{ indicators.total_demand_Mm3 }} Mm³/year ({{ indicators.demand_m3_d|intcomma }} m³/day)">
+           title="Demand: {{ indicators.total_demand_Mm3 }} Mm³/year ({{ indicators.demand_m3_d|intcomma }} m³/day): residential {{ indicators.residential_demand_m3_d|intcomma }} + small businesses {{ indicators.small_business_demand_m3_d|intcomma }} m³/day (× {{ indicators.small_business_factor }})">
         <div class="balance-meta">
           <span class="balance-key" aria-hidden="true"></span>
           <span class="balance-label" role="rowheader">Demand</span>
@@ -165,8 +165,44 @@
             <span style="color:{% if indicators.ili <= 2 %}#22c55e{% elif indicators.ili <= 4 %}#f59e0b{% else %}#ef4444{% endif %};">
               {{ indicators.ili }}
             </span>
+            {% if not indicators.uarl_reliable %}
+              <span title="Network below the IWA UARL range (3000 connections, 20 per km, 25 m pressure): indicative only" style="font-size:0.65rem; font-weight:400; color:rgba(232,244,255,0.45);">indicative</span>
+            {% endif %}
           {% else %}
             <span style="color:rgba(232,244,255,0.35);">—</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Network coverage: users served + urban area the network has not reached -->
+  <div class="card c3 wide">
+    <div class="gauge-header">
+      <div class="card-icon">🗺️</div>
+      <div class="card-label">Network Coverage</div>
+      {% info_help "water.coverage" %}
+    </div>
+    <div style="display:flex; align-items:baseline; gap:8px;">
+      <div class="card-value">{% if indicators.coverage_pct != None %}{{ indicators.coverage_pct }}{% else %}—{% endif %}</div>
+      <div class="card-unit">% of users within reach of a pipe</div>
+    </div>
+    <div class="bar-track" style="height:8px;">
+      <div class="bar-fill" style="width:{{ indicators.coverage_pct|default:0|unlocalize }}%; background:#38bdf8;"></div>
+    </div>
+    <div style="display:flex; gap:16px; margin-top:10px;">
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Service area</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.covered_area_km2 }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">km²</span></div>
+      </div>
+      <div>
+        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Urban area without network</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">
+          {% if indicators.uncovered_urban_km2 != None %}
+            <span style="color:{% if indicators.uncovered_urban_pct > 10 %}#ef4444{% elif indicators.uncovered_urban_pct > 0 %}#f59e0b{% else %}#22c55e{% endif %};">{{ indicators.uncovered_urban_km2 }}</span>
+            <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">km² ({{ indicators.uncovered_urban_pct }}% of {{ indicators.urban_area_km2 }} km²)</span>
+          {% else %}
+            <span style="color:rgba(232,244,255,0.35);">— no land cover</span>
           {% endif %}
         </div>
       </div>
@@ -196,7 +232,7 @@
       <span><b style="color:#38bdf8;">■</b> Recharge {{ indicators.recharge_pct }}%</span>
       <span><b style="color:#f59e0b;">■</b> Runoff {{ indicators.recharge_runoff_mm_yr }} mm</span>
       <span><b style="color:rgba(232,244,255,0.4);">■</b> ET {{ indicators.recharge_et_mm_yr }} mm</span>
-      <span>of {{ indicators.recharge_rain_mm_yr }} mm rain · KNMI {{ indicators.recharge_station }} {{ indicators.recharge_year }}</span>
+      <span>of {{ indicators.recharge_rain_mm_yr }} mm rain · KNMI {{ indicators.recharge_station }} {{ indicators.recharge_year }}{% if indicators.climate.active %} in KNMI'23 {{ indicators.climate.short }} (delta-change){% endif %}</span>
     </div>
     {% else %}
     <div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;">

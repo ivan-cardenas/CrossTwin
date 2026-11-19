@@ -104,7 +104,7 @@
   window.publishHeatWeather = function () {
     const state = document.getElementById('heat-weather-state');
     if (!state) return;
-    const detail = { whatif: state.dataset.whatif === '1' };
+    const detail = { whatif: state.dataset.whatif === '1', climate: state.dataset.climate || null };
     WEATHER_FIELDS.concat(['feels']).forEach(f => {
       const v = state.dataset[f];
       detail[f] = v === '' || v === undefined ? null : parseFloat(v);

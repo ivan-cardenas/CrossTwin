@@ -1,4 +1,4 @@
-"""Measure the height of stored trees that have none from the DSM (physicalEnv/tree_heights.py)."""
+"""Measure the height of stored trees that have none from the DSM (physicalEnv/calculations/tree_heights.py)."""
 from django.core.management.base import BaseCommand
 
 
@@ -11,7 +11,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         from core.cache import bump_layer_version
         from nature.models import Tree
-        from physicalEnv.tree_heights import fill_from_dsm
+        from physicalEnv.calculations.tree_heights import fill_from_dsm
 
         trees = Tree.objects.all()
         if options["city"]:

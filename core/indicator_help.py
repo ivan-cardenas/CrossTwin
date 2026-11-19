@@ -14,8 +14,8 @@ Each entry:
     where  optional (symbol, meaning) pairs explaining the equation's terms
     note   optional caveat, threshold or reading guide
 
-Keep the equations in step with the code they describe (watersupply/chain.py,
-urban_heat/chain.py, housing/chain.py, the apps' views/calculations); the
+Keep the equations in step with the code they describe (watersupply/calculations/chain.py,
+urban_heat/calculations/chain.py, housing/calculations/chain.py, the apps' views/calculations); the
 docstring next to each equation in the code is the reference.
 """
 
@@ -26,7 +26,8 @@ HELP = {
         "what": "How much drinking water is available to the area each year compared with how much its population uses.",
         "how": "Supply is the area's population share of the active wells' extraction in each watershed (measured yearly extraction, else pump flow × operating hours) plus imported water. Demand follows the population dock and the consumption slider. Both bars share one scale, the larger of the two, so their lengths compare directly.",
         "eq": [
-            "Demand (m³/day) = population × {litres per person per day | 1 000}",
+            "Residential demand (m³/day) = population × {litres per person per day | 1 000}",
+            "Demand (m³/day) = residential demand × 1.2  (small businesses, Vitens)",
             "Supply (m³/day) = Σ watershed extraction × {area population | watershed population} + imported water",
             "Balance (Mm³/yr) = (supply − demand) × {365 | 1 000 000}",
         ],
@@ -58,17 +59,36 @@ HELP = {
     "water.nrw": {
         "title": "Non-Revenue Water (NRW)",
         "what": "Water that is produced but never billed: lost through leaks (real losses) or through theft and meter errors (apparent losses).",
-        "how": "Summed from the recorded loss entries of the year. A leak counts in proportion to the share of its pipe's length inside the area; apparent losses are split by the area's share of connected users. ILI rates only the leaks against what is technically unavoidable.",
+        "how": "Summed from the recorded loss entries of the year. A leak counts in proportion to the share of its pipe's length inside the area; apparent losses are split by the area's share of connected users. ILI rates only the leaks against what is technically unavoidable for this network: its mains length, its connections and each city's average pressure (editable on the city's coverage record, 30 m by default). Apparent losses are not leaks and do not count in it.",
         "eq": [
             "NRW = real losses + apparent losses",
             "NRW share = {NRW (m³/day) | supply (m³/day)} × 100 %",
             "ILI = {CARL | UARL}",
+            "UARL (L/day) = (18 × Lm + 0.8 × Nc + 25 × Lp) × P",
         ],
         "where": [
             ("CARL", "current annual real losses: the recorded leakage volume"),
-            ("UARL", "unavoidable annual real losses: each leak × its unavoidable share"),
+            ("UARL", "unavoidable annual real losses (IWA): what even a well-run network of this size leaks"),
+            ("Lm", "mains length (km)"),
+            ("Nc", "service connections: dwellings within the service area"),
+            ("Lp", "private pipe from the property boundary to the meter (km; 5 m per connection)"),
+            ("P", "average operating pressure (m) of each city's network"),
         ],
-        "note": "An ILI below about 2 is considered good; 1 means only unavoidable leakage is left.",
+        "note": "An ILI below about 2 is considered good; 1 means only unavoidable leakage is left. The UARL equation is meant for networks with at least 3000 connections, 20 connections per km and 25 m pressure; below that the ILI is indicative.",
+    },
+    "water.coverage": {
+        "title": "Network Coverage",
+        "what": "Main value: the share of water users (the residents of each home) living within reach of a pipe. Below it, the urban area the pipe network has not followed yet: where the network should be extended.",
+        "how": "The pipes are buffered by the city's service distance (50 m unless the coverage record sets another). A home is served when it lies inside that buffer. The urban area is the city's built-up land cover (urban fabric, roads, rail, transport) of the latest land-cover year; the part of it outside the buffer is reported. It updates when pipes, homes, residents or land cover change.",
+        "eq": [
+            "Coverage = {residents within the buffer | all residents} × 100 %",
+            "Urban area without network = urban land cover − (urban land cover ∩ service area)",
+            "Share = {urban area without network | urban land cover} × 100 %",
+        ],
+        "where": [
+            ("service area", "the pipes buffered by the service distance, merged"),
+        ],
+        "note": "The network itself is not extended automatically; the figure flags where it lags behind urban growth. The map's water-drop markers show the homes outside the buffer.",
     },
     "water.recharge": {
         "title": "Groundwater Recharge & Infiltration",
@@ -140,7 +160,7 @@ HELP = {
     "heat.pet": {
         "title": "PET (Physiological Equivalent Temperature)",
         "what": "The air temperature of a standard indoor room at which a person would feel the same heat load as outdoors here. It folds sun, wind and humidity into one °C value.",
-        "how": "From the latest PET raster, computed by the Thermal Comfort tool (SOLWEIG for the radiation, then the person's heat balance with pet-adjusted, including an urban heat island and wind at 1.2 m). The card shows the raster's mean, min and max over the area.",
+        "how": "From the PET raster computed by the Thermal Comfort tool (SOLWEIG for the radiation, then the person's heat balance with pet-adjusted, including an urban heat island and wind at 1.2 m). The card shows the raster's mean, min and max over the area. PET and UTCI come from the same run: the Thermal Comfort run that covers most of the area, the latest hour among equal ones. The line below the gauge names the run, its hour and the share of the area it covers.",
         "eq": [
             "Heat in = heat out:  M + R + C + E + S = 0",
             "PET = room temperature giving the same skin and core temperature",
@@ -156,7 +176,7 @@ HELP = {
     "heat.utci": {
         "title": "UTCI (Universal Thermal Climate Index)",
         "what": "The temperature of a reference environment (light wind, shade, 50 % humidity) that causes the same body response as the real conditions.",
-        "how": "From the latest UTCI raster, computed by the Thermal Comfort tool (SOLWEIG-GPU) with a polynomial fitted to a multi-node model of human thermoregulation. The card shows the raster's mean, min and max over the area.",
+        "how": "From the UTCI raster computed by the Thermal Comfort tool (SOLWEIG-GPU) with a polynomial fitted to a multi-node model of human thermoregulation. The card shows the raster's mean, min and max over the area. PET and UTCI come from the same run: the Thermal Comfort run that covers most of the area, the latest hour among equal ones. The line below the gauge names the run, its hour and the share of the area it covers.",
         "eq": ["UTCI = Ta + offset(Ta, Tmrt − Ta, wind, vapour pressure)"],
         "where": [
             ("Ta", "air temperature"),
@@ -228,7 +248,7 @@ HELP = {
     "housing.supply_coverage": {
         "title": "Housing Supply Coverage",
         "what": "The share of housing demand that the current stock meets.",
-        "how": "Supply is the CBS housing stock. Demand is population ÷ persons per home, so it follows the population dock and the slider.",
+        "how": "For a city or province, supply is the CBS dwelling stock at the end of the year (table 86098NED). CBS publishes it per municipality only, so for a district or neighborhood supply is the number of mapped dwellings (BAG residential function) inside it. Demand is population ÷ persons per home, so it follows the population dock and the slider.",
         "eq": [
             "Coverage = {homes available | homes needed} × 100 %",
             "Homes needed = {population | persons per home}",
@@ -336,7 +356,7 @@ HELP = {
         "how": "Each building's coarse type comes from its BAG usage function(s) (gebruiksdoel). A building with functions of more than one type counts as Mixed; buildings without a recorded function show as Unknown. Colours match the Buildings layer on the map.",
         "eq": ["Share of a type = {buildings of that type | all buildings} × 100 %"],
     },
-    "builtup.degurba": {
+    "builtup.calculations.degurba": {
         "title": "Degree of Urbanisation",
         "what": "How urban the unit is by the GHSL / Eurostat Degree of Urbanisation: city, town (dense, semi-dense, suburban) or rural (village, dispersed, mostly uninhabited), and how fast its urban area grows.",
         "how": "Each neighborhood's population is shared equally over its residential properties (dwellings, never buildings), summed per 100 m cell and classified with the GHSL rules. At 100 m, density uses a 300 m window over settlement land only, so edge cells next to fields keep their density. The 1 km figure is the original method on the same data. The unit's class follows where most of its people live. The population dock's scenario reclassifies the whole grid in memory as a what-if.",
@@ -366,5 +386,59 @@ HELP = {
         "what": "Schools, hospitals, fire and police stations, markets and transport nodes serving the area.",
         "how": "Facilities in the unit's neighborhoods, set against the projected population for the selected year.",
         "eq": ["Facilities per 10 000 = {facilities | population} × 10 000"],
+    },
+    # ── Scenarios panel (weather/partials/climate_panel.html, mainMap climate partials) ──
+    "climate.scenario": {
+        "title": "KNMI'23 climate scenarios",
+        "what": "How the Dutch climate may change by 2050 (2036-2065) or 2100 (2086-2115), compared with 1991-2020. Four pathways: low or high emissions, each with a dry and a wet variant. The quick picks are the three the Klimaateffectatlas viewer offers; its \"high\" is taken as High, dry (Hd), the heat and drought case. High, wet is the heavy-rain case.",
+        "how": "KNMI's national-average changes per season (Table 1 of KNMI Publication 23-03) are added to the observed weather (delta change). Picking a scenario also sets the population year: 2025 for the current climate, else the horizon year. The table shows the change of every season; the highlighted column is the one the heat panel applies.",
+        "eq": [
+            "Scenario temperature = observed temperature + change",
+            "Scenario rain = observed rain × (1 + {change (%) | 100})",
+            "Scenario humidity = observed humidity + change (%-points)",
+        ],
+        "note": "A what-if: choosing a scenario writes nothing. The Urban Heat and Water Supply panels apply it until you pick Current. Summer extremes: KNMI's change of the 1-day rain that falls once per 10 years scales the Rain Event. Colours: red warmer, blue cooler; teal wetter, ochre drier. Source: KNMI'23 climate scenarios, knmi.nl/klimaatscenarios.",
+    },
+    "climate.interpolation": {
+        "title": "Decades between 2050 and 2100",
+        "what": "KNMI'23 publishes changes for 2050 (2036-2065) and 2100 (2086-2115) only. The decades 2030, 2040 and 2060-2090 are interpolated so you can explore the years in between; 2050 and 2100 are the published values.",
+        "how": "Linear in time between three anchors: no change at 2005 (the middle of the 1991-2020 reference), the KNMI'23 change in 2050 and in 2100. The same weights apply to every season, indicator and station key figure. Click a point or a cell to pick that year and pathway; the population year follows it.",
+        "eq": [
+            "Change (year ≤ 2050) = change 2050 × {year − 2005 | 2050 − 2005}",
+            "Change (year > 2050) = change 2050 + (change 2100 − change 2050) × {year − 2050 | 50}",
+            "Added to observed weather = change (scenario year) − mean of the four pathways' change (observed year)",
+        ],
+        "note": "Not a KNMI product: the real path between the horizons follows global warming, which is not linear in time. The low-emission pathways stabilise after 2050, so their 2060-2100 values equal 2050. Weather observed today already holds part of the change since 1991-2020; the scenario adds only the part above the dashed line (the mean of the four pathways at the observed year, the same for every pathway), and nothing for a year at or before the observed one. Stored runs record both methods with the KNMI'23 source.",
+    },
+    "climate.heat_day": {
+        "title": "Season / heat day",
+        "what": "Which change is added to the observed weather when the heat panel and the effects table move it into the scenario.",
+        "how": "Observed season adds the change of the season the observed weather falls in; a season button adds that season's change whatever the date (a stored run asks for a date in that season). Both use the change of the average daily maximum by day and the average daily minimum by night, which understates heat waves: the hottest days warm more. Warmest day of the year adds the change of the warmest day at the KNMI key-figure station nearest to the selected area (De Bilt, Den Helder, Groningen, Maastricht or Vlissingen); apply it to a hot observed day.",
+        "eq": [
+            "Day temperature = observed + change of the daily maximum",
+            "Night temperature = observed + change of the daily minimum",
+            "Heat-wave day = observed + change of the warmest day (nearest station)",
+        ],
+        "note": "Station key figures: klimaatscenarios-data.knmi.nl. The portal does not define the warmest day; its 1991-2020 values match the warmest daily mean temperature.",
+    },
+    "climate.effects": {
+        "title": "Scenario effects",
+        "what": "The selected area today (2025 population, observed weather) next to the chosen scenario (its horizon year's population, scenario weather).",
+        "how": "Calculate effects stores a scenario run: the heat model (SOLWEIG: Tmrt, UTCI, PET, WBGT) over the map view on one observed hour moved into the scenario, water availability and demand, and the homes needed for the scenario population. Observed data stay unchanged. Quick what-if computes the weather-only heat stress (no shading or surfaces) and the water balance in the browser request and stores nothing.",
+        "eq": [
+            "Change = scenario value − current value",
+            "WBGT = 0.7 × wet-bulb + 0.2 × globe + 0.1 × air temperature",
+        ],
+        "note": "Change colours: red = worse, teal = better, uncoloured = no judgement (population, humidity, wind). A strong colour marks a change of 10 % or more of today's value. LST is not projected (it depends on the surface reflectance a satellite measures); SUHII stays observed. Years past the CBS projection are a trend extrapolation (*).",
+    },
+    "climate.run_actions": {
+        "title": "Update results or rerun the heat simulation",
+        "what": "A stored run is a snapshot. Two buttons bring it up to date, depending on what changed.",
+        "how": "Update results recomputes water, housing and the comparison from the data stored now, in seconds; it reuses the heat simulation already done (and picks up an observed Thermal Comfort run of the same hour for the current column). Rerun heat simulation runs SOLWEIG again on the GPU, which takes minutes; needed after buildings, land cover, soil or the DSM changed (the button turns amber then).",
+        "eq": [
+            "Update results: water + housing + current column, from stored data",
+            "Rerun heat simulation: Tmrt, UTCI, PET, WBGT of the scenario hour",
+        ],
+        "note": "Delete removes the run and its scenario layers; a second click within 4 s confirms.",
     },
 }

@@ -111,13 +111,13 @@
     </div>
   </div>
 
-  <!-- Degree of Urbanisation (builtup/urbanisation.py::dashboard, docs/DEGREE_OF_URBANISATION.md) -->
+  <!-- Degree of Urbanisation (builtup/calculations/urbanisation.py::dashboard, docs/DEGREE_OF_URBANISATION.md) -->
   {% if indicators.degurba %}{% with d=indicators.degurba %}
   <div class="card wide">
     <div class="gauge-header">
       <div class="card-icon">🏘️</div>
       <div class="card-label">Degree of Urbanisation</div>
-      {% info_help "builtup.degurba" %}
+      {% info_help "builtup.calculations.degurba" %}
     </div>
     <div style="display:flex; align-items:baseline; gap:10px; margin-top:4px;">
       <div style="font-family:var(--font-base); font-size:1.05rem; font-weight:700; color:{{ d.color }};">{{ d.label }}</div>

@@ -1,0 +1,42 @@
+{% load humanize indicator_help %}
+{% comment %}
+Effects table of the Scenarios panel (#climate-effects): the Water Supply and
+Urban Heat indicators of the selected unit under the current climate with the
+2025 population, against the chosen KNMI'23 scenario with its horizon year's
+population. A what-if, nothing stored. View: mainMap/views.py::climate_effects.
+{% endcomment %}
+<div class="climate-effects">
+  <div class="climate-effects-head">
+    <span>{{ unit_name }} · {{ scenario.short }}{% if scenario.active %} · {{ heat_label|lower }}{% endif %} · quick what-if, not stored</span>
+    {% info_help "climate.effects" %}
+  </div>
+  <div class="climate-table-wrap">
+    <table class="climate-table climate-effects-table">
+      <thead>
+        <tr>
+          <th>Indicator</th>
+          <th>Current<br><span style="opacity:.5;">{{ now_year }}</span></th>
+          <th>{{ scenario.short }}<br><span style="opacity:.5;">{{ future_year }}{% if future_extrapolated %} *{% endif %}</span></th>
+          <th>Change</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% regroup rows by section as sections %}
+        {% for section in sections %}
+        <tr class="climate-effects-section"><td colspan="4">{{ section.grouper }}</td></tr>
+        {% for r in section.list %}
+        <tr>
+          <td>{{ r.label }} <span style="opacity:.5;">{{ r.unit }}</span></td>
+          <td>{% if r.now is None %}—{% else %}{{ r.now|floatformat:r.decimals|intcomma }}{% endif %}</td>
+          <td>{% if r.future is None %}—{% else %}{{ r.future|floatformat:r.decimals|intcomma }}{% endif %}</td>
+          <td class="climate-change{% if r.tone %} is-{{ r.tone|cut:' strong' }}{% if 'strong' in r.tone %} is-strong{% endif %}{% endif %}">{% if r.change is None %}—{% elif r.change == 0 %}0{% else %}{% if r.change > 0 %}+{% endif %}{{ r.change|floatformat:r.decimals|intcomma }}{% endif %}</td>
+        </tr>
+        {% endfor %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="climate-source">
+    {% if weather_source %}Weather: {{ weather_source }} plus the scenario's change. {% endif %}{% if future_extrapolated %}* Population {{ future_year }}: trend extrapolation of the CBS projection. {% endif %}Open the Water Supply or Urban Heat panel for the full dashboards with this scenario.
+  </p>
+</div>

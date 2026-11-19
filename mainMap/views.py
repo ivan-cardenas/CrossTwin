@@ -11,7 +11,7 @@ from django.apps import apps
 from django.conf import settings
 from django.urls import reverse
 
-from core.utils import VECTOR_REGISTRY, WMS_REGISTRY, RASTER_REGISTRY, MODEL_REGISTRY
+from core.utils import VECTOR_REGISTRY, WMS_REGISTRY, RASTER_REGISTRY, MODEL_REGISTRY, without_raster_data
 from .styles.rasterStyles import raster_display_name
 from core.editing import editable_keys, is_editable
 from .styles.layerStyles import FALLBACK_COLORS
@@ -254,7 +254,7 @@ def population_panel(request):
     open next to it.
     URL: /api/population/panel/?level=&location=&lng=&lat=&year=&pop_scenario=&pop_growth=
     """
-    from administrative.population import population_params
+    from administrative.calculations.population import population_params
     from .charts import build_population_chart, build_population_stats
 
     level, unit, is_selection = _resolve_summary_unit(request)
@@ -271,6 +271,149 @@ def population_panel(request):
         context['chart'] = build_population_chart(unit, pop_scenario, pop_growth, year, current)
         context['stats'] = build_population_stats(unit, pop_scenario, pop_growth, year, current)
     return render(request, 'mainMap/partials/population_panel.html', context)
+
+
+# Rows of the Scenarios panel's effects table: (section, indicator key, label,
+# unit, decimals). Keys index the dicts built by `_heat_effects` /
+# `_water_effects`; a row is left out when both sides are None.
+CLIMATE_EFFECT_ROWS = (
+    ("Urban heat", "ta_c", "Air temperature", "°C", 1),
+    ("Urban heat", "rh_pct", "Relative humidity", "%", 0),
+    ("Urban heat", "wind_ms", "Wind speed", "m/s", 1),
+    ("Urban heat", "kdown_wm2", "Solar radiation", "W/m²", 0),
+    ("Urban heat", "apparent_shade_c", "Feels like, shade", "°C", 1),
+    ("Urban heat", "apparent_sun_c", "Feels like, sun", "°C", 1),
+    ("Urban heat", "wbgt_estimate_c", "WBGT (estimate)", "°C", 1),
+    ("Water supply", "population", "Population", "", 0),
+    ("Water supply", "total_demand_Mm3", "Water demand", "Mm³/yr", 2),
+    ("Water supply", "balance_Mm3", "Supply − demand", "Mm³/yr", 2),
+    ("Water supply", "supply_security", "Supply security", "%", 1),
+    ("Water supply", "rain_mm", "Design rain event", "mm", 1),
+    ("Water supply", "event_runoff_mm", "Event runoff", "mm", 1),
+    ("Water supply", "infiltration_pct", "Event infiltration", "%", 1),
+    ("Water supply", "recharge_rain_mm_yr", "Yearly rain", "mm/yr", 0),
+    ("Water supply", "recharge_et_mm_yr", "Evapotranspiration", "mm/yr", 0),
+    ("Water supply", "recharge_mm_yr", "Groundwater recharge", "mm/yr", 0),
+    ("Water supply", "recharge_Mm3_yr", "Groundwater recharge", "Mm³/yr", 2),
+)
+
+
+# Which way is worse, per effects-table label (what-if and stored runs): the
+# Change column is coloured red when the change makes things worse, teal when
+# better, uncoloured when the label is not listed (no judgement, e.g.
+# population, humidity, wind). Display only.
+CHANGE_WORSE_WHEN_UP = frozenset({
+    "Air temperature", "Solar radiation", "Feels like, shade", "Feels like, sun",
+    "WBGT (estimate)", "WBGT", "Mean radiant temperature", "UTCI", "PET",
+    "Water demand", "Design rain event", "Event runoff", "Homes to build",
+})
+CHANGE_BETTER_WHEN_UP = frozenset({
+    "Supply − demand", "Supply security", "Event infiltration", "Groundwater recharge",
+})
+# A change of at least this share of the current value gets the strong colour.
+CHANGE_STRONG_SHARE = 0.10
+
+
+def change_tone(label, now, change):
+    """
+    Pure: CSS tone of an effects-table change, 'worse' / 'better' plus
+    ' strong' for a change of ≥ CHANGE_STRONG_SHARE of the current value;
+    '' for no change, an unknown change or a label without a direction.
+    """
+    if not change:
+        return ""
+    if label in CHANGE_WORSE_WHEN_UP:
+        tone = "worse" if change > 0 else "better"
+    elif label in CHANGE_BETTER_WHEN_UP:
+        tone = "better" if change > 0 else "worse"
+    else:
+        return ""
+    if not now or abs(change) >= CHANGE_STRONG_SHARE * abs(now):
+        tone += " strong"
+    return tone
+
+
+def _heat_effects(indicators):
+    """The weather (with the scenario's change) and its heat stress, from urban_heat's _build_indicators."""
+    return {**(indicators.get('weather') or {}), **(indicators.get('weather_stress') or {})}
+
+
+def climate_effect_rows(now, future):
+    """
+    Pure: the effects table of the Scenarios panel, one row per
+    CLIMATE_EFFECT_ROWS entry with both values and the change (future - now).
+    """
+    rows = []
+    for section, key, label, unit, decimals in CLIMATE_EFFECT_ROWS:
+        a, b = now.get(key), future.get(key)
+        if a is None and b is None:
+            continue
+        change = round(b - a, decimals) if a is not None and b is not None else None
+        rows.append({
+            'section': section, 'label': label, 'unit': unit, 'decimals': decimals,
+            'now': None if a is None else round(a, decimals),
+            'future': None if b is None else round(b, decimals),
+            'change': change,
+            'tone': change_tone(label, a, change),
+        })
+    return rows
+
+
+def _resolve_unit(level, location):
+    """The admin unit of a panel URL, or None (demo / unknown)."""
+    from administrative.admin_units import resolve_admin_unit
+    return resolve_admin_unit(level, location)
+
+
+def climate_effects(request):
+    """
+    Effects of a KNMI'23 scenario on the Water Supply and Urban Heat
+    indicators of the selected unit: the current climate with the 2025
+    population against the scenario with its horizon year's population
+    (weather/calculations/climate.py::population_year). Both sides run the
+    panels' own _build_indicators (urban_heat, watersupply) with the same
+    population what-if (`pop_scenario`, `pop_growth`); nothing is written.
+    URL: /api/climate/effects/?climate=&heat=&level=&location=&pop_scenario=&pop_growth=
+    DAG edges: Climate_Change -> Meteorology (what-if),
+               Population_Growth -> Total_Population -> Total_Water_Demand
+    """
+    from administrative.calculations.population import is_extrapolated, population_params
+    from urban_heat import views as heat_views
+    from watersupply import views as water_views
+    from weather.calculations import climate
+
+    key = climate.normalize(request.GET.get('climate'))
+    heat = climate.normalize_heat(request.GET.get('heat'))
+    level = request.GET.get('level') or 'province'
+    location = request.GET.get('location') or 'Demo'
+    pop_scenario, pop_growth = population_params(request.GET)
+    now_year, future_year = climate.CURRENT_POPULATION_YEAR, climate.population_year(key)
+
+    heat_data = heat_views._get_adminUnit_data(level, location) or heat_views.MOCK_DATA
+    heat_now = heat_views._build_indicators(heat_data, None, climate.CURRENT, heat)
+    heat_future = heat_views._build_indicators(heat_data, None, key, heat)
+
+    def water(year, climate_key):
+        data = water_views._get_adminUnit_data(level, location, year, pop_scenario, pop_growth)
+        return water_views._build_indicators(data or water_views.MOCK_DATA, climate_key=climate_key)
+
+    water_now = water(now_year, climate.CURRENT)
+    water_future = water_now if future_year == now_year and key == climate.CURRENT else water(future_year, key)
+
+    rows = climate_effect_rows(
+        {**_heat_effects(heat_now), **water_now},
+        {**_heat_effects(heat_future), **water_future},
+    )
+    return render(request, 'mainMap/partials/climate_effects.html', {
+        'scenario': climate.describe(key),
+        'heat_label': climate.HEAT_MODES[heat],
+        'now_year': now_year,
+        'future_year': future_year,
+        'unit_name': getattr(heat_data.get('adminUnit'), 'name', None) or location,
+        'future_extrapolated': is_extrapolated(_resolve_unit(level, location), future_year),
+        'weather_source': heat_now.get('weather_source'),
+        'rows': rows,
+    })
 
 
 # ── GeoJSON endpoint tuning (docs/PERFORMANCE.md §1) ─────────────────────────
@@ -453,6 +596,43 @@ def model_geojson(request, app_label, model_name):
     return response
 
 
+# Above this many rows (planner estimate, pg_class.reltuples) the catalog shows
+# the estimate instead of an exact count(*): the map only uses the count to pick
+# viewport loading (Config.js VIEWPORT_LOAD_MIN_FEATURES, 5 000), and an exact
+# count scans the whole table (~0.1-0.5 s each for land cover, buildings).
+ESTIMATED_COUNT_MIN_ROWS = 50_000
+
+
+def _row_estimates(models):
+    """{db_table: reltuples} for the given models, in one query (-1 = never analysed)."""
+    tables = sorted({m._meta.db_table for m in models})
+    if not tables:
+        return {}
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT t, c.reltuples FROM unnest(%s::text[]) AS t "
+            "JOIN pg_class c ON c.oid = to_regclass(quote_ident(t))",
+            [tables],
+        )
+        return dict(cursor.fetchall())
+
+
+def _layer_count(model, estimates):
+    """
+    (count, estimated). The planner's estimate for big tables of plain models;
+    an exact count for small tables, proxies and models whose default manager
+    filters (e.g. UrbanisationCellLocal), since the estimate covers the whole table.
+    """
+    estimate = estimates.get(model._meta.db_table, -1)
+    if (estimate >= ESTIMATED_COUNT_MIN_ROWS and not model._meta.proxy
+            and not model._default_manager.get_queryset().query.where):
+        return int(estimate), True
+    try:
+        return model.objects.count(), False
+    except Exception:
+        return 0, False
+
+
 def available_layers(request):
     """
     Returns a list of all available layers (models with geometry fields).
@@ -474,9 +654,13 @@ def available_layers(request):
     app_labels_param = request.GET.get('app_labels')
     allowed_app_labels = set(app_labels_param.split(',')) if app_labels_param else None
 
-    for key, model in VECTOR_REGISTRY.items():
-        if allowed_app_labels is not None and key.split('.')[0] not in allowed_app_labels:
-            continue
+    vector_models = {
+        key: model for key, model in VECTOR_REGISTRY.items()
+        if allowed_app_labels is None or key.split('.')[0] in allowed_app_labels
+    }
+    estimates = _row_estimates(vector_models.values())
+
+    for key, model in vector_models.items():
 
         # Find geometry field
         geom_field = None
@@ -498,11 +682,7 @@ def available_layers(request):
         if geom_field:
             app_label, model_name = key.split('.')
 
-            # Get record count
-            try:
-                count = model.objects.count()
-            except Exception:
-                count = 0
+            count, count_estimated = _layer_count(model, estimates)
 
             # Default style + the staff's override (mainMap/styles/overrides.py)
             color, style_layers, legend = vector_style(
@@ -521,6 +701,8 @@ def available_layers(request):
                 'fields': _field_metadata(model),
                 'count': count,
             }
+            if count_estimated:
+                layer_entry['count_estimated'] = True
             if legend:
                 layer_entry['legend'] = legend
             if is_editable(key, request.user, editable):
@@ -596,7 +778,7 @@ def available_layers(request):
         if allowed_app_labels is not None and app_label not in allowed_app_labels:
             continue
 
-        raster_instances = model.objects.all()
+        raster_instances = without_raster_data(model.objects.all())
 
         for raster in raster_instances:
             if not raster.cog_path:

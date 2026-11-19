@@ -4,7 +4,7 @@ from django.conf import settings
 from django.contrib.gis.geos import LineString, MultiLineString, MultiPoint, Point
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from administrative.models import City, Province
 from builtup.models import Property
@@ -16,12 +16,26 @@ from watersupply.models import (
     ImportedWater, NonRevenueWater, OPEX, PipeNetwork, SupplySecurity, TotalWaterDemand,
     TotalWaterProduction,
 )
-from watersupply.calculations import calculate_nrw
+from watersupply.calculations.indicators import calculate_nrw
 
 from .factories import (
     make_city, make_consumption_capita, make_district, make_neighborhood, make_polygon,
     make_province, make_users_location,
 )
+
+
+# These tests pin the population -> demand plumbing with residential demand only;
+# the small business factor has its own tests (test_small_business_demand.py).
+_factor_patch = mock.patch("watersupply.calculations.chain.SMALL_BUSINESS_DEMAND_FACTOR", 1.0)
+
+
+def setUpModule():
+    _factor_patch.start()
+
+
+def tearDownModule():
+    _factor_patch.stop()
+
 
 RD = settings.COORDINATE_SYSTEM
 X, Y = 257000.0, 470000.0  # centre of the factory polygon (inside every factory geometry)
@@ -149,6 +163,12 @@ class ExtractionAndProductionTests(TestCase):
         self.assertAlmostEqual(well.co2_cost_EUR_m3, 200.0 / (0.1 * 10 * 3600) * 0.05)
         self.assertAlmostEqual(well.drought_damage_EUR_m3, 0.02)
 
+    def test_negative_pump_flow_is_stored_as_its_magnitude(self):
+        well = make_well(pumpflow_m3_s=-0.1, pumpMaxFlow_m3_s=-0.2)
+        well.refresh_from_db()
+        self.assertAlmostEqual(well.pumpflow_m3_s, 0.1)
+        self.assertAlmostEqual(well.pumpMaxFlow_m3_s, 0.2)
+
     def test_explicit_source_is_not_overridden(self):
         other = make_source(SourceName="Elsewhere", geom=make_polygon(x=300000.0, y=400000.0))
         well = make_well(source=other)
@@ -203,6 +223,11 @@ class ExtractionAndProductionTests(TestCase):
         self.assertAlmostEqual(production.costDay, 1000 * 2.0)
 
 
+# Factory well: opex 0.04 EUR/m3 of which energy 0.01, 1 Mm3/yr, pump 50 kWh/h x 10 h/day
+WELL_NON_ENERGY_EUR = 0.03 * 1e6
+WELL_KWH_YR = 50 * 10 * 365
+
+
 class OpexTests(TestCase):
     def setUp(self):
         self.source = make_source()
@@ -211,10 +236,60 @@ class OpexTests(TestCase):
         opex = OPEX.objects.create(year=2024, UnitaryOPEX_EUR_m3=0, totalOPEX_EUR=0)
         self.assertEqual(opex.totalOPEX_EUR, 0)  # no cost data: supplied values kept
 
-        make_well()  # 0.04 EUR/m3 x 1 Mm3/yr
+        make_well()
         opex.refresh_from_db()
+        expected = WELL_NON_ENERGY_EUR + WELL_KWH_YR * TotalWaterProduction.DEFAULT_ELECTRICITY_EUR_KWH
+        self.assertAlmostEqual(opex.totalOPEX_EUR, expected)
+        self.assertAlmostEqual(opex.UnitaryOPEX_EUR_m3, expected / 1e6)
+
+    def test_well_without_pump_energy_keeps_its_opex_per_m3(self):
+        make_well(pumpEnergyRate_kWh_h=None)
+        opex = OPEX.objects.create(year=2024, UnitaryOPEX_EUR_m3=0, totalOPEX_EUR=0)
         self.assertAlmostEqual(opex.totalOPEX_EUR, 0.04 * 1e6)
-        self.assertAlmostEqual(opex.UnitaryOPEX_EUR_m3, 0.04)
+
+    def test_energy_is_priced_with_the_province_electricity_cost(self):
+        """DAG edge: Energy_Consumption -> OPEX."""
+        province = make_province()
+        ElectricityCost.objects.create(province=province, year=2024, cost_EUR_kWh=0.30)
+        ElectricityCost.objects.create(province=None, year=2024, cost_EUR_kWh=0.99)  # national: not used
+        make_well()
+        opex = OPEX.objects.create(year=2024, UnitaryOPEX_EUR_m3=0, totalOPEX_EUR=0)
+        self.assertAlmostEqual(opex.totalOPEX_EUR, WELL_NON_ENERGY_EUR + WELL_KWH_YR * 0.30)
+
+    def test_national_price_is_the_fallback(self):
+        ElectricityCost.objects.create(province=None, year=2024, cost_EUR_kWh=0.20)
+        make_well()
+        opex = OPEX.objects.create(year=2024, UnitaryOPEX_EUR_m3=0, totalOPEX_EUR=0)
+        self.assertAlmostEqual(opex.totalOPEX_EUR, WELL_NON_ENERGY_EUR + WELL_KWH_YR * 0.20)
+
+    def test_price_change_refreshes_opex_of_that_year(self):
+        province = make_province()
+        make_well()
+        opex = OPEX.objects.create(year=2024, UnitaryOPEX_EUR_m3=0, totalOPEX_EUR=0)
+        other = OPEX.objects.create(year=2023, UnitaryOPEX_EUR_m3=0, totalOPEX_EUR=0)
+        before = other.totalOPEX_EUR
+
+        price = ElectricityCost.objects.create(province=province, year=2024, cost_EUR_kWh=0.30)
+        opex.refresh_from_db()
+        other.refresh_from_db()
+        self.assertAlmostEqual(opex.totalOPEX_EUR, WELL_NON_ENERGY_EUR + WELL_KWH_YR * 0.30)
+        self.assertAlmostEqual(other.totalOPEX_EUR, before)  # other year untouched
+
+        price.delete()
+        opex.refresh_from_db()
+        self.assertAlmostEqual(
+            opex.totalOPEX_EUR,
+            WELL_NON_ENERGY_EUR + WELL_KWH_YR * TotalWaterProduction.DEFAULT_ELECTRICITY_EUR_KWH)
+
+    def test_price_change_refreshes_production_of_that_year(self):
+        """DAG edge: Energy_Cost -> Total_Water_Prod."""
+        province = make_province()
+        make_well()
+        production = TotalWaterProduction.objects.create(year=2024, productionDay=0)
+        production.source.add(self.source)
+        ElectricityCost.objects.create(province=province, year=2024, cost_EUR_kWh=0.30)
+        production.refresh_from_db()
+        self.assertAlmostEqual(production.costDay, 50 * 10 * 0.30)
 
     def test_imported_water_and_treatment_are_included(self):
         from watersupply.models import WaterTreatment
@@ -227,18 +302,25 @@ class OpexTests(TestCase):
         opex = OPEX.objects.create(year=2024, UnitaryOPEX_EUR_m3=0, totalOPEX_EUR=0)
 
         volume = 1e6 + 1000 * 365                      # extraction + imported, m3/yr
-        expected = 0.04 * 1e6 + 1000 * 365 * 2.0 + 0.10 * volume
+        expected = (WELL_NON_ENERGY_EUR + WELL_KWH_YR * TotalWaterProduction.DEFAULT_ELECTRICITY_EUR_KWH
+                    + 1000 * 365 * 2.0 + 0.10 * volume)
         self.assertAlmostEqual(opex.totalOPEX_EUR, expected)
         self.assertAlmostEqual(opex.UnitaryOPEX_EUR_m3, expected / volume)
 
     def test_only_the_latest_year_is_refreshed_by_a_state_change(self):
         old = OPEX.objects.create(year=2020, UnitaryOPEX_EUR_m3=1.0, totalOPEX_EUR=1.0)
         new = OPEX.objects.create(year=2024, UnitaryOPEX_EUR_m3=0, totalOPEX_EUR=0)
-        make_well()
+        make_well(pumpEnergyRate_kWh_h=None)
         old.refresh_from_db()
         new.refresh_from_db()
         self.assertEqual(old.totalOPEX_EUR, 1.0)              # historical snapshot untouched
         self.assertAlmostEqual(new.totalOPEX_EUR, 0.04 * 1e6)
+
+
+class EnergyCostEquationTests(SimpleTestCase):
+    def test_kwh_per_day_times_year_times_price(self):
+        from watersupply.calculations.chain import energy_cost_EUR_yr
+        self.assertAlmostEqual(energy_cost_EUR_yr(500, 0.15), 500 * 365 * 0.15)
 
 
 def make_pipe(length_m=2000.0, x0=X, **kwargs):
@@ -256,16 +338,6 @@ class NonRevenueWaterTests(TestCase):
         return NonRevenueWater.objects.create(
             year=2024, specificLoss=code, loss_Quantity_m3=quantity,
             WaterCost_EUR_day=quantity * 0.5, UnavoidableLossses_PCT=unavoidable_pct, pipe=pipe)
-
-    def test_ili_of_sibling_records_follows_new_losses(self):
-        first = self._loss('LP', 100, 25)   # CARL 100 / UARL 25 = 4.0
-        self.assertEqual(first.ILI, 4.0)
-        self._loss('LS', 100, 75)           # CARL 200 / UARL 100 = 2.0
-        first.refresh_from_db()
-        self.assertEqual(first.ILI, 2.0)
-
-    def test_apparent_losses_have_no_ili(self):
-        self.assertIsNone(self._loss('CM', 100, 25).ILI)
 
     def test_real_loss_requires_a_pipe(self):
         loss = NonRevenueWater(year=2024, type=NonRevenueWater.LossesTypes.Real, specificLoss='LP',
@@ -311,7 +383,7 @@ class NonRevenueWaterTests(TestCase):
 
         nrw = calculate_nrw(2024, city)
         self.assertAlmostEqual(nrw['real_losses_m3_d'], 25)   # 100 x 0.25
-        self.assertEqual(nrw['ili'], 4.0)           # CARL 25 / UARL 6.25
+        self.assertIsNone(nrw['ili'])               # no coverage record: no connections (test_leakage_index)
         self.assertAlmostEqual(nrw['apparent_share'], 0.3)
         self.assertAlmostEqual(nrw['apparent_losses_m3_d'], 300)
         [row] = nrw['real_losses_by_pipe']
@@ -322,7 +394,7 @@ class NonRevenueWaterTests(TestCase):
         network = calculate_nrw(2024)
         self.assertEqual(network['real_losses_m3_d'], 400)
         self.assertEqual(network['apparent_losses_m3_d'], 1000)
-        self.assertEqual(network['ili'], round(400 / 175, 2))
+        self.assertIsNone(network['ili'])           # no connections: no UARL
 
     def test_leak_on_a_pipe_crossing_units_is_split_not_duplicated(self):
         # Two adjacent 1 km squares: west [X-500, X+500], east [X+500, X+1500]

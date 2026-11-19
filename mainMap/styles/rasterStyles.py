@@ -16,6 +16,7 @@ defaults, and to live statistics from TiTiler when no fixed range is known
 for the data (e.g. population density, nighttime lights).
 """
 import logging
+import re
 from urllib.parse import quote
 
 import requests
@@ -146,10 +147,48 @@ def raster_display_name(instance, registry_key, fallback=None):
     if label == DEFAULT_STYLE[2] and fallback:
         label = fallback
 
+    scenario = climate_run_label(instance)
+    if scenario:
+        short = SCENARIO_SHORT_NAMES.get(registry_key.lower(), label)
+        return f"{short} - simulation {scenario}"
+
     date_value = getattr(instance, "date", None) or getattr(instance, "date_time", None)
     if date_value:
-        return f"{label} - {date_value.strftime('%m-%y')}"
+        label = f"{label} - {date_value.strftime('%m-%y')}"
     return label
+
+
+# Short variable names of the climate scenario run rasters (SOLWEIG outputs).
+SCENARIO_SHORT_NAMES = {
+    "urban_heat.meanradianttemperature": "Tmrt",
+    "urban_heat.utci": "UTCI",
+    "urban_heat.pet": "PET",
+    "urban_heat.wetbulbglobetemperature": "WBGT",
+}
+
+# The scenario SOLWEIG run's met source: "KNMI23 <horizon>_<pathway> <heat mode> on ..."
+# (urban_heat.models.ScenarioHeat.save), inside the raster's `source`.
+_SCENARIO_SOURCE = re.compile(r"KNMI23 (\d{4})_\w+ (\w+)")
+
+
+def climate_run_label(instance):
+    """
+    'Summer 2100' for a raster of a stored climate scenario run's scenario
+    SOLWEIG run (season the run's changes apply, climate.season_for, and the
+    scenario horizon), 'current climate' for its baseline run, '' for
+    observed rasters. From the row itself (climate_run_id, source, date_time), no query.
+    """
+    if not getattr(instance, "climate_run_id", None):
+        return ""
+    match = _SCENARIO_SOURCE.search(getattr(instance, "source", None) or "")
+    if not match:
+        return "current climate"
+    from weather.calculations import climate
+
+    horizon, heat_mode = match.groups()
+    when = getattr(instance, "date_time", None)
+    season = climate.season_for(heat_mode, when.month if when else None)
+    return f"{season.capitalize()} {horizon}"
 
 
 def _raster_statistics(instance):

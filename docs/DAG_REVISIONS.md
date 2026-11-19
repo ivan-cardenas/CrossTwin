@@ -11,6 +11,60 @@ A dated log of every change to the DPSIR causal graph: what changed, why, and wh
 - **Lagged edge** `[lag=1, style=dashed]`. The cause acts one planning step later (a feedback). It is left out of the acyclicity check and never implemented by a receiver, because a receiver would close the loop within one save. Each lagged edge is argued here and listed in `core/test_dag.py::LAGGED_EDGES`.
 - **Counting.** Distinct `source -> target` pairs, legend excluded. `core/test_dag.py::parse_dag` is the reference parser.
 
+## 2026-11-16: `Climate_Change -> Meteorology` implemented as stored scenario runs (graph unchanged)
+
+No edge is added or removed. The edge was partial (a what-if of the Scenarios panel). It is now also stored: `weather.ClimateScenarioRun` is the Climate_Change node, and the receivers of watersupply, housing and urban_heat store their scenario results (recharge per source, demand and supply security, homes needed, SOLWEIG Tmrt/UTCI/PET + WBGT). Coverage: 63 implemented, 6 partial, 36 gaps.
+
+Two deliberate departures from "every input edge is a receiver":
+
+- **Snapshot.** Scenario results do not subscribe to later changes of soil, land cover, KNMI or CBS data. A run is a dated experiment that records its inputs; the panel flags a run whose sources were recomputed or whose heat-model inputs changed (`urban_heat.HeatInputChange`), and *Recalculate* / *Rerun heat model* refresh it. Keeping it live would rerun SOLWEIG (minutes to hours) on every edit.
+- **GPU from a receiver.** Creating a run (a staff POST, never imported, restored or bulk-written) queues its one SOLWEIG run (the shifted hour) from `urban_heat/signals.py`; a re-save never does.
+
+WBGT is computed from Tmrt but is not a DAG node (it is an imported KNMI measure elsewhere); LST is not projected (surface reflectance), so `Meteorology -> LST` is not drawn.
+
+## 2026-11-16: `Canyon_Aspect -> Meteorology` replaced by `DSM -> PET`
+
+The edge stood for the urban form changing the local climate a pedestrian feels. CrossTwin computes that effect in SOLWEIG's PET (`urban_heat/solweig/pipeline.py::urban_pet`, pet-adjusted, Koopmans et al. 2020): the 10 m wind is reduced to 1.2 m with the frontal area densities of buildings and trees and their mean height (Macdonald), and the air temperature gets the urban heat island of each cell's upwind source area (sky view factor, vegetation). All of these are read off the DSM window with the editor's building and vegetation patches, never off the stored street H/W (`builtup.StreetCanyon`). A raster of frontal areas also describes the form better than one H/W per street (open squares, courtyards, trees). The edge as drawn could not be implemented without computing the same effect twice from two descriptions of the same buildings, so it is replaced by the mechanism the code implements.
+
+It points to `PET`, not `Meteorology`: the adjusted wind and temperature are local to the PET calculation; `Meteorology` stays the uniform station/ERA5 input of Tmrt, UTCI and PET (`Meteorology -> PET`).
+
+| Change | Edge | Status |
+|---|---|---|
+| removed | `Canyon_Aspect -> Meteorology` | was a gap |
+| added | `DSM -> PET` | implemented, on demand (`urban_heat/solweig/pipeline.py::urban_pet`) |
+
+**Consequences.** `Canyon_Aspect` becomes a sink: a State node measured from `Buildings` and `Streets` and shown on the heat dashboard's morphology card, consumed by no other node. Acyclicity is unaffected (`DSM` was already upstream of `PET` through `SVF`). Coverage: 105 edges, 62 implemented (59 %), 7 partial, 36 gaps.
+
+## 2026-11-15: `Apparent_Losses -> ILI` replaced by `Network -> ILI`
+
+The Infrastructure Leakage Index of the IWA Water Loss Task Force is ILI = CARL / UARL: current annual *real* losses over the unavoidable annual *real* losses (Lambert et al. 1999). Apparent losses (meter error, unauthorised use, data errors) are no leakage and enter neither term, so the edge described no mechanism and could never be implemented. It is removed. They still reach `NRW`.
+
+What the graph lacked is the driver of the denominator. UARL = (18 Lm + 0.8 Nc + 25 Lp) x P depends on the network: mains length Lm, service connections Nc, private pipe length Lp and the operating pressure P. The ILI used to divide the losses by a percentage of themselves (`UnavoidableLossses_PCT`), so it ignored the network. `LeakageIndex` (one row per year) now sums UARL per city with the city's editable pressure (`CoverageWaterSupply.avg_pressure_m`, default 30 m, no pressure data is imported yet) and stores the inputs used.
+
+| Change | Edge | Status |
+|---|---|---|
+| removed | `Apparent_Losses -> ILI` | was a gap |
+| added | `Network -> ILI` | implemented (`LeakageIndex.save()` → `watersupply/calculations/chain.py::uarl_m3_d`) |
+| re-implemented | `Real_Losses -> ILI` | implemented (CARL of `LeakageIndex`; formerly a sibling `update()` on the loss rows) |
+
+**Consequences.** Acyclicity is unaffected: nothing downstream of `ILI` reaches `Network`. Nc counts dwellings within the service buffer as connections (each Dutch dwelling has its own meter), which overcounts shared connections of apartment blocks. `LeakageIndex.uarl_reliable` flags systems below the equation's range (Nc < 3000, < 20 connections/km or P < 25 m; Lambert & McKenzie 2002).
+
+**Coverage.** 105 distinct edges. Before: 60 implemented, 7 partial, 38 gaps (57 %). After: 61 implemented, 7 partial, 37 gaps (58 %).
+
+## 2026-11-12: `Buildings -> Streets` flipped to `Streets -> Buildings`
+
+The edge said that new buildings cause their access streets. The neighbourhood generator (`builtup/calculations/generative.py`), the first code to implement either direction, works the other way round, as urban layout does in practice: the street grid is drawn first, the land it leaves is cut into blocks and plots, and the buildings are placed on them. Counting the edge as implemented while the code runs the opposite way would misstate the mechanism in a coverage figure that is cited, so the edge now follows the code.
+
+| Change | Edge | Status |
+|---|---|---|
+| flipped | `Buildings -> Streets` → `Streets -> Buildings` | partial (footprints fill the blocks of the generated street layout; editing a street later does not re-place them) |
+| implemented | `New_Units -> Buildings` | a completed `HousingProject` with a generated layout becomes streets, buildings and dwellings (`housing/signals.py`, `builtup/calculations/materialise.py`) |
+| implemented | `Streets -> LandCover` | an editor street's surface becomes road land cover (`physicalEnv/calculations/landcover.py::street_area`) |
+
+**Consequences.** `Streets` now has no parent in the graph: the generator creates a project's streets from the project itself, which would be `New_Units -> Streets`. That edge is not added in this revision. The acyclicity check is unaffected (nothing downstream of `Buildings` reaches `Streets`). The loop through the lagged edge is now `CityArea -> Network -> New_Units -> Buildings -> LandCover -> CityArea`.
+
+**Coverage.** 105 distinct edges. Before: 55 implemented, 4 partial, 46 gaps (52 %). After: 57 implemented, 5 partial, 43 gaps (54 %).
+
 ## 2026-11-11: parks stored as green spaces (no graph change)
 
 `builtup.Park` is removed; a park is now a `nature.GreenSpaces` row with `type = 'park'` (OSM `leisure=park` import, parks drawn in the map editor; BGT recreation areas keep their `plus_type`). Existing parks were copied by migration `nature/0004_move_builtup_parks`, which also re-pointed the editor parks' land-cover ownership (`source_park`, `owner_park`) to the new ids.
@@ -57,9 +111,9 @@ The degree of urbanisation is a **State** node measured from that chain, with no
 | added | `New_Units -> Buildings` | gap (completed projects are not turned into BAG buildings yet) |
 | added | `Buildings -> Streets` | gap |
 | added | `Streets -> LandCover` | gap |
-| added | `Buildings -> LandCover` (the 10 m urban-fabric ring of an editor building, `physicalEnv/landcover.py::urbanize_around`) | implemented (code that used to be cited as `New_Units -> LandCover`) |
+| added | `Buildings -> LandCover` (the 10 m urban-fabric ring of an editor building, `physicalEnv/calculations/landcover.py::urbanize_around`) | implemented (code that used to be cited as `New_Units -> LandCover`) |
 | added | `LandCover -> CityArea` (neighborhood `urban_area` from the urban land-cover classes, `physicalEnv/signals.py::_recompute_neighborhood_urban_area`) | implemented (existing code that had "no explicit DAG edge") |
-| added | `Total_Population -> Degree_Urbanisation`, `Buildings -> Degree_Urbanisation`, `LandCover -> Degree_Urbanisation` | implemented (`builtup.Urbanisation`, `builtup/urbanisation.py`, `builtup/signals.py`) |
+| added | `Total_Population -> Degree_Urbanisation`, `Buildings -> Degree_Urbanisation`, `LandCover -> Degree_Urbanisation` | implemented (`builtup.Urbanisation`, `builtup/calculations/urbanisation.py`, `builtup/signals.py`) |
 | changed | `Network -> New_Units` gets `[lag=1, style=dashed]` | gap, lagged |
 
 **Loop.** With `LandCover -> CityArea`, the graph holds `CityArea -> Network -> New_Units -> Buildings -> (Streets ->) LandCover -> CityArea`. Network capacity enabling new units acts at the next planning step, so `Network -> New_Units` is the lagged edge that breaks the loop in the same-time graph.

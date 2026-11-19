@@ -69,6 +69,30 @@ MODEL_OVERRIDES = {
     },
 }
 
+# Units a column may arrive in, per model field: (code, label, factor to the
+# stored unit). The first entry is the stored unit and the default. The mapping
+# form shows a unit select beside these fields; _generic_import multiplies.
+FLOW_UNITS = (
+    ('m3_s', 'm³/s', 1.0),
+    ('m3_h', 'm³/h', 1 / 3600),
+    ('m3_d', 'm³/day', 1 / 86400),
+)
+FIELD_UNITS = {
+    'watersupply.ExtractionWater': {
+        'pumpflow_m3_s': FLOW_UNITS,
+        'pumpMaxFlow_m3_s': FLOW_UNITS,
+    },
+}
+
+
+def _unit_factor(target_label, field_name, code):
+    """Factor that turns a value in unit `code` into the stored unit (1 when unknown)."""
+    for unit_code, _label, factor in FIELD_UNITS.get(target_label, {}).get(field_name, ()):
+        if unit_code == code:
+            return factor
+    return 1.0
+
+
 def _get_expected_geom_type(field):
     """Return human-readable geometry type expected by the field."""
     from django.contrib.gis.db.models import (
@@ -234,6 +258,13 @@ def _build_mapping_form(target_model, columns, gdf_crs, data=None):
             label=fld,
             help_text=help_text
         )
+        units = FIELD_UNITS.get(target_model, {}).get(fld)
+        if units:
+            fields[f'unit__{fld}'] = forms.ChoiceField(
+                choices=[(code, label) for code, label, _factor in units],
+                initial=units[0][0], required=False, label=f'{fld} unit',
+                help_text=f'Unit of the source column; values are converted to {units[0][1]}.',
+            )
 
     if spec['has_geometry'] and spec['geometry_field']:
         # Geometries are always stored in COORDINATE_SYSTEM; shown for
@@ -418,9 +449,12 @@ from core.geoFunctions import fit_geometry_type as _fit_geometry_type  # noqa: E
 
 
 @transaction.atomic
-def _generic_import(gdf, target_label, colmap, dry_run=True):
+def _generic_import(gdf, target_label, colmap, dry_run=True, units=None):
     """
     One importer for all models in MODEL_REGISTRY.
+
+    `units` maps a field to the unit code of its source column (FIELD_UNITS);
+    its values are converted to the stored unit.
 
     Geometries are always stored in settings.COORDINATE_SYSTEM: the frame is
     reprojected from its own CRS up front, whatever the caller did beforehand.
@@ -451,6 +485,11 @@ def _generic_import(gdf, target_label, colmap, dry_run=True):
         f.name: f for f in opts.get_fields()
         if isinstance(f, Field) and not (f.many_to_many or f.auto_created or f.primary_key)
     }
+
+    factors = {
+        fname: _unit_factor(target_label, fname, code) for fname, code in (units or {}).items()
+    }
+    factors = {fname: f for fname, f in factors.items() if f != 1.0}
 
     geom_field_name = spec['geometry_field'] if spec['has_geometry'] else None
     geom_field_obj = field_by_name.get(geom_field_name) if geom_field_name else None
@@ -506,7 +545,10 @@ def _generic_import(gdf, target_label, colmap, dry_run=True):
                     elif isinstance(f, GeometryField):
                         pass
                     else:
-                        defaults[fname] = _cast_value(raw, f)
+                        value = _cast_value(raw, f)
+                        if fname in factors and isinstance(value, (int, float)):
+                            value = value * factors[fname]
+                        defaults[fname] = value
 
                 # Geometry handling (if any)
                 if geom_field_name and hasattr(gdf, 'geometry'):
@@ -1134,9 +1176,16 @@ def upload_geodata(request):
                 if key in mapping_form.cleaned_data:
                     colmap[fld] = mapping_form.cleaned_data[key] or None
 
+            units = {
+                fld: mapping_form.cleaned_data[f'unit__{fld}']
+                for fld in FIELD_UNITS.get(target_model, {})
+                if colmap.get(fld) and mapping_form.cleaned_data.get(f'unit__{fld}')
+            }
+
             mapped = {field: col for field, col in colmap.items() if col}
             say("map", f"Field mapping ({len(mapped)} field(s)): "
-                        + (", ".join(f"{col} -> {field}" for field, col in mapped.items()) or "none"))
+                        + (", ".join(f"{col} -> {field}" + (f" [{units[field]}]" if field in units else "")
+                                   for field, col in mapped.items()) or "none"))
 
             # Validate required mappings
             missing = [f for f in spec['required'] if not colmap.get(f) and f not in spec['geom_fields']]
@@ -1189,7 +1238,7 @@ def upload_geodata(request):
             say("vector", f"Writing {len(gdf)} feature(s) into {target_model}"
                            f"{' (dry run: rolled back at the end)' if dry_run else ''} ...")
             try:
-                report = _generic_import(gdf, target_model, colmap, dry_run=dry_run)
+                report = _generic_import(gdf, target_model, colmap, dry_run=dry_run, units=units)
             except Exception as e:
                 logger.exception("Import into %s failed", target_model)
                 say("ERROR", f"Import failed: {e} (traceback above)")

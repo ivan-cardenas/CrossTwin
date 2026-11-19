@@ -20,6 +20,15 @@ function showLoader(show) {
   }
 }
 
+/**
+ * The KNMI rain radar (time-dimension WMS whose key contains "radar") is not
+ * listed in the layers panel and is left alone by tool/select-all toggles:
+ * only the weather pill's Radar button switches it (WeatherPill.js).
+ */
+function isWeatherPillLayer(layer) {
+  return !!layer && layer.layer_type === 'wms' && !!layer.has_time_dimension && /radar/i.test(layer.key);
+}
+
 // ---- Fetch & render ---------------------------------------------------
 
 /**
@@ -671,7 +680,7 @@ function _loadedRasters(appLabel, modelName) {
 /**
  * Point the loaded raster layers of one model at a fresh tile URL. A DSM's
  * edited COG gets a new file name after every map edit
- * (physicalEnv/dsm_edited.py), so its tiles reload instead of coming from the
+ * (physicalEnv/calculations/dsm_edited.py), so its tiles reload instead of coming from the
  * browser cache.
  */
 async function refreshRasterTiles(appLabel, modelName) {
@@ -916,6 +925,7 @@ function zoomToAllVisible() {
 
 function selectAllLayers() {
   availableLayers.forEach(layer => {
+    if (isWeatherPillLayer(layer)) return;
     toggleLayerVisibility(layer.key, true);
     const cb = document.getElementById(`toggle-${layer.key}`);
     if (cb) cb.checked = true;
@@ -924,6 +934,7 @@ function selectAllLayers() {
 
 function selectNoLayers() {
   availableLayers.forEach(layer => {
+    if (isWeatherPillLayer(layer)) return;
     toggleLayerVisibility(layer.key, false);
     const cb = document.getElementById(`toggle-${layer.key}`);
     if (cb) cb.checked = false;
@@ -979,6 +990,7 @@ function activateToolLayers(toolId) {
   if (!categories) return;
 
   availableLayers.forEach(layer => {
+    if (isWeatherPillLayer(layer)) return;
     const matches = categories.includes(layer.app_label);
     toggleLayerVisibility(layer.key, matches);
     const cb = document.getElementById(`toggle-${layer.key}`);
