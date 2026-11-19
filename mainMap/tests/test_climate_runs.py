@@ -117,9 +117,9 @@ class ThermalComfortToolScenarioTests(TestCase):
             "bbox": self.BBOX, "datetime": "2025-07-15T15:00", "climate": "2050_Hd", "heat": "summer",
             "ta_c": 25, "rh_pct": 50, "wind_ms": 2, "kdown_wm2": 700, "tmax_c": 27, "tmin_c": 14})
         data = response.json()
-        delta = climate.DELTAS["2050_Hd"]["summer"]
-        self.assertAlmostEqual(data["scenario"]["ta_c"], 25 + delta["tx_c"])
-        self.assertAlmostEqual(data["delta"]["tmin_c"], delta["tn_c"])
+        delta = climate.deltas("2050_Hd", "summer", 2025)     # minus what 2025 already holds
+        self.assertAlmostEqual(data["scenario"]["ta_c"], round(25 + delta["tx_c"], 1))
+        self.assertAlmostEqual(data["delta"]["tmin_c"], round(delta["tn_c"], 1))
         self.assertTrue(data["month_fits"])
         winter = self.client.get(reverse("urban_heat:solweig_scenario_met"), {
             "bbox": self.BBOX, "datetime": "2025-07-15T15:00", "climate": "2050_Hd", "heat": "winter",

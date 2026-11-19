@@ -14,6 +14,8 @@ from ..models import (
 from administrative.models import City, Province, Neighborhood
 from administrative.admin_units import cities_within, neighborhoods_within
 
+from . import chain
+
 
 # ── Consumption & Demand ─────────────────────────────────────────────
 
@@ -42,12 +44,10 @@ def consumption_data_years(adminBund, year):
 
 
 def calculate_total_demand(adminBund, year):
-    """Total water demand in m³/day across all cities in an admin unit."""
-    cities = cities_within(adminBund)
+    """Total water demand in m³/day of an admin unit (residential x small business factor, chain.demand_m3_d)."""
     consumption = _get_consumption_capita(adminBund, year)
     population = adminBund.currentPopulation or 0
-    # L/person/day → m³/day
-    return consumption / 1000 * population
+    return chain.demand_m3_d(consumption, population)
 
 
 # ── Extraction & Production ──────────────────────────────────────────
@@ -81,9 +81,11 @@ def watershed_share(adminBund, watershed):
     """Share (0-1) of a watershed's water that goes to the population of adminBund.
 
     share = population of the unit's neighborhoods in the watershed
-            / population of all neighborhoods in the watershed
-    Falls back to the unit's share of the watershed area when no neighborhood
-    population is stored there (e.g. only cities were imported).
+            / max(population of all stored neighborhoods in the watershed,
+                  Watershed.population_served)
+    (chain.watershed_population_share). Falls back to the unit's share of the
+    watershed area when no neighborhood population is stored there (e.g. only
+    cities were imported).
     """
     served = _watershed_neighborhoods(watershed)
     total_pop = served.aggregate(p=Sum('currentPopulation'))['p'] or 0
@@ -92,7 +94,7 @@ def watershed_share(adminBund, watershed):
             served.filter(pk__in=neighborhoods_within(adminBund).values('pk'))
             .aggregate(p=Sum('currentPopulation'))['p'] or 0
         )
-        return unit_pop / total_pop
+        return chain.watershed_population_share(unit_pop, total_pop, watershed.population_served)
     if not watershed.geom.area:
         return 0.0
     return adminBund.geom.intersection(watershed.geom).area / watershed.geom.area
@@ -155,16 +157,25 @@ def calculate_supply_security(adminBund, year=None):
 
     DAG edges:  Total_Water_Demand → Supply_Security
                 Total_Water_Prod   → Supply_Security
-    TotalWaterDemand.demandDay is stored in Mm³/day; it is converted to m³/day
-    here. Pass `year` to use that year's demand only (otherwise every year's
-    record would be summed together).
+    Demand and production cover the same unit:
+    * City / Province: the stored TotalWaterDemand of its cities (demandDay is
+      stored in Mm³/day, converted to m³/day here). Pass `year` to use that
+      year's demand only (otherwise every year's record would be summed together).
+    * District / Neighborhood: TotalWaterDemand is per city, so the unit's own
+      demand is computed with the same equation (chain.demand_m3_d) from its
+      consumption per capita and its population of `year`. Using the city's
+      record would set the unit's share of the production against the whole
+      city's demand.
     Returns (demand_m3_d, production_m3_d, security_ratio).
     """
-    cities = cities_within(adminBund)
-    demand_qs = TotalWaterDemand.objects.filter(city__in=cities)
-    if year is not None:
-        demand_qs = demand_qs.filter(year=year)
-    demand = (demand_qs.aggregate(total=Sum('demandDay'))['total'] or 0) * 1e6
+    if isinstance(adminBund, (City, Province)):
+        demand_qs = TotalWaterDemand.objects.filter(city__in=cities_within(adminBund))
+        if year is not None:
+            demand_qs = demand_qs.filter(year=year)
+        demand = (demand_qs.aggregate(total=Sum('demandDay'))['total'] or 0) * 1e6
+    else:
+        from administrative.calculations.population import get_population
+        demand = chain.demand_m3_d(_get_consumption_capita(adminBund, year), get_population(adminBund, year))
     production = calculate_total_production_day(adminBund)
 
     if demand and production:

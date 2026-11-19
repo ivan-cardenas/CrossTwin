@@ -84,7 +84,7 @@ class HousingSupplyDemand(models.Model):
     city = models.ForeignKey("administrative.City", verbose_name="City", on_delete=models.DO_NOTHING, null=True, blank=True)
     neighborhood = models.ForeignKey("administrative.Neighborhood", verbose_name="Neighborhood", on_delete=models.DO_NOTHING, null=True, blank=True)
     year = models.IntegerField(help_text="Year of the housing supply/demand data")
-    supply_units = models.IntegerField(help_text="Number of housing units supplied")
+    supply_units = models.IntegerField(help_text="Dwelling stock at the end of the year (CBS 86098NED EindstandVoorraad, Q4)")
     demand_units = models.IntegerField(null=True, blank=True, help_text="Number of housing units demanded = baseline population of the year / average household size (derived for city records; a stored value is kept without both inputs)")
     last_updated = models.DateTimeField(default=timezone.now)
 

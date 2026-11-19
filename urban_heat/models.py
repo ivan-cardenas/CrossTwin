@@ -49,6 +49,21 @@ class WMSLayer(models.Model):
 
 
 
+def _measurement_label(prefix, row):
+    """
+    Admin/DB label of a heat raster. A climate scenario row keeps the observed
+    hour it was shifted from as `date_time` (sun position and weather of that
+    hour); the label names the scenario so it is not read as a dated forecast.
+    """
+    when = row.date_time.strftime('%Y-%m-%d %H:%M')
+    if row.climate_run_id is None:
+        return f"{prefix} Measurement at {when}"
+    run = row.climate_run
+    info = run.describe()
+    return (f"{prefix} climate {info['short']} ({info['pathway']}{', interpolated' if info.get('interpolated') else ''}), "
+            f"{info['heat_label'].lower()}, run {run.pk} · observed hour {when}")
+
+
 class MeanRadiantTemperature(models.Model):
     """Mean Radiant Temperature (MRT) measurements"""
     raster = models.RasterField(srid=settings.COORDINATE_SYSTEM, null=True, blank=True, verbose_name="Tmrt Raster", help_text="Raster file containing Mean Radiant Temperature values in degrees Celsius.")
@@ -60,7 +75,7 @@ class MeanRadiantTemperature(models.Model):
     climate_run = models.ForeignKey("weather.ClimateScenarioRun", on_delete=models.CASCADE, null=True, blank=True, related_name="+", help_text="Stored climate scenario run this result belongs to; empty = observed")
 
     def __str__(self):
-        return f"MRT Measurement at {self.date_time.strftime('%Y-%m-%d %H:%M:%S')}"
+        return _measurement_label("MRT", self)
     
     class Meta:
         verbose_name = "Mean Radiant Temperature"
@@ -78,7 +93,7 @@ class UTCI(models.Model):
     climate_run = models.ForeignKey("weather.ClimateScenarioRun", on_delete=models.CASCADE, null=True, blank=True, related_name="+", help_text="Stored climate scenario run this result belongs to; empty = observed")
 
     def __str__(self):
-        return f"UTCI Measurement at {self.date_time.strftime('%Y-%m-%d %H:%M:%S')}"
+        return _measurement_label("UTCI", self)
     
     class Meta:
         verbose_name = "Universal Thermal Climate Index"
@@ -97,7 +112,7 @@ class WetBulbGlobeTemperature(models.Model):
     climate_run = models.ForeignKey("weather.ClimateScenarioRun", on_delete=models.CASCADE, null=True, blank=True, related_name="+", help_text="Stored climate scenario run this result belongs to; empty = observed")
 
     def __str__(self):
-        return f"WBGT Measurement at {self.date_time.strftime('%Y-%m-%d %H:%M:%S')}"
+        return _measurement_label("WBGT", self)
 
     class Meta:
         verbose_name = "Wet Bulb Globe Temperature"
@@ -132,7 +147,7 @@ class PET(models.Model):
     climate_run = models.ForeignKey("weather.ClimateScenarioRun", on_delete=models.CASCADE, null=True, blank=True, related_name="+", help_text="Stored climate scenario run this result belongs to; empty = observed")
 
     def __str__(self):
-        return f"PET Measurement at {self.date_time.strftime('%Y-%m-%d %H:%M:%S')}"
+        return _measurement_label("PET", self)
     
     class Meta:
         verbose_name = "Physiological Equivalent Temperature"
@@ -316,7 +331,8 @@ class ScenarioHeat(models.Model):
         DAG edges: Climate_Change -> Meteorology -> Tmrt, UTCI, PET, WBGT
         met_scenario = the run's observed hour (run.parameters['met_observed'])
         moved into the scenario: climate.apply_to_weather for the hour,
-        climate.apply_to_day_values for PET's day values.
+        climate.apply_to_day_values for PET's day values, both minus the
+        change already in the observed hour's year (climate.observed_offset).
         The scenario means come from `thermal_run`, the current ones from the
         latest finished observed run of the same hour covering the view
         (scenario.find_baseline; WBGT from its Tmrt when it stored none); the
@@ -330,8 +346,9 @@ class ScenarioHeat(models.Model):
         observed = (run.parameters or {}).get("met_observed")
         if observed:
             month = run.analysis_datetime.month if run.analysis_datetime else None
-            shifted = climate.apply_to_weather(observed, run.scenario, month, run.heat_mode, run.station)
-            shifted = climate.apply_to_day_values(shifted, run.scenario, run.heat_mode, month, run.station)
+            year = run.analysis_datetime.year if run.analysis_datetime else None
+            shifted = climate.apply_to_weather(observed, run.scenario, month, run.heat_mode, run.station, year)
+            shifted = climate.apply_to_day_values(shifted, run.scenario, run.heat_mode, month, run.station, year)
             shifted["source"] = f"KNMI23 {run.scenario} {run.heat_mode} on {observed.get('source', '')}"[:60]
             self.met_observed, self.met_scenario = observed, shifted
         if self.thermal_baseline is None and self.thermal_run is not None:

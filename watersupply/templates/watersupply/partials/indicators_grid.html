@@ -27,7 +27,7 @@
         <div class="balance-track"><div class="balance-fill" style="width: {{ indicators.supply_bar_pct }}%;"></div></div>
       </div>
       <div class="balance-row demand" role="row"
-           title="Demand: {{ indicators.total_demand_Mm3 }} Mm³/year ({{ indicators.demand_m3_d|intcomma }} m³/day)">
+           title="Demand: {{ indicators.total_demand_Mm3 }} Mm³/year ({{ indicators.demand_m3_d|intcomma }} m³/day): residential {{ indicators.residential_demand_m3_d|intcomma }} + small businesses {{ indicators.small_business_demand_m3_d|intcomma }} m³/day (× {{ indicators.small_business_factor }})">
         <div class="balance-meta">
           <span class="balance-key" aria-hidden="true"></span>
           <span class="balance-label" role="rowheader">Demand</span>

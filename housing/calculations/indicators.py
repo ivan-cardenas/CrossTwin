@@ -8,6 +8,7 @@ from ..models import (
 from administrative.admin_units import cities_within, neighborhoods_within, province_of
 from builtup.models import Property, ZoningArea, Building
 from physicalEnv.hilucs import hilucs_q
+from . import chain
 
 
 # -- Supply & Demand ---------------------------------------------------------
@@ -57,6 +58,29 @@ def calculate_supply_demand_for_unit(adminBund, year):
         'demand_units': demand,
         'deficit': deficit,
         'deficit_pct': round(deficit / demand * 100, 1) if demand else None,
+        'supply_source': 'cbs',
+    }
+
+
+def supply_demand_from_dwellings(dwellings, population, average_size):
+    """Supply/demand of a district or neighborhood, whose CBS stock is not imported.
+
+    The CBS housing stock (HousingSupplyDemand) is per municipality, so below the
+    city it would compare the whole city's homes with one neighborhood. There:
+        supply = mapped dwellings (BAG woonfunctie, calculate_dwellings)
+        demand = baseline population of the unit / persons per home (chain.demand_units)
+    The dwelling count is today's BAG stock, whatever the year.
+
+    DAG edges:  Total_Population, Household_Size -> Housing_Demand
+    """
+    demand = chain.demand_units(population, average_size) or 0
+    deficit = demand - dwellings
+    return {
+        'supply_units': dwellings,
+        'demand_units': demand,
+        'deficit': deficit,
+        'deficit_pct': round(deficit / demand * 100, 1) if demand else None,
+        'supply_source': 'bag',
     }
 
 

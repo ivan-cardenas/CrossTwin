@@ -1,4 +1,5 @@
 """ConsumptionCapita.for_year: a year without its own record uses the latest earlier one."""
+from unittest import mock
 from django.test import TestCase
 
 from watersupply.calculations.indicators import _get_consumption_capita, consumption_data_years
@@ -6,6 +7,20 @@ from watersupply.models import ConsumptionCapita, TotalWaterDemand
 from watersupply.views import _build_indicators, _get_adminUnit_data
 
 from .factories import make_city, make_consumption_capita
+
+
+# These tests pin the population -> demand plumbing with residential demand only;
+# the small business factor has its own tests (test_small_business_demand.py).
+_factor_patch = mock.patch("watersupply.calculations.chain.SMALL_BUSINESS_DEMAND_FACTOR", 1.0)
+
+
+def setUpModule():
+    _factor_patch.start()
+
+
+def tearDownModule():
+    _factor_patch.stop()
+
 
 
 class ConsumptionForYearTests(TestCase):

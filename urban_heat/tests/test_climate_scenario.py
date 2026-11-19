@@ -45,7 +45,7 @@ def _fake_solweig(inputs, met, when_local):
 @mock.patch("urban_heat.solweig.pipeline.run_solweig", side_effect=_fake_solweig)
 @mock.patch("urban_heat.solweig.pipeline.device", return_value="cpu")
 @mock.patch("urban_heat.solweig.pipeline.urban_pet",
-            side_effect=lambda inputs, tmrt, met, when: (tmrt - 10.0, "test PET"))
+            side_effect=lambda inputs, tmrt, met, when: (tmrt - 10.0, "test PET", tmrt * 0 + 1.0))
 class ScenarioHeatTests(TestCase):
     BBOX = [6.8930, 52.2200, 6.8940, 52.2206]
     WHEN = datetime(2025, 7, 15, 15, tzinfo=ZoneInfo("Europe/Amsterdam"))
@@ -101,8 +101,10 @@ class ScenarioHeatTests(TestCase):
         with mock.patch("urban_heat.solweig.pipeline.solweig_available", return_value=False):
             run = self.make_run()
         heat = ScenarioHeat.objects.get(run=run)
-        delta = climate.DELTAS["2050_Hd"]["summer"]
-        self.assertAlmostEqual(heat.met_scenario["ta_c"], 25.0 + delta["tx_c"])
+        # minus the change already in the observed hour's year (2025)
+        delta = climate.deltas("2050_Hd", "summer", run.analysis_datetime.year)
+        self.assertLess(delta["tx_c"], climate.DELTAS["2050_Hd"]["summer"]["tx_c"])
+        self.assertAlmostEqual(heat.met_scenario["ta_c"], round(25.0 + delta["tx_c"], 1))
         self.assertAlmostEqual(heat.met_scenario["tmin_c"], round(14.0 + delta["tn_c"], 1))
         self.assertTrue(heat.met_scenario["source"].startswith("KNMI23 2050_Hd summer"))
         self.assertEqual(heat.status, "unavailable")      # SOLWEIG missing: said so, nothing queued
@@ -226,3 +228,21 @@ class ScenarioHeatTests(TestCase):
         signals._last_mark.clear()
         signals.mark_heat_input_changed("land cover")
         self.assertEqual(heat_inputs_changed(heat), ["land cover"])
+
+
+class ScenarioRasterLabelTests(TestCase):
+    """A scenario raster's label names the scenario, not only the observed hour it was shifted from."""
+
+    def test_labels(self):
+        from urban_heat.models import MeanRadiantTemperature
+        from weather.models import ClimateScenarioRun
+
+        when = datetime(2025, 7, 15, 14, tzinfo=ZoneInfo("Europe/Amsterdam"))
+        run = ClimateScenarioRun.objects.create(scenario="2070_Hd", heat_mode="warmest",
+                                                unit_level="city", unit_name="Nowhere")
+        self.assertIn("interpolated:", run.knmi_source)
+        observed = MeanRadiantTemperature(date_time=when)
+        scenario = MeanRadiantTemperature(date_time=when, climate_run=run)
+        self.assertTrue(str(observed).startswith("MRT Measurement at 2025-07-15"))
+        self.assertIn("climate 2070 High, dry (Hd, interpolated), warmest day of the year", str(scenario))
+        self.assertIn(f"run {run.pk} · observed hour 2025-07-15", str(scenario))

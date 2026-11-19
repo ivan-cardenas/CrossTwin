@@ -39,6 +39,60 @@ class Knmi23TableTests(SimpleTestCase):
         self.assertFalse(climate.describe("nonsense")["active"])
 
 
+class InterpolatedDecadeTests(SimpleTestCase):
+    """Decades between the KNMI'23 horizons: linear in time from 0 at 2005 (climate.INTERPOLATION_METHOD)."""
+
+    def test_keys_every_ten_years_from_2030(self):
+        self.assertEqual(climate.SCENARIO_YEARS, (2030, 2040, 2050, 2060, 2070, 2080, 2090, 2100))
+        self.assertEqual(len(climate.SCENARIOS), 1 + 8 * 4)
+        self.assertEqual(climate.normalize("2070_Hn"), "2070_Hn")
+
+    def test_published_horizons_are_unchanged(self):
+        self.assertEqual(climate.horizon_weights(2050), (1.0, 0.0))
+        self.assertEqual(climate.horizon_weights(2100), (0.0, 1.0))
+        self.assertFalse(climate.is_interpolated("2050_Hd"))
+        self.assertFalse(climate.is_interpolated("current"))
+
+    def test_pinned_interpolated_values(self):
+        # 2030 Hd summer Tx: 2.2 x 25/45; 2075 is not a key, 2070 Hd: 2.2 + (5.4 - 2.2) x 0.4
+        self.assertEqual(climate.DELTAS["2030_Hd"]["summer"]["tx_c"], round(2.2 * 25 / 45, 2))
+        self.assertEqual(climate.DELTAS["2070_Hd"]["summer"]["tx_c"], 3.48)
+        self.assertEqual(climate.DELTAS["2090_Ld"], climate.DELTAS["2050_Ld"])        # low pathways stay flat
+        self.assertEqual(climate.STATION_EXTREMES["De Bilt"]["warmest_day_c"]["2080_Hd"], 5.34)  # 3.0 + 3.9 x 0.6
+        self.assertTrue(climate.is_interpolated("2030_Hd"))
+
+    def test_describe_flags_the_interpolation(self):
+        info = climate.describe("2040_Hn")
+        self.assertTrue(info["interpolated"])
+        self.assertIsNone(info["global_warming_c"])
+        self.assertEqual(info["period"], "around 2040, interpolated")
+        self.assertEqual(climate.population_year("2040_Hn"), 2040)
+
+
+class ObservedYearOffsetTests(SimpleTestCase):
+    """The change already in the observed weather is taken off, one value for all pathways."""
+
+    def test_offset_is_the_mean_of_the_pathways(self):
+        # summer Tx 2050: Ld 1.4, Ln 1.2, Hd 2.2, Hn 1.7 -> mean 1.625; 2025 = x 20/45
+        self.assertEqual(climate.observed_offset("summer", "tx_c", 2025), 0.72)
+        self.assertEqual(climate.observed_offset("summer", "tx_c", None), 0.0)
+        self.assertEqual(climate.observed_offset("summer", "tx_c", 1995), 0.0)    # before 2005: none
+
+    def test_applied_change(self):
+        self.assertEqual(climate.deltas("2030_Hd", "summer", 2025)["tx_c"], round(1.22 - 0.72, 2))
+        self.assertEqual(climate.deltas("2050_Hd", "summer", 2025)["tx_c"], 1.48)
+        self.assertEqual(climate.deltas("2050_Hd", "summer")["tx_c"], 2.2)          # no year: Table 1
+        self.assertEqual(climate.deltas("2030_Hd", "summer", 2030)["tx_c"], 0.0)    # not later: nothing
+        self.assertEqual(climate.warmest_day_change("2030_Hd", "De Bilt", 2031), 0.0)
+
+    def test_weather_and_water_use_it(self):
+        weather = {"ta_c": 30.0, "rh_pct": 50.0, "wind_ms": 2.0, "kdown_wm2": 800.0}
+        self.assertEqual(climate.apply_to_weather(weather, "2050_Hd", 7, observed_year=2025)["ta_c"], 31.5)
+        self.assertEqual(climate.apply_to_weather(weather, "2050_Hd", 7)["ta_c"], 32.2)
+        full = climate.apply_to_et(600.0, "2100_Hd")
+        self.assertLess(climate.apply_to_et(600.0, "2100_Hd", 2024), full)
+
+
 class DeltaChangeTests(SimpleTestCase):
     WEATHER = {"ta_c": 30.0, "rh_pct": 50.0, "wind_ms": 2.0, "kdown_wm2": 800.0, "source": "Open-Meteo"}
 
@@ -99,10 +153,12 @@ class HeatPanelClimateTests(SimpleTestCase):
         scenario = _build_indicators(data, climate_key="2050_Hd")
         self.assertEqual(current["air_temp_C"], 30.0)
         self.assertFalse(current["climate"]["active"])
-        self.assertEqual(scenario["air_temp_C"], 32.2)
-        self.assertEqual(scenario["weather_baseline"]["ta_c"], 32.2)   # Reset returns to the scenario
+        # 2.2 minus 0.76 already in 2026 weather (mean of the pathways, 1.625 x 21/45)
+        self.assertEqual(scenario["air_temp_C"], 31.4)
+        self.assertEqual(scenario["weather_baseline"]["ta_c"], 31.4)   # Reset returns to the scenario
         self.assertFalse(scenario["weather_whatif"])
-        self.assertEqual(scenario["climate_delta"]["ta_c"], 2.2)
+        self.assertEqual(scenario["climate_delta"]["ta_c"], 1.4)
+        self.assertEqual(scenario["climate_observed_year"], 2026)
         self.assertEqual(scenario["climate_season"], "summer")
         self.assertGreater(scenario["weather_stress"]["wbgt_estimate_c"],
                            current["weather_stress"]["wbgt_estimate_c"])
@@ -138,6 +194,15 @@ class ScenarioPanelViewTests(TestCase):
         self.assertContains(response, 'data-climate="2100_Hd"')
         self.assertContains(response, "+4.4")       # yearly temperature
         self.assertContains(response, "+4.9 °C global warming")
+
+    def test_panel_shows_the_decades_and_the_curve(self):
+        response = self.client.get(reverse("weather:climate_panel"), {"climate": "2060_Hd"})
+        self.assertContains(response, 'data-climate="2060_Hd"')
+        self.assertContains(response, 'data-climate-year="2060"')
+        self.assertContains(response, "interpolated between the KNMI'23 horizons")
+        self.assertContains(response, 'class="climate-curve"')
+        self.assertContains(response, "?climate=2090_Ln", count=2)   # grid cell + curve point
+        self.assertContains(response, "climate-curve-pt is-dry is-active", count=1)
 
     def test_heat_and_water_panels_take_the_scenario(self):
         heat = self.client.get(reverse("urban_heat:heat_indicators", args=["city", "Nowhere"]),
@@ -201,8 +266,8 @@ class HeatWaveDayTests(SimpleTestCase):
         data = {**MOCK_DATA, "weather": weather, "point": (50.85, 5.69)}
         average = _build_indicators(data, climate_key="2100_Hd")
         warmest = _build_indicators(data, climate_key="2100_Hd", climate_heat="warmest")
-        self.assertEqual(average["air_temp_C"], 35.4)
-        self.assertEqual(warmest["air_temp_C"], 37.4)
+        self.assertEqual(average["air_temp_C"], 34.6)     # 5.4 - 0.76 already in 2026
+        self.assertEqual(warmest["air_temp_C"], 36.5)     # Maastricht 7.4 - 0.93 (mean 2.0 x 21/45)
         self.assertEqual(warmest["climate_station"], "Maastricht")
         self.assertEqual(warmest["climate_heat"], "warmest")
         self.assertGreater(warmest["weather_stress"]["wbgt_estimate_c"],

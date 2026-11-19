@@ -83,6 +83,10 @@ class TotalWaterDemand(models.Model):
     year = models.IntegerField()
     demandDay = models.FloatField( help_text="in Million cubic meters per day") # Mm3/day
     demandYR = models.FloatField(null=True, help_text="in Million cubic meters per year")  # Mm3/year
+    small_business_factor = models.FloatField(
+        null=True, blank=True, editable=False,
+        help_text="Factor on the residential demand for small businesses used in demandDay "
+                  "(watersupply.calculations.chain.SMALL_BUSINESS_DEMAND_FACTOR, Vitens)")
     last_updated = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
@@ -92,12 +96,13 @@ class TotalWaterDemand(models.Model):
         """
         DAG edges: Total_Population -> Total_Water_Demand
                    ConsumptionCapita -> Total_Water_Demand
-        demandDay [Mm3/day] = population * L/person/day / 1e9   (L -> Mm3), with
-        the baseline population of `year` (watersupply/calculations/chain.py) and the
-        consumption of `year` or the closest year before it
-        (ConsumptionCapita.for_year).
+        demandDay [Mm3/day] = population * L/person/day * small business factor / 1e9
+        (L -> Mm3), with the baseline population of `year` (watersupply/calculations/chain.py),
+        the consumption of `year` or the closest year before it
+        (ConsumptionCapita.for_year) and chain.SMALL_BUSINESS_DEMAND_FACTOR (Vitens),
+        stored in small_business_factor.
         """
-        from .calculations.chain import baseline_population, demand_m3_d
+        from .calculations.chain import SMALL_BUSINESS_DEMAND_FACTOR, baseline_population, demand_m3_d
 
         consumption = ConsumptionCapita.for_year(self.city, self.year)
         if consumption is None:
@@ -106,7 +111,9 @@ class TotalWaterDemand(models.Model):
                 "cannot calculate the water demand."
             )
         population = baseline_population(self.city, self.year) or 0
-        self.demandDay = demand_m3_d(consumption.consumption_capita_L_d, population) / 1e6  # m3 -> Mm3
+        self.small_business_factor = SMALL_BUSINESS_DEMAND_FACTOR
+        self.demandDay = demand_m3_d(consumption.consumption_capita_L_d, population,
+                                     self.small_business_factor) / 1e6  # m3 -> Mm3
         self.demandYR = self.demandDay * 365
         self.last_updated = timezone.now()
         super().save(*args, **kwargs)
@@ -249,8 +256,18 @@ class Watershed(models.Model):
     name = models.CharField(max_length=100, help_text="Name of the watershed")
     geom = models.MultiPolygonField(srid=COORDINATE_SYSTEM)
     area_km2 = models.FloatField(help_text="Area of the watershed in square kilometers")
+    population_served = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Residents supplied by the watershed's extraction (input, e.g. the utility's "
+                  "service-area population or the CBS population of the municipalities it supplies). "
+                  "Denominator of each unit's share of the extraction when larger than the stored "
+                  "neighborhoods' population; empty = only the stored neighborhoods are counted")
+    population_source = models.CharField(
+        max_length=255, blank=True, default="",
+        help_text="Where population_served comes from (dataset, table id or report)")
+    population_year = models.IntegerField(null=True, blank=True, help_text="Year of population_served")
     last_updated = models.DateTimeField(default=timezone.now)
-    
+
     def __str__(self):
         return f"{self.name}"
     

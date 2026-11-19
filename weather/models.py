@@ -594,7 +594,8 @@ class ClimateScenarioRun(models.Model):
         DAG node: Climate_Change. Derives the key-figure station nearest to
         the unit, the population year (the scenario's horizon) and whether it
         is a trend extrapolation, the unit's city, and records the KNMI'23 tables and method
-        version, so a run can be recomputed later.
+        version (plus the interpolation of a decade between the horizons), so
+        a run can be recomputed later.
         """
         from administrative.admin_units import city_of
         from administrative.calculations.population import is_extrapolated
@@ -618,5 +619,8 @@ class ClimateScenarioRun(models.Model):
             self.station = self.station or climate.DEFAULT_STATION
         self.population_extrapolated = is_extrapolated(unit, self.population_year)
         self.knmi_source = f"{climate.KNMI23_SOURCE} | {climate.STATIONS_SOURCE}"
+        if climate.is_interpolated(self.scenario):
+            self.knmi_source += f" | interpolated: {climate.INTERPOLATION_METHOD}"
+        self.knmi_source += f" | applied {climate.OBSERVED_OFFSET_METHOD}"
         self.method_version = climate.SCENARIO_RUN_VERSION
         super().save(*args, **kwargs)

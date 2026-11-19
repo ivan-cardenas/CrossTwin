@@ -19,6 +19,11 @@ DAG edges: Total_Population, ConsumptionCapita -> Total_Water_Demand
 
 SERVICE_HOURS_MAX = 24
 
+# Total drinking-water demand = residential demand x this factor: small businesses
+# (shops, offices, small trade on household-type connections) add 20 % to the
+# residential use. Source: Vitens reports and calculations (core/data_sources.py, "Vitens small business").
+SMALL_BUSINESS_DEMAND_FACTOR = 1.2
+
 
 def baseline_population(city, year):
     """
@@ -38,14 +43,44 @@ def baseline_population(city, year):
     return population
 
 
-def demand_m3_d(consumption_L_d, population):
-    """Daily water demand in m3/day: L/person/day / 1000 * persons."""
+def residential_demand_m3_d(consumption_L_d, population):
+    """Daily residential water demand in m3/day: L/person/day / 1000 * persons."""
     return consumption_L_d / 1000 * population
 
 
+def demand_m3_d(consumption_L_d, population, small_business_factor=None):
+    """
+    Daily total water demand in m3/day: residential demand x the small business
+    factor (default SMALL_BUSINESS_DEMAND_FACTOR, Vitens).
+
+    DAG edges: Total_Population, ConsumptionCapita -> Total_Water_Demand
+    """
+    if small_business_factor is None:
+        small_business_factor = SMALL_BUSINESS_DEMAND_FACTOR
+    return residential_demand_m3_d(consumption_L_d, population) * small_business_factor
+
+
+def watershed_population_share(unit_population, stored_population, population_served=None):
+    """
+    Share (0-1) of a watershed's extraction that goes to a unit:
+
+        share = P_unit / max(P_stored, P_served)
+
+    P_unit: the unit's neighborhoods in the watershed; P_stored: all stored
+    neighborhoods in the watershed; P_served: Watershed.population_served, the
+    residents the watershed actually supplies. Without P_served the stored
+    neighborhoods would split all the water among themselves even when only one
+    city of a regional supply area is imported. 0 when neither population is known.
+
+    DAG edges: Available_FW -> Total_Extraction (watershed allocation)
+    """
+    denominator = max(stored_population or 0, population_served or 0)
+    return (unit_population or 0) / denominator if denominator else 0.0
+
+
 def consumption_m3_yr(consumption_L_d, population):
-    """Yearly water consumption in m3/year."""
-    return demand_m3_d(consumption_L_d, population) * 365
+    """Yearly residential water consumption in m3/year (households only, no small business factor)."""
+    return residential_demand_m3_d(consumption_L_d, population) * 365
 
 
 def supply_security_pct(production_m3_d, demand):
@@ -190,9 +225,11 @@ def scenario_water_balance(balance, composition, climate_key):
 
     if not balance:
         return None
+    # The station year already holds part of the change (climate.observed_offset).
+    year = balance.get('year')
     return yearly_water_balance_mm(
-        climate.apply_to_daily_rain(balance['daily_rain_mm'], balance.get('daily_months'), climate_key),
-        climate.apply_to_et(balance['et_ref_mm'], climate_key),
+        climate.apply_to_daily_rain(balance['daily_rain_mm'], balance.get('daily_months'), climate_key, year),
+        climate.apply_to_et(balance['et_ref_mm'], climate_key, year),
         composition)
 
 

@@ -108,9 +108,8 @@ document.getElementById('settingsBtn')?.addEventListener('click', () => {
 function setActiveYear(year, {refreshPanel = true} = {}) {
   year = parseInt(year);
   if (!year || year === window.ACTIVE_YEAR) return;
-  document.querySelectorAll('.year-btn').forEach(b =>
-    b.classList.toggle('active', parseInt(b.dataset.year) === year));
   window.ACTIVE_YEAR = year;
+  showYearInPicker(year);
 
   // The Actions button shows the active year while the menu is collapsed
   const yearLabel = document.getElementById('actions-menu-year');
@@ -127,9 +126,10 @@ window.setActiveYear = setActiveYear;
 
 // The other direction: a year chosen in the Actions menu sets the climate
 // scenario of that period (weather/calculations/climate.py::population_year):
-// 2050 / 2100 -> that horizon, keeping the chosen pathway (High, dry when
-// none), any other year -> the current climate. The heat mode is kept.
-const CLIMATE_HORIZONS = [2050, 2100];
+// a decade of climate.SCENARIO_YEARS (2030-2100; 2050 and 2100 published,
+// the others interpolated) -> that year, keeping the chosen pathway (High,
+// dry when none), any other year -> the current climate. The heat mode is kept.
+const CLIMATE_HORIZONS = [2030, 2040, 2050, 2060, 2070, 2080, 2090, 2100];
 const CLIMATE_PATHWAY_LABELS = { Ld: 'Low, dry', Ln: 'Low, wet', Hd: 'High, dry', Hn: 'High, wet' };
 
 function climateKeyForYear(year) {
@@ -167,16 +167,78 @@ function syncClimateToYear(year) {
   return true;
 }
 
-document.querySelectorAll('.year-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const year = parseInt(btn.dataset.year);
-    const sameYear = year === window.ACTIVE_YEAR;
-    const climateChanged = syncClimateToYear(year);
-    setActiveYear(year, { refreshPanel: !scenariosPanelOpen() });
-    // setActiveYear does nothing for the same year: refresh for the new climate here
-    if (sameYear && climateChanged && !scenariosPanelOpen()) refreshActivePanel();
+// A year chosen in the Actions menu: the climate scenario follows, then the
+// population year, the panels and the dock.
+function chooseYear(year) {
+  const sameYear = year === window.ACTIVE_YEAR;
+  const climateChanged = syncClimateToYear(year);
+  setActiveYear(year, { refreshPanel: !scenariosPanelOpen() });
+  // setActiveYear does nothing for the same year: refresh for the new climate here
+  if (sameYear && climateChanged && !scenariosPanelOpen()) refreshActivePanel();
+  showYearInPicker(year);   // the status line names the (new) scenario
+}
+
+// ── Year picker (Actions menu): a slider over the picker's years ─────────
+const yearPicker = document.getElementById('year-picker');
+const PICKER_YEARS = yearPicker
+  ? yearPicker.dataset.years.split(',').map(Number) : [];
+const POPULATION_PROJECTION_END = 2050;   // CBS projection; later years are a trend extrapolation
+const CLIMATE_PUBLISHED = [2050, 2100];   // KNMI'23 horizons; other decades are interpolated
+
+// What a year means for the panels: population source and climate.
+function yearStatus(year) {
+  const population = year <= PICKER_YEARS[0] ? 'Current population'
+    : year <= POPULATION_PROJECTION_END ? 'CBS projection' : 'Population trend';
+  if (!CLIMATE_HORIZONS.includes(year)) return `${population} · current climate`;
+  const key = climateKeyForYear(year);
+  const pathway = CLIMATE_PATHWAY_LABELS[key.split('_')[1]] || '';
+  const kind = CLIMATE_PUBLISHED.includes(year) ? "KNMI'23" : "KNMI'23 interpolated";
+  return `${population} · ${kind} ${pathway.toLowerCase()}`;
+}
+
+// Moves the slider and readout to `year` without applying it.
+function showYearInPicker(year) {
+  if (!yearPicker) return;
+  const index = PICKER_YEARS.indexOf(year);
+  const slider = document.getElementById('year-slider');
+  if (index >= 0) {
+    slider.value = String(index);
+    slider.setAttribute('aria-valuetext', String(year));
+  }
+  document.getElementById('year-value').textContent = String(year);
+  document.getElementById('year-status').textContent = yearStatus(year);
+  yearPicker.classList.toggle('is-future', year > PICKER_YEARS[0]);
+}
+
+function initYearPicker() {
+  if (!yearPicker) return;
+  const slider = document.getElementById('year-slider');
+  slider.max = String(PICKER_YEARS.length - 1);
+  const ticks = document.getElementById('year-ticks');
+  const last = PICKER_YEARS.length - 1;
+  yearPicker.dataset.ticks.split(',').map(Number).forEach(year => {
+    const tick = document.createElement('span');
+    tick.textContent = String(year);
+    tick.style.left = `${PICKER_YEARS.indexOf(year) / last * 100}%`;
+    ticks.appendChild(tick);
   });
-});
+  // Dragging previews; releasing (or a key press, which fires change) applies.
+  slider.addEventListener('input', () => {
+    const year = PICKER_YEARS[parseInt(slider.value)];
+    document.getElementById('year-value').textContent = String(year);
+    document.getElementById('year-status').textContent = yearStatus(year);
+  });
+  slider.addEventListener('change', () => chooseYear(PICKER_YEARS[parseInt(slider.value)]));
+  yearPicker.querySelectorAll('.year-step').forEach(btn => btn.addEventListener('click', () => {
+    const index = PICKER_YEARS.indexOf(window.ACTIVE_YEAR) + parseInt(btn.dataset.step);
+    if (index >= 0 && index <= last) chooseYear(PICKER_YEARS[index]);
+  }));
+  showYearInPicker(window.ACTIVE_YEAR || PICKER_YEARS[0]);
+  // A pathway picked in the Scenarios panel changes the status line's climate.
+  window.addEventListener('crosstwin:climate-changed', () =>
+    showYearInPicker(window.ACTIVE_YEAR || PICKER_YEARS[0]));
+}
+initYearPicker();
 
 
 

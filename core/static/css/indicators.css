@@ -702,6 +702,25 @@ input[type="range"].zone-slider::-moz-range-thumb {
 .climate-legend i { display: inline-block; width: 12px; height: 3px; border-radius: 2px; }
 .climate-legend i.is-dry { background: var(--c-dry); }
 .climate-legend i.is-wet { background: var(--c-wet); margin-left: 6px; }
+.climate-grid tr.is-interpolated .climate-btn { border-style: dashed; }
+.climate-grid th small { margin-left: 1px; color: var(--c-faint); }
+
+/* Change curve of the four pathways (weather/views.py::_scenario_curve) */
+.climate-curve { margin: 0 0 8px; }
+.climate-curve figcaption { display: flex; align-items: center; gap: 4px; font-size: 0.68rem; color: var(--c-muted); margin-bottom: 2px; }
+.climate-curve svg { display: block; width: 100%; height: auto; }
+.climate-curve-grid { stroke: rgba(232, 244, 255, 0.08); stroke-width: 1; }
+.climate-curve-tick { fill: var(--c-faint); font-size: 9px; font-variant-numeric: tabular-nums; }
+.climate-curve-line { stroke-width: 1.6; }
+.climate-curve-line.is-dry { stroke: var(--c-dry); }
+.climate-curve-line.is-wet { stroke: var(--c-wet); }
+.climate-curve-line.is-low { stroke-dasharray: 4 3; }
+.climate-curve-pt { stroke: #0b1622; stroke-width: 1; cursor: pointer; opacity: 0.75; }
+.climate-curve-pt.is-dry { fill: var(--c-dry); }
+.climate-curve-pt.is-wet { fill: var(--c-wet); }
+.climate-curve-pt.is-published { opacity: 1; }
+.climate-curve-pt:hover, .climate-curve-pt:focus-visible { opacity: 1; stroke: #e8f4ff; stroke-width: 1.5; outline: none; }
+.climate-curve-pt.is-active { opacity: 1; stroke: var(--c-accent); stroke-width: 2; }
 
 /* Heat day: one segmented control */
 .climate-segments { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
@@ -845,3 +864,5 @@ input[type="range"].zone-slider::-moz-range-thumb {
   padding: 6px 8px; border-radius: 6px; font-size: 0.74rem;
   background: rgba(239, 68, 68, 0.14); border: 1px solid rgba(239, 68, 68, 0.5); color: #fecaca; }
 .climate-action.is-busy { opacity: 0.6; cursor: progress; }
+.climate-curve-today { stroke: rgba(232, 244, 255, 0.35); stroke-width: 1; stroke-dasharray: 2 2; }
+.climate-curve-offset { stroke: rgba(232, 244, 255, 0.45); stroke-width: 1; stroke-dasharray: 5 3; }

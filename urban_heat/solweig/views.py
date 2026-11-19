@@ -199,8 +199,8 @@ def solweig_scenario_met(request):
             observed[name] = _optional_number(request.GET, name, low, high, unit)
         lon, lat = centre(bbox)
         station = climate.nearest_station(lat, lon)
-        shifted = climate.apply_to_weather(observed, key, when.month, heat, station)
-        shifted = climate.apply_to_day_values(shifted, key, heat, when.month, station)
+        shifted = climate.apply_to_weather(observed, key, when.month, heat, station, when.year)
+        shifted = climate.apply_to_day_values(shifted, key, heat, when.month, station, when.year)
         delta = {name: (round(shifted[name] - observed[name], 1)
                         if shifted.get(name) is not None and observed.get(name) is not None else None)
                  for name in observed}

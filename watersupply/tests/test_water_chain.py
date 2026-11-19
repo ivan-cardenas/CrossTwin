@@ -23,6 +23,20 @@ from .factories import (
     make_province, make_users_location,
 )
 
+
+# These tests pin the population -> demand plumbing with residential demand only;
+# the small business factor has its own tests (test_small_business_demand.py).
+_factor_patch = mock.patch("watersupply.calculations.chain.SMALL_BUSINESS_DEMAND_FACTOR", 1.0)
+
+
+def setUpModule():
+    _factor_patch.start()
+
+
+def tearDownModule():
+    _factor_patch.stop()
+
+
 RD = settings.COORDINATE_SYSTEM
 X, Y = 257000.0, 470000.0  # centre of the factory polygon (inside every factory geometry)
 

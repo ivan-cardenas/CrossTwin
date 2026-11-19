@@ -446,11 +446,12 @@ Source: \code{watersupply/calculations/indicators.py}, \code{watersupply/models.
 \subsection{Total water demand --- \code{calculate\_total\_demand()}, \code{TotalWaterDemand.save()}}
 \textbf{Location:} \code{watersupply/calculations/indicators.py:27}; \code{watersupply/models.py:70}
 \begin{align}
-  D_{\text{day}} &= \frac{\bar{c}}{1000} \times P \qquad [\si{m^3/day}] \\
-  \texttt{demandDay} &= \frac{P \times \bar{c}}{10^9} \qquad [\si{Mm^3/day}] \\
+  D_{\text{res}} &= \frac{\bar{c}}{1000} \times P \qquad [\si{m^3/day}] \\
+  D_{\text{day}} &= f_{\text{sb}} \times D_{\text{res}}, \qquad f_{\text{sb}} = 1.2 \\
+  \texttt{demandDay} &= \frac{f_{\text{sb}} \times P \times \bar{c}}{10^9} \qquad [\si{Mm^3/day}] \\
   \texttt{demandYR} &= \texttt{demandDay} \times 365
 \end{align}
-where $P$ is \code{city.currentPopulation}. Note the two representations differ by a factor of $10^6$ ($\si{m^3}$ vs.\ $\si{Mm^3}$); \code{calculate\_supply\_security()} converts explicitly (\S\ref{sec:supplysecurity}).
+where $P$ is the baseline population of the record's year (\code{chain.baseline\_population}) and $f_{\text{sb}}$ the small business factor (\code{watersupply/calculations/chain.py::SMALL\_BUSINESS\_DEMAND\_FACTOR}, \code{demand\_m3\_d}; Vitens reports and calculations): small businesses on household-type connections add 20\,\% to the residential demand. It is stored per record in \texttt{small\_business\_factor}. \texttt{ConsumptionCapita.total\_consumption\_m3\_yr} stays residential ($D_{\text{res}} \times 365$). Note the two representations differ by a factor of $10^6$ ($\si{m^3}$ vs.\ $\si{Mm^3}$); \code{calculate\_supply\_security()} converts explicitly (\S\ref{sec:supplysecurity}).
 
 \textbf{DAG edges:} \dagedge{Total\_Population $\rightarrow$ Total\_Water\_Demand}, \dagedge{ConsumptionCapita $\rightarrow$ Total\_Water\_Demand} --- \statusdone{}
 
@@ -485,10 +486,11 @@ $Q$ per piece and day as in \S\ref{sec:scs-summary}. Simplifications: crop facto
 A well's water belongs to its watershed $h(w)$ (the \code{watershed} of its \code{AvailableFreshWater} source, else the watershed containing the well) and is shared by the population of that watershed, wherever the well lies. Neighborhoods are assigned to one watershed by their point on surface:
 \begin{align}
   E_u &= \sum_{h} s_{u,h} \sum_{w:\,h(w)=h} V_w \;+\; \sum_{w:\,h(w)=\varnothing,\ w \,\cap\, \text{geom}(u)} V_w \\
-  s_{u,h} &= \frac{\sum_{n \,\in\, u,\ \text{pos}(n) \in h} P_n}{\sum_{\text{pos}(n) \in h} P_n}
+  s_{u,h} &= \frac{\sum_{n \,\in\, u,\ \text{pos}(n) \in h} P_n}{\max\!\big(\sum_{\text{pos}(n) \in h} P_n,\ P^{\text{served}}_h\big)}
   \quad\text{(area share } |u \cap h| / |h| \text{ when the watershed has no neighborhood population)}
 \end{align}
-$V_w$ (\code{ExtractionWater.volume\_m3\_d()}, also used by \code{TotalWaterProduction}) is the first known of \texttt{current\_extraction\_Mm3\_yr} $\times 10^6 / 365$, $q_w \times t_w \times 3600$ ($t_w$ = \texttt{OperationTime\_h\_day}) and $q_w \times 86400$, with $[q_w] = \si{m^3/s}$; $[V_w] = [E_u] = \si{m^3/day}$; $\sum_u s_{u,h} = 1$ over the neighborhoods of a watershed. Wells without a watershed keep the location rule.
+$P^{\text{served}}_h$ = \texttt{Watershed.population\_served} (input with \texttt{population\_source} and \texttt{population\_year}: the residents the watershed supplies, e.g.\ the utility's service-area population), ignored when empty or smaller than the stored neighborhoods' population (\code{watersupply/calculations/chain.py::watershed\_population\_share}). Without it, the stored neighborhoods split the whole extraction even when only one city of a regional supply area is imported.
+$V_w$ (\code{ExtractionWater.volume\_m3\_d()}, also used by \code{TotalWaterProduction}) is the first known of \texttt{current\_extraction\_Mm3\_yr} $\times 10^6 / 365$, $q_w \times t_w \times 3600$ ($t_w$ = \texttt{OperationTime\_h\_day}) and $q_w \times 86400$, with $[q_w] = \si{m^3/s}$; $[V_w] = [E_u] = \si{m^3/day}$; $\sum_u s_{u,h} \le 1$ over the neighborhoods of a watershed ($= 1$ without $P^{\text{served}}_h$). Wells without a watershed keep the location rule.
 
 \textbf{DAG edge:} \dagedge{Available\_FW $\rightarrow$ Total\_Extraction} --- \statusdone{}; the share also makes \dagedge{Total\_Population} of every city in the watershed an input of its neighbours' supply security (receivers \code{city\_population\_cascaded}, \code{city\_saved}, \code{watershed\_changed}, \code{extraction\_changed} in \code{watersupply/signals.py}).
 
@@ -503,7 +505,10 @@ $V_w$ (\code{ExtractionWater.volume\_m3\_d()}, also used by \code{TotalWaterProd
 \label{sec:supplysecurity}
 \textbf{Location:} \code{calculate\_supply\_security()} (\code{watersupply/calculations/indicators.py:73}); \code{SupplySecurity.save()} (\code{watersupply/models.py:107})
 \begin{align}
-  D_{\si{m^3/day}} &= \texttt{demandDay} \times 10^6 \\
+  D_{\si{m^3/day}} &= \begin{cases}
+    \sum_{\text{cities}} \texttt{demandDay} \times 10^6 & u \text{ a city or province (stored \code{TotalWaterDemand})} \\
+    c_u \cdot N_{u,y} / 1000 & u \text{ a district or neighborhood (\code{chain.demand\_m3\_d}, its own population)}
+  \end{cases} \\
   S &= \frac{\Pi}{D_{\si{m^3/day}}} \qquad \text{(ratio; } \times 100 \text{ for \%)}\\
   T_{\text{service}} &=
   \begin{cases}
@@ -653,12 +658,12 @@ The water dashboard's Infiltration card evaluates \S\ref{sec:physicalenv} for th
 Source: \code{housing/calculations/indicators.py}, \code{housing/models.py}.
 
 \subsection{Supply/demand deficit}
-\textbf{Location:} \code{calculate\_supply\_demand()} (\code{housing/calculations/indicators.py:14}), \code{calculate\_supply\_demand\_for\_unit()} (\code{:43})
+\textbf{Location:} \code{calculate\_supply\_demand()}, \code{calculate\_supply\_demand\_for\_unit()} (city, province), \code{supply\_demand\_from\_dwellings()} (district, neighborhood) in \code{housing/calculations/indicators.py}
 \begin{align}
   \text{Deficit} &= D - S \\
   \text{Deficit\%} &= \frac{D - S}{D} \times 100
 \end{align}
-where $S = \texttt{supply\_units}$ (CBS housing stock, 86098NED) and $D = \texttt{demand\_units}$ (derived, below). \textbf{DAG edges:} \dagedge{Total\_Population $\rightarrow$ Housing\_Demand}, \dagedge{New\_Units $\rightarrow$ Housing\_Supply}, \dagedge{Housing\_Demand $\rightarrow$ House\_Price\_Index} --- \statuspartial{} (demand is derived, below; \code{Housing\_Demand $\rightarrow$ House\_Price\_Index} is not implemented; the former \code{Urbanization $\rightarrow$ Housing\_Demand} edge was removed on 2026-11-10)
+where, for a city or province, $S = \texttt{supply\_units}$ (CBS dwelling stock at the end of Q4, 86098NED \code{EindstandVoorraad\_22}; before 2026-11-19 the import stored the quarter's net change \code{SaldoVoorraad\_21}) and $D = \texttt{demand\_units}$ (derived, below). CBS has no stock below the municipality, so for a district or neighborhood $S$ = the mapped dwellings (BAG residential function, \code{calculate\_dwellings()}) and $D = P_{\text{unit}} / h$ (\code{chain.demand\_units}, the unit's baseline population over the city's persons per home). \textbf{DAG edges:} \dagedge{Total\_Population $\rightarrow$ Housing\_Demand}, \dagedge{New\_Units $\rightarrow$ Housing\_Supply}, \dagedge{Housing\_Demand $\rightarrow$ House\_Price\_Index} --- \statuspartial{} (demand is derived, below; \code{Housing\_Demand $\rightarrow$ House\_Price\_Index} is not implemented; the former \code{Urbanization $\rightarrow$ Housing\_Demand} edge was removed on 2026-11-10)
 
 \subsubsection{Household size and housing demand --- \code{HouseholdSize.save()}, \code{HousingSupplyDemand.save()}}
 \label{sec:household-size}
@@ -951,6 +956,24 @@ K_\downarrow' &= K_\downarrow \, \frac{\bar K_s + \Delta K_s}{\bar K_s}
 \end{align}
 with $\bar K_s$ the 1991--2020 seasonal mean radiation (34, 161, 206, 77~W\,m$^{-2}$). The heat panel's sliders start at $(T_a', RH', u', K_\downarrow')$; the weather-only heat stress (Steadman, BoM WBGT) follows from them.
 
+Decades between the horizons (\code{weather/calculations/climate.py::interpolate}, \code{SCENARIO\_YEARS} = 2030, 2040, \ldots, 2100; keys \code{<year>\_<pathway>}): KNMI'23 publishes 2050 and 2100 only, so the other decades are interpolated linearly in time from no change at $y_0 = 2005$ (mid-point of 1991--2020), for every season, indicator and station key figure:
+\begin{equation}
+  \Delta(y) = \begin{cases}
+    \Delta_{2050}\,\dfrac{y - y_0}{2050 - y_0} & y \leq 2050\\[6pt]
+    \Delta_{2050} + (\Delta_{2100} - \Delta_{2050})\,\dfrac{y - 2050}{50} & y > 2050
+  \end{cases}
+\end{equation}
+rounded to 0.01. The 2050 and 2100 keys are the published values exactly; the low pathways are flat after 2050 (Table~1 has $\Delta_{2050} = \Delta_{2100}$). Not a KNMI product (the path follows global warming, not time); interpolated decades carry no global-warming label, and a stored run of one records the method in \code{ClimateScenarioRun.knmi\_source} (\code{SCENARIO\_RUN\_VERSION} 2). The Scenarios panel draws the four pathways' change of the applied temperature (season daily maximum, or the warmest day at the nearest station) against the year, \code{weather/views.py::\_scenario\_curve}. \textbf{Status:} implemented (what-if and stored runs).
+
+Warming already in the observed weather (\code{climate.observed\_offset}, \code{station\_offset}, argument \code{observed\_year} of \code{deltas}, \code{apply\_to\_weather}, \code{apply\_to\_day\_values}, \code{warmest\_day\_change}, \code{apply\_to\_daily\_rain}, \code{apply\_to\_et}): the changes are relative to 1991--2020, but the observed weather of year $y_{\mathrm{obs}}$ already holds part of them. That part does not depend on the future pathway, so it is one value for all four, the mean of their interpolated changes:
+\begin{equation}
+  \Delta_{\mathrm{applied}}(p, y) = \begin{cases}
+    \Delta_p(y) - \tfrac{1}{4}\sum_{q \in \{Ld, Ln, Hd, Hn\}} \Delta_q\big(\min(\max(y_{\mathrm{obs}}, 2005), 2100)\big) & y > y_{\mathrm{obs}}\\
+    0 & y \leq y_{\mathrm{obs}}
+  \end{cases}
+\end{equation}
+for every season, indicator and station key figure (e.g.\ summer $T_x$ in 2025: offset $1.625 \times 20/45 = 0.72$~$^\circ$C, so 2050 Hd adds 1.48 instead of 2.2~$^\circ$C). $y_{\mathrm{obs}}$ = the year of the heat panel's live/station weather, of a stored run's observed hour (\code{ClimateScenarioRun.analysis\_datetime}) or of the KNMI station year of the water balance. Not applied to the design rain event (a reference-climate value) or to the panel's ``change vs 1991--2020'' table. \code{SCENARIO\_RUN\_VERSION} 3.
+
 Heat-wave day (\code{heat = "warmest"}): $T_a' = T_a + \Delta T_{\mathrm{wd},k}$ by day and by night, with $\Delta T_{\mathrm{wd},k}$ the change of the warmest day of the year at the key-figure station $k$ nearest to the unit's point on surface (De Bilt, Den Helder/De Kooy, Groningen/Eelde, Maastricht/Beek, Vlissingen; equirectangular distance; De Bilt without a point), from the KNMI'23 data portal~\cite{KNMI2023stations}; $RH'$, $u'$ and $K_\downarrow'$ use the summer changes ($s$ = JJA) whatever the month. The portal does not define the indicator; its 1991--2020 values (De Bilt 25.5~$^\circ$C) are those of the warmest daily mean temperature, hence one change for day and night. For example 2100 Hd: $\Delta T_{\mathrm{wd}}$ = +6.9~$^\circ$C at De Bilt and +7.4~$^\circ$C at Maastricht, against +5.4~$^\circ$C for the national average summer daily maximum. The mode is meant for a hot observed day; the panel also lists the stations' changes in days with $T_x \geq 30$ and $\geq 35~^\circ$C and tropical nights ($T_n \geq 20~^\circ$C).
 
 Water: the design rain event $P_e' = P_e (1 + \Delta P_{1d,10y})$ with the change of the summer 1-day rain exceeded once in 10 years (central value). The yearly recharge (Section on infiltration) runs on scaled daily rain $P_d' = P_d (1 + \Delta P_{s(d)})$ and Makkink ET $ET' = ET (1 + \Delta ET_{\mathrm{year}})$. Extremes are not scaled separately in the daily series.
@@ -971,7 +994,7 @@ Source: \code{weather.ClimateScenarioRun} (created by \code{mainMap/views\_clima
     \mathrm{WBGT} = 0.7\,T_{nwb} + 0.2\,T_g + 0.1\,T_a,\qquad
     T_{mrt}^4 = (T_g + 273.15)^4 + \frac{1.1\cdot10^8\,v^{0.6}}{\varepsilon D^{0.4}}(T_g - T_a)
   \end{equation}
-  (ISO 7243 outdoors; ISO 7726 globe, $\varepsilon = 0.95$, $D = 0.15$~m, solved for $T_g$ by Newton; $T_{nwb}$ approximated by the psychrometric wet bulb of Stull (2011), which understates the natural wet bulb in the sun by $\sim$0.5--1~$^\circ$C; $v$ = the 10~m wind, $\geq 0.1$~m/s).
+  (ISO 7243 outdoors; ISO 7726 globe, $\varepsilon = 0.95$, $D = 0.15$~m, solved for $T_g$ by Newton; $T_{nwb}$ approximated by the psychrometric wet bulb of Stull (2011), which understates the natural wet bulb in the sun by $\sim$0.5--1~$^\circ$C; $v$ = the wind at 1.2~m per cell, the same as PET's: the 10~m wind reduced by the frontal areas of buildings and trees, \code{urban\_heat/solweig/pipeline.py::urban\_pet}, $\geq 0.1$~m/s; observed runs keep the WBGT mean in their stats for the current column).
   \item LST is not calculated for a scenario: it depends on the surface reflectance a satellite measures. SUHII ($\mathrm{LST}_{\mathrm{urban}} - \mathrm{LST}_{\mathrm{rural}}$) stays the observed raster; a uniform shift leaves the difference unchanged.
 \end{itemize}
 

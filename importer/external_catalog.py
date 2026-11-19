@@ -90,7 +90,9 @@ FIELD_MAPPINGS = {
         "__year_field__": "year",
         "__city_source__": "RegioS",
         "__city_field__": "city",
-        "SaldoVoorraad_21": "supply_units",
+        # The dwelling stock at the end of the year (end of Q4). SaldoVoorraad_21, imported here
+        # before 2026-11-19, is only the net change of the quarter (Enschede 2025: 241 vs 78 448).
+        "EindstandVoorraad_22": "supply_units",
         # demand_units is derived (population / persons per home, HousingSupplyDemand.save()),
         # not the building permits (VergundeNieuwbouw_2) this used to import as demand.
     },
@@ -520,7 +522,7 @@ EXTERNAL_DATA_CATALOG = [
       "requires_bbox": True,
       "params": {
           "filter": "Gebruiksfunctie eq 'A045364' and startswith(RegioS,'GM') and substringof('KW04',Perioden)",
-          "select": ["RegioS", "Perioden", "SaldoVoorraad_21"],
+          "select": ["RegioS", "Perioden", "EindstandVoorraad_22"],
       },
       "enabled": True,
     },

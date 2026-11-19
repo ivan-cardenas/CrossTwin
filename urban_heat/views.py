@@ -109,6 +109,14 @@ def _month(when):
         return None
 
 
+def _year(when):
+    """Year of an ISO date/time string, None when it has none (the scenario change is then not reduced)."""
+    try:
+        return int(str(when)[:4])
+    except (TypeError, ValueError):
+        return None
+
+
 def _climate_weather(baseline, climate_key, heat=climate.HEAT_AVERAGE, point=None):
     """
     The observed baseline weather moved into a KNMI'23 scenario (delta-change
@@ -133,11 +141,13 @@ def _climate_weather(baseline, climate_key, heat=climate.HEAT_AVERAGE, point=Non
     if not scenario['active'] or not baseline:
         return baseline, info
     month = _month(baseline.get('time'))
-    shifted = climate.apply_to_weather(baseline, climate_key, month, heat, station)
+    observed_year = _year(baseline.get('time'))
+    shifted = climate.apply_to_weather(baseline, climate_key, month, heat, station, observed_year)
     season = climate.season_for(heat, month)
     return shifted, {
         **info,
         'climate_season': season,
+        'climate_observed_year': observed_year,
         'climate_observed': {name: baseline.get(name) for name in WEATHER_LIMITS},
         'climate_delta': {
             name: (round(shifted[name] - baseline[name], 1)

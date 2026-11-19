@@ -271,17 +271,22 @@ def _infiltration_indicators(infiltration, rain_mm, climate_key=climate.CURRENT)
     }
 
 
-def _climate_indicators(climate_key):
-    """The KNMI'23 scenario applied to the panel's rain and recharge (display data)."""
+def _climate_indicators(climate_key, observed_year=None):
+    """
+    The KNMI'23 scenario applied to the panel's rain and recharge (display
+    data): the changes added to the station year `observed_year` (minus what
+    that year already holds); the rain event keeps the full change (a design value).
+    """
     scenario = climate.describe(climate_key)
     if not scenario['active']:
         return {'climate': scenario}
-    year = climate.deltas(climate_key, 'year')
-    summer = climate.deltas(climate_key, 'summer')
-    winter = climate.deltas(climate_key, 'winter')
+    year = climate.deltas(climate_key, 'year', observed_year)
+    summer = climate.deltas(climate_key, 'summer', observed_year)
+    winter = climate.deltas(climate_key, 'winter', observed_year)
     return {
         'climate': scenario,
-        'climate_rain_event_pct': summer['rain_1d_10y_pct'],
+        'climate_observed_year': observed_year,
+        'climate_rain_event_pct': climate.deltas(climate_key, 'summer')['rain_1d_10y_pct'],
         'climate_precip_summer_pct': summer['precip_pct'],
         'climate_precip_winter_pct': winter['precip_pct'],
         'climate_precip_year_pct': year['precip_pct'],
@@ -303,6 +308,7 @@ def _build_indicators(data, consumption_override=None, rain_mm=None, climate_key
     # Same chain as the stored records (watersupply/calculations/chain.py), fed with the
     # request's population what-if instead of the baseline projection.
     demand_m3_d  = chain.demand_m3_d(consumption, data['population'])
+    residential_m3_d = chain.residential_demand_m3_d(consumption, data['population'])
     supply_m3_d  = data['supply_m3_d']
     opex_total   = data['opex_total']
 
@@ -338,6 +344,9 @@ def _build_indicators(data, consumption_override=None, rain_mm=None, climate_key
         'total_demand_Mm3':      round(demand_Mm3_yr, 2),
         'supply_m3_d':           round(supply_m3_d),
         'demand_m3_d':           round(demand_m3_d),
+        'residential_demand_m3_d': round(residential_m3_d),
+        'small_business_demand_m3_d': round(demand_m3_d - residential_m3_d),
+        'small_business_factor': chain.SMALL_BUSINESS_DEMAND_FACTOR,
         'supply_bar_pct':        round(supply_Mm3_yr / balance_scale * 100, 1) if balance_scale else 0,
         'demand_bar_pct':        round(demand_Mm3_yr / balance_scale * 100, 1) if balance_scale else 0,
         'balance_Mm3':           round(supply_Mm3_yr - demand_Mm3_yr, 2),
@@ -384,7 +393,7 @@ def _build_indicators(data, consumption_override=None, rain_mm=None, climate_key
         'drought_sensibility':   drought.get('max_sensibility', 0),
         # Infiltration (SCS Curve Number, rain-event what-if)
         **_infiltration_indicators(data.get('infiltration', {}), rain_mm, climate_key),
-        **_climate_indicators(climate_key),
+        **_climate_indicators(climate_key, ((data.get('infiltration') or {}).get('water_balance') or {}).get('year')),
     }
 
 

@@ -12,11 +12,28 @@ from django.test import TestCase
 from administrative.models import Neighborhood
 from physicalEnv.models import EnvironmentalCosts
 from watersupply import signals
-from watersupply.calculations.indicators import calculate_total_extraction, watershed_share
+from watersupply.calculations import chain
+from watersupply.calculations.indicators import (
+    calculate_supply_security, calculate_total_extraction, watershed_share,
+)
 from watersupply.models import AvailableFreshWater, ExtractionWater, SupplySecurity, TotalWaterDemand, Watershed
 
 from .factories import make_city, make_consumption_capita, make_neighborhood, make_polygon
 from .test_water_chain import make_source, make_well
+
+
+# These tests pin the population -> demand plumbing with residential demand only;
+# the small business factor has its own tests (test_small_business_demand.py).
+_factor_patch = mock.patch("watersupply.calculations.chain.SMALL_BUSINESS_DEMAND_FACTOR", 1.0)
+
+
+def setUpModule():
+    _factor_patch.start()
+
+
+def tearDownModule():
+    _factor_patch.stop()
+
 
 RD = settings.COORDINATE_SYSTEM
 FLOW_M3_S = 0.01  # 864 m3/day
@@ -87,6 +104,29 @@ class WatershedShareTests(WatershedTestCase):
         self.assertAlmostEqual(watershed_share(self.city_a, self.watershed), 1 / 16)
 
 
+class PopulationServedTests(WatershedTestCase):
+    """Watershed.population_served: the residents the watershed supplies beyond the stored neighborhoods."""
+
+    def test_equation(self):
+        self.assertAlmostEqual(chain.watershed_population_share(3000, 4000, 40_000), 0.075)
+        self.assertAlmostEqual(chain.watershed_population_share(3000, 4000, None), 0.75)
+        self.assertAlmostEqual(chain.watershed_population_share(3000, 4000, 1000), 0.75)  # smaller: ignored
+        self.assertEqual(chain.watershed_population_share(0, 0, None), 0.0)
+
+    def test_served_population_is_the_denominator(self):
+        self.watershed.population_served = 40_000
+        self.watershed.save()
+        self.add_well()
+        self.assertAlmostEqual(calculate_total_extraction(self.city_a), FLOW_M3_S * 86400 * 3000 / 40_000)
+        self.assertAlmostEqual(calculate_total_extraction(self.nbh_b), FLOW_M3_S * 86400 * 1000 / 40_000)
+
+    def test_smaller_served_population_does_not_inflate_shares(self):
+        self.watershed.population_served = 2000  # below the 4000 stored residents
+        self.watershed.save()
+        self.add_well()
+        self.assertAlmostEqual(calculate_total_extraction(self.city_a), FLOW_M3_S * 86400 * 0.75)
+
+
 class SupplySecurityFollowsTheWatershedTests(WatershedTestCase):
     def setUp(self):
         super().setUp()
@@ -121,6 +161,34 @@ class SupplySecurityFollowsTheWatershedTests(WatershedTestCase):
         self.assertEqual(len(security_resaves), 1)  # city A, once
         self.security.refresh_from_db()
         self.assertAlmostEqual(self.security.supply_security_pct, 864 * 0.5 / DEMAND_M3_D * 100)
+
+
+    def test_served_population_refreshes_supply_security(self):
+        self.add_well()
+        self.watershed.population_served = 40_000
+        self.watershed.save()  # DAG edge: Available_FW -> Total_Extraction -> Total_Water_Prod -> Supply_Security
+        self.security.refresh_from_db()
+        self.assertAlmostEqual(self.security.supply_security_pct, 864 * 3000 / 40_000 / DEMAND_M3_D * 100)
+
+
+class SupplySecurityOfASubCityUnitTests(WatershedTestCase):
+    """A neighborhood's supply security sets its own demand against its own share of the production."""
+
+    def setUp(self):
+        super().setUp()
+        make_consumption_capita(city=self.city_a, year=2024, consumption_capita_L_d=100.0)
+        TotalWaterDemand.objects.create(city=self.city_a, year=2024, demandDay=0)
+        self.add_well()
+
+    def test_neighborhood_demand_is_its_own(self):
+        demand, production, security = calculate_supply_security(self.nbh_a, 2024)
+        self.assertAlmostEqual(demand, 100 / 1000 * 3000)  # not the city's 1000 m3/day
+        self.assertAlmostEqual(production, 864 * 0.75)
+        self.assertAlmostEqual(security, 864 * 0.75 / 300)
+
+    def test_city_keeps_the_stored_demand(self):
+        demand, _, _ = calculate_supply_security(self.city_a, 2024)
+        self.assertAlmostEqual(demand, TotalWaterDemand.objects.get(city=self.city_a, year=2024).demandDay * 1e6)
 
 
 class WellVolumeTests(WatershedTestCase):

@@ -36,7 +36,7 @@ def _titiler_info(path):
     """TiTiler's /cog/info of a COG, cached per file version (it never changes for one)."""
     from django.core.cache import cache
 
-    key = f"titiler-info:{path}:{_cog_version(path)}"
+    key = f"titiler-info:v2:{path}:{_cog_version(path)}"
     info = cache.get(key)
     if info is None:
         encoded_url = quote(f"file://{path}", safe="/:")
@@ -46,6 +46,15 @@ def _titiler_info(path):
         response.raise_for_status()
         feature = response.json()
         info = {**feature["properties"], "bounds": feature["bbox"]}
+        # info carries no zoom range (rio-tiler dropped it); the tilejson has
+        # the native maxzoom. Without it the map source defaults to 24 and
+        # Mapbox requests server tiles at every zoom instead of overzooming.
+        tj = requests.get(
+            f"{settings.TITILER_BASE_URL}/cog/WebMercatorQuad/tilejson.json?url={encoded_url}", timeout=30
+        )
+        tj.raise_for_status()
+        tilejson = tj.json()
+        info["minzoom"], info["maxzoom"] = tilejson.get("minzoom"), tilejson.get("maxzoom")
         cache.set(key, info, 24 * 3600)
     return info
 
@@ -78,8 +87,10 @@ def get_raster_info(request, app_label, layer_name):
             "bounds": info['bounds'],
             "width": info['width'],
             "height": info['height'],
-            "minzoom": info.get('minzoom', 0),
-            "maxzoom": info.get('maxzoom', 24)
+            # minzoom stays 0: TiTiler's minzoom (where the whole COG fits one
+            # tile) would hide small rasters when zoomed out; overviews serve those.
+            "minzoom": 0,
+            "maxzoom": info.get('maxzoom') or 24,
         })
     except Exception as e:
         return JsonResponse({"error": f"Failed to get raster info: {e}"}, status=500)

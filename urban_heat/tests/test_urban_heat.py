@@ -468,7 +468,7 @@ def _fake_solweig(inputs, met, when_local):
 @mock.patch("urban_heat.solweig.pipeline.run_solweig", side_effect=_fake_solweig)
 @mock.patch("urban_heat.solweig.pipeline.device", return_value="cpu")
 @mock.patch("urban_heat.solweig.pipeline.urban_pet",
-            side_effect=lambda inputs, tmrt, met, when: (tmrt - 10.0, "test PET"))
+            side_effect=lambda inputs, tmrt, met, when: (tmrt - 10.0, "test PET", tmrt * 0 + 1.0))
 class SolweigPipelineTests(TestCase):
     BBOX = [6.8930, 52.2200, 6.8940, 52.2206]
 
@@ -505,6 +505,8 @@ class SolweigPipelineTests(TestCase):
         self.assertEqual(run.stats["tmrt"]["mean"], 45.0)
         self.assertEqual(run.stats["utci"]["mean"], 30.0)
         self.assertEqual(run.stats["pet"]["mean"], 35.0)
+        self.assertIsNotNone(run.stats["wbgt"]["mean"])     # observed runs keep WBGT stats, no raster
+        self.assertIsNone(run.wbgt)
         self.assertEqual(run.mrt.date_time, run.date_time)
         self.assertTrue(run.mrt.source.startswith("SOLWEIG DSM "))
         self.assertEqual(run.inputs["timezone"], "Europe/Amsterdam")
@@ -590,7 +592,7 @@ class SolweigPetTests(SimpleTestCase):
 
         tmrt = np.full((60, 60), 40.0, dtype="float32")
         day = dict(tmax_c=30.0, tmin_c=15.0, kdown_day_wm2=250.0, wind_day_ms=3.0)
-        pet, label = urban_pet(self._inputs(built=False), tmrt, self._met(**day), self._when(10, 21))
+        pet, label, _wind = urban_pet(self._inputs(built=False), tmrt, self._met(**day), self._when(10, 21))
         self.assertIn("outside April-September", label)
         v = float(pet_adjusted.urban_wind_speed(3.0, 0.0, 0.0, 4.0))   # open terrain
         exact = pet_steady(tdb=25.0, tr=40.0, v=v, rh=50.0, p_atm=1013.0, **PET_PERSON).pet
@@ -603,8 +605,8 @@ class SolweigPetTests(SimpleTestCase):
 
         inputs, tmrt = self._inputs(), np.full((60, 60), 30.0, dtype="float32")
         day = dict(tmax_c=30.0, tmin_c=15.0, kdown_day_wm2=250.0, wind_day_ms=3.0)
-        urban, label = urban_pet(inputs, tmrt, self._met(**day), self._when(7, 21))
-        plain, plain_label = urban_pet(inputs, tmrt, self._met(), self._when(7, 21))
+        urban, label, _wind = urban_pet(inputs, tmrt, self._met(**day), self._when(7, 21))
+        plain, plain_label, _wind = urban_pet(inputs, tmrt, self._met(), self._when(7, 21))
         self.assertEqual(label, "PET urban (Koopmans 2020)")
         self.assertIn("no day values", plain_label)
         self.assertGreater(np.nanmean(urban), np.nanmean(plain) + 0.5)
@@ -614,9 +616,12 @@ class SolweigPetTests(SimpleTestCase):
 
         from urban_heat.solweig.pipeline import urban_pet
 
-        pet, _ = urban_pet(self._inputs(), np.full((60, 60), 40.0, dtype="float32"), self._met(), self._when(7, 12))
+        pet, _, wind = urban_pet(self._inputs(), np.full((60, 60), 40.0, dtype="float32"), self._met(), self._when(7, 12))
         self.assertTrue(np.isnan(pet[20:40, 25:45]).all())
         self.assertTrue(np.isfinite(pet[:20]).all())
+        # The 1.2 m wind (shared with WBGT) is below the 10 m wind of the met.
+        self.assertEqual(wind.shape, pet.shape)
+        self.assertLess(float(np.nanmax(wind)), 3.0)
 
 
 class SolweigViewTests(TestCase):

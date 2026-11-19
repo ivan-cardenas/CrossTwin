@@ -23,7 +23,8 @@ Colours: climate.change_tone (Table 1) and mainMap.views.change_tone (effects).
     <div class="climate-head-text">
       <h3 class="climate-title">{{ scenario.label }}</h3>
       <p class="climate-sub">
-        {% if scenario.active %}{{ scenario.emissions|capfirst }} emissions, {{ scenario.variant }} variant · +{{ scenario.global_warming_c }} °C global warming vs 1850-1900
+        {% if scenario.active %}{{ scenario.emissions|capfirst }} emissions, {{ scenario.variant }} variant ·
+        {% if scenario.interpolated %}interpolated between the KNMI'23 horizons{% else %}+{{ scenario.global_warming_c }} °C global warming vs 1850-1900{% endif %}
         {% else %}Observed weather, reference climate 1991-2020{% endif %}
       </p>
       <dl class="climate-facts">
@@ -49,24 +50,55 @@ Colours: climate.change_tone (Table 1) and mainMap.views.change_tone (effects).
     </div>
 
     <details class="climate-more"{% if not scenario.kea_preset %} open{% endif %}>
-      <summary>All eight KNMI'23 scenarios</summary>
+      <summary>All scenarios, 2030-2100</summary>
+      <figure class="climate-curve">
+        <figcaption>{{ curve.label }} {% info_help "climate.interpolation" %}</figcaption>
+        <svg viewBox="0 0 {{ curve.width }} {{ curve.height }}" role="img"
+             aria-label="{{ curve.label }} per pathway, 2005-2100; points can be picked">
+          {% for t in curve.y_ticks %}
+          <line class="climate-curve-grid" x1="{{ curve.plot.left }}" x2="{{ curve.plot.right }}" y1="{{ t.y }}" y2="{{ t.y }}"/>
+          <text class="climate-curve-tick" x="{{ curve.plot.left|add:'-4' }}" y="{{ t.y }}" text-anchor="end" dominant-baseline="middle">+{{ t.label }}</text>
+          {% endfor %}
+          {% for t in curve.x_ticks %}
+          <text class="climate-curve-tick" x="{{ t.x }}" y="{{ curve.height|add:'-6' }}" text-anchor="middle">{{ t.label }}</text>
+          {% endfor %}
+          <line class="climate-curve-today" x1="{{ curve.today.x }}" x2="{{ curve.today.x }}" y1="{{ curve.plot.top }}" y2="{{ curve.plot.bottom }}"/>
+          <line class="climate-curve-offset" x1="{{ curve.plot.left }}" x2="{{ curve.plot.right }}" y1="{{ curve.today.y }}" y2="{{ curve.today.y }}">
+            <title>Already in {{ curve.today.year }} weather: {{ curve.today.offset|stringformat:'+.1f' }} °C (mean of the pathways); a scenario adds only the part above this line</title>
+          </line>
+          <text class="climate-curve-tick" x="{{ curve.today.x|add:'3' }}" y="{{ curve.plot.top|add:'8' }}">{{ curve.today.year }}</text>
+          {% for s in curve.series %}
+          <polyline class="climate-curve-line is-{{ s.variant }} is-{{ s.emissions }}" points="{{ s.path }}" fill="none"/>
+          {% endfor %}
+          {% for s in curve.series %}{% for p in s.points %}
+          <circle class="climate-curve-pt is-{{ s.variant }}{% if p.published %} is-published{% endif %}{% if p.selected %} is-active{% endif %}"
+                  cx="{{ p.x }}" cy="{{ p.y }}" r="{% if p.selected %}5{% else %}3{% endif %}" tabindex="0" role="button"
+                  aria-label="{{ p.year }} {{ s.label }}: {{ p.value|stringformat:'+.1f' }} °C{% if not p.published %}, interpolated{% endif %}"
+                  hx-get="{% url 'weather:climate_panel' %}?climate={{ p.key }}&heat={{ heat }}{{ loc }}{{ unit_q }}"
+                  hx-trigger="click, keyup[key=='Enter']"
+                  hx-target="#panel-body" hx-swap="innerHTML" data-panel-title="SCENARIOS">
+            <title>{{ p.year }} {{ s.label }}: {{ p.value|stringformat:'+.1f' }} °C{% if not p.published %} (interpolated){% endif %}</title>
+          </circle>
+          {% endfor %}{% endfor %}
+        </svg>
+      </figure>
       <table class="climate-grid">
         <thead>
           <tr><th></th>{% for p in pathways %}<th title="{{ p.emissions|capfirst }} emissions, {{ p.variant }}">{{ p.label }}</th>{% endfor %}</tr>
         </thead>
         <tbody>
           {% for row in grid %}
-          <tr>
-            <th title="{{ row.period }}">{{ row.horizon }}</th>
+          <tr{% if row.interpolated %} class="is-interpolated"{% endif %}>
+            <th title="{{ row.period }}">{{ row.horizon }}{% if row.interpolated %}<small>*</small>{% endif %}</th>
             {% for c in row.cells %}
             <td>
               <button type="button" class="climate-btn is-{{ c.variant }}{% if c.key == scenario.key %} is-active{% endif %}"
                       aria-pressed="{% if c.key == scenario.key %}true{% else %}false{% endif %}"
                       aria-label="{{ c.label }}, {{ c.period }}"
-                      title="{{ c.label }} · {{ c.period }} · +{{ c.global_warming_c }} °C global"
+                      title="{{ c.label }} · {{ c.period }}{% if c.global_warming_c %} · +{{ c.global_warming_c }} °C global{% endif %}"
                       hx-get="{% url 'weather:climate_panel' %}?climate={{ c.key }}&heat={{ heat }}{{ loc }}{{ unit_q }}"
                       hx-target="#panel-body" hx-swap="innerHTML" data-panel-title="SCENARIOS">
-                <b>+{{ c.global_warming_c }}°</b>
+                <b>{{ c.summer_tx_c|stringformat:"+.1f" }}°</b>
               </button>
             </td>
             {% endfor %}
@@ -74,7 +106,7 @@ Colours: climate.change_tone (Table 1) and mainMap.views.change_tone (effects).
           {% endfor %}
         </tbody>
       </table>
-      <p class="climate-legend"><i class="is-dry"></i> dry variant <i class="is-wet"></i> wet variant · number = global warming</p>
+      <p class="climate-legend"><i class="is-dry"></i> dry variant <i class="is-wet"></i> wet variant · number = summer daily max change · * interpolated</p>
     </details>
   </section>
 
@@ -90,8 +122,8 @@ Colours: climate.change_tone (Table 1) and mainMap.views.change_tone (effects).
       {% endfor %}
     </div>
     {% if season_deltas %}
-    <dl class="climate-applied" aria-label="{{ season|capfirst }} change">
-      <dt>{{ season|capfirst }} change</dt>
+    <dl class="climate-applied" aria-label="{{ season|capfirst }} change added to {{ today }} weather">
+      <dt title="The scenario's change minus what {{ today }} weather already holds">{{ season|capfirst }} change added to {{ today }} weather</dt>
       <dd class="tone-heat-2">Tx {{ season_deltas.tx_c|stringformat:"+.1f" }} °C</dd>
       <dd class="tone-heat-1">Tn {{ season_deltas.tn_c|stringformat:"+.1f" }} °C</dd>
       <dd>rain {{ season_deltas.precip_pct|stringformat:"+d" }}%</dd>

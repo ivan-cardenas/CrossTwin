@@ -52,6 +52,10 @@ OTHER_SOURCES = [
 
 # Regulations, standards and literature cited by checks and equations: (key, citation, used by)
 REFERENCES = [
+    ("Vitens small business", "Vitens N.V., reports and calculations of the drinking-water company: "
+     "small-business (kleinzakelijk) demand on top of household use, total demand = 1.2 x residential demand.",
+     "watersupply/calculations/chain.py::SMALL_BUSINESS_DEMAND_FACTOR, demand_m3_d (TotalWaterDemand, "
+     "ScenarioWaterSecurity, water dashboard)"),
     ("IWA UARL", "Lambert, A., Brown, T. G., Takizawa, M. & Weimer, D. (1999), A review of performance indicators "
      "for real losses from water supply systems, *J. Water Supply: Research and Technology-AQUA* 48(6), 227-237: "
      "UARL [L/day] = (18 Lm + 0.8 Nc + 25 Lp) x P, ILI = CARL / UARL (IWA Water Loss Task Force).",

@@ -7,7 +7,10 @@ scenarios in its climate statistics. KNMI'23 splits each
 emission level into a dry and a wet variant: Ld, Ln (low emissions) and
 Hd, Hn (high), for the horizons 2050 (2036-2065) and 2100 (2086-2115). A
 scenario here is one of these, keyed ``"<horizon>_<pathway>"`` (``"2050_Hd"``),
-plus ``"current"`` (the 1991-2020 reference, no change).
+plus ``"current"`` (the 1991-2020 reference, no change). The decades in
+between (2030, 2040, 2060 ... 2090) are linear interpolations of the
+published 2050 and 2100 changes (SCENARIO_YEARS, INTERPOLATION_METHOD),
+flagged as such wherever they are shown or stored.
 
 The changes are the national averages of Table 1 of KNMI (2023), *KNMI'23
 climate scenarios for the Netherlands*, KNMI Publication 23-03 (pp. 3-4),
@@ -60,7 +63,7 @@ KEA_PRESETS = (CURRENT, "2050_Hd", "2100_Hd")
 CURRENT_POPULATION_YEAR = 2025
 # Version of the stored scenario-run method (weather.ClimateScenarioRun):
 # bump it when an equation a run uses changes, so old runs stay identifiable.
-SCENARIO_RUN_VERSION = "1"
+SCENARIO_RUN_VERSION = "3"   # 2: decades interpolated; 3: minus the change already in the observed year
 KEA_LABELS = {CURRENT: "Current", "2050_Hd": "2050 high", "2100_Hd": "2100 high"}
 
 SEASONS = ("winter", "spring", "summer", "autumn")
@@ -142,14 +145,61 @@ _TABLE_1 = {
 # Global warming of each scenario relative to 1850-1900 (Table 1), for the labels.
 GLOBAL_WARMING_C = dict(zip(_COLUMNS, (1.7, 1.7, 2.4, 2.4, 1.7, 1.7, 4.9, 4.9)))
 
-DELTAS = {
+# ── Decades between the KNMI'23 horizons (interpolated, not a KNMI product) ──
+# KNMI'23 publishes changes for 2050 (2036-2065) and 2100 (2086-2115) only,
+# relative to 1991-2020. The other decades of SCENARIO_YEARS are interpolated
+# linearly in time between three anchors: no change at REFERENCE_MID_YEAR
+# (mid-point of 1991-2020), Table 1 at 2050 and Table 1 at 2100. The 2050
+# and 2100 keys stay exactly the published values. Keys: "<year>_<pathway>".
+PUBLISHED_HORIZONS = (2050, 2100)
+REFERENCE_MID_YEAR = 2005
+SCENARIO_YEARS = tuple(range(2030, 2101, 10))
+INTERPOLATION_METHOD = (
+    f"linear in time between 0 at {REFERENCE_MID_YEAR} (1991-2020 mid-point), "
+    "KNMI'23 2050 and KNMI'23 2100"
+)
+INTERPOLATION_DIGITS = 2
+
+
+def horizon_weights(year):
+    """(weight of the 2050 change, weight of the 2100 change) of a year in 2005-2100."""
+    low, high = PUBLISHED_HORIZONS
+    if year <= low:
+        return (year - REFERENCE_MID_YEAR) / (low - REFERENCE_MID_YEAR), 0.0
+    t = (year - low) / (high - low)
+    return 1.0 - t, t
+
+
+def interpolate(change_2050, change_2100, year):
+    """The change of `year` from the 2050 and 2100 changes (horizon_weights)."""
+    w50, w100 = horizon_weights(year)
+    return round(w50 * change_2050 + w100 * change_2100, INTERPOLATION_DIGITS)
+
+
+def is_interpolated(key):
+    """Whether a scenario key is an interpolated decade (not a published KNMI'23 horizon)."""
+    return key in DELTAS and key != CURRENT and int(key.split("_")[0]) not in PUBLISHED_HORIZONS
+
+
+_PUBLISHED = {
     key: {
         period: {name: values[i] for name, values in indicators.items()}
         for period, indicators in _TABLE_1.items()
     }
     for i, key in enumerate(_COLUMNS)
 }
-SCENARIOS = (CURRENT,) + _COLUMNS
+DELTAS = {
+    f"{year}_{pathway}": {
+        period: {
+            name: interpolate(value, _PUBLISHED[f"2100_{pathway}"][period][name], year)
+            for name, value in indicators.items()
+        }
+        for period, indicators in _PUBLISHED[f"2050_{pathway}"].items()
+    }
+    for year in SCENARIO_YEARS
+    for pathway in PATHWAYS
+}
+SCENARIOS = (CURRENT,) + tuple(DELTAS)
 
 # Below this solar radiation (W/m²) the weather counts as night: the
 # temperature change is then the daily minimum's, otherwise the daily maximum's.
@@ -229,13 +279,71 @@ _STATION_TABLE = {
         "tropical_nights": (1.4, (1.8, 1.5, 5.5, 3.5, 1.8, 1.5, 41, 35)),
     },
 }
+def _station_changes(changes):
+    """The published station changes of every scenario key, the decades interpolated."""
+    published = dict(zip(_COLUMNS, changes))
+    return {
+        f"{year}_{p}": interpolate(published[f"2050_{p}"], published[f"2100_{p}"], year)
+        for year in SCENARIO_YEARS for p in PATHWAYS
+    }
+
+
 STATION_EXTREMES = {
     station: {
-        name: {"reference": ref, **dict(zip(_COLUMNS, changes))}
+        name: {"reference": ref, **_station_changes(changes)}
         for name, (ref, changes) in table.items()
     }
     for station, table in _STATION_TABLE.items()
 }
+
+# ── Warming already in the observed weather ───────────────────────────
+# The Table 1 changes are relative to 1991-2020 (mid-point 2005), but the
+# observed weather they are added to is of a later year that already holds
+# part of that change. The applied change is therefore the scenario's change
+# minus the change already reached in the observed year. That part is the
+# same whatever happens next, so it is ONE value for all pathways: the mean
+# of the four pathways' interpolated changes at the observed year (each
+# pathway's own value would carry the straight-line interpolation's spread,
+# 0.6 vs 1.0 °C for the summer daily maximum in 2025). A scenario year at or
+# before the observed year adds nothing. observed_year=None: no correction
+# (the panel's "change vs 1991-2020" table, the design rain event).
+OBSERVED_OFFSET_METHOD = (
+    "minus the change already in the observed year: mean of the four pathways' "
+    "interpolated changes at that year (same for every pathway)"
+)
+
+
+def _offset_year(observed_year):
+    return min(max(observed_year, REFERENCE_MID_YEAR), PUBLISHED_HORIZONS[-1])
+
+
+def observed_offset(period, name, observed_year):
+    """Change (Table 1 indicator `name` of `period`) already in the weather of `observed_year`; 0 for None."""
+    if observed_year is None:
+        return 0.0
+    year = _offset_year(observed_year)
+    values = [
+        interpolate(_PUBLISHED[f"2050_{p}"][period][name], _PUBLISHED[f"2100_{p}"][period][name], year)
+        for p in PATHWAYS
+    ]
+    return round(sum(values) / len(values), INTERPOLATION_DIGITS)
+
+
+def station_offset(station, indicator, observed_year):
+    """Station key-figure change already in the weather of `observed_year` (mean of the pathways); 0 for None."""
+    if observed_year is None:
+        return 0.0
+    year = _offset_year(observed_year)
+    table = dict(zip(_COLUMNS, _STATION_TABLE[station][indicator][1]))
+    values = [interpolate(table[f"2050_{p}"], table[f"2100_{p}"], year) for p in PATHWAYS]
+    return round(sum(values) / len(values), INTERPOLATION_DIGITS)
+
+
+def _adds_nothing(key, observed_year):
+    """A scenario year at or before the observed year: the observation already is that climate."""
+    return observed_year is not None and int(key.split("_")[0]) <= observed_year
+
+
 STATION_ROWS = (
     ("warmest_day_c", "Warmest day", "°C"),
     ("days_tx30", "Days ≥ 30 °C", "/yr"),
@@ -264,13 +372,17 @@ def nearest_station(lat=None, lng=None):
     )
 
 
-def warmest_day_change(key, station=DEFAULT_STATION):
-    """Change of the warmest day of the year (°C) at a station; 0 for CURRENT."""
+def warmest_day_change(key, station=DEFAULT_STATION, observed_year=None):
+    """
+    Change of the warmest day of the year (°C) at a station; 0 for CURRENT.
+    With `observed_year`, minus the change already in that year (station_offset).
+    """
     key = normalize(key)
-    if key == CURRENT:
+    if key == CURRENT or _adds_nothing(key, observed_year):
         return 0.0
     station = station if station in STATION_EXTREMES else DEFAULT_STATION
-    return STATION_EXTREMES[station]["warmest_day_c"][key]
+    change = STATION_EXTREMES[station]["warmest_day_c"][key]
+    return round(change - station_offset(station, "warmest_day_c", observed_year), INTERPOLATION_DIGITS)
 
 
 def station_table(key, station=None):
@@ -314,13 +426,16 @@ def describe(key):
         }
     horizon, pathway = key.split("_")
     info = PATHWAYS[pathway]
+    interpolated = is_interpolated(key)
     return {
         "key": key, "horizon": horizon, "pathway": pathway, "active": True,
         "label": f"{horizon} {info['label']} ({pathway})",
         "short": f"{horizon} {info['label']}",
-        "period": HORIZONS[horizon],
+        "period": f"around {horizon}, interpolated" if interpolated else HORIZONS[horizon],
+        "interpolated": interpolated,
         "emissions": info["emissions"], "variant": info["variant"],
-        "global_warming_c": GLOBAL_WARMING_C[key],
+        "global_warming_c": GLOBAL_WARMING_C.get(key),   # published horizons only
+        "summer_tx_c": DELTAS[key]["summer"]["tx_c"],
         "kea_preset": key in KEA_PRESETS,
         "year": population_year(key),
     }
@@ -395,12 +510,22 @@ def season_of_month(month):
     return SEASON_OF_MONTH.get(month, "summer")
 
 
-def deltas(key, period):
-    """The Table 1 changes of a scenario for 'year' or a season ({} for CURRENT)."""
+def deltas(key, period, observed_year=None):
+    """
+    The Table 1 changes of a scenario for 'year' or a season ({} for CURRENT).
+    With `observed_year`: the changes to add to weather of that year, i.e.
+    minus observed_offset (all 0 when the scenario year is not later).
+    """
     key = normalize(key)
     if key == CURRENT:
         return {}
-    return dict(DELTAS[key][period])
+    table = DELTAS[key][period]
+    if _adds_nothing(key, observed_year):
+        return {name: 0.0 for name in table}
+    return {
+        name: round(value - observed_offset(period, name, observed_year), INTERPOLATION_DIGITS)
+        for name, value in table.items()
+    }
 
 
 def season_for(heat, month=None):
@@ -417,7 +542,8 @@ def season_for(heat, month=None):
     return season_of_month(month)
 
 
-def temperature_change(key, heat=HEAT_AVERAGE, month=None, station=DEFAULT_STATION, daytime=True):
+def temperature_change(key, heat=HEAT_AVERAGE, month=None, station=DEFAULT_STATION, daytime=True,
+                       observed_year=None):
     """
     Air-temperature change (°C) of a scenario for a heat mode: the warmest-day
     change at `station` (day and night) for HEAT_WARMEST, otherwise ΔTx by
@@ -427,12 +553,12 @@ def temperature_change(key, heat=HEAT_AVERAGE, month=None, station=DEFAULT_STATI
     if key == CURRENT:
         return 0.0
     if normalize_heat(heat) == HEAT_WARMEST:
-        return warmest_day_change(key, station)
-    d = DELTAS[key][season_for(heat, month)]
+        return warmest_day_change(key, station, observed_year)
+    d = deltas(key, season_for(heat, month), observed_year)
     return d["tx_c"] if daytime else d["tn_c"]
 
 
-def apply_to_day_values(day, key, heat=HEAT_AVERAGE, month=None, station=DEFAULT_STATION):
+def apply_to_day_values(day, key, heat=HEAT_AVERAGE, month=None, station=DEFAULT_STATION, observed_year=None):
     """
     The day values SOLWEIG's PET needs (tmax_c, tmin_c, kdown_day_wm2,
     wind_day_ms) moved into a scenario like apply_to_weather: tmax + ΔTx,
@@ -447,11 +573,11 @@ def apply_to_day_values(day, key, heat=HEAT_AVERAGE, month=None, station=DEFAULT
     if key == CURRENT:
         return out
     season = season_for(heat, month)
-    d = DELTAS[key][season]
+    d = deltas(key, season, observed_year)
     if day.get("tmax_c") is not None:
-        out["tmax_c"] = round(day["tmax_c"] + temperature_change(key, heat, month, station, True), 1)
+        out["tmax_c"] = round(day["tmax_c"] + temperature_change(key, heat, month, station, True, observed_year), 1)
     if day.get("tmin_c") is not None:
-        out["tmin_c"] = round(day["tmin_c"] + temperature_change(key, heat, month, station, False), 1)
+        out["tmin_c"] = round(day["tmin_c"] + temperature_change(key, heat, month, station, False, observed_year), 1)
     if day.get("kdown_day_wm2") is not None:
         ref = REFERENCE_KDOWN_WM2[season]
         out["kdown_day_wm2"] = round(day["kdown_day_wm2"] * (ref + d["kdown_wm2"]) / ref, 1)
@@ -486,7 +612,7 @@ def month_fits_heat_mode(month, heat):
     return season_of_month(month) == season_for(heat, month)
 
 
-def apply_to_weather(weather, key, month=None, heat=HEAT_AVERAGE, station=DEFAULT_STATION):
+def apply_to_weather(weather, key, month=None, heat=HEAT_AVERAGE, station=DEFAULT_STATION, observed_year=None):
     """
     Observed weather (ta_c, rh_pct, wind_ms, kdown_wm2) moved into a scenario
     with the delta-change of its season (`month`, 1-12; summer when None):
@@ -501,6 +627,10 @@ def apply_to_weather(weather, key, month=None, heat=HEAT_AVERAGE, station=DEFAUL
     heat = a season ('winter' ...): that season's changes instead of the
     observation's (season_for).
 
+    observed_year: year of the observed weather; every change is then
+    reduced by the part already in that year (observed_offset). None = the
+    full Table 1 change.
+
     Missing values stay missing; other keys are copied. CURRENT returns the
     weather unchanged.
     """
@@ -511,11 +641,11 @@ def apply_to_weather(weather, key, month=None, heat=HEAT_AVERAGE, station=DEFAUL
     if key == CURRENT:
         return out
     season = season_for(heat, month)
-    d = DELTAS[key][season]
+    d = deltas(key, season, observed_year)
     kdown = weather.get("kdown_wm2")
     if weather.get("ta_c") is not None:
         daytime = kdown is not None and kdown > NIGHT_KDOWN_WM2
-        out["ta_c"] = round(weather["ta_c"] + temperature_change(key, heat, month, station, daytime), 1)
+        out["ta_c"] = round(weather["ta_c"] + temperature_change(key, heat, month, station, daytime, observed_year), 1)
     if weather.get("rh_pct") is not None:
         out["rh_pct"] = round(min(100.0, max(0.0, weather["rh_pct"] + d["rh_pp"])), 1)
     if weather.get("wind_ms") is not None:
@@ -530,7 +660,8 @@ def design_rain_mm(rain_mm, key):
     """
     A summer design rain event in a scenario: rain × (1 + Δ), Δ = the change
     of the summer 1-day precipitation exceeded once every 10 years (central
-    value of Table 1).
+    value of Table 1). Not corrected for an observed year: the event is a
+    design value of the reference climate, not an observation.
     """
     key = normalize(key)
     if key == CURRENT:
@@ -538,29 +669,29 @@ def design_rain_mm(rain_mm, key):
     return round(rain_mm * (100 + DELTAS[key]["summer"]["rain_1d_10y_pct"]) / 100, 1)
 
 
-def apply_to_daily_rain(daily_rain_mm, months, key):
+def apply_to_daily_rain(daily_rain_mm, months, key, observed_year=None):
     """
     A year of daily rain in a scenario: each day × (1 + its season's change of
     the precipitation amount). Without `months` (one per day) the yearly
     change is used. Extremes are not scaled separately (delta-change on the
-    seasonal mean).
+    seasonal mean). observed_year: the rain's year (see deltas).
     """
     key = normalize(key)
     if key == CURRENT:
         return list(daily_rain_mm)
-    table = DELTAS[key]
+    pct = {period: deltas(key, period, observed_year)["precip_pct"] for period in TABLE_PERIODS}
     if not months or len(months) != len(daily_rain_mm):
-        factor = 1 + table["year"]["precip_pct"] / 100
+        factor = 1 + pct["year"] / 100
         return [p * factor if p else p for p in daily_rain_mm]
     return [
-        p * (1 + table[season_of_month(m)]["precip_pct"] / 100) if p else p
+        p * (1 + pct[season_of_month(m)] / 100) if p else p
         for p, m in zip(daily_rain_mm, months)
     ]
 
 
-def apply_to_et(et_ref_mm_yr, key):
-    """Yearly Makkink reference ET in a scenario: × (1 + the yearly change)."""
+def apply_to_et(et_ref_mm_yr, key, observed_year=None):
+    """Yearly Makkink reference ET in a scenario: × (1 + the yearly change); observed_year as in deltas."""
     key = normalize(key)
     if key == CURRENT or et_ref_mm_yr is None:
         return et_ref_mm_yr
-    return et_ref_mm_yr * (1 + DELTAS[key]["year"]["et_pct"] / 100)
+    return et_ref_mm_yr * (1 + deltas(key, "year", observed_year)["et_pct"] / 100)

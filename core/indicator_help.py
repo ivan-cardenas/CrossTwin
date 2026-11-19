@@ -26,7 +26,8 @@ HELP = {
         "what": "How much drinking water is available to the area each year compared with how much its population uses.",
         "how": "Supply is the area's population share of the active wells' extraction in each watershed (measured yearly extraction, else pump flow × operating hours) plus imported water. Demand follows the population dock and the consumption slider. Both bars share one scale, the larger of the two, so their lengths compare directly.",
         "eq": [
-            "Demand (m³/day) = population × {litres per person per day | 1 000}",
+            "Residential demand (m³/day) = population × {litres per person per day | 1 000}",
+            "Demand (m³/day) = residential demand × 1.2  (small businesses, Vitens)",
             "Supply (m³/day) = Σ watershed extraction × {area population | watershed population} + imported water",
             "Balance (Mm³/yr) = (supply − demand) × {365 | 1 000 000}",
         ],
@@ -247,7 +248,7 @@ HELP = {
     "housing.supply_coverage": {
         "title": "Housing Supply Coverage",
         "what": "The share of housing demand that the current stock meets.",
-        "how": "Supply is the CBS housing stock. Demand is population ÷ persons per home, so it follows the population dock and the slider.",
+        "how": "For a city or province, supply is the CBS dwelling stock at the end of the year (table 86098NED). CBS publishes it per municipality only, so for a district or neighborhood supply is the number of mapped dwellings (BAG residential function) inside it. Demand is population ÷ persons per home, so it follows the population dock and the slider.",
         "eq": [
             "Coverage = {homes available | homes needed} × 100 %",
             "Homes needed = {population | persons per home}",
@@ -397,6 +398,17 @@ HELP = {
             "Scenario humidity = observed humidity + change (%-points)",
         ],
         "note": "A what-if: choosing a scenario writes nothing. The Urban Heat and Water Supply panels apply it until you pick Current. Summer extremes: KNMI's change of the 1-day rain that falls once per 10 years scales the Rain Event. Colours: red warmer, blue cooler; teal wetter, ochre drier. Source: KNMI'23 climate scenarios, knmi.nl/klimaatscenarios.",
+    },
+    "climate.interpolation": {
+        "title": "Decades between 2050 and 2100",
+        "what": "KNMI'23 publishes changes for 2050 (2036-2065) and 2100 (2086-2115) only. The decades 2030, 2040 and 2060-2090 are interpolated so you can explore the years in between; 2050 and 2100 are the published values.",
+        "how": "Linear in time between three anchors: no change at 2005 (the middle of the 1991-2020 reference), the KNMI'23 change in 2050 and in 2100. The same weights apply to every season, indicator and station key figure. Click a point or a cell to pick that year and pathway; the population year follows it.",
+        "eq": [
+            "Change (year ≤ 2050) = change 2050 × {year − 2005 | 2050 − 2005}",
+            "Change (year > 2050) = change 2050 + (change 2100 − change 2050) × {year − 2050 | 50}",
+            "Added to observed weather = change (scenario year) − mean of the four pathways' change (observed year)",
+        ],
+        "note": "Not a KNMI product: the real path between the horizons follows global warming, which is not linear in time. The low-emission pathways stabilise after 2050, so their 2060-2100 values equal 2050. Weather observed today already holds part of the change since 1991-2020; the scenario adds only the part above the dashed line (the mean of the four pathways at the observed year, the same for every pathway), and nothing for a year at or before the observed one. Stored runs record both methods with the KNMI'23 source.",
     },
     "climate.heat_day": {
         "title": "Season / heat day",

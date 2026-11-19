@@ -137,7 +137,7 @@ EDGE_STATUS = {
     ("ConsumptionCapita", "Total_Water_Demand"): (I, "TotalWaterDemand.save(); ConsumptionCapita.for_year", ""),
     ("Total_Water_Demand", "Supply_Security"): (I, "SupplySecurity.save() -> chain.supply_security_pct", ""),
     ("Imported_Water", "Total_Water_Prod"): (I, "TotalWaterProduction.calculate()", ""),
-    ("Total_Water_Prod", "Supply_Security"): (I, "SupplySecurity.save() -> calculate_total_production_day", "Population share of each watershed's extraction."),
+    ("Total_Water_Prod", "Supply_Security"): (I, "SupplySecurity.save() -> calculate_total_production_day", "Population share of each watershed's extraction (denominator >= Watershed.population_served)."),
     ("Supply_Security", "Service_Time"): (I, "SupplySecurity.save() -> chain.service_time_hours", ""),
     ("Network", "Coverage_WS_Area"): (I, "CoverageWaterSupply.save()", "Buffered, dissolved pipes of the city."),
     ("Network", "Coverage_WS"): (I, "CoverageWaterSupply.save()", "Receiver pipe_changed."),

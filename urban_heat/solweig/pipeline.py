@@ -134,7 +134,7 @@ def urban_pet(inputs, tmrt, met, when_local):
 
     Without the day's values, outside April-September (the diurnal table) or
     on a day with Tmax = Tmin the air temperature stays the met record's.
-    Returns (pet, model label).
+    Returns (pet, model label, 1.2 m wind per cell); the wind also feeds WBGT.
     """
     from datetime import timezone
 
@@ -152,6 +152,9 @@ def urban_pet(inputs, tmrt, met, when_local):
     # Calm or variable (-999): the source areas are squares below 1.5 m/s anyway.
     wind_dir = met.wind_dir_deg if met.wind_dir_deg >= 0 else 0.0
     common = dict(tr=tmrt, rh=met.rh_pct, p_atm=met.pressure_kpa * 10.0, **PET_PERSON)
+    lambda_b, lambda_t, h = pet_adjusted.wind_inputs(dsm, dem, ndvi, inputs.cell, wind_dir, ff10,
+                                                    landcover=landcover)
+    v = pet_adjusted.urban_wind_speed(ff10, lambda_b, lambda_t, h)
 
     day = met.day_values()
     reason = None
@@ -173,14 +176,11 @@ def urban_pet(inputs, tmrt, met, when_local):
             day=when_utc.date(), hour_utc=when_utc.hour, landcover=landcover, **common)
         label = "PET urban (Koopmans 2020)"
     else:
-        lambda_b, lambda_t, h = pet_adjusted.wind_inputs(dsm, dem, ndvi, inputs.cell, wind_dir, ff10,
-                                                        landcover=landcover)
-        v = pet_adjusted.urban_wind_speed(ff10, lambda_b, lambda_t, h)
         pet = pet_adjusted.pet_steady(met.ta_c, v=v, **common)
         label = f"PET 1.2 m wind, no UHI ({reason})"
     if landcover is not None:
         pet = np.where(landcover == BUILDING, np.nan, pet)
-    return pet.astype(np.float32), label
+    return pet.astype(np.float32), label, np.asarray(v, dtype=np.float32)
 
 
 def run_solweig(inputs, met, when_local):
@@ -291,14 +291,17 @@ def calculate(run):
         tmrt, utci = run_solweig(inputs, met, when_local)
         # On the whole window, so the source areas of the view's cells reach into the halo.
         _progress(run, "Computing PET…")
-        pet, pet_model = urban_pet(inputs, tmrt, met, when_local)
+        pet, pet_model, wind_1p2 = urban_pet(inputs, tmrt, met, when_local)
 
     r0, c0, rows, cols = inputs.crop
-    tmrt, utci, pet = (a[r0:r0 + rows, c0:c0 + cols] for a in (tmrt, utci, pet))
+    tmrt, utci, pet, wind_1p2 = (a[r0:r0 + rows, c0:c0 + cols] for a in (tmrt, utci, pet, wind_1p2))
     scenario = run.climate_run_id is not None
+    # WBGT with the same 1.2 m wind as PET. Stored as a raster for scenario runs
+    # only; observed runs keep its stats, the current column of a scenario.
+    wbgt = wbgt_outdoor_c(met.ta_c, met.rh_pct, wind_1p2, tmrt)
     outputs = [("mrt", MeanRadiantTemperature, tmrt), ("utci", UTCI, utci), ("pet", PET, pet)]
     if scenario:
-        outputs.append(("wbgt", WetBulbGlobeTemperature, wbgt_outdoor_c(met.ta_c, met.rh_pct, met.wind_ms, tmrt)))
+        outputs.append(("wbgt", WetBulbGlobeTemperature, wbgt))
 
     origin, cell, srid = inputs.view_origin, inputs.cell, inputs.srid
     source = f"{SOURCE_PREFIX}{p['dsm'].pk}: {met.source}"[:100]
@@ -308,7 +311,7 @@ def calculate(run):
         records = {}
         for key, model, array in outputs:
             method_label = {"pet": f"{method}, {pet_model}",
-                            "wbgt": "ISO 7243 from SOLWEIG Tmrt (Tg ISO 7726, Tnwb Stull 2011)"}.get(key, method)
+                            "wbgt": "ISO 7243 from SOLWEIG Tmrt (Tg ISO 7726 1.2 m wind, Tnwb Stull 2011)"}.get(key, method)
             records[key] = model.objects.create(
                 raster=_raster(array, origin, cell, srid), date_time=when_local,
                 source=source, measurement_method=method_label[:100], resolution=cell,
@@ -325,7 +328,7 @@ def calculate(run):
                   "pet_model": pet_model,
                   "timezone": str(when_local.tzinfo), "sun": sun_position(when_local, *centre(run.bbox_wgs84))}
     run.stats = {**{("tmrt" if key == "mrt" else key): _stats(array) for key, _m, array in outputs},
-                 "replaced": replaced}
+                 "wbgt": _stats(wbgt), "replaced": replaced}
     return run
 
 

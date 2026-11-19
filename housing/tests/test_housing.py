@@ -269,7 +269,49 @@ class DashboardIsADeviationFromTheBaselineTests(TestCase):
         self.assertEqual(ind['demand_units'], 40_000)
         self.assertEqual(HousingSupplyDemand.objects.get().demand_units, 50_000)
 
+    def test_city_supply_is_the_cbs_stock(self):
+        ind = self._indicators()
+        self.assertEqual((ind['supply_units'], ind['supply_source']), (45_000, 'cbs'))
+        self.assertEqual(ind['housed_residents'], 90_000)   # 45 000 homes x 2.0
+
     def test_what_if_helper(self):
         self.assertEqual(chain.what_if_demand(50_000, 110, 100, 2.0, 2.0), 55_000)     # +10 % population
         self.assertEqual(chain.what_if_demand(0, 100_000, 100_000, 2.0, 2.5), 40_000)  # no stored demand
         self.assertEqual(chain.what_if_demand(70, 1, 1, None, None), 70)                # no size: unchanged
+
+
+class SubCitySupplyTests(TestCase):
+    """Below the city, supply = mapped dwellings and demand = the unit's own population, not the city's."""
+
+    def setUp(self):
+        self.hood = make_neighborhood(currentPopulation=1_200)
+        self.city = self.hood.district.city
+        HouseholdSize.objects.create(city=self.city, year=2025, population=100_000, households=50_000)   # 2.0
+        HousingSupplyDemand.objects.create(city=self.city, year=2025, supply_units=45_000)   # whole city
+        building = Building.objects.create(id=1, buildingType="residential", neighborhood=self.hood,
+                                           geom=make_polygon(257000.0, 470000.0, 20))
+        for i, usage in enumerate([["Residential function"]] * 3 + [["Shop function"]]):
+            Property.objects.create(name="p", grossArea=80, usageFunction=usage, building=building,
+                                    geom=Point(257000.0 + i, 470000.0, srid=settings.COORDINATE_SYSTEM))
+
+    def _data(self, level, name):
+        from housing.views import _get_adminUnit_data
+        return _get_adminUnit_data(level, name, 2025)
+
+    def test_neighborhood_counts_its_dwellings(self):
+        from housing.views import _build_indicators
+        data = self._data('neighborhood', self.hood.neighborhoodName)
+        ind = _build_indicators(data)
+        self.assertEqual((ind['supply_units'], ind['supply_source']), (3, 'bag'))
+        self.assertEqual(ind['demand_units'], round(data['population_baseline'] / 2.0))
+        self.assertEqual(ind['housed_residents'], 6)   # 3 dwellings x 2.0, not the city's 45 000
+
+    def test_district_counts_its_dwellings(self):
+        data = self._data('district', self.hood.district.districtName)
+        self.assertEqual(data['supply_demand']['supply_units'], 3)
+
+    def test_pure_helper(self):
+        from housing.calculations.indicators import supply_demand_from_dwellings
+        sd = supply_demand_from_dwellings(1_579, 3_200, 2.0)
+        self.assertEqual((sd['demand_units'], sd['deficit'], sd['deficit_pct']), (1_600, 21, 1.3))
+        self.assertEqual(supply_demand_from_dwellings(10, None, 2.0)['demand_units'], 0)

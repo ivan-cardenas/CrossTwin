@@ -89,7 +89,9 @@ def weather_heat_stress(ta_c, rh_pct, wind_ms, kdown_wm2):
 #          Stull (2011), J. Appl. Meteor. Climatol. 50, 2267-2269 (valid for
 #          RH 5-99 %, Ta −20-50 °C); the natural wet bulb is ~0.5-1 °C
 #          warmer in the sun, so WBGT is slightly underestimated.
-# v is the 10 m wind of the met, at least WBGT_MIN_WIND_MS.
+# v is the wind at 1.2 m per cell, the same wind PET uses (the 10 m wind
+# reduced by the frontal areas of buildings and trees, pet_adjusted), at least
+# WBGT_MIN_WIND_MS; a scalar (e.g. the met's 10 m wind) also works.
 
 WBGT_WEIGHTS = (0.7, 0.2, 0.1)          # Tnwb, Tg, Ta (ISO 7243)
 GLOBE_EMISSIVITY = 0.95                 # ISO 7726
@@ -115,7 +117,7 @@ def globe_temperature_c(tmrt_c, ta_c, wind_ms):
 
     tmrt = np.asarray(tmrt_c, dtype="float64")
     ta = np.asarray(ta_c, dtype="float64")
-    v = max(float(wind_ms), WBGT_MIN_WIND_MS)
+    v = np.maximum(np.asarray(wind_ms, dtype="float64"), WBGT_MIN_WIND_MS)
     k = GLOBE_CONVECTION * v ** 0.6 / (GLOBE_EMISSIVITY * GLOBE_DIAMETER_M ** 0.4)
     target = (tmrt + KELVIN) ** 4
     tg = np.broadcast_to(ta, tmrt.shape).astype("float64").copy()
@@ -127,8 +129,8 @@ def globe_temperature_c(tmrt_c, ta_c, wind_ms):
 
 def wbgt_outdoor_c(ta_c, rh_pct, wind_ms, tmrt_c):
     """
-    Outdoor WBGT (°C) per cell from the met (scalars) and SOLWEIG's Tmrt
-    (array): 0.7 Tnwb + 0.2 Tg + 0.1 Ta (see above). NaN cells stay NaN.
+    Outdoor WBGT (°C) per cell from the met (scalars), the 1.2 m wind and
+    SOLWEIG's Tmrt (arrays): 0.7 Tnwb + 0.2 Tg + 0.1 Ta (see above). NaN cells stay NaN.
 
     DAG edges: Meteorology -> WBGT, Tmrt -> WBGT (stored scenario runs)
     """
