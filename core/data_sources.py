@@ -116,6 +116,19 @@ REFERENCES = [
     ("Koopmans et al. 2020", "Koopmans, S., Heusinkveld, B.G., Steeneveld, G.J. (2020). A standardized Physical Equivalent "
      "Temperature urban heat map at 1-m spatial resolution to facilitate climate stress tests in the Netherlands. "
      "*Building and Environment* 181, 106984.", "urban_heat/solweig/pipeline.py::urban_pet"),
+    ("ASHRAE 55-2020", "ASHRAE (2020). *ANSI/ASHRAE Standard 55-2020: Thermal Environmental Conditions for Human "
+     "Occupancy* (Table 5.2.1.2 metabolic rates, Table 5.2.2.2B garment insulation, Icl = sum of Iclu).",
+     "urban_heat/calculations/person.py (Thermal Comfort tool's person pill, PET)"),
+    ("ISO 7730:2005", "ISO 7730:2005, *Ergonomics of the thermal environment*, Annex C Table C.2 (insulation of "
+     "outdoor garments).", "urban_heat/calculations/person.py::GARMENTS"),
+    ("ISO 8996:2021", "ISO 8996:2021, *Ergonomics of the thermal environment: Determination of metabolic rate*.",
+     "urban_heat/calculations/person.py::ACTIVITIES"),
+    ("Höppe 1999", "Höppe, P. (1999). The physiological equivalent temperature: a universal index for the "
+     "biometeorological assessment of the thermal environment. *Int. J. Biometeorology* 43, 71-75 (reference person).",
+     "urban_heat/calculations/person.py::STANDARD_PERSON"),
+    ("DuBois & DuBois 1916", "DuBois, D., DuBois, E.F. (1916). A formula to estimate the approximate surface area if "
+     "height and weight be known. *Archives of Internal Medicine* 17, 863-871.",
+     "urban_heat/calculations/person.py::body_surface_area"),
     ("NEH 630", "USDA NRCS, *National Engineering Handbook* Part 630 Hydrology (SCS curve number, hydrologic soil groups).",
      "physicalEnv/calculations/soil.py"),
     ("Eurostat DEGURBA 2021", "Eurostat (2021). *Applying the Degree of Urbanisation: a methodological manual*.",

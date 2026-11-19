@@ -142,7 +142,10 @@ const LOADER_SHOW_DELAY_MS = 8000;  // only surface it for genuinely slow loads
 const HIDES_3D_BUILDINGS_APPS = new Set(['builtup']); // app to hide 3D buildings when any of its layers is visible
 const HIDES_3D_BUILDINGS_KEYS = new Set(['physicalEnv.DSM']);
 
-const BUILDING_COLOR_DEFAULT = '#bd643b';
+// A colour, or a list of shades: each Mapbox building then takes one shade
+// picked by its feature id (Map_init.js::buildingColorForTool), so the city
+// looks less uniform and a building keeps its shade on every pan and reload.
+const BUILDING_COLOR_DEFAULT = ['#bd643b', '#7c4d37', '#b6a59d'];
 const BUILDING_COLOR_BY_TOOL = {
   water:       '#cde5fa',
   // temperature: '#c0504d',

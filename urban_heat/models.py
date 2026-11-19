@@ -264,6 +264,7 @@ class ThermalComfortRun(models.Model):
     date_time = models.DateTimeField(help_text="Analysed hour (local, aware)")
     met = models.JSONField(help_text="Meteorological inputs: ta_c, rh_pct, wind_ms, wind_dir_deg, kdown_wm2, pressure_kpa, source; day values for PET: tmax_c, tmin_c, kdown_day_wm2, wind_day_ms")
     resolution = models.FloatField(help_text="Cell size in metres")
+    person = models.JSONField(default=dict, blank=True, help_text="The person PET is felt by (urban_heat/calculations/person.py::resolve): met, clo, age, sex, weight, height, position, activity, garments, preset; empty = the PET reference person (Höppe 1999)")
     device = models.CharField(max_length=20, blank=True, default="", help_text="'cuda' or 'cpu'")
     inputs = models.JSONField(default=dict, blank=True, help_text="DSM/DEM ids, building patches, land cover, sun position")
     stats = models.JSONField(default=dict, blank=True)

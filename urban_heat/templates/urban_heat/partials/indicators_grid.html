@@ -141,6 +141,12 @@
       {{ indicators.pet_category }}
     </div>
     {% endif %}
+    {% if indicators.pet_person %}
+    <div class="pet-person-note" style="font-size:9px; color:rgba(232,244,255,0.6); font-family:var(--font-mono);"
+         title="PET as felt by: {{ indicators.pet_person.label }} ({{ indicators.pet_person.clothing }}; {{ indicators.pet_person.metabolic_w }} W metabolic heat)">
+      🧍 For: {{ indicators.pet_person.short }}
+    </div>
+    {% endif %}
     {% include 'urban_heat/partials/thermal_run_note.html' with coverage=indicators.pet_coverage_pct %}
   </div>
 

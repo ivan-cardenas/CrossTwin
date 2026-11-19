@@ -160,13 +160,15 @@ HELP = {
     "heat.pet": {
         "title": "PET (Physiological Equivalent Temperature)",
         "what": "The air temperature of a standard indoor room at which a person would feel the same heat load as outdoors here. It folds sun, wind and humidity into one °C value.",
-        "how": "From the PET raster computed by the Thermal Comfort tool (SOLWEIG for the radiation, then the person's heat balance with pet-adjusted, including an urban heat island and wind at 1.2 m). The card shows the raster's mean, min and max over the area. PET and UTCI come from the same run: the Thermal Comfort run that covers most of the area, the latest hour among equal ones. The line below the gauge names the run, its hour and the share of the area it covers.",
+        "how": "From the PET raster computed by the Thermal Comfort tool (SOLWEIG for the radiation, then the person's heat balance with pet-adjusted, including an urban heat island and wind at 1.2 m). The card shows the raster's mean, min and max over the area. PET and UTCI come from the same run: the Thermal Comfort run that covers most of the area, the latest hour among equal ones. The line below the gauge names the run, its hour and the share of the area it covers. PET holds for one person: the \"For\" line names the person set in the tool's Person pill (age, sex, body, activity, clothing); without a choice it is Höppe's reference person (35 y male, 75 kg, 1.75 m, 80 W activity, 0.9 clo).",
         "eq": [
             "Heat in = heat out:  M + R + C + E + S = 0",
+            "Icl = Σ Iclu  (clothing insulation = sum of the garments, ASHRAE 55)",
             "PET = room temperature giving the same skin and core temperature",
         ],
         "where": [
-            ("M", "metabolic heat of a walking person"),
+            ("M", "the person's metabolic heat: activity (met) × body surface area"),
+            ("Icl, Iclu", "insulation of the whole outfit and of each garment, in clo"),
             ("R", "radiation exchange, driven by mean radiant temperature (Tmrt)"),
             ("C, E", "convection and evaporation (sweat, breathing)"),
             ("S", "heat stored in the body"),

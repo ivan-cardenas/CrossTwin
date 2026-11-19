@@ -37,7 +37,8 @@ def queue_scenario_heat(heat):
         resolution = float(params.get("resolution") or 2.0)
         heat.thermal_run = ThermalComfortRun.objects.create(
             area=run.area, bbox_wgs84=run.bbox_wgs84, date_time=run.analysis_datetime,
-            met=heat.met_scenario, resolution=resolution, climate_run=run)
+            met=heat.met_scenario, resolution=resolution, climate_run=run,
+            person=params.get("person") or {})
         pipeline.start_run(heat.thermal_run)
         heat.status, heat.message = "queued", ""
     heat.save()
@@ -54,18 +55,25 @@ BASELINE_MIN_COVER = 0.9
 def find_baseline(run):
     """
     The latest finished observed SOLWEIG run (no climate run) of the same hour
-    sharing at least BASELINE_MIN_COVER of both areas with the run's view: the
-    current-climate comparison of a scenario run. None without one.
+    sharing at least BASELINE_MIN_COVER of both areas with the run's view and
+    made for the same person (PET depends on who feels it; an empty person is
+    the PET reference person): the current-climate comparison of a scenario
+    run. None without one.
     """
+    from urban_heat.calculations.person import pet_kwargs
     from urban_heat.models import ThermalComfortRun
+
+    person = pet_kwargs((run.parameters or {}).get("person") or None)
 
     if run.area is None or run.analysis_datetime is None or not run.area.area:
         return None
     candidates = (ThermalComfortRun.objects
                   .filter(climate_run__isnull=True, status="done", mrt__isnull=False,
                           date_time=run.analysis_datetime, area__intersects=run.area)
-                  .order_by("-finished", "-pk").defer("inputs", "stats")[:20])
+                  .order_by("-finished", "-pk").defer("inputs", "stats")[:50])
     for candidate in candidates:
+        if pet_kwargs(candidate.person or None) != person:
+            continue
         overlap = candidate.area.intersection(run.area).area
         if min(overlap / run.area.area, overlap / candidate.area.area) >= BASELINE_MIN_COVER:
             return ThermalComfortRun.objects.get(pk=candidate.pk)

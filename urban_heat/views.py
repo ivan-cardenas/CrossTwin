@@ -248,6 +248,13 @@ def _weather_indicators(baseline, overrides):
     }
 
 
+def _pet_person(run):
+    """Display values of the person behind a run's PET (urban_heat/calculations/person.py::describe)."""
+    from urban_heat.calculations.person import describe
+
+    return describe(run.get('person')) if run else None
+
+
 def _build_indicators(data, weather_override=None, climate_key=climate.CURRENT,
                       climate_heat=climate.HEAT_AVERAGE):
     """
@@ -302,6 +309,8 @@ def _build_indicators(data, weather_override=None, climate_key=climate.CURRENT,
         'pet_max':    pet_stats['max']  if pet_stats  else None,
         'pet_pct':    round(min(pet_mean / MAX_PET * 100, 100), 1) if pet_mean else 0,
         'pet_category': classify_pet(pet_mean),
+        # The person the PET is felt by (the run's person pill; reference person by default)
+        'pet_person': _pet_person(thermal.get('run')) if pet_stats else None,
 
         'utci_mean':  utci_mean,
         'utci_min':   utci_stats['min'] if utci_stats else None,

@@ -256,6 +256,10 @@ def climate_run_create(request):
             if bbox is None:
                 return _bad("The heat model needs the map view (bbox).")
             area, met = _heat_inputs(bbox, when, resolution, data)
+        # Who the scenario's PET is felt by (the Thermal Comfort tool's person pill;
+        # absent = the PET reference person). The comparison run must be for the same person.
+        from urban_heat.solweig.views import _person
+        person = _person(data) if run_heat else None
     except Exception as e:  # BadRequest, SolweigError, MetError, ValueError: shown as-is
         return _bad(str(e))
 
@@ -264,7 +268,7 @@ def climate_run_create(request):
         area=area, bbox_wgs84=bbox, population_variant=pop_scenario, population_growth_pct=pop_growth,
         baseline_year=climate.CURRENT_POPULATION_YEAR, analysis_datetime=when,
         parameters={"resolution": resolution, "run_heat": run_heat, "met_observed": met,
-                    "met_source": data.get("met_source") or "knmi"},
+                    "met_source": data.get("met_source") or "knmi", "person": person},
         created_by=request.user)
     print(f"[climate] Scenario run {run.pk}: {key} {heat} for {level or 'the map view'} {location} stored")
     if data.get("format") == "json":   # the Thermal Comfort tool polls the scenario's SOLWEIG run itself

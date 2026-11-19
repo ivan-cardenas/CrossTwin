@@ -12,6 +12,11 @@
 // one SOLWEIG run on the shifted hour; the current values come from an observed
 // run of the same hour, e.g. one made here before); the scenario's run is polled
 // and shown like a normal one.
+// The person pill (#solweig-person-btn) sets who the PET is felt by: body,
+// activity, posture and garments; urban_heat/solweig/person/ resolves it (clo =
+// sum of the garments, ASHRAE 55) and both calculate paths send it as person_*.
+// A scenario run asks for the person first (the pill opens on the first click),
+// so the scenario is defined for someone; its comparison run must be for the same person.
 // Also owns the stale-results mark: after a building edit (feature-saved,
 // backup-restored) or a map move it asks urban_heat/solweig/stale/ which SVF
 // and thermal-comfort results in view are older than a building change, and
@@ -58,6 +63,104 @@
     let metLabel = 'manual';  // source of the values in the form ("KNMI 290 Twenthe Airport", "ERA5", "manual")
     let stale = { svf: [], thermal: [] };
 
+    // ---- person pill -----------------------------------------------------
+
+    const person = {
+      btn: document.getElementById('solweig-person-btn'),
+      panel: document.getElementById('solweig-person-panel'),
+      summary: document.getElementById('solweig-person-summary'),
+      derived: document.getElementById('solweig-person-derived'),
+      garments: document.getElementById('solweig-person-garments'),
+      clo: document.getElementById('solweig-person-clo'),
+    };
+    const PERSON_INPUTS = ['preset', 'age', 'sex', 'weight', 'height', 'activity', 'position'];
+    const pf = Object.fromEntries(PERSON_INPUTS.map(f => [f, document.getElementById(`solweig-person-${f}`)]));
+    let personOptions = null;
+    let personInfo = null;
+    let personConfirmed = false;   // a scenario run asks for the person once
+    let personRequest = null;
+
+    function checkedGarments() {
+      return [...person.garments.querySelectorAll('input:checked')].map(i => i.value);
+    }
+
+    // The person_* fields for the server (none before the pill was loaded = the reference person).
+    function personParams(p) {
+      if (!personOptions) return p;
+      PERSON_INPUTS.forEach(f => { if (pf[f].value !== '') p.set(`person_${f}`, pf[f].value); });
+      const garments = checkedGarments();
+      p.set('person_garments', garments.join(','));
+      if (!garments.length && person.clo.value !== '') p.set('person_clo', person.clo.value);
+      return p;
+    }
+
+    function fillOptions(o) {
+      const opt = (select, items) => items.forEach(([value, label]) => select.add(new Option(label, value)));
+      opt(pf.preset, o.presets.map(x => [x.key, x.label]));
+      pf.preset.add(new Option('Custom person', ''));
+      opt(pf.sex, o.sexes.map(x => [x, x]));
+      opt(pf.activity, o.activities.map(x => [x.key, `${x.label} · ${x.met} met`]));
+      opt(pf.position, o.positions.map(x => [x, x]));
+      ['age', 'weight', 'height'].forEach(f => { pf[f].min = o.limits[f].min; pf[f].max = o.limits[f].max; });
+      person.garments.innerHTML = '';
+      o.garments.forEach(group => {
+        const head = document.createElement('div');
+        head.className = 'person-garment-group';
+        head.textContent = group.group;
+        person.garments.append(head);
+        group.items.forEach(g => {
+          const label = document.createElement('label');
+          label.className = 'person-garment';
+          const box = Object.assign(document.createElement('input'), { type: 'checkbox', value: g.key });
+          const name = document.createElement('span');
+          name.textContent = g.label;
+          const clo = document.createElement('small');
+          clo.textContent = g.clo.toFixed(2);
+          label.append(box, name, clo);
+          person.garments.append(label);
+        });
+      });
+    }
+
+    function showPerson(p, info) {
+      personInfo = info;
+      ['age', 'sex', 'weight', 'height', 'activity', 'position'].forEach(f => { pf[f].value = p[f]; });
+      pf.preset.value = info.preset_label === 'Custom person' ? '' : p.preset;
+      const chosen = new Set(p.garments || []);
+      person.garments.querySelectorAll('input').forEach(i => { i.checked = chosen.has(i.value); });
+      person.clo.value = Number(p.clo).toFixed(2);
+      person.clo.disabled = chosen.size > 0;
+      person.summary.textContent = `${info.preset_label} · ${info.short}`;
+      person.btn.title = `PET as felt by: ${info.label}`;
+      person.derived.textContent =
+        `${info.clo.toFixed(2)} clo (${info.clothing}) · ${info.met} met → ${info.metabolic_w} W · ` +
+        `body surface ${info.body_surface_m2} m² · BMI ${info.bmi}`;
+      refreshButton();
+    }
+
+    // `only` = send just these fields (a preset change resets the rest to the preset's).
+    async function resolvePerson(only) {
+      personRequest?.abort();
+      personRequest = new AbortController();
+      const p = only ? new URLSearchParams(only) : personParams(new URLSearchParams());
+      try {
+        const d = await readJson(await fetch(`${person.panel.dataset.personUrl}?${p}`, { signal: personRequest.signal }));
+        if (!personOptions) { personOptions = d.options; fillOptions(d.options); }
+        showPerson(d.person, d.info);
+      } catch (error) {
+        if (error.name === 'AbortError') return;
+        person.derived.textContent = error.message;
+      }
+    }
+
+    function togglePerson(show = person.panel.hidden) {
+      person.panel.hidden = !show;
+      person.btn.setAttribute('aria-expanded', String(show));
+      if (show) personConfirmed = true;
+      if (show && !personOptions) resolvePerson({});
+      refreshButton();
+    }
+
     // Default: a week ago at 15:00 (KNMI's validated hourly data and ERA5 lag a few days).
     for (let h = 0; h < 24; h++) el.hour.add(new Option(`${String(h).padStart(2, '0')}:00`, h));
     const lastWeek = new Date(Date.now() - 7 * 86400000);
@@ -93,7 +196,9 @@
     function refreshButton() {
       el.calculate.disabled = busy || !ready || !canCalculate;
       el.calculate.textContent = scenarioActive()
-        ? `Calculate for ${scenarioLabel || window.CLIMATE_SCENARIO}`
+        ? (personConfirmed
+          ? `Calculate for ${scenarioLabel || window.CLIMATE_SCENARIO}` + (personInfo ? ` · ${personInfo.preset_label}` : '')
+          : `Choose the person for ${scenarioLabel || window.CLIMATE_SCENARIO}…`)
         : (stale.thermal.length ? 'Recalculate thermal comfort' : 'Calculate thermal comfort');
     }
 
@@ -156,6 +261,7 @@
       body.set('met_source', 'manual');      // the values in the form, as fetched or typed
       body.set('met_label', metLabel);
       body.set('run_heat', '1');
+      personParams(body);
       const stored = await fetch(el.scenario.dataset.runsUrl, {
         method: 'POST', headers: { 'X-CSRFToken': csrfToken() }, body,
       });
@@ -339,6 +445,14 @@
 
     async function calculate() {
       if (busy || !ready || !canCalculate) return;
+      if (scenarioActive() && !personConfirmed) {
+        // The scenario is for someone: show the person first, run on the next click.
+        togglePerson(true);
+        setStatus('Who is this scenario for? Set the person (PET depends on body, activity and clothing), ' +
+                  'then press Calculate. The comparison uses an observed run of this hour for the same person.', 'warn');
+        person.btn.focus();
+        return;
+      }
       if (scenarioActive()) {
         busy = true;
         card.classList.add('busy');
@@ -358,6 +472,7 @@
         bbox: viewBbox(), datetime: when(), resolution: el.resolution.value, source: metLabel,
       });
       MET_FIELDS.forEach(f => body.set(f, met[f].value));
+      personParams(body);
       busy = true;
       card.classList.add('busy');
       refreshButton();
@@ -371,7 +486,7 @@
         const s = run.stats;
         setStatus(`Run #${run.id} (${run.device.toUpperCase()}): Tmrt ${s.tmrt.min}–${s.tmrt.max} °C, ` +
                   `UTCI ${s.utci.min}–${s.utci.max} °C, PET ${s.pet.min}–${s.pet.max} °C ` +
-                  `(${run.inputs?.pet_model || 'PET'}).`, 'ok');
+                  `(${run.inputs?.pet_model || 'PET'}; for ${run.person_info?.short || 'the reference person'}).`, 'ok');
         await showLayers(run);
       } catch (error) {
         setStatus(error.message, 'error');
@@ -384,6 +499,15 @@
     // ---- wiring ----------------------------------------------------------
 
     openBtn.addEventListener('click', open);
+    person.btn.addEventListener('click', () => togglePerson());
+    pf.preset.addEventListener('change', () => {
+      if (pf.preset.value) resolvePerson({ person_preset: pf.preset.value });
+    });
+    ['age', 'sex', 'weight', 'height', 'position'].forEach(f => pf[f].addEventListener('change', () => resolvePerson()));
+    // A new activity sets its own met and posture.
+    pf.activity.addEventListener('change', () => { pf.position.value = ''; resolvePerson(); });
+    person.garments.addEventListener('change', () => resolvePerson());
+    person.clo.addEventListener('change', () => resolvePerson());
     el.close.addEventListener('click', close);
     el.calculate.addEventListener('click', calculate);
     el.fetch.addEventListener('click', fetchMet);

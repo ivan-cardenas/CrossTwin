@@ -468,7 +468,7 @@ def _fake_solweig(inputs, met, when_local):
 @mock.patch("urban_heat.solweig.pipeline.run_solweig", side_effect=_fake_solweig)
 @mock.patch("urban_heat.solweig.pipeline.device", return_value="cpu")
 @mock.patch("urban_heat.solweig.pipeline.urban_pet",
-            side_effect=lambda inputs, tmrt, met, when: (tmrt - 10.0, "test PET", tmrt * 0 + 1.0))
+            side_effect=lambda inputs, tmrt, met, when, person=None: (tmrt - 10.0, "test PET", tmrt * 0 + 1.0))
 class SolweigPipelineTests(TestCase):
     BBOX = [6.8930, 52.2200, 6.8940, 52.2206]
 

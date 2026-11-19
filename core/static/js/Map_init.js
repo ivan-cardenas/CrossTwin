@@ -244,11 +244,18 @@ function safeFitBounds(bounds, options = {}) {
 }
 
 /**
- * Determine the color for 3D buildings based on the active tool
+ * Colour of the 3D buildings for the active tool. A list of shades becomes a
+ * `match` on the feature id modulo the list length: deterministic, so a
+ * building keeps its shade across tiles, zooms and reloads (no Math.random).
+ * Features without an id take the first shade.
  */
 function buildingColorForTool() {
   const tool = document.querySelector('.tool-button.active')?.dataset.tool;
-  return BUILDING_COLOR_BY_TOOL[tool] || BUILDING_COLOR_DEFAULT;
+  const color = BUILDING_COLOR_BY_TOOL[tool] || BUILDING_COLOR_DEFAULT;
+  if (!Array.isArray(color)) return color;
+  if (color.length === 1) return color[0];
+  const cases = color.slice(1).flatMap((shade, i) => [i + 1, shade]);
+  return ['match', ['%', ['to-number', ['id'], 0], color.length], ...cases, color[0]];
 }
 
 /**

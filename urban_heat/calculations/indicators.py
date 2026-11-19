@@ -343,6 +343,7 @@ def get_thermal_indices(adminUnit):
             'date_time': run.date_time,
             'coverage_pct': run_cov,
             'met_source': (run.met or {}).get('source', ''),
+            'person': run.person or None,  # who PET is felt by; None = the PET reference person
         }
         indices['tmrt'] = stats('urban_heat_meanradianttemperature', run.mrt_id) if run.mrt_id else None
         indices['pet'] = stats('urban_heat_pet', run.pet_id) if run.pet_id else None

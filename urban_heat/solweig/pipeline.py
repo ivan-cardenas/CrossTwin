@@ -36,6 +36,9 @@ import threading
 
 from django.conf import settings
 
+# PET's default person: Höppe's (1999) reference (pure module, no heavy imports).
+from urban_heat.calculations.person import STANDARD_PERSON as PET_PERSON  # noqa: F401
+
 logger = logging.getLogger(__name__)
 
 NODATA = -9999.0
@@ -44,8 +47,6 @@ WORK_ROOT = os.path.join(settings.BASE_DIR, "cogs", "solweig_work")
 # Band of the analysed hour in SOLWEIG's outputs (met.write_umep writes the
 # hour before it first).
 RESULT_BAND = 2
-# PET: Höppe's (1999) standard person.
-PET_PERSON = {"met": 1.37, "clo": 0.9, "age": 35, "weight": 75, "height": 1.75, "sex": "male"}
 # Stand-in NDVI for pet_adjusted, which only thresholds it (vegetation above 0.16,
 # water below 0 without land cover): SOLWEIG's own trees and grass are the vegetation.
 VEGETATION_NDVI, WATER_NDVI = 0.6, -0.1
@@ -121,7 +122,7 @@ def _ndvi(inputs):
     return ndvi
 
 
-def urban_pet(inputs, tmrt, met, when_local):
+def urban_pet(inputs, tmrt, met, when_local, person=None):
     """
     PET (°C) of every cell of the window with pet-adjusted (Koopmans et al.
     2020): the air temperature is the met record's plus the urban heat island
@@ -129,6 +130,8 @@ def urban_pet(inputs, tmrt, met, when_local):
     the day's Tmax - Tmin, mean Kdown and mean wind and the hour's diurnal
     factor), the wind is the 10 m wind reduced to 1.2 m by the frontal areas
     of buildings and trees. Building cells are NaN (PET is for pedestrians).
+    `person` (urban_heat/calculations/person.py::resolve) is who feels the PET;
+    None = the PET reference person.
 
     DAG edges: DSM -> PET, SVF -> PET, Tmrt -> PET, Meteorology -> PET
 
@@ -141,6 +144,8 @@ def urban_pet(inputs, tmrt, met, when_local):
     import numpy as np
     import pet_adjusted
 
+    from urban_heat.calculations.person import pet_kwargs
+
     from .inputs import BUILDING
 
     when_utc = when_local.astimezone(timezone.utc)
@@ -151,7 +156,7 @@ def urban_pet(inputs, tmrt, met, when_local):
     ff10 = max(met.wind_ms, MIN_WIND_MS)
     # Calm or variable (-999): the source areas are squares below 1.5 m/s anyway.
     wind_dir = met.wind_dir_deg if met.wind_dir_deg >= 0 else 0.0
-    common = dict(tr=tmrt, rh=met.rh_pct, p_atm=met.pressure_kpa * 10.0, **PET_PERSON)
+    common = dict(tr=tmrt, rh=met.rh_pct, p_atm=met.pressure_kpa * 10.0, **pet_kwargs(person))
     lambda_b, lambda_t, h = pet_adjusted.wind_inputs(dsm, dem, ndvi, inputs.cell, wind_dir, ff10,
                                                     landcover=landcover)
     v = pet_adjusted.urban_wind_speed(ff10, lambda_b, lambda_t, h)
@@ -291,7 +296,7 @@ def calculate(run):
         tmrt, utci = run_solweig(inputs, met, when_local)
         # On the whole window, so the source areas of the view's cells reach into the halo.
         _progress(run, "Computing PET…")
-        pet, pet_model, wind_1p2 = urban_pet(inputs, tmrt, met, when_local)
+        pet, pet_model, wind_1p2 = urban_pet(inputs, tmrt, met, when_local, run.person or None)
 
     r0, c0, rows, cols = inputs.crop
     tmrt, utci, pet, wind_1p2 = (a[r0:r0 + rows, c0:c0 + cols] for a in (tmrt, utci, pet, wind_1p2))

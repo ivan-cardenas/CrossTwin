@@ -470,6 +470,45 @@
         <label>Day wind m/s <input type="number" id="solweig-wind_day_ms" step="0.1" min="0"></label>
       </div>
       <div class="lst-view-info" id="solweig-met-info"></div>
+      <!-- PERSON PILL — who the PET is felt by: body, activity and clothing; clo is
+           the sum of the garments (urban_heat/calculations/person.py via
+           urban_heat/solweig/person/). The run stores the person; the heat
+           dashboard's PET card names it. -->
+      <div class="solweig-person">
+        <button type="button" class="person-pill" id="solweig-person-btn"
+                aria-expanded="false" aria-controls="solweig-person-panel"
+                title="Who the PET is felt by: body, activity and clothing">
+          <span class="person-pill-icon" aria-hidden="true">🧍</span>
+          <span class="person-pill-text" id="solweig-person-summary">PET reference person · 0.90 clo</span>
+          <span class="person-pill-edit">Person ▾</span>
+        </button>
+        <div class="person-panel" id="solweig-person-panel" hidden
+             data-person-url="{% url 'urban_heat:solweig_person' %}">
+          <div class="lst-card-fields person-row">
+            <label>Person <select id="solweig-person-preset"></select></label>
+          </div>
+          <div class="lst-card-fields person-row">
+            <label>Age y <input type="number" id="solweig-person-age" step="1"></label>
+            <label>Sex <select id="solweig-person-sex"></select></label>
+            <label>Weight kg <input type="number" id="solweig-person-weight" step="1"></label>
+            <label>Height m <input type="number" id="solweig-person-height" step="0.01"></label>
+          </div>
+          <div class="lst-card-fields person-row person-activity">
+            <label>Activity <select id="solweig-person-activity"></select></label>
+            <label>Posture <select id="solweig-person-position"></select></label>
+          </div>
+          <div class="person-clothing">
+            <div class="person-clothing-head">
+              <span>Clothing</span>
+              <label class="person-clo" title="Icl = Σ Iclu of the ticked garments (ASHRAE 55). Without garments, type the clo.">
+                clo <input type="number" id="solweig-person-clo" step="0.01" min="0" max="3">
+              </label>
+            </div>
+            <div class="person-garments" id="solweig-person-garments"></div>
+          </div>
+          <div class="lst-view-info person-derived" id="solweig-person-derived"></div>
+        </div>
+      </div>
       <!-- Shown while a KNMI'23 scenario is selected (Scenarios panel / year): the
            weather above moved into it; Calculate then stores a scenario run. -->
       <div class="lst-view-info solweig-scenario" id="solweig-scenario" hidden

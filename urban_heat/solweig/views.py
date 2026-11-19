@@ -17,6 +17,12 @@ Tmrt, UTCI and PET for the area in view and one hour.
          -> the met moved into a KNMI'23 scenario (preview while a scenario is selected)
     GET  /urban_heat/solweig/stale/?bbox=
          -> SVF and thermal-comfort results that building edits made stale
+    GET  /urban_heat/solweig/person/?person_preset=&person_age=&...
+         -> the person pill: its options, the resolved person and its derived
+            values (clo from the garments, body surface, metabolic heat, label)
+
+The calculate POST takes the same person_* fields (urban_heat/calculations/
+person.py::resolve); the run stores the person PET is felt by.
 
 Calculating writes rasters and occupies the GPU, so it is staff only.
 """
@@ -52,8 +58,23 @@ DAY_FIELDS = (
 )
 
 
+# Person fields of the pill, sent as person_<name> (urban_heat/calculations/person.py::resolve).
+PERSON_FIELDS = ("preset", "activity", "met", "position", "garments", "clo", "age", "sex", "weight", "height")
+
+
 class BadRequest(ValueError):
     pass
+
+
+def _person(data):
+    """The person PET is felt by, from the person_* fields (absent = the PET reference person)."""
+    from urban_heat.calculations import person
+
+    values = {name: data.get(f"person_{name}") for name in PERSON_FIELDS if data.get(f"person_{name}") is not None}
+    try:
+        return person.resolve(values)
+    except person.PersonError as e:
+        raise BadRequest(str(e)) from None
 
 
 def _bbox(value):
@@ -220,6 +241,8 @@ def _run_json(run):
 
     from .pipeline import run_state
 
+    from urban_heat.calculations.person import describe
+
     status, message = run_state(run)
     layers = [raster_layer_entry(r) for r in (run.mrt, run.utci, run.pet, run.wbgt)
               if status == "done" and r is not None and r.cog_path]
@@ -227,6 +250,7 @@ def _run_json(run):
         "id": run.pk, "status": status, "message": message, "device": run.device,
         "date_time": run.date_time.isoformat(), "met": run.met,
         "inputs": run.inputs, "stats": run.stats, "layers": layers,
+        "person": run.person or None, "person_info": describe(run.person or None),
     }
 
 
@@ -255,10 +279,12 @@ def solweig_calculate(request):
                      for name, default, low, high, unit in MET_FIELDS},
                   **{name: _optional_number(data, name, low, high, unit) for name, low, high, unit in DAY_FIELDS},
                   source=(data.get("source") or "manual")[:60])
+        person = _person(data)
         p = inputs.plan(wgs84_to_storage(bbox), cell=resolution)  # refuse a too-large view now
         with transaction.atomic():
             run = ThermalComfortRun.objects.create(
-                area=_storage_box(p["covered"]), bbox_wgs84=bbox, date_time=when, met=met.as_dict(), resolution=resolution)
+                area=_storage_box(p["covered"]), bbox_wgs84=bbox, date_time=when, met=met.as_dict(),
+                resolution=resolution, person=person)
             pipeline.start_run(run)
         return JsonResponse(_run_json(run), status=202)
 
@@ -286,5 +312,21 @@ def solweig_stale(request):
         from .pipeline import stale_results
 
         return JsonResponse(stale_results(wgs84_to_storage(_bbox(request.GET.get("bbox")))))
+
+    return _run(view)
+
+
+@require_GET
+def solweig_person(request):
+    """
+    The Thermal Comfort tool's person pill: options (presets, activities,
+    garments with their clo) and the person of the request's person_* fields
+    with its derived values. Pure, nothing stored.
+    """
+    def view():
+        from urban_heat.calculations import person
+
+        resolved = _person(request.GET)
+        return JsonResponse({"options": person.options(), "person": resolved, "info": person.describe(resolved)})
 
     return _run(view)
