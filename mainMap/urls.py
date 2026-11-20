@@ -1,5 +1,5 @@
 from django.urls import path, register_converter
-from .views import model_geojson, map_view, landing_view, available_layers, layer_bounds, admin_unit_at_point, dashboard_summary, population_panel, climate_effects
+from .views import model_geojson, map_view, landing_view, available_layers, layer_bounds, building_mask, admin_unit_at_point, dashboard_summary, population_panel, climate_effects
 from core import editing
 from . import settings_views, views_climate
 from core import views
@@ -27,6 +27,8 @@ urlpatterns = [
 
     # API endpoints
     path('api/layers/', available_layers, name='available_layers'),
+    # Before the generic routes, which would read 'Building' as any model
+    path('api/layers/builtup/Building/mask/', building_mask, name='building_mask'),
     path('api/layers/<str:app_label>/<str:model_name>/geojson/', model_geojson, name='model_geojson'),
     path('api/layers/<str:app_label>/<str:model_name>/bounds/', layer_bounds, name='layer_bounds'),
     path('api/admin-unit/', admin_unit_at_point, name='admin_unit_at_point'),

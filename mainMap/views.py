@@ -868,3 +868,87 @@ def layer_bounds(request, app_label, model_name):
         west, south, east, north = cursor.fetchone()
 
     return JsonResponse({'bounds': [[west, south], [east, north]]})
+
+
+# Side of the grid cells of the building mask (Map_init.js::addBuildingMask),
+# in metres of the storage CRS (EPSG:28992, so the cells line up with the CBS
+# 100 m grid). Small enough that a cell rarely reaches past the stored
+# buildings into an area with none, large enough that a deleted building
+# leaves an empty plot instead of letting the basemap's building show again.
+BUILDING_MASK_CELL_M = 50
+BUILDING_MASK_KEY = 'builtup.Building'
+
+
+def _building_mask_sql(model, geom_field):
+    """
+    (sql, params): every BUILDING_MASK_CELL_M grid cell that a stored building
+    touches, merged into one MultiPolygon and returned as a WGS84
+    FeatureCollection (empty when there are no buildings). The cells a
+    footprint's envelope spans are enumerated with generate_series, then only
+    those the footprint really intersects are kept.
+    """
+    table = model._meta.db_table
+    col = f't."{geom_field.column}"'
+    srid = geom_field.srid
+    sql = f"""
+        WITH cells AS (
+            SELECT DISTINCT cx, cy
+            FROM "{table}" t,
+                 generate_series(floor(ST_XMin({col}) / %(c)s)::int, floor(ST_XMax({col}) / %(c)s)::int) cx,
+                 generate_series(floor(ST_YMin({col}) / %(c)s)::int, floor(ST_YMax({col}) / %(c)s)::int) cy
+            WHERE {col} IS NOT NULL
+              AND ST_Intersects({col}, ST_MakeEnvelope(cx * %(c)s, cy * %(c)s,
+                                                       (cx + 1) * %(c)s, (cy + 1) * %(c)s, {srid}))
+        ),
+        mask AS (
+            SELECT ST_Union(ST_MakeEnvelope(cx * %(c)s, cy * %(c)s,
+                                            (cx + 1) * %(c)s, (cy + 1) * %(c)s, {srid})) AS geom
+            FROM cells
+        )
+        SELECT json_build_object(
+            'type', 'FeatureCollection',
+            'features', CASE WHEN geom IS NULL THEN '[]'::json ELSE json_build_array(json_build_object(
+                'type', 'Feature',
+                'geometry', ST_AsGeoJSON(ST_Transform(geom, 4326), {GEOJSON_PRECISION})::json,
+                'properties', json_build_object('cell_m', %(c)s)
+            )) END
+        )::text
+        FROM mask
+    """
+    return sql, {'c': BUILDING_MASK_CELL_M}
+
+
+def building_mask(request):
+    """
+    Where the database holds buildings, as merged grid cells (WGS84 GeoJSON).
+    URL: /api/layers/builtup/Building/mask/
+
+    The map draws it as a Mapbox `clip` layer above the basemap's 3D
+    buildings, so those disappear wherever stored buildings (imported,
+    edited or generated) are drawn instead, and stay where nothing is
+    imported. Cached under the Building layer version, so every save,
+    delete or import invalidates it.
+    """
+    from core.cache import get_cache, layer_version
+
+    model = VECTOR_REGISTRY.get(BUILDING_MASK_KEY)
+    if model is None:
+        raise Http404(f"Model {BUILDING_MASK_KEY} not found in registry")
+    geom_field = next(f for f in model._meta.get_fields() if isinstance(f, gis_models.GeometryField))
+
+    cache = get_cache(GEOJSON_CACHE_ALIAS)
+    cache_key = f"buildingmask:{layer_version(model)}:{BUILDING_MASK_CELL_M}"
+    body = cache.get(cache_key)
+    cache_status = 'HIT'
+    if body is None:
+        cache_status = 'MISS'
+        sql, params = _building_mask_sql(model, geom_field)
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            body = cursor.fetchone()[0]
+        if len(body) <= GEOJSON_CACHE_MAX_BYTES:
+            cache.set(cache_key, body, GEOJSON_CACHE_TTL)
+
+    response = HttpResponse(body, content_type='application/json')
+    response['X-Cache'] = cache_status
+    return response

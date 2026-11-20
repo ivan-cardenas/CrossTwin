@@ -142,6 +142,19 @@ const LOADER_SHOW_DELAY_MS = 8000;  // only surface it for genuinely slow loads
 const HIDES_3D_BUILDINGS_APPS = new Set(['builtup']); // app to hide 3D buildings when any of its layers is visible
 const HIDES_3D_BUILDINGS_KEYS = new Set(['physicalEnv.DSM']);
 
+// Stored buildings in the default view (Map_init.js::addBuildingMask): a
+// Mapbox `clip` layer erases the basemap's 3D buildings in the grid cells
+// that hold stored buildings (mainMap/views.py::building_mask), and the
+// stored ones are drawn there instead, loaded by viewport from this zoom on.
+// Below it neither is shown, so the clip starts at the same zoom.
+const DB_BUILDINGS_KEY = 'builtup.Building';
+const DB_BUILDINGS_MASK_URL = '/api/layers/builtup/Building/mask/';
+const DB_BUILDINGS_MIN_ZOOM = 14;
+// The basemap's own 3D buildings ('3d-buildings', Map_init.js::add3DBuildings)
+// are drawn as faint grey context, so the stored buildings stand out.
+const BASEMAP_BUILDING_COLOR = '#9e9e9e';
+const BASEMAP_BUILDING_OPACITY = 0.25;
+
 // A colour, or a list of shades: each Mapbox building then takes one shade
 // picked by its feature id (Map_init.js::buildingColorForTool), so the city
 // looks less uniform and a building keeps its shade on every pan and reload.

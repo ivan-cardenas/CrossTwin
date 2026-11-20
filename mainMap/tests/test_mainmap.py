@@ -325,6 +325,53 @@ class LayerBoundsTests(TestCase):
         self.assertIsNone(response.json()['bounds'])
 
 
+class BuildingMaskTests(TestCase):
+    """mainMap/views.py::building_mask: 50 m cells holding stored buildings, merged, in WGS84."""
+
+    def setUp(self):
+        from core.cache import get_cache
+        get_cache('geojson').clear()
+
+    def get(self):
+        return self.client.get(reverse('map:building_mask'))
+
+    @staticmethod
+    def _mask_area_m2(data):
+        from django.contrib.gis.geos import GEOSGeometry
+        geom = GEOSGeometry(json.dumps(data['features'][0]['geometry']), srid=4326)
+        geom.transform(settings.COORDINATE_SYSTEM)
+        return geom.area
+
+    def test_no_buildings_is_an_empty_collection(self):
+        data = self.get().json()
+        self.assertEqual(data, {'type': 'FeatureCollection', 'features': []})
+
+    def test_cells_holding_buildings_are_merged(self):
+        from mainMap.views import BUILDING_MASK_CELL_M as c
+        # two small buildings inside one cell, one far away, one across a cell edge (2 cells)
+        Building.objects.create(id=1, geom=make_polygon(257010, 470010, half_size_m=3))
+        Building.objects.create(id=2, geom=make_polygon(257030, 470030, half_size_m=3))
+        Building.objects.create(id=3, geom=make_polygon(258010, 470010, half_size_m=3))
+        Building.objects.create(id=4, geom=make_polygon(259000, 470025, half_size_m=3))
+
+        with self.assertNumQueries(1):
+            data = self.get().json()
+        self.assertEqual(len(data['features']), 1)
+        self.assertEqual(data['features'][0]['geometry']['type'], 'MultiPolygon')
+        self.assertAlmostEqual(self._mask_area_m2(data), 4 * c * c, delta=0.01 * c * c)
+
+    def test_cached_until_a_building_changes(self):
+        Building.objects.create(id=1, geom=make_polygon(257010, 470010, half_size_m=3))
+        self.assertEqual(self.get()['X-Cache'], 'MISS')
+        with self.assertNumQueries(0):
+            self.assertEqual(self.get()['X-Cache'], 'HIT')
+
+        Building.objects.create(id=2, geom=make_polygon(258010, 470010, half_size_m=3))
+        response = self.get()
+        self.assertEqual(response['X-Cache'], 'MISS')
+        self.assertEqual(len(response.json()['features'][0]['geometry']['coordinates']), 2)
+
+
 class QueryStatsMiddlewareTests(TestCase):
     """§0: every response reports its query count and DB time."""
 

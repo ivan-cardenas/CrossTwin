@@ -847,9 +847,16 @@ function sync3DBuildings() {
     (HIDES_3D_BUILDINGS_APPS.has(entry.config.app_label) || HIDES_3D_BUILDINGS_KEYS.has(key)));
   const visibility = hide ? 'none' : 'visible';
   map.setLayoutProperty('3d-buildings', 'visibility', visibility);
-  // Their outlines (Map_init.js::add3DBuildingEdges) follow the extrusions
+  // The stored buildings drawn over the masked basemap (Map_init.js::
+  // addBuildingMask) follow the same rule: the catalog layers replace them
+  if (map.getLayer('db-base-buildings')) map.setLayoutProperty('db-base-buildings', 'visibility', visibility);
+  // Their outlines (Map_init.js::add3DBuildingEdges) follow the extrusions.
+  // A clip layer erases only extrusions and models, not these lines, so they
+  // are off while the mask reaches into the view.
+  const masked = typeof buildingMaskInView === 'function' && buildingMaskInView();
+  const edgeVisibility = hide || masked ? 'none' : 'visible';
   for (const id of (typeof BUILDING_EDGE_LAYER_IDS !== 'undefined' ? BUILDING_EDGE_LAYER_IDS : [])) {
-    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility);
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', edgeVisibility);
   }
 }
 

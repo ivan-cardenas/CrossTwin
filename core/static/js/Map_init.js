@@ -196,6 +196,7 @@ function initializeUrbanTwinMap(config) {
     initFeaturePopup();
     fetchAvailableLayers();
     add3DBuildings();
+    bindBuildingMaskEvents();
     updateCityName();
     updateAdminUnitAtCenter();
 
@@ -262,8 +263,9 @@ function buildingColorForTool() {
  * Update the color of 3D buildings
  */
 function sync3DBuildingColor() {
-  if (map.getLayer('3d-buildings')) {
-    map.setPaintProperty('3d-buildings', 'fill-extrusion-color', buildingColorForTool());
+  // Only the stored buildings follow the tool; the basemap's stay faint grey
+  if (map.getLayer(DB_BASE_BUILDINGS_ID)) {
+    map.setPaintProperty(DB_BASE_BUILDINGS_ID, 'fill-extrusion-color', buildingColorForTool());
   }
 }
 
@@ -393,8 +395,9 @@ function add3DBuildings() {
         'fill-extrusion-edge-radius': 0.5,
       },
       paint: {
-        
-        'fill-extrusion-color': buildingColorForTool(),
+        // Faint grey context (Config.js); the stored buildings
+        // (db-base-buildings) keep the tool colours
+        'fill-extrusion-color': BASEMAP_BUILDING_COLOR,
         'fill-extrusion-height': [
           'interpolate', ['linear'], ['zoom'],
           13, 0, 16, ['get', 'height']
@@ -403,11 +406,9 @@ function add3DBuildings() {
           'interpolate', ['linear'], ['zoom'],
           13, 0, 16, ['get', 'min_height']
         ],
-        'fill-extrusion-opacity': 1,
-        // 'fill-extrusion-opacity': [
-        //   'interpolate', ['linear'], ['zoom'],
-        //   13, 1, 20, 0.80 ],        
-        'fill-extrusion-cast-shadows': true,
+        'fill-extrusion-opacity': BASEMAP_BUILDING_OPACITY,
+        // A see-through building casting a solid shadow looks wrong
+        'fill-extrusion-cast-shadows': false,
         // Darkens the inside corners between walls and the foot of each wall
         // (~0.3 is the value the style spec calls plausible for buildings)
         'fill-extrusion-ambient-occlusion-intensity': 0.35,
@@ -420,10 +421,180 @@ function add3DBuildings() {
   }
 
   add3DBuildingEdges(labelLayerId);
+  // Stored buildings above the extrusions and their edges; the clip that
+  // erases the basemap's buildings goes on top of the style
+  addBuildingMask(labelLayerId);
 
   // Stays hidden while a builtup layer is shown (also after a basemap switch,
   // which re-creates this layer)
   if (typeof sync3DBuildings === 'function') sync3DBuildings();
+}
+
+// ---- Stored buildings over the basemap's ------------------------------
+//
+// The basemap's 3D buildings know nothing of the database: a building added,
+// generated or deleted on the map would not show outside the Built-up tool.
+// Wherever the database holds buildings (50 m cells, mainMap/views.py::
+// building_mask) a `clip` layer erases the basemap's extrusions and the
+// stored buildings are drawn instead; elsewhere the basemap's stay.
+
+const DB_BUILDING_MASK_ID = 'db-building-mask';
+const DB_BASE_BUILDINGS_ID = 'db-base-buildings';
+const EMPTY_FEATURE_COLLECTION = { type: 'FeatureCollection', features: [] };
+let buildingMaskData = null;      // last mask FeatureCollection
+let buildingMaskBounds = null;    // its [west, south, east, north], null when empty
+let baseBuildingsAbort = null;
+let baseBuildingsTimer = null;
+
+/** [west, south, east, north] of a FeatureCollection's coordinates, or null when empty. */
+function featureCollectionBounds(fc) {
+  let w = Infinity, s = Infinity, e = -Infinity, n = -Infinity;
+  const visit = (c) => {
+    if (typeof c[0] === 'number') {
+      w = Math.min(w, c[0]); e = Math.max(e, c[0]);
+      s = Math.min(s, c[1]); n = Math.max(n, c[1]);
+    } else c.forEach(visit);
+  };
+  for (const f of fc.features || []) if (f.geometry) visit(f.geometry.coordinates);
+  return w === Infinity ? null : [w, s, e, n];
+}
+
+/** Whether the mask reaches into the current view (bounding boxes only). */
+function buildingMaskInView() {
+  if (!buildingMaskBounds || !map) return false;
+  const b = map.getBounds();
+  const [w, s, e, n] = buildingMaskBounds;
+  return !(e < b.getWest() || w > b.getEast() || n < b.getSouth() || s > b.getNorth());
+}
+
+/**
+ * Height of a stored building: the catalog style's expression (mainMap/
+ * styles/layerStyles.py: height_m, else floors x storey, else a default), so
+ * both drawings of the layer agree; a plain fallback until the catalog is in.
+ */
+function dbBuildingHeight() {
+  const entry = (typeof availableLayers !== 'undefined' ? availableLayers : []).find(l => l.key === DB_BUILDINGS_KEY);
+  const paint = entry?.style_layers?.find(def => def.type === 'fill-extrusion')?.paint;
+  return paint?.['fill-extrusion-height'] ?? ['to-number', ['coalesce', ['get', 'height_m'], 10]];
+}
+
+/** Clip layer + stored-building layer below `beforeId`; (re)loads their data. */
+function addBuildingMask(beforeId) {
+  if (!map.getSource(DB_BUILDING_MASK_ID)) {
+    map.addSource(DB_BUILDING_MASK_ID, { type: 'geojson', data: buildingMaskData || EMPTY_FEATURE_COLLECTION });
+  }
+  if (!map.getLayer(DB_BUILDING_MASK_ID)) {
+    // On top of everything (keepBuildingMaskOnTop), not just above
+    // '3d-buildings': Mapbox GL compares the clip's index in the draw order
+    // with a building layer's index in style.order, and every layer a tool
+    // adds pushes '3d-buildings' further down style.order than down the draw
+    // order, so a clip right above it stops clipping once e.g. the Water
+    // Supply layers load. Only fill-extrusions of a vector 'building' source
+    // layer are clipped, so the stored buildings (GeoJSON) never are.
+    map.addLayer({
+      id: DB_BUILDING_MASK_ID,
+      type: 'clip',
+      source: DB_BUILDING_MASK_ID,
+      minzoom: DB_BUILDINGS_MIN_ZOOM,
+      // 'model' also takes the basemap's 3D models (trees, landmarks) out of
+      // built cells; the scope keeps our own model layers (nature.Tree). Labels stay.
+      layout: { 'clip-layer-types': ['model'], 'clip-layer-scope': ['basemap'] },
+    });
+  }
+  if (!map.getSource(DB_BASE_BUILDINGS_ID)) {
+    // promoteId: ['id'] is then the BAG id, so buildingColorForTool() gives
+    // stored buildings the same per-building shades as the basemap's
+    map.addSource(DB_BASE_BUILDINGS_ID, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION, promoteId: 'id' });
+  }
+  if (!map.getLayer(DB_BASE_BUILDINGS_ID)) {
+    map.addLayer({
+      id: DB_BASE_BUILDINGS_ID,
+      type: 'fill-extrusion',
+      source: DB_BASE_BUILDINGS_ID,
+      minzoom: DB_BUILDINGS_MIN_ZOOM,
+      layout: { 'fill-extrusion-edge-radius': 0.5 },
+      paint: {
+        'fill-extrusion-color': buildingColorForTool(),
+        'fill-extrusion-height': dbBuildingHeight(),
+        'fill-extrusion-base': 0,
+        'fill-extrusion-opacity': 1,
+        'fill-extrusion-cast-shadows': true,
+        'fill-extrusion-ambient-occlusion-intensity': 0.35,
+        'fill-extrusion-ambient-occlusion-wall-radius': 3,
+        'fill-extrusion-ambient-occlusion-ground-radius': 5,
+        'fill-extrusion-vertical-gradient': true,
+      },
+    }, beforeId);
+  }
+  keepBuildingMaskOnTop();   // the stored-building layer may have landed above it
+  reloadBuildingMask();
+}
+
+/** Re-fetch the mask, then the stored buildings in view. After edits and imports. */
+async function reloadBuildingMask() {
+  try {
+    const response = await fetch(DB_BUILDINGS_MASK_URL);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    buildingMaskData = await response.json();
+    buildingMaskBounds = featureCollectionBounds(buildingMaskData);
+    map.getSource(DB_BUILDING_MASK_ID)?.setData(buildingMaskData);
+  } catch (error) {
+    console.error('Error loading the building mask:', error);
+  }
+  reloadBaseBuildings();
+  if (typeof sync3DBuildings === 'function') sync3DBuildings();
+}
+
+/** Stored buildings in the current view (nothing below the min zoom or outside the mask). */
+async function reloadBaseBuildings() {
+  const source = map.getSource(DB_BASE_BUILDINGS_ID);
+  if (!source) return;
+  if (map.getZoom() < DB_BUILDINGS_MIN_ZOOM || !buildingMaskInView()) return;
+
+  baseBuildingsAbort?.abort();
+  const controller = new AbortController();
+  baseBuildingsAbort = controller;
+  try {
+    const response = await fetch(
+      `/api/layers/builtup/Building/geojson/?${viewportQuery()}`, { signal: controller.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const geojson = await response.json();
+    if (baseBuildingsAbort !== controller) return;   // superseded
+    source.setData(geojson);
+    if (map.getLayer(DB_BASE_BUILDINGS_ID)) {
+      map.setPaintProperty(DB_BASE_BUILDINGS_ID, 'fill-extrusion-height', dbBuildingHeight());
+    }
+  } catch (error) {
+    if (error.name !== 'AbortError') console.error('Error loading stored buildings:', error);
+  }
+}
+
+/** Move the clip layer back to the top after another layer was added above it. */
+function keepBuildingMaskOnTop() {
+  if (!map.getLayer(DB_BUILDING_MASK_ID)) return;
+  // getLayersOrder() (GL JS v3) lists the root style's ids without
+  // serialising the whole style as getStyle() would on every styledata
+  let order;
+  try {
+    order = typeof map.getLayersOrder === 'function'
+      ? map.getLayersOrder() : map.getStyle().layers.map(l => l.id);
+  } catch (_) { return; }
+  if (order.length && order[order.length - 1] !== DB_BUILDING_MASK_ID) map.moveLayer(DB_BUILDING_MASK_ID);
+}
+
+function bindBuildingMaskEvents() {
+  // Fires on every addLayer/moveLayer; after our own move the clip is last,
+  // so the check stops there
+  map.on('styledata', keepBuildingMaskOnTop);
+  map.on('moveend', () => {
+    clearTimeout(baseBuildingsTimer);
+    baseBuildingsTimer = setTimeout(() => {
+      reloadBaseBuildings();
+      if (typeof sync3DBuildings === 'function') sync3DBuildings();   // edges follow the mask
+    }, VIEWPORT_RELOAD_DELAY_MS);
+  });
+  ['feature-saved', 'backup-restored'].forEach(name =>
+    document.body.addEventListener(name, () => reloadBuildingMask()));
 }
 
 /**
