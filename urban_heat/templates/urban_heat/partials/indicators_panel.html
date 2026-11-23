@@ -1,6 +1,6 @@
 {% load static %}
 
-<div style="padding: 0 4px;">
+<div class="lens-panel" style="padding: 0 4px;">
 
   <!-- Header -->
   <div style="margin-bottom:16px;">
@@ -13,12 +13,17 @@
     </div>
   </div>
 
-  {% include 'urban_heat/partials/whatif_controls.html' %}
+  <div class="whatif-only">{% include 'urban_heat/partials/whatif_controls.html' %}</div>
 
   <!-- Cards — swap target -->
   <div id="indicators-grid">
     {% include 'urban_heat/partials/indicators_grid.html' %}
   </div>
+
+  <!-- Summary tab: headline cards only; the rest with the what-ifs (Panels.js::setPanelTab) -->
+  <button type="button" class="summary-more" data-panel-tab="whatif">
+    All indicators and what-ifs <span class="bi bi-arrow-right" aria-hidden="true"></span>
+  </button>
 
 </div>
 

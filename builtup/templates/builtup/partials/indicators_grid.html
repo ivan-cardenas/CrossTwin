@@ -3,14 +3,14 @@
 <div class="grid">
 
   <!-- Built-up Coverage -->
-  <div class="card gauge"
+  <div class="card is-headline gauge"
        data-gauge-val="{{ indicators.built_coverage_pct|default:0|unlocalize }}"
        data-gauge-id="gauge-built-coverage"
        data-gauge-color="{{ indicators.layer_colors.building }}">
     <div class="gauge-header">
       <div class="card-icon">🏙️</div>
       <div class="card-label">Built-up Coverage</div>
-      {% info_help "builtup.coverage" %}
+      {% info_help "builtup.coverage" %}{% include "partials/_show_on_map.html" with layers="builtup.Building" label="built-up coverage" %}
     </div>
     <div class="gauge-body bottom">
       <svg viewBox="0 0 120 70" width="160" height="95" aria-hidden="true">
@@ -35,7 +35,7 @@
   </div>
 
   <!-- Green Space per Inhabitant — slider-controlled -->
-  <div class="card gauge"
+  <div class="card is-headline gauge"
        data-gauge-val="{{ indicators.green_per_capita_m2|default:0|unlocalize }}"
        data-gauge-max="{{ indicators.green_good_m2 }}"
        data-gauge-id="gauge-green"
@@ -43,7 +43,7 @@
     <div class="gauge-header">
       <div class="card-icon">🌳</div>
       <div class="card-label">Park Area per Inhabitant</div>
-      {% info_help "builtup.park" %}
+      {% info_help "builtup.park" %}{% include "partials/_show_on_map.html" with layers="nature.GreenSpaces" label="park area" %}
     </div>
     <div class="gauge-body" style="flex:1; display:flex; justify-content:center; align-items:center;">
       <svg viewBox="0 0 100 100" width="110" height="110" aria-hidden="true">
@@ -78,11 +78,11 @@
   </div>
 
   <!-- Building Stock -->
-  <div class="card wide">
+  <div class="card is-headline wide">
     <div class="gauge-header">
       <div class="card-icon">🏢</div>
       <div class="card-label">Building Stock</div>
-      {% info_help "builtup.stock" %}
+      {% info_help "builtup.stock" %}{% include "partials/_show_on_map.html" with layers="builtup.Building" label="building stock" %}
     </div>
     <div style="display:flex; gap:16px; flex-wrap:wrap; margin-top:4px;">
       <div>
@@ -113,11 +113,11 @@
 
   <!-- Degree of Urbanisation (builtup/calculations/urbanisation.py::dashboard, docs/DEGREE_OF_URBANISATION.md) -->
   {% if indicators.degurba %}{% with d=indicators.degurba %}
-  <div class="card wide">
+  <div class="card is-headline wide">
     <div class="gauge-header">
       <div class="card-icon">🏘️</div>
       <div class="card-label">Degree of Urbanisation</div>
-      {% info_help "builtup.calculations.degurba" %}
+      {% info_help "builtup.calculations.degurba" %}{% include "partials/_show_on_map.html" with layers="builtup.UrbanisationCellLocal" label="degree of urbanisation" %}
     </div>
     <div style="display:flex; align-items:baseline; gap:10px; margin-top:4px;">
       <div style="font-family:var(--font-base); font-size:1.05rem; font-weight:700; color:{{ d.color }};">{{ d.label }}</div>
@@ -155,7 +155,7 @@
     <div class="gauge-header">
       <div class="card-icon">🧩</div>
       <div class="card-label">Building Type Mix</div>
-      {% info_help "builtup.mix" %}
+      {% info_help "builtup.mix" %}{% include "partials/_show_on_map.html" with layers="builtup.Building" label="building type mix" %}
     </div>
     <div class="bar-track" style="height:10px; display:flex;">
       {% for seg in indicators.mix_segments %}
@@ -180,7 +180,7 @@
     <div class="gauge-header">
       <div class="card-icon">🕰️</div>
       <div class="card-label">Construction Period</div>
-      {% info_help "builtup.age" %}
+      {% info_help "builtup.age" %}{% include "partials/_show_on_map.html" with layers="builtup.Building" label="construction period" %}
     </div>
     {% for period in indicators.age_periods %}
     <div style="display:flex; align-items:center; gap:8px; margin-top:6px;">
@@ -201,7 +201,7 @@
     <div class="gauge-header">
       <div class="card-icon">🛣️</div>
       <div class="card-label">Street Network</div>
-      {% info_help "builtup.streets" %}
+      {% info_help "builtup.streets" %}{% include "partials/_show_on_map.html" with layers="builtup.Street" label="street network" %}
     </div>
     <div>
       <div class="card-value" style="color:{{ indicators.layer_colors.street }};">{{ indicators.street_density|default:"–" }}</div>
@@ -225,7 +225,7 @@
     <div class="gauge-header">
       <div class="card-icon">🏫</div>
       <div class="card-label">Urban Facilities</div>
-      {% info_help "builtup.facilities" %}
+      {% info_help "builtup.facilities" %}{% include "partials/_show_on_map.html" with layers="builtup.Facility" label="urban facilities" %}
     </div>
     <div>
       <div class="card-value" style="color:{{ indicators.layer_colors.facility }};">{{ indicators.facilities_per_10k|default:"–" }}</div>

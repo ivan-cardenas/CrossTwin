@@ -1,5 +1,5 @@
 // ============================================================
-// DegurbaTool.js — Degree of Urbanisation card (Actions menu, #degurbaToolBtn).
+// DegurbaTool.js — Degree of Urbanisation card (Built-up lens › Calculate tab, #degurbaToolBtn).
 // Shows the stored grid (GET builtup/degurba/info/): population year, cells
 // and classes at 100 m (CrossTwin's local variant) and 1 km (the original
 // method on the same data), the cities' class and urbanisation rate. Staff can
@@ -183,9 +183,6 @@
     }
     ['feature-saved', 'backup-restored'].forEach(name => document.body.addEventListener(name, afterEdit));
 
-    if (typeof makeDraggable === 'function' && window.matchMedia('(min-width: 769px)').matches) {
-      makeDraggable(card, '.lst-card-header');
-    }
   }
 
   document.addEventListener('DOMContentLoaded', init);

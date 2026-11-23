@@ -120,12 +120,13 @@ function renderLensRail() {
   const rail = document.getElementById('lens-rail');
   if (!rail) return;
 
-  const button = (id, { label, title, icon, panel }) => `
+  const button = (id, { label, title, icon, panel, tools }) => `
     <button type="button" class="tool-button" data-tool="${id}" title="${title}" aria-label="${title}"
             aria-pressed="false"${panel ? `
             data-panel-title="${title}" hx-target="#panel-body" hx-indicator="#map-loader" hx-swap="innerHTML"` : ''}>
       <span class="bi ${icon}" aria-hidden="true"></span>
-      <span class="tool-label">${label}</span>
+      <span class="tool-label">${label}</span>${tools && tools.length ? `
+      <span class="stale-dot" hidden title="Buildings changed in this view: recalculate in the Calculate tab"></span>` : ''}
     </button>`;
 
   let html = button('overview', { label: 'Overview', title: 'Overview: no topic, all your layers', icon: 'bi-map' });

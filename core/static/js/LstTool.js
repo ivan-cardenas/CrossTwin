@@ -1,6 +1,6 @@
 // ============================================================
 // LstTool.js — Land Surface Temperature for the area in view.
-// Opened from the Actions menu (#lstToolBtn). Lists the Landsat scenes over
+// Opened from the Heat lens's Calculate tab (#lstToolBtn). Lists the Landsat scenes over
 // the view (GET urban_heat/lst/scenes/), then computes and stores one LST
 // raster (POST urban_heat/lst/calculate/) and shows it as a map layer.
 // Recalculating the same scene over the same (or a larger) view replaces the
@@ -223,9 +223,6 @@
     };
     openBtn.addEventListener('click', watchView);
 
-    if (typeof makeDraggable === 'function' && window.matchMedia('(min-width: 769px)').matches) {
-      makeDraggable(card, '.lst-card-header');
-    }
   }
 
   document.addEventListener('DOMContentLoaded', init);

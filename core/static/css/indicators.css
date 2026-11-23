@@ -858,3 +858,6 @@ input[type="range"].zone-slider::-moz-range-thumb {
 .climate-action.is-busy { opacity: 0.6; cursor: progress; }
 .climate-curve-today { stroke: rgba(232, 244, 255, 0.35); stroke-width: 1; stroke-dasharray: 2 2; }
 .climate-curve-offset { stroke: rgba(232, 244, 255, 0.45); stroke-width: 1; stroke-dasharray: 5 3; }
+
+/* The standalone dashboards have no map: no "Show on map" (step 4) */
+.indicators-page .show-on-map { display: none; }

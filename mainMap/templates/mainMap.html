@@ -162,11 +162,246 @@
         <div class="side-panel-title" id="panel-title">OVERVIEW</div>
         <button class="side-panel-close" id="panel-close">✕</button>
       </div>
+      <!-- Lens panel tabs (Map simplification step 4; Panels.js::setPanelTab):
+           shown while #panel-body holds a lens's indicator panel (.lens-panel).
+           Summary = headline cards, What-if = sliders + every card, Calculate =
+           #panel-calculate. Calculate only for lenses with tools (Config.js::LENSES). -->
+      <div class="panel-tabs" id="panel-tabs" role="tablist" aria-label="Panel views" hidden>
+        <button type="button" role="tab" class="panel-tab" data-tab="summary" aria-selected="true">Summary</button>
+        <button type="button" role="tab" class="panel-tab" data-tab="whatif" aria-selected="false">What-if</button>
+        <button type="button" role="tab" class="panel-tab" data-tab="calculate" aria-selected="false">Calculate</button>
+      </div>
       <div class="side-panel-body" id="panel-body">
         <p>Use the tool icons on the left to switch between thematic layers.</p>
         <p>
           Click the 📑 Layers button to manage all database layers individually.
         </p>
+      </div>
+      <!-- CALCULATE TAB: the open lens's tools and their cards. Outside
+           #panel-body, so the htmx swaps of a unit click or a slider never
+           reset a running calculation. -->
+      <div class="side-panel-body panel-calculate" id="panel-calculate" role="tabpanel" hidden>
+        <p class="calc-intro">Runs over the area in view. Results are stored with the inputs they used.</p>
+        <div class="calc-tools">
+          <button type="button" class="action-panel-btn calc-tool-btn" data-calc-tool="lst" id="lstToolBtn">
+            <span class="bi bi-thermometer-sun"></span>
+            <span class="action-btn-text">Land Surface Temperature</span>
+          </button>
+          <button type="button" class="action-panel-btn calc-tool-btn" data-calc-tool="svf" id="svfToolBtn">
+            <span class="bi bi-brightness-high"></span>
+            <span class="action-btn-text">Sky View Factor</span>
+            <span class="stale-dot" hidden title="Buildings changed here since the SVF was calculated: run it again"></span>
+          </button>
+          <button type="button" class="action-panel-btn calc-tool-btn" data-calc-tool="solweig" id="solweigToolBtn">
+            <span class="bi bi-person-walking"></span>
+            <span class="action-btn-text">Thermal Comfort (SOLWEIG)</span>
+            <span class="stale-dot" hidden title="Buildings changed here since thermal comfort was calculated: run it again"></span>
+          </button>
+          <button type="button" class="action-panel-btn calc-tool-btn" data-calc-tool="degurba" id="degurbaToolBtn">
+            <span class="bi bi-buildings"></span>
+            <span class="action-btn-text">Degree of Urbanisation</span>
+          </button>
+    </div>
+
+        <!-- LST TOOL — Land Surface Temperature for the area in view
+             (core/static/js/LstTool.js, urban_heat/lst/views.py). -->
+        <div class="lst-card" id="lst-card"
+             data-scenes-url="{% url 'urban_heat:lst_scenes' %}"
+             data-calculate-url="{% url 'urban_heat:lst_calculate' %}"
+             data-can-calculate="{{ user.is_staff|yesno:'1,0' }}">
+          {% csrf_token %}
+          <div class="lst-card-header">
+            <div class="lst-card-title">LAND SURFACE TEMPERATURE</div>
+            <button class="lst-card-close" id="lst-card-close" aria-label="Close LST tool">✕</button>
+          </div>
+          <p class="lst-card-hint">Landsat 9 thermal band and the NDVI layer (Statistical Mono-Window), for the area in view.</p>
+          <div class="lst-card-fields">
+            <label>From <input type="date" id="lst-from"></label>
+            <label>To <input type="date" id="lst-to"></label>
+            <label>Cell
+              <select id="lst-resolution">
+                <option value="30" selected>30 m</option>
+                <option value="60">60 m</option>
+                <option value="100">100 m</option>
+              </select>
+            </label>
+          </div>
+          <label class="lst-check"><input type="checkbox" id="lst-use-ndvi" checked> Emissivity from the NDVI layer</label>
+          <button class="lst-btn" id="lst-find">Find scenes for this view</button>
+          <div class="lst-view-info" id="lst-view-info"></div>
+          <div class="lst-scenes" id="lst-scenes" role="radiogroup" aria-label="Landsat scenes"></div>
+          <button class="lst-btn lst-btn-primary" id="lst-calculate" disabled>Calculate LST for this view</button>
+          <div class="lst-status" id="lst-status" role="status"></div>
+        </div>
+
+        <!-- SVF TOOL — Sky-view factor from the DSM for the area in view
+             (core/static/js/SvfTool.js, physicalEnv/views.py). Same look as the
+             LST card, so it reuses its lst-* classes. -->
+        <div class="lst-card" id="svf-card"
+             data-info-url="{% url 'physicalEnv:svf_info' %}"
+             data-calculate-url="{% url 'physicalEnv:svf_calculate' %}"
+             data-can-calculate="{{ user.is_staff|yesno:'1,0' }}">
+          {% csrf_token %}
+          <div class="lst-card-header">
+            <div class="lst-card-title">SKY VIEW FACTOR</div>
+            <button class="lst-card-close" id="svf-card-close" aria-label="Close SVF tool">✕</button>
+          </div>
+          <p class="lst-card-hint">Horizon search over the Digital Surface Model, for the area in view only (plus one search radius around it).</p>
+          <div class="lst-card-fields">
+            <label>Radius
+              <select id="svf-radius">
+                <option value="25">25 m</option>
+                <option value="50" selected>50 m</option>
+                <option value="100">100 m</option>
+                <option value="200">200 m</option>
+              </select>
+            </label>
+            <label>Cell
+              <select id="svf-resolution">
+                <option value="" selected>DSM</option>
+                <option value="1">1 m</option>
+                <option value="2">2 m</option>
+                <option value="5">5 m</option>
+              </select>
+            </label>
+          </div>
+          <div class="lst-view-info" id="svf-view-info"></div>
+          <button class="lst-btn lst-btn-primary" id="svf-calculate" disabled>Calculate SVF for this view</button>
+          <div class="lst-status" id="svf-status" role="status"></div>
+        </div>
+
+        <!-- DEGREE OF URBANISATION — GHSL/Eurostat classes on 100 m cells (local
+             variant) and 1 km cells (original method) from neighborhood population
+             spread over residential properties (core/static/js/DegurbaTool.js,
+             builtup/views_degurba.py, docs/DEGREE_OF_URBANISATION.md). -->
+        <div class="lst-card" id="degurba-card"
+             data-info-url="{% url 'builtup:degurba_info' %}"
+             data-calculate-url="{% url 'builtup:degurba_calculate' %}"
+             data-can-calculate="{{ user.is_staff|yesno:'1,0' }}">
+          {% csrf_token %}
+          <div class="lst-card-header">
+            <div class="lst-card-title">DEGREE OF URBANISATION</div>
+            <button class="lst-card-close" id="degurba-card-close" aria-label="Close Degree of Urbanisation tool">✕</button>
+          </div>
+          <p class="lst-card-hint">Neighborhood population spread over residential properties, classified with the GHSL rules. 100 m uses a 300 m window over settlement land so city edges stay sharp; 1 km is the original method on the same data.</p>
+          <div class="lst-card-fields">
+            <label>Grid
+              <select id="degurba-resolution">
+                <option value="100" selected>100 m (local)</option>
+                <option value="1000">1 km (original)</option>
+              </select>
+            </label>
+          </div>
+          <div class="lst-view-info" id="degurba-view-info"></div>
+          <div class="lst-view-info" id="degurba-cities"></div>
+          <button class="lst-btn lst-btn-primary" id="degurba-calculate" disabled>Build the grid</button>
+          <div class="lst-status" id="degurba-status" role="status"></div>
+        </div>
+
+        <!-- THERMAL COMFORT TOOL — SOLWEIG Tmrt, UTCI and PET for the area in view
+             and one hour (core/static/js/SolweigTool.js, urban_heat/solweig/,
+             docs/THERMAL_COMFORT.md). Reuses the LST card's lst-* classes. -->
+        <div class="lst-card" id="solweig-card"
+             data-info-url="{% url 'urban_heat:solweig_info' %}"
+             data-met-url="{% url 'urban_heat:solweig_met' %}"
+             data-calculate-url="{% url 'urban_heat:solweig_calculate' %}"
+             data-run-url="{% url 'urban_heat:solweig_run' 0 %}"
+             data-stale-url="{% url 'urban_heat:solweig_stale' %}"
+             data-can-calculate="{{ user.is_staff|yesno:'1,0' }}">
+          {% csrf_token %}
+          <div class="lst-card-header">
+            <div class="lst-card-title">THERMAL COMFORT (SOLWEIG)</div>
+            <button class="lst-card-close" id="solweig-card-close" aria-label="Close thermal comfort tool">✕</button>
+          </div>
+          <p class="lst-card-hint">Mean radiant temperature, UTCI and PET for the area in view at one hour. The sun position follows the view.</p>
+          <div class="lst-card-fields">
+            <label>Date <input type="date" id="solweig-date"></label>
+            <label>Hour
+              <select id="solweig-hour"></select>
+            </label>
+            <label>Cell
+              <select id="solweig-resolution">
+                <option value="1" selected>1 m</option>
+                <option value="2">2 m</option>
+                <option value="5">5 m</option>
+              </select>
+            </label>
+          </div>
+          <div class="lst-card-fields met-source">
+            <label>Weather
+              <select id="solweig-source">
+                <option value="manual">Manual</option>
+                <option value="knmi" selected>Nearest KNMI station</option>
+                <option value="era5">ERA5</option>
+              </select>
+            </label>
+            <button class="lst-btn" id="solweig-fetch" type="button">Fetch</button>
+          </div>
+          <div class="lst-card-fields met-values">
+            <label>Air temp. °C <input type="number" id="solweig-ta_c" step="0.1" value="25"></label>
+            <label>RH % <input type="number" id="solweig-rh_pct" step="1" min="0" max="100" value="50"></label>
+            <label>Wind m/s <input type="number" id="solweig-wind_ms" step="0.1" min="0" value="2"></label>
+            <label>Wind dir. ° <input type="number" id="solweig-wind_dir_deg" step="1" min="0" max="360" value="240"></label>
+            <label>Kdown W/m² <input type="number" id="solweig-kdown_wm2" step="1" min="0" value="600"></label>
+            <label>Pressure kPa <input type="number" id="solweig-pressure_kpa" step="0.01" value="101.3"></label>
+          </div>
+          <div class="lst-card-fields met-values" title="The day's values for the urban heat island in PET; leave blank for PET without it">
+            <label>Day Tmax °C <input type="number" id="solweig-tmax_c" step="0.1"></label>
+            <label>Day Tmin °C <input type="number" id="solweig-tmin_c" step="0.1"></label>
+            <label>Day Kdown W/m² <input type="number" id="solweig-kdown_day_wm2" step="1" min="0"></label>
+            <label>Day wind m/s <input type="number" id="solweig-wind_day_ms" step="0.1" min="0"></label>
+          </div>
+          <div class="lst-view-info" id="solweig-met-info"></div>
+          <!-- PERSON PILL — who the PET is felt by: body, activity and clothing; clo is
+               the sum of the garments (urban_heat/calculations/person.py via
+               urban_heat/solweig/person/). The run stores the person; the heat
+               dashboard's PET card names it. -->
+          <div class="solweig-person">
+            <button type="button" class="person-pill" id="solweig-person-btn"
+                    aria-expanded="false" aria-controls="solweig-person-panel"
+                    title="Who the PET is felt by: body, activity and clothing">
+              <span class="person-pill-icon" aria-hidden="true">🧍</span>
+              <span class="person-pill-text" id="solweig-person-summary">PET reference person · 0.90 clo</span>
+              <span class="person-pill-edit">Person ▾</span>
+            </button>
+            <div class="person-panel" id="solweig-person-panel" hidden
+                 data-person-url="{% url 'urban_heat:solweig_person' %}">
+              <div class="lst-card-fields person-row">
+                <label>Person <select id="solweig-person-preset"></select></label>
+              </div>
+              <div class="lst-card-fields person-row">
+                <label>Age y <input type="number" id="solweig-person-age" step="1"></label>
+                <label>Sex <select id="solweig-person-sex"></select></label>
+                <label>Weight kg <input type="number" id="solweig-person-weight" step="1"></label>
+                <label>Height m <input type="number" id="solweig-person-height" step="0.01"></label>
+              </div>
+              <div class="lst-card-fields person-row person-activity">
+                <label>Activity <select id="solweig-person-activity"></select></label>
+                <label>Posture <select id="solweig-person-position"></select></label>
+              </div>
+              <div class="person-clothing">
+                <div class="person-clothing-head">
+                  <span>Clothing</span>
+                  <label class="person-clo" title="Icl = Σ Iclu of the ticked garments (ASHRAE 55). Without garments, type the clo.">
+                    clo <input type="number" id="solweig-person-clo" step="0.01" min="0" max="3">
+                  </label>
+                </div>
+                <div class="person-garments" id="solweig-person-garments"></div>
+              </div>
+              <div class="lst-view-info person-derived" id="solweig-person-derived"></div>
+            </div>
+          </div>
+          <!-- Shown while a KNMI'23 scenario is selected (Scenarios panel / year): the
+               weather above moved into it; Calculate then stores a scenario run. -->
+          <div class="lst-view-info solweig-scenario" id="solweig-scenario" hidden
+               data-scenario-met-url="{% url 'urban_heat:solweig_scenario_met' %}"
+               data-runs-url="{% url 'map:climate_runs' %}"></div>
+          <div class="lst-view-info" id="solweig-view-info"></div>
+          <button class="lst-btn lst-btn-primary" id="solweig-calculate" disabled>Calculate thermal comfort</button>
+          <div class="lst-status" id="solweig-status" role="status"></div>
+        </div>
+
+        {% if user.is_staff %}
       </div>
       <div class="side-panel-tagline">CROSSTWIN · URBAN DIGITAL TWIN</div>
     </div>
@@ -179,101 +414,6 @@
         <button class="population-panel-close" id="population-panel-close" aria-label="Close population panel">✕</button>
       </div>
       <div class="population-panel-body" id="population-panel-body"></div>
-    </div>
-
-    <!-- LST TOOL — Land Surface Temperature for the area in view
-         (core/static/js/LstTool.js, urban_heat/lst/views.py). -->
-    <div class="lst-card" id="lst-card"
-         data-scenes-url="{% url 'urban_heat:lst_scenes' %}"
-         data-calculate-url="{% url 'urban_heat:lst_calculate' %}"
-         data-can-calculate="{{ user.is_staff|yesno:'1,0' }}">
-      {% csrf_token %}
-      <div class="lst-card-header">
-        <div class="lst-card-title">LAND SURFACE TEMPERATURE</div>
-        <button class="lst-card-close" id="lst-card-close" aria-label="Close LST tool">✕</button>
-      </div>
-      <p class="lst-card-hint">Landsat 9 thermal band and the NDVI layer (Statistical Mono-Window), for the area in view.</p>
-      <div class="lst-card-fields">
-        <label>From <input type="date" id="lst-from"></label>
-        <label>To <input type="date" id="lst-to"></label>
-        <label>Cell
-          <select id="lst-resolution">
-            <option value="30" selected>30 m</option>
-            <option value="60">60 m</option>
-            <option value="100">100 m</option>
-          </select>
-        </label>
-      </div>
-      <label class="lst-check"><input type="checkbox" id="lst-use-ndvi" checked> Emissivity from the NDVI layer</label>
-      <button class="lst-btn" id="lst-find">Find scenes for this view</button>
-      <div class="lst-view-info" id="lst-view-info"></div>
-      <div class="lst-scenes" id="lst-scenes" role="radiogroup" aria-label="Landsat scenes"></div>
-      <button class="lst-btn lst-btn-primary" id="lst-calculate" disabled>Calculate LST for this view</button>
-      <div class="lst-status" id="lst-status" role="status"></div>
-    </div>
-
-    <!-- SVF TOOL — Sky-view factor from the DSM for the area in view
-         (core/static/js/SvfTool.js, physicalEnv/views.py). Same look as the
-         LST card, so it reuses its lst-* classes. -->
-    <div class="lst-card" id="svf-card"
-         data-info-url="{% url 'physicalEnv:svf_info' %}"
-         data-calculate-url="{% url 'physicalEnv:svf_calculate' %}"
-         data-can-calculate="{{ user.is_staff|yesno:'1,0' }}">
-      {% csrf_token %}
-      <div class="lst-card-header">
-        <div class="lst-card-title">SKY VIEW FACTOR</div>
-        <button class="lst-card-close" id="svf-card-close" aria-label="Close SVF tool">✕</button>
-      </div>
-      <p class="lst-card-hint">Horizon search over the Digital Surface Model, for the area in view only (plus one search radius around it).</p>
-      <div class="lst-card-fields">
-        <label>Radius
-          <select id="svf-radius">
-            <option value="25">25 m</option>
-            <option value="50" selected>50 m</option>
-            <option value="100">100 m</option>
-            <option value="200">200 m</option>
-          </select>
-        </label>
-        <label>Cell
-          <select id="svf-resolution">
-            <option value="" selected>DSM</option>
-            <option value="1">1 m</option>
-            <option value="2">2 m</option>
-            <option value="5">5 m</option>
-          </select>
-        </label>
-      </div>
-      <div class="lst-view-info" id="svf-view-info"></div>
-      <button class="lst-btn lst-btn-primary" id="svf-calculate" disabled>Calculate SVF for this view</button>
-      <div class="lst-status" id="svf-status" role="status"></div>
-    </div>
-
-    <!-- DEGREE OF URBANISATION — GHSL/Eurostat classes on 100 m cells (local
-         variant) and 1 km cells (original method) from neighborhood population
-         spread over residential properties (core/static/js/DegurbaTool.js,
-         builtup/views_degurba.py, docs/DEGREE_OF_URBANISATION.md). -->
-    <div class="lst-card" id="degurba-card"
-         data-info-url="{% url 'builtup:degurba_info' %}"
-         data-calculate-url="{% url 'builtup:degurba_calculate' %}"
-         data-can-calculate="{{ user.is_staff|yesno:'1,0' }}">
-      {% csrf_token %}
-      <div class="lst-card-header">
-        <div class="lst-card-title">DEGREE OF URBANISATION</div>
-        <button class="lst-card-close" id="degurba-card-close" aria-label="Close Degree of Urbanisation tool">✕</button>
-      </div>
-      <p class="lst-card-hint">Neighborhood population spread over residential properties, classified with the GHSL rules. 100 m uses a 300 m window over settlement land so city edges stay sharp; 1 km is the original method on the same data.</p>
-      <div class="lst-card-fields">
-        <label>Grid
-          <select id="degurba-resolution">
-            <option value="100" selected>100 m (local)</option>
-            <option value="1000">1 km (original)</option>
-          </select>
-        </label>
-      </div>
-      <div class="lst-view-info" id="degurba-view-info"></div>
-      <div class="lst-view-info" id="degurba-cities"></div>
-      <button class="lst-btn lst-btn-primary" id="degurba-calculate" disabled>Build the grid</button>
-      <div class="lst-status" id="degurba-status" role="status"></div>
     </div>
 
     <!-- NEIGHBOURHOOD GENERATOR — outline -> streets, plots, buildings
@@ -362,110 +502,6 @@
       <div class="lst-status" id="generator-status" role="status"></div>
     </div>
 
-    <!-- THERMAL COMFORT TOOL — SOLWEIG Tmrt, UTCI and PET for the area in view
-         and one hour (core/static/js/SolweigTool.js, urban_heat/solweig/,
-         docs/THERMAL_COMFORT.md). Reuses the LST card's lst-* classes. -->
-    <div class="lst-card" id="solweig-card"
-         data-info-url="{% url 'urban_heat:solweig_info' %}"
-         data-met-url="{% url 'urban_heat:solweig_met' %}"
-         data-calculate-url="{% url 'urban_heat:solweig_calculate' %}"
-         data-run-url="{% url 'urban_heat:solweig_run' 0 %}"
-         data-stale-url="{% url 'urban_heat:solweig_stale' %}"
-         data-can-calculate="{{ user.is_staff|yesno:'1,0' }}">
-      {% csrf_token %}
-      <div class="lst-card-header">
-        <div class="lst-card-title">THERMAL COMFORT (SOLWEIG)</div>
-        <button class="lst-card-close" id="solweig-card-close" aria-label="Close thermal comfort tool">✕</button>
-      </div>
-      <p class="lst-card-hint">Mean radiant temperature, UTCI and PET for the area in view at one hour. The sun position follows the view.</p>
-      <div class="lst-card-fields">
-        <label>Date <input type="date" id="solweig-date"></label>
-        <label>Hour
-          <select id="solweig-hour"></select>
-        </label>
-        <label>Cell
-          <select id="solweig-resolution">
-            <option value="1" selected>1 m</option>
-            <option value="2">2 m</option>
-            <option value="5">5 m</option>
-          </select>
-        </label>
-      </div>
-      <div class="lst-card-fields met-source">
-        <label>Weather
-          <select id="solweig-source">
-            <option value="manual">Manual</option>
-            <option value="knmi" selected>Nearest KNMI station</option>
-            <option value="era5">ERA5</option>
-          </select>
-        </label>
-        <button class="lst-btn" id="solweig-fetch" type="button">Fetch</button>
-      </div>
-      <div class="lst-card-fields met-values">
-        <label>Air temp. °C <input type="number" id="solweig-ta_c" step="0.1" value="25"></label>
-        <label>RH % <input type="number" id="solweig-rh_pct" step="1" min="0" max="100" value="50"></label>
-        <label>Wind m/s <input type="number" id="solweig-wind_ms" step="0.1" min="0" value="2"></label>
-        <label>Wind dir. ° <input type="number" id="solweig-wind_dir_deg" step="1" min="0" max="360" value="240"></label>
-        <label>Kdown W/m² <input type="number" id="solweig-kdown_wm2" step="1" min="0" value="600"></label>
-        <label>Pressure kPa <input type="number" id="solweig-pressure_kpa" step="0.01" value="101.3"></label>
-      </div>
-      <div class="lst-card-fields met-values" title="The day's values for the urban heat island in PET; leave blank for PET without it">
-        <label>Day Tmax °C <input type="number" id="solweig-tmax_c" step="0.1"></label>
-        <label>Day Tmin °C <input type="number" id="solweig-tmin_c" step="0.1"></label>
-        <label>Day Kdown W/m² <input type="number" id="solweig-kdown_day_wm2" step="1" min="0"></label>
-        <label>Day wind m/s <input type="number" id="solweig-wind_day_ms" step="0.1" min="0"></label>
-      </div>
-      <div class="lst-view-info" id="solweig-met-info"></div>
-      <!-- PERSON PILL — who the PET is felt by: body, activity and clothing; clo is
-           the sum of the garments (urban_heat/calculations/person.py via
-           urban_heat/solweig/person/). The run stores the person; the heat
-           dashboard's PET card names it. -->
-      <div class="solweig-person">
-        <button type="button" class="person-pill" id="solweig-person-btn"
-                aria-expanded="false" aria-controls="solweig-person-panel"
-                title="Who the PET is felt by: body, activity and clothing">
-          <span class="person-pill-icon" aria-hidden="true">🧍</span>
-          <span class="person-pill-text" id="solweig-person-summary">PET reference person · 0.90 clo</span>
-          <span class="person-pill-edit">Person ▾</span>
-        </button>
-        <div class="person-panel" id="solweig-person-panel" hidden
-             data-person-url="{% url 'urban_heat:solweig_person' %}">
-          <div class="lst-card-fields person-row">
-            <label>Person <select id="solweig-person-preset"></select></label>
-          </div>
-          <div class="lst-card-fields person-row">
-            <label>Age y <input type="number" id="solweig-person-age" step="1"></label>
-            <label>Sex <select id="solweig-person-sex"></select></label>
-            <label>Weight kg <input type="number" id="solweig-person-weight" step="1"></label>
-            <label>Height m <input type="number" id="solweig-person-height" step="0.01"></label>
-          </div>
-          <div class="lst-card-fields person-row person-activity">
-            <label>Activity <select id="solweig-person-activity"></select></label>
-            <label>Posture <select id="solweig-person-position"></select></label>
-          </div>
-          <div class="person-clothing">
-            <div class="person-clothing-head">
-              <span>Clothing</span>
-              <label class="person-clo" title="Icl = Σ Iclu of the ticked garments (ASHRAE 55). Without garments, type the clo.">
-                clo <input type="number" id="solweig-person-clo" step="0.01" min="0" max="3">
-              </label>
-            </div>
-            <div class="person-garments" id="solweig-person-garments"></div>
-          </div>
-          <div class="lst-view-info person-derived" id="solweig-person-derived"></div>
-        </div>
-      </div>
-      <!-- Shown while a KNMI'23 scenario is selected (Scenarios panel / year): the
-           weather above moved into it; Calculate then stores a scenario run. -->
-      <div class="lst-view-info solweig-scenario" id="solweig-scenario" hidden
-           data-scenario-met-url="{% url 'urban_heat:solweig_scenario_met' %}"
-           data-runs-url="{% url 'map:climate_runs' %}"></div>
-      <div class="lst-view-info" id="solweig-view-info"></div>
-      <button class="lst-btn lst-btn-primary" id="solweig-calculate" disabled>Calculate thermal comfort</button>
-      <div class="lst-status" id="solweig-status" role="status"></div>
-    </div>
-
-    {% if user.is_staff %}
     <!-- MAP SETTINGS — editable layers and styles (staff; core/static/js/MapSettings.js,
          mainMap/settings_views.py). Opened from the header's Map settings button;
          reuses the LST card's lst-* look. -->
@@ -603,7 +639,6 @@
                 aria-haspopup="true" aria-expanded="false" aria-controls="actions-menu">
           <span class="bi bi-sliders"></span> Actions
           <span class="actions-menu-caret">▴</span>
-          <span class="stale-dot" hidden title="Buildings changed in this view: recalculate SVF / thermal comfort"></span>
         </button>
       </div>
 
@@ -638,24 +673,6 @@
         <span class="actions-title">CALCULATE FOR THIS VIEW</span>
       </div>
       <div class="actions-menu-row actions-menu-grid">
-        <button class="action-panel-btn" id="lstToolBtn">
-          <span class="bi bi-thermometer-sun"></span>
-          <span class="action-btn-text">Land Surface Temperature</span>
-        </button>
-        <button class="action-panel-btn" id="svfToolBtn">
-          <span class="bi bi-brightness-high"></span>
-          <span class="action-btn-text">Sky View Factor</span>
-          <span class="stale-dot" hidden title="Buildings changed here since the SVF was calculated: run it again"></span>
-        </button>
-        <button class="action-panel-btn" id="solweigToolBtn">
-          <span class="bi bi-person-walking"></span>
-          <span class="action-btn-text">Thermal Comfort (SOLWEIG)</span>
-          <span class="stale-dot" hidden title="Buildings changed here since thermal comfort was calculated: run it again"></span>
-        </button>
-        <button class="action-panel-btn" id="degurbaToolBtn">
-          <span class="bi bi-buildings"></span>
-          <span class="action-btn-text">Degree of Urbanisation</span>
-        </button>
         <button class="action-panel-btn" id="generatorToolBtn">
           <span class="bi bi-grid-3x3"></span>
           <span class="action-btn-text">Neighbourhood generator</span>

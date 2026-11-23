@@ -35,6 +35,7 @@ function initializeUI() {
     // Groundwater WMS toggle
     if (tool === 'groundwater') toggleGroundwaterLayer();
 
+    panelTab = 'summary';   // a new lens starts on its Summary tab (Panels.js)
     if (lens) openLens(tool); else closeLens();
 
     if (!lens) {
@@ -51,6 +52,12 @@ function initializeUI() {
   });
 
   document.getElementById('btn-all-layers')?.addEventListener('click', toggleLayersDrawer);
+
+  // "Show on map" on an indicator card (Layers.js::focusCardLayers)
+  document.addEventListener('click', (evt) => {
+    const btn = evt.target.closest?.('.show-on-map');
+    if (btn) focusCardLayers(btn);
+  });
 
   // ---- Panel close buttons ----------------------------------------------
   document.getElementById('panel-close')?.addEventListener('click', () => {
@@ -138,23 +145,6 @@ function initializeUI() {
   // The population dock is independent of the side panel: an indicator
   // panel stays open while it is shown.
   populationPill?.addEventListener('click', togglePopulationPanel);
-
-  // ---- Status strip centring ---------------------------------------------
-  // The strip stays centred in the part of the map the side panel leaves free.
-  const syncStripCentre = () => {
-    const wrapper = document.querySelector('.map-wrapper');
-    if (!wrapper) return;
-    // Below 768 px the side panel spans the width: keep the strip centred
-    const free = sidePanel?.classList.contains('visible') && window.matchMedia('(min-width: 769px)').matches
-      ? sidePanel.getBoundingClientRect().left - wrapper.getBoundingClientRect().left
-      : wrapper.clientWidth;
-    document.documentElement.style.setProperty('--strip-centre', `${Math.round(free / 2)}px`);
-  };
-  if (sidePanel) {
-    new MutationObserver(syncStripCentre).observe(sidePanel, { attributes: true, attributeFilter: ['class'] });
-  }
-  window.addEventListener('resize', syncStripCentre);
-  syncStripCentre();
 
   // ---- Legend stack repositioning ---------------------------------------
   // The legend stack (bottom-right) must dodge the side panel and the

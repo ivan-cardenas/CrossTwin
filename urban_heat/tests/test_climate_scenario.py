@@ -163,6 +163,28 @@ class ScenarioHeatTests(TestCase):
             self._queued_runs(start_run)
         self.assertEqual(get_thermal_indices(self.city)["utci"]["mean"], 30.0)   # observed Ta 25 + 5
 
+    def test_show_on_map_gets_the_observed_raster_behind_the_number(self, *_):
+        """A scenario raster keeps the observed hour as date_time and has a higher
+        id, so "newest" would pick it; the card's map raster is the observed row."""
+        from urban_heat.calculations.indicators import get_thermal_indices
+        from urban_heat.models import UTCI
+        from urban_heat.views import _build_indicators
+
+        observed = self._observed_run()
+        with mock.patch("urban_heat.solweig.pipeline.solweig_available", return_value=True), \
+                mock.patch("urban_heat.solweig.pipeline.start_run") as start_run:
+            run = self.make_run("2100_Hd", "warmest")
+            self._queued_runs(start_run)
+        scenario = UTCI.objects.get(climate_run=run)
+        self.assertGreater(scenario.pk, observed.utci_id)
+        self.assertEqual(scenario.date_time, UTCI.objects.get(pk=observed.utci_id).date_time)
+
+        indices = get_thermal_indices(self.city)
+        self.assertEqual(indices["utci"]["id"], observed.utci_id)
+        indicators = _build_indicators({"thermal": indices})
+        self.assertEqual(indicators["map_raster"]["utci"], observed.utci_id)
+        self.assertEqual(indicators["map_raster"]["pet"], observed.pet_id)
+
     def test_card_reads_tmrt_pet_and_utci_from_one_run(self, *_):
         """Tmrt, PET and UTCI describe the same hour: the latest run of equal extent."""
         from datetime import timedelta

@@ -167,3 +167,34 @@ already so with the old tool buttons.
 
 Seen while testing: with a scenario chosen and the Heat lens open, the weather pill
 still shows its own scenario badge next to the time chip (same information twice).
+
+## Step 4 — the same tabs in every lens panel (done 23 Nov 2026)
+
+Choices (asked): Summary = four headline cards + "All indicators and what-ifs"; What-if =
+sliders + every card (slider effects stay visible); a lens with cards opens with vector
+layers only, rasters come with Show on map.
+
+- Tabs *Summary / What-if / Calculate* in the side panel header for the Water, Heat,
+  Housing and Built-up panels (`Panels.js::setPanelTab`). Calculate only where the lens has
+  tools: Heat (LST, SVF, Thermal comfort), Built-up (Degree of urbanisation).
+- Headline cards (`.is-headline`): Water — supply vs demand, supply security, non-revenue
+  water, groundwater recharge; Heat — LST, PET, UTCI, vegetation; Housing — supply coverage,
+  affordability, affordability stress, new units; Built-up — coverage, building stock,
+  degree of urbanisation, park area.
+- *Show on map* on every card with a layer behind it (26 cards; affordability, affordability
+  stress, service time, OPEX and a few market cards have none). It focuses the map on that
+  card's layers; the newest raster of a raster model. Pressed again: back to the lens.
+- The four tool cards moved from the Actions menu into `#panel-calculate` (not draggable
+  any more). The generator stays in the Actions menu until Edit mode (step 5). The stale
+  SVF / thermal comfort dot moved from the Actions button to the Heat rail button.
+- Standalone dashboards render the same grid partials; they have no map, so no Show on
+  map, and no tabs (everything shown, as before).
+
+Fixed on the way: the Heat lens no longer opens with nine raster legends.
+
+Follow-up (asked): "newest raster by id" could show a climate scenario map under an observed
+number (scenario rasters keep the observed hour as `date_time` and have higher ids, so a date
+rule would not exclude them either). The heat cards now pass the exact raster row their number
+was read from (`_raster_stats_sql` returns its `id`, `views._build_indicators` → `map_raster`);
+no raster behind the number, no button. Pinned by
+`test_show_on_map_gets_the_observed_raster_behind_the_number` and `core/tests/test_show_on_map.py`.

@@ -988,6 +988,81 @@ function shownLayerKeys() {
   return new Set(Object.keys(loadedLayers).filter(key => layerVisibility[key] !== false));
 }
 
+function layerModelKey(layer) {
+  return `${layer.app_label}.${layer.model_name}`;
+}
+
+/**
+ * Whether an open lens shows a catalog layer. A lens with indicator cards
+ * (a `panel`) opens with its vector layers only: its rasters come one at a
+ * time with a card's "Show on map" (focusCardLayers). A lens without cards
+ * shows all of its layers.
+ */
+function lensShows(layer, toolId) {
+  const lens = LENSES[toolId];
+  if (!lens || !lens.apps.includes(layer.app_label)) return false;
+  return !(lens.panel && (layer.layer_type === 'raster' || layer.layer_type === 'wms'));
+}
+
+// "Show on map" (Templates/partials/_show_on_map.html): the pressed card
+// button's focus key (showOnMapKey), or null. Reset when a lens opens or closes.
+let cardFocus = null;
+
+function showOnMapKey(btn) {
+  return `${btn.dataset.layers}#${btn.dataset.rasterId || ''}`;
+}
+
+function syncShowOnMapButtons() {
+  document.querySelectorAll('.show-on-map').forEach(btn =>
+    btn.setAttribute('aria-pressed', String(showOnMapKey(btn) === cardFocus)));
+}
+
+/**
+ * Show the layers behind a card's number, and of the data only those (the
+ * administrative units stay, they select the unit). With a raster id (the
+ * heat cards) exactly that raster row; a raster model without one shows its
+ * newest row (highest raster_id). Pressing the same card again returns to
+ * the lens's own layers.
+ */
+function focusCardLayers(btn) {
+  const spec = btn?.dataset.layers;
+  const rasterId = btn?.dataset.rasterId ? Number(btn.dataset.rasterId) : null;
+  const key = btn ? showOnMapKey(btn) : null;
+  if (!spec || key === cardFocus) {
+    cardFocus = null;
+    if (LENSES[activeTool]) {
+      availableLayers.forEach(layer => {
+        if (!isWeatherPillLayer(layer)) setLayerShown(layer.key, lensShows(layer, activeTool));
+      });
+    }
+    syncShowOnMapButtons();
+    return;
+  }
+  cardFocus = key;
+  const models = spec.split(',');
+  const newest = {};
+  availableLayers.forEach(layer => {
+    const model = layerModelKey(layer);
+    if (layer.layer_type !== 'raster' || !models.includes(model)) return;
+    if (rasterId !== null) {
+      if (layer.raster_id === rasterId) newest[model] = layer;
+    } else if (!newest[model] || (layer.raster_id || 0) > (newest[model].raster_id || 0)) {
+      newest[model] = layer;
+    }
+  });
+  availableLayers.forEach(layer => {
+    if (isWeatherPillLayer(layer)) return;
+    const model = layerModelKey(layer);
+    const shown = layer.app_label === 'administrative'
+      || (models.includes(model) && (layer.layer_type !== 'raster' || newest[model] === layer));
+    setLayerShown(layer.key, shown);
+  });
+  syncShowOnMapButtons();
+}
+
+// The grids re-render on every slider move: keep the pressed card pressed.
+document.addEventListener('htmx:afterSwap', syncShowOnMapButtons);
+
 /**
  * Open a lens: only its layers on (their legends follow toggleLayerVisibility),
  * the layers panel filtered to them, the basemap greyed.
@@ -997,9 +1072,10 @@ function openLens(toolId) {
   if (!apps) return closeLens();
   if (lensRestoreKeys === null) lensRestoreKeys = shownLayerKeys();
   activeTool = toolId;
+  cardFocus = null;
   availableLayers.forEach(layer => {
     if (isWeatherPillLayer(layer)) return;
-    setLayerShown(layer.key, apps.includes(layer.app_label));
+    setLayerShown(layer.key, lensShows(layer, toolId));
   });
   filterLayersByLens(toolId);
   syncLensDim();
@@ -1008,6 +1084,7 @@ function openLens(toolId) {
 /** Back to Overview (no lens): the layers shown before the first lens return. */
 function closeLens() {
   activeTool = 'overview';
+  cardFocus = null;
   if (lensRestoreKeys !== null) {
     const restore = lensRestoreKeys;
     lensRestoreKeys = null;
@@ -1026,10 +1103,9 @@ function closeLens() {
  * fetch, Layers.js::loadLayerCatalog) follow the lens like the others.
  */
 function applyLensToNewLayers(layers) {
-  const apps = lensApps(activeTool);
-  if (!apps) return;
+  if (!lensApps(activeTool) || cardFocus) return;
   layers.forEach(layer => {
-    if (!isWeatherPillLayer(layer)) setLayerShown(layer.key, apps.includes(layer.app_label));
+    if (!isWeatherPillLayer(layer)) setLayerShown(layer.key, lensShows(layer, activeTool));
   });
 }
 

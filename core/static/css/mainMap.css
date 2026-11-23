@@ -860,6 +860,111 @@
 }
 
 .side-panel-body p + p { margin-top: 6px; }
+.side-panel-body[hidden] { display: none; }
+
+/* ---- Lens panel tabs (Map simplification step 4; Panels.js::setPanelTab) ----
+   Summary / What-if filter the same partial; Calculate swaps in
+   #panel-calculate. The side panel carries the tab as data-tab. */
+.panel-tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--border-ui);
+}
+.panel-tabs[hidden] { display: none; }
+
+.panel-tab {
+    flex: 1;
+    padding: 8px 6px 7px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    background: transparent;
+    color: var(--text-tertiary);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.panel-tab[hidden] { display: none; }
+.panel-tab:hover { color: var(--text-main); }
+.panel-tab[aria-selected="true"] { color: var(--text-main); border-bottom-color: var(--accent); }
+.panel-tab:focus-visible { outline: 2px solid var(--border-ui-strong); outline-offset: -2px; }
+
+/* Summary: the headline cards (.is-headline in the grids), no sliders */
+.side-panel[data-tab="summary"] .lens-panel .whatif-only,
+.side-panel[data-tab="summary"] .lens-panel .card:not(.is-headline) { display: none; }
+
+.summary-more {
+    display: none;
+    width: 100%;
+    margin-top: 10px;
+    padding: 8px 10px;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: 1px solid var(--border-ui);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.summary-more:hover { color: var(--text-main); background: var(--bg-raised); }
+.side-panel[data-tab="summary"] .summary-more { display: flex; }
+
+/* Calculate tab: the lens's tools; their cards open in the panel's flow */
+.calc-intro { margin: 4px 0 10px; font-size: 12px; color: var(--text-secondary); }
+.calc-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.calc-tool-btn[hidden] { display: none; }
+.calc-tool-btn.is-wide { grid-column: 1 / -1; }   /* an odd last tool spans both columns (Panels.js) */
+
+.panel-calculate .lst-card {
+    position: static;
+    width: auto;
+    max-width: none;
+    max-height: none;
+    overflow: visible;
+    margin-top: 12px;
+    padding: 10px 0 0;
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+    border: 0;
+    border-top: 1px solid var(--border-ui);
+    border-radius: 0;
+    z-index: auto;
+}
+.panel-calculate .lst-card-header,
+.panel-calculate .lst-card-header:active { cursor: default; }
+
+/* "Show on map" on an indicator card (Templates/partials/_show_on_map.html) */
+.show-on-map {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    margin-left: 4px;
+    flex: none;
+    border: 1px solid var(--border-ui);
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-tertiary);
+    font-size: 11px;
+    cursor: pointer;
+}
+.show-on-map:hover { color: var(--text-main); border-color: var(--border-ui-strong); }
+.show-on-map[aria-pressed="true"] {
+    color: var(--accent);
+    border-color: rgba(var(--accent-rgb), 0.5);
+    background: rgba(var(--accent-rgb), 0.12);
+}
+
+/* Stale results of a lens's tools (SolweigTool.js), on its rail button */
+.tool-button .stale-dot { position: absolute; top: 4px; right: 4px; margin: 0; }
 
 .side-panel-tagline {
     margin-top: 8px;
@@ -1065,6 +1170,34 @@
 }
 
 .camera-btn:hover { color: var(--text-main); }
+
+/* Bottom-bar buttons (Layers, Actions, Dashboard): the same glass pill as the
+   camera tools, so they stay readable over any basemap. */
+.mode-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: var(--overlay-bg);
+    backdrop-filter: var(--overlay-blur);
+    -webkit-backdrop-filter: var(--overlay-blur);
+    box-shadow: var(--overlay-shadow);
+    border: 1px solid var(--border-ui);
+    color: var(--text-main);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+.mode-btn:hover { background: var(--bg-raised); }
+.mode-btn.active {
+    background: rgba(var(--accent-rgb), 0.12);
+    border-color: rgba(var(--accent-rgb), 0.35);
+}
+.mode-btn:focus-visible { outline: 2px solid var(--border-ui-strong); outline-offset: 2px; }
 
 /* ============================================================
    ONBOARDING HINT
@@ -1486,7 +1619,7 @@
 .status-strip {
     position: absolute;
     top: 12px;
-    left: var(--strip-centre, 50%);   /* Events.js: centred in the map left of the side panel */
+    left: 50%;   /* always centred on the map, whether or not a side panel is open */
     transform: translateX(-50%);
     z-index: 10;
     display: flex;

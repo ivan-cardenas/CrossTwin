@@ -1,6 +1,6 @@
 // ============================================================
 // SvfTool.js — Sky-view factor from the DSM for the area in view.
-// Opened from the Actions menu (#svfToolBtn). Asks the server what the view
+// Opened from the Heat lens's Calculate tab (#svfToolBtn). Asks the server what the view
 // would compute (GET physicalEnv/svf/info/: DSM, grid size, existing SVF),
 // then computes and stores one SVF raster over the view only
 // (POST physicalEnv/svf/calculate/) and shows it as a map layer. The button
@@ -189,9 +189,6 @@
     };
     openBtn.addEventListener('click', watchView);
 
-    if (typeof makeDraggable === 'function' && window.matchMedia('(min-width: 769px)').matches) {
-      makeDraggable(card, '.lst-card-header');
-    }
   }
 
   document.addEventListener('DOMContentLoaded', init);

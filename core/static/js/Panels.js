@@ -431,3 +431,66 @@ document.addEventListener('climate-run-deleted', function (evt) {
     if (key && typeof removeLayer === 'function') removeLayer(key);
   });
 });
+
+// ── Lens panel tabs (Map simplification step 4) ─────────────────────────
+// A lens's indicator panel (#panel-body holding .lens-panel) gets three tabs:
+// Summary (headline cards), What-if (sliders + every card) and Calculate
+// (the lens's tools, Config.js::LENSES[].tools, in #panel-calculate). The
+// tab is kept while the panel re-renders (unit click, year) and reset to
+// Summary when another lens opens (Events.js). Any other content in the
+// side panel (Scenarios, Dashboard, an edit form) hides the tabs.
+let panelTab = 'summary';
+
+function lensToolIds() {
+  return (typeof LENSES !== 'undefined' && LENSES[activeTool]?.tools) || [];
+}
+
+function setPanelTab(tab) {
+  panelTab = tab;
+  syncPanelTabs();
+}
+
+function syncPanelTabs() {
+  const side = document.getElementById('side-panel');
+  const tabs = document.getElementById('panel-tabs');
+  const body = document.getElementById('panel-body');
+  const calc = document.getElementById('panel-calculate');
+  if (!side || !tabs || !body || !calc) return;
+
+  const tools = lensToolIds();
+  const lensPanel = !!body.querySelector('.lens-panel');
+  let tab = lensPanel ? panelTab : null;
+  if (tab === 'calculate' && !tools.length) tab = 'summary';
+
+  tabs.hidden = !lensPanel;
+  tabs.querySelectorAll('.panel-tab').forEach(btn => {
+    btn.setAttribute('aria-selected', String(btn.dataset.tab === tab));
+    if (btn.dataset.tab === 'calculate') btn.hidden = !tools.length;
+  });
+  if (tab) side.dataset.tab = tab; else delete side.dataset.tab;
+  body.hidden = tab === 'calculate';
+  calc.hidden = tab !== 'calculate';
+
+  // Only this lens's tools; a card of another lens's tool closes
+  const shown = [...calc.querySelectorAll('.calc-tool-btn')].filter(btn => {
+    btn.hidden = !tools.includes(btn.dataset.calcTool);
+    btn.classList.remove('is-wide');
+    return !btn.hidden;
+  });
+  if (shown.length % 2) shown[shown.length - 1].classList.add('is-wide');
+  calc.querySelectorAll('.lst-card').forEach(card => {
+    if (!tools.includes(card.id.replace(/-card$/, ''))) card.classList.remove('visible');
+  });
+}
+
+document.addEventListener('click', (evt) => {
+  const tab = evt.target.closest?.('.panel-tab, [data-panel-tab]');
+  if (tab) setPanelTab(tab.dataset.tab || tab.dataset.panelTab);
+});
+
+// Whatever replaces the panel's content (htmx swap, intro, edit form)
+document.addEventListener('DOMContentLoaded', () => {
+  const body = document.getElementById('panel-body');
+  if (body) new MutationObserver(syncPanelTabs).observe(body, { childList: true });
+  syncPanelTabs();
+});

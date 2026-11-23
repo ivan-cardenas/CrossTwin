@@ -74,14 +74,14 @@
   </div>
 
   <!-- ── LST ── -->
-  <div class="card gauge"
+  <div class="card is-headline gauge"
        data-gauge-val="{{ indicators.lst_pct }}"
        data-gauge-id="gauge-lst"
        data-gauge-display="{{ indicators.lst_mean }}">
     <div class="gauge-header">
       <div class="card-icon">🌡️</div>
       <div class="card-label">Land Surface Temp</div>
-      {% info_help "heat.lst" %}
+      {% info_help "heat.lst" %}{% include "partials/_show_on_map.html" with raster_model="urban_heat.LandSurfaceTemperature" raster=indicators.map_raster.lst label="land surface temperature" %}
     </div>
     <div class="gauge-body bottom">
       <svg viewBox="0 0 120 70" width="160" height="95" aria-hidden="true">
@@ -107,14 +107,14 @@
   </div>
 
   <!-- ── PET ── -->
-  <div class="card gauge"
+  <div class="card is-headline gauge"
        data-gauge-val="{{ indicators.pet_pct }}"
        data-gauge-id="gauge-pet"
        data-gauge-display="{{ indicators.pet_mean }}">
     <div class="gauge-header">
       <div class="card-icon">🧍</div>
       <div class="card-label">PET</div>
-      {% info_help "heat.pet" %}
+      {% info_help "heat.pet" %}{% include "partials/_show_on_map.html" with raster_model="urban_heat.PET" raster=indicators.map_raster.pet label="PET" %}
     </div>
     <div class="gauge-body bottom">
       <svg viewBox="0 0 120 70" width="160" height="95" aria-hidden="true">
@@ -151,14 +151,14 @@
   </div>
 
   <!-- ── UTCI ── -->
-  <div class="card gauge"
+  <div class="card is-headline gauge"
        data-gauge-val="{{ indicators.utci_pct }}"
        data-gauge-id="gauge-utci"
        data-gauge-display="{{ indicators.utci_mean }}">
     <div class="gauge-header">
       <div class="card-icon">🌤️</div>
       <div class="card-label">UTCI</div>
-      {% info_help "heat.utci" %}
+      {% info_help "heat.utci" %}{% include "partials/_show_on_map.html" with raster_model="urban_heat.UTCI" raster=indicators.map_raster.utci label="UTCI" %}
     </div>
     <div class="gauge-body bottom">
       <svg viewBox="0 0 120 70" width="160" height="95" aria-hidden="true">
@@ -196,7 +196,7 @@
     <div class="gauge-header">
       <div class="card-icon">🌡️</div>
       <div class="card-label">WBGT</div>
-      {% info_help "heat.wbgt" %}
+      {% info_help "heat.wbgt" %}{% include "partials/_show_on_map.html" with raster_model="urban_heat.WetBulbGlobeTemperature" raster=indicators.map_raster.wbgt label="WBGT" %}
     </div>
     <div class="gauge-body bottom">
       <svg viewBox="0 0 120 70" width="160" height="95" aria-hidden="true">
@@ -233,7 +233,7 @@
     <div class="gauge-header">
       <div class="card-icon">🔭</div>
       <div class="card-label">Sky View Factor</div>
-      {% info_help "heat.svf" %}
+      {% info_help "heat.svf" %}{% include "partials/_show_on_map.html" with raster_model="urban_heat.SkyViewFactor" raster=indicators.map_raster.svf label="sky view factor" %}
     </div>
     <div class="gauge-body" style="flex:1;display:flex;justify-content:center;align-items:center;">
       <svg viewBox="0 0 100 100" width="110" height="110" aria-hidden="true">
@@ -256,11 +256,11 @@
   </div>
 
   <!-- ── Vegetation Coverage ── -->
-  <div class="card c3 wide">
+  <div class="card is-headline c3 wide">
     <div class="gauge-header">
       <div class="card-icon">🌿</div>
       <div class="card-label">Vegetation Coverage</div>
-      {% info_help "heat.vegetation" %}
+      {% info_help "heat.vegetation" %}{% include "partials/_show_on_map.html" with layers="physicalEnv.LandCoverVector,nature.GreenSpaces,nature.Tree" label="vegetation coverage" %}
     </div>
     <div style="display:flex; align-items:baseline; gap:8px;">
       <div class="card-value">{{ indicators.vegetation_pct }}%</div>
@@ -295,7 +295,7 @@
     <div class="gauge-header">
       <div class="card-icon">🏗️</div>
       <div class="card-label">Urban Morphology</div>
-      {% info_help "heat.morphology" %}
+      {% info_help "heat.morphology" %}{% include "partials/_show_on_map.html" with layers="builtup.Building,builtup.StreetCanyon" label="urban morphology" %}
     </div>
     <div style="display:flex; gap:16px; flex-wrap:wrap;">
       <div>
@@ -333,7 +333,7 @@
     <div class="gauge-header">
       <div class="card-icon">🏙️</div>
       <div class="card-label">Heat Island (SUHII)</div>
-      {% info_help "heat.suhii" %}
+      {% info_help "heat.suhii" %}{% include "partials/_show_on_map.html" with raster_model="urban_heat.SurfaceUrbanHeatIslandIntensity" raster=indicators.map_raster.suhii label="heat island intensity" %}
     </div>
     <div>
       <div class="card-value">
@@ -358,7 +358,7 @@
     <div class="gauge-header">
       <div class="card-icon">🌳</div>
       <div class="card-label">Nature-Based Solutions</div>
-      {% info_help "heat.nbs" %}
+      {% info_help "heat.nbs" %}{% include "partials/_show_on_map.html" with layers="urban_heat.NatureBasedSolutionPoint,urban_heat.NatureBasedSolutionPolygon" label="nature-based solutions" %}
     </div>
     <div>
       <div class="card-value">{{ indicators.nbs_count }}</div>

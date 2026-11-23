@@ -1,6 +1,6 @@
 // ============================================================
 // SolweigTool.js — SOLWEIG thermal comfort (Tmrt, UTCI, PET) for the area in
-// view and one hour. Opened from the Actions menu (#solweigToolBtn).
+// view and one hour. Opened from the Heat lens's Calculate tab (#solweigToolBtn).
 //   GET  urban_heat/solweig/info/   DSM, grid, cell limit, sun position, device
 //   GET  urban_heat/solweig/met/    nearest KNMI station / ERA5 values (prefill)
 //   POST urban_heat/solweig/calculate/ -> a run in the background, polled at
@@ -296,7 +296,7 @@
     function showStale() {
       const svfDot = document.querySelector('#svfToolBtn .stale-dot');
       const thermalDot = openBtn.querySelector('.stale-dot');
-      const menuDot = document.querySelector('#actions-menu-btn .stale-dot');
+      const menuDot = document.querySelector('#toolbar [data-tool="temperature"] .stale-dot');
       if (svfDot) svfDot.hidden = !stale.svf.length;
       if (thermalDot) thermalDot.hidden = !stale.thermal.length;
       if (menuDot) menuDot.hidden = !(stale.svf.length || stale.thermal.length);
@@ -551,9 +551,6 @@
       map.once('idle', refreshStale);
     })();
 
-    if (typeof makeDraggable === 'function' && window.matchMedia('(min-width: 769px)').matches) {
-      makeDraggable(card, '.lst-card-header');
-    }
   }
 
   document.addEventListener('DOMContentLoaded', init);
