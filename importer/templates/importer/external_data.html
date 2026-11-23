@@ -121,10 +121,10 @@
         </div>
         <div class="px-5 py-4 space-y-3">
             <p id="sentinel-token-panel-notice" class="hidden text-xs text-rose-300 bg-rose-500/10 border border-rose-500/25 rounded-lg px-3 py-2"></p>
-            <input type="text" id="openeo-client-id-input"
+            <input type="text" id="openeo-client-id-input" autocomplete="off"
                    placeholder="Client ID (leave blank to use the server default)"
                    class="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200 placeholder-sky-300/50 font-mono focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/50 focus:outline-none">
-            <input type="password" id="openeo-client-secret-input"
+            <input type="password" id="openeo-client-secret-input" autocomplete="new-password"
                    placeholder="Client Secret (leave blank to use the server default)"
                    class="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200 placeholder-sky-300/50 font-mono focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/50 focus:outline-none">
             <p class="text-xs text-slate-250">
@@ -794,7 +794,10 @@ document.addEventListener('DOMContentLoaded', function () {
         // (see importer/external_data.py:fetch_openeo), so an empty panel is
         // fine — only complain about a half-filled pair, which is almost
         // certainly a mistake rather than "use the default".
-        if (openeoClientIdInput.value.trim() ? !openeoClientSecretInput.value.trim() : openeoClientSecretInput.value.trim()) {
+        // Only when an openEO dataset is selected: otherwise the panel is hidden
+        // and a browser's password autofill may have filled one field unseen.
+        const usesOpeneo = selected.some(k => catalog[k] && catalog[k].source === 'sentinel2' && catalog[k].requires_auth);
+        if (usesOpeneo && (openeoClientIdInput.value.trim() ? !openeoClientSecretInput.value.trim() : openeoClientSecretInput.value.trim())) {
             alert('Please enter both the openEO client ID and client secret, or leave both blank to use the server default.');
             (openeoClientIdInput.value.trim() ? openeoClientSecretInput : openeoClientIdInput).focus();
             return;
@@ -860,7 +863,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 payload.bbox = currentBbox;  // [west, south, east, north] WGS84
             }
 
-            if (openeoClientIdInput.value.trim() && openeoClientSecretInput.value.trim()) {
+            if (usesOpeneo && openeoClientIdInput.value.trim() && openeoClientSecretInput.value.trim()) {
                 payload.openeo_client_id = openeoClientIdInput.value.trim();
                 payload.openeo_client_secret = openeoClientSecretInput.value.trim();
             }

@@ -236,11 +236,41 @@ def _restore(dump_path, settings):
     list_path.write_text("\n".join(keep), encoding="utf-8")
 
     _say("INFO", f"pg_restore into '{settings['dbname']}' ...")
-    cmd = [pg_restore, *_connection_args(settings), "--no-owner", "--no-privileges",
-           "--exit-on-error", "-L", str(list_path), str(dump_path)]
-    if _run(cmd, settings).returncode != 0:
-        sys.exit("[ERROR] pg_restore failed (see above). The database may be half-filled: "
-                 "drop and re-create it before trying again.")
+    base = [pg_restore, *_connection_args(settings), "--no-owner", "--no-privileges",
+            "--exit-on-error", "-L", str(list_path)]
+    # Tables and rows first, constraints last: rows may point at users, whose
+    # rows are not in the package (PRIVATE_TABLES), so those references are
+    # cleared before the foreign keys are created.
+    for section in ("pre-data", "data", "post-data"):
+        if section == "post-data":
+            _clear_user_references(settings)
+        if _run([*base, f"--section={section}", str(dump_path)], settings).returncode != 0:
+            sys.exit("[ERROR] pg_restore failed (see above). The database may be half-filled: "
+                     "drop and re-create it before trying again.")
+
+
+def _clear_user_references(settings):
+    """Set every column that references auth_user to NULL (users are not packaged)."""
+    _django()
+    from django.apps import apps
+    from django.contrib.auth import get_user_model
+    from django.db import connection
+    user_model = get_user_model()
+    with connection.cursor() as cur:
+        for model in apps.get_models():
+            for field in model._meta.concrete_fields:
+                if field.is_relation and field.related_model is user_model:
+                    table = connection.ops.quote_name(model._meta.db_table)
+                    column = connection.ops.quote_name(field.column)
+                    if not field.null:
+                        cur.execute(f"SELECT EXISTS (SELECT 1 FROM {table} WHERE {column} IS NOT NULL)")
+                        if cur.fetchone()[0]:
+                            sys.exit(f"[ERROR] {model._meta.label}.{field.name} references a user and "
+                                     "is not nullable; its rows cannot be loaded without users.")
+                        continue
+                    cur.execute(f"UPDATE {table} SET {column} = NULL WHERE {column} IS NOT NULL")
+                    if cur.rowcount:
+                        _say("INFO", f"{model._meta.label}.{field.name}: cleared {cur.rowcount} user reference(s).")
 
 
 def _rewrite_cog_paths():
