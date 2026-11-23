@@ -88,80 +88,100 @@ const BASEMAPS = {
   outdoors:  'mapbox://styles/mapbox/outdoors-v12'
 };
 
-// 'administrative' (Province/City/District/Neighborhood) is included in
-// every tool's categories so the administrative boundaries used to select a
-// unit for the indicator panels stay clickable no matter which tool is active.
-const TOOL_CATEGORIES = {
-  overview:      ['administrative', 'urban_heat', 'watersupply', 'physicalEnv', 'weather', 'builtup', 'Energy', 'housing', 'nature', 'groundwater'],
-  administrative:['administrative'],
-  temperature:   ['administrative', 'temperature', 'weather', 'urban_heat'],
-  builtup:       ['administrative', 'builtup'],
-  energy:        ['administrative', 'Energy'],
-  housing:       ['administrative', 'housing'],
-  green:         ['administrative', 'nature', 'green', 'vegetation', 'trees', 'GreenSpaces', 'LandCover'],
-  physicalEnv:   ['administrative', 'physicalEnv'],
-  water:         ['administrative', 'watersupply'],
-  // groundwater:   ['administrative', 'groundwater'],
-  satellite:     null,
-};
+// ── LENSES (Map simplification step 2) ───────────────────────────────────
+// A topic is a lens: picking it shows only its layers and their legends,
+// greys the basemap (Map_init.js::syncLensDim) and opens its panel. Overview
+// is "no lens" and restores the layers that were on before the first lens
+// (Layers.js::openLens / closeLens). MapUI.js::renderLensRail draws the left
+// rail from this table, grouped by LENS_GROUPS in this order.
+//
+// Per lens (the key is the button's data-tool, which other code still reads:
+// ADMIN_PANEL_TOOLS, BUILDING_COLOR_BY_TOOL, TOOLS_WITHOUT_BASEMAP_TREES, the tour):
+//   group  LENS_GROUPS id;  label  rail text;  title  panel/layers title;  icon  Bootstrap Icon
+//   apps   app_labels whose catalog layers the lens shows. 'administrative'
+//          is in every lens so the units that drive the panels stay clickable.
+//   panel  (level, location) => indicator panel URL, follows the selected
+//          unit (mainMap.js::ADMIN_PANEL_TOOLS);  or intro: static panel HTML
+//   tools  ids of the "Calculate for this view" tools that belong to the lens
+//          (Actions menu buttons <id>ToolBtn); step 4 moves them into the panel.
+const LENS_GROUPS = [
+  { id: 'systems',     label: 'City systems' },
+  { id: 'people',      label: 'People' },
+  { id: 'environment', label: 'Environment' },
+];
 
-const TOOL_CONTENT = {
-  overview: {
-    title: 'Overview',
-    body: `
-      <p>Welcome to the Urban Digital Twin. Use the camera buttons to explore the 3D city.</p>
-      <p>Pick a topic on the left to see its indicators, or open <strong>Layers</strong> in the bottom bar to switch map layers on and off.</p>
-    `
-  },
-  temperature: {
-    title: 'Urban heat',
-    body: `
-      <p>Visualize heat stress hotspots by overlaying land surface temperature data.</p>
-      <p>Use this view for metrics like average heat index, exposed population, and priority cooling areas.</p>
-    `
-  },
-  green: {
-    title: 'Green and blue space',
-    body: `
-      <p class="no-indicators">No indicators yet.</p>
-      <p>Its map layers (parks, trees, green spaces, water bodies) are switched on and listed in the Layers panel. Combine them with the Heat topic to find where greening helps most.</p>
-    `
-  },
+const LENSES = {
   water: {
-    title: 'Water supply',
-    body: `<p>Display water pipes, wells, and supply network. Relate demand to housing and population forecasts.</p>`
-  },
-  groundwater: {
-    title: 'Groundwater levels',
-    body: `
-      <p>Groundwater depth measurements from the Dutch national registry (BRO).</p>
-      <p>GHG = Average Highest Groundwater Level (Gemiddeld Hoogste Grondwaterstand)</p>
-    `
-  },
-  // Topics without an indicator panel yet: say so, and point at their layers
-  // (switched on by Events.js::activateToolLayers when the topic is picked).
-  administrative: {
-    title: 'Administrative units',
-    body: `
-      <p class="no-indicators">No indicators yet.</p>
-      <p>Provinces, cities, districts and neighbourhoods are listed in the Layers panel. Click a unit on the map to make it the area the other topics report on.</p>
-    `
+    group: 'systems', label: 'Water', title: 'Water supply', icon: 'bi-droplet',
+    apps: ['administrative', 'watersupply'],
+    panel: (level, location) =>
+      `/watersupply/indicators/${level}/${location}/${window.ACTIVE_YEAR}/${populationQuery()}&${climateParam()}`,
+    tools: [],
   },
   energy: {
-    title: 'Energy',
-    body: `
+    group: 'systems', label: 'Energy', title: 'Energy', icon: 'bi-lightning-charge',
+    apps: ['administrative', 'Energy'],
+    intro: `
       <p class="no-indicators">No indicators yet.</p>
-      <p>Its map layers are switched on and listed in the Layers panel.</p>
-    `
+      <p>Its map layers are on; open <strong>Layers</strong> in the bottom bar to switch them.</p>`,
+    tools: [],
+  },
+  housing: {
+    group: 'people', label: 'Housing', title: 'Housing', icon: 'bi-house-door',
+    apps: ['administrative', 'housing'],
+    // Same URL shape as water: housing/urls.py is indicators/<level>/<location>/<year>/.
+    panel: (level, location) =>
+      `/housing/indicators/${level}/${location}/${window.ACTIVE_YEAR}/${populationQuery()}`,
+    tools: [],
+  },
+  builtup: {
+    group: 'people', label: 'Built-up', title: 'Built-up', icon: 'bi-buildings',
+    apps: ['administrative', 'builtup'],
+    // The building stock has no year; year + population only drive the per-capita cards.
+    panel: (level, location) =>
+      `/builtup/indicators/${level}/${location}/${window.ACTIVE_YEAR}/${populationQuery()}`,
+    tools: ['degurba'],
+  },
+  administrative: {
+    group: 'people', label: 'Population', title: 'Population', icon: 'bi-people',
+    apps: ['administrative'],
+    intro: `
+      <p>Click a city, district or neighbourhood on the map: every topic then reports on that area.</p>
+      <p>The population forecast and its what-if controls are in the dock at the bottom.</p>`,
+    opensPopulationDock: true,
+    tools: [],
+  },
+  temperature: {
+    group: 'environment', label: 'Heat', title: 'Urban heat', icon: 'bi-thermometer-sun',
+    apps: ['administrative', 'temperature', 'weather', 'urban_heat'],
+    // Urban heat has no year and does not depend on population.
+    panel: (level, location) =>
+      `/urban_heat/indicators/${level}/${location}/?${climateParam()}`,
+    tools: ['lst', 'svf', 'solweig'],
+  },
+  green: {
+    group: 'environment', label: 'Green', title: 'Green and blue space', icon: 'bi-tree',
+    apps: ['administrative', 'nature', 'green', 'vegetation', 'trees', 'GreenSpaces', 'LandCover'],
+    intro: `
+      <p class="no-indicators">No indicators yet.</p>
+      <p>Parks, trees, green spaces and water bodies are on the map. Combine them with Heat to find where greening helps most.</p>`,
+    tools: [],
   },
   physicalEnv: {
-    title: 'Ground',
-    body: `
+    group: 'environment', label: 'Ground', title: 'Ground: soil, terrain and land cover', icon: 'bi-layers-half',
+    apps: ['administrative', 'physicalEnv'],
+    intro: `
       <p class="no-indicators">No indicators yet.</p>
-      <p>Soil, terrain (DEM, DSM), land cover and groundwater layers are switched on and listed in the Layers panel. Soil and groundwater feed the Water topic's recharge card.</p>
-    `
+      <p>Soil, terrain (DEM, DSM) and land cover are on the map. Soil and groundwater feed the Water topic's recharge card.</p>`,
+    tools: [],
   },
 };
+
+// The basemap under an open lens: a cool slate wash drawn above the basemap
+// and below the lens's layers, so their colours carry the map.
+const LENS_DIM_COLOR = '#1c2529';
+const LENS_DIM_OPACITY = 0.42;
+const LENS_DIM_FADE_MS = 350;
 
 const LOADER_SHOW_DELAY_MS = 8000;  // only surface it for genuinely slow loads
 
@@ -197,13 +217,13 @@ const TOUR_STEPS = [
   {
     num: 1,
     title: "① Select Topic",
-    desc: "Start by picking a topic from the left toolbar: Housing, Energy, Heat, Water and more. Each one switches the data context for the whole platform.",
+    desc: "Pick a topic on the left: City systems, People or Environment. A topic shows only its own layers and legends and greys the rest of the map; Overview brings your own layers back.",
     target: ".toolbar",
   },
   {
     num: 2,
     title: "② Explore Current Data",
-    desc: "Click Areas to open the Layers panel with the administrative units, or Layers in the bottom bar for every dataset. Switch layers on and off and choose a basemap style.",
+    desc: "Population shows the cities, districts and neighbourhoods: click one to make it the area every topic reports on. Layers in the bottom bar lists the topic's layers, with All layers for every dataset and the basemap style.",
     target: '[data-tool="administrative"]',
   },
   {

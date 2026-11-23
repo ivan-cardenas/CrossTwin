@@ -62,6 +62,7 @@ function renderLayerList() {
 
   container.innerHTML = html;
   if (typeof htmx !== 'undefined') htmx.process(container);   // wire up the backup bar
+  filterLayersByLens(activeTool);   // the open lens's layers only, rest in the drawer
 }
 
 /**
@@ -108,4 +109,44 @@ function updateIndicators() {
     }
     visibleEl.textContent = count;
   }
+}
+
+/**
+ * Draw the left rail from Config.js::LENSES: Overview (no lens), then one
+ * labelled group per LENS_GROUPS entry. Lenses with an indicator panel get
+ * their htmx attributes here and their URL from mainMap.js::syncPanelBtns.
+ */
+function renderLensRail() {
+  const rail = document.getElementById('lens-rail');
+  if (!rail) return;
+
+  const button = (id, { label, title, icon, panel }) => `
+    <button type="button" class="tool-button" data-tool="${id}" title="${title}" aria-label="${title}"
+            aria-pressed="false"${panel ? `
+            data-panel-title="${title}" hx-target="#panel-body" hx-indicator="#map-loader" hx-swap="innerHTML"` : ''}>
+      <span class="bi ${icon}" aria-hidden="true"></span>
+      <span class="tool-label">${label}</span>
+    </button>`;
+
+  let html = button('overview', { label: 'Overview', title: 'Overview: no topic, all your layers', icon: 'bi-map' });
+  for (const group of LENS_GROUPS) {
+    const lenses = Object.entries(LENSES).filter(([, lens]) => lens.group === group.id);
+    if (!lenses.length) continue;
+    html += `<div class="lens-group" role="group" aria-labelledby="lens-group-${group.id}">
+      <span class="lens-group-label" id="lens-group-${group.id}">${group.label}</span>
+      ${lenses.map(([id, lens]) => button(id, lens)).join('')}
+    </div>`;
+  }
+  rail.innerHTML = html;
+  markActiveLens(activeTool);
+  if (typeof syncPanelBtns === 'function') syncPanelBtns();   // sets hx-get + htmx.process
+}
+
+/** Highlight the rail button of the open lens (Overview when none). */
+function markActiveLens(toolId) {
+  document.querySelectorAll('#toolbar .tool-button').forEach(btn => {
+    const active = btn.dataset.tool === toolId;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-pressed', String(active));
+  });
 }

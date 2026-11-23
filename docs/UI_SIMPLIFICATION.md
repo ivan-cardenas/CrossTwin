@@ -120,3 +120,29 @@ Counted from the markup at 75a09c7, for comparison after each step:
 - Topics without indicators (Areas, Energy, Green, Ground) open a "No indicators yet" panel
   that points at their layers (`Config.js::TOOL_CONTENT`).
 - Remaining emoji in the bottom bar (Population, Dashboard, Scenarios) → Bootstrap Icons.
+
+## Step 2 — topics become lenses (done 23 Nov 2026)
+
+- `Config.js::LENSES` (+ `LENS_GROUPS`) replaces `TOOL_CATEGORIES` / `TOOL_CONTENT`: per lens
+  its group, label, title, icon, `apps` (catalog app labels), `panel` URL builder or static
+  `intro`, and `tools` (the Calculate tools step 4 moves into the panel).
+  `mainMap.js::ADMIN_PANEL_TOOLS` is derived from it.
+- The rail is drawn from that table (`MapUI.js::renderLensRail`): Overview, then
+  *City systems* (Water, Energy), *People* (Housing, Built-up, Population),
+  *Environment* (Heat, Green, Ground). Areas became the Population lens (administrative
+  layers + the population dock).
+- `Layers.js::openLens`: only the lens's layers on (legends follow), layers that arrive
+  later with the background catalog follow the lens too. `closeLens` (Overview) puts back
+  the layers shown before the first lens. A unit click under a lens without an indicator
+  panel no longer opens the Water panel.
+- `Map_init.js::syncLensDim`: a slate `background` layer (`#1c2529`, 42 %) between the
+  basemap and our layers, 350 ms fade (none with reduced motion), re-added after a
+  basemap switch.
+- Layers panel: "<lens> layers" only, with an *All layers (n)* drawer; the counts show in
+  the drawer and under Overview. Picking a lens no longer opens the layers panel.
+- A lens click no longer resets the basemap to Default (that reset served the removed
+  Satellite tool).
+
+Not changed, seen while testing: the Heat lens switches on every stored heat raster
+(9 legends in the example data) and each raster added zooms the map to itself; both were
+already so with the old tool buttons.

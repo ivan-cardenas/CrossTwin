@@ -55,7 +55,7 @@ function onAdminLayerLoaded(key, layerIds) {
     // fallback for when no panel is open yet. Refreshing via htmx.ajax
     // rather than a real button click avoids bubbling into the #toolbar
     // delegated listener (events.js), which would treat it as a tool switch
-    // and re-filter every layer's visibility via activateToolLayers() —
+    // and re-filter every layer's visibility via openLens() —
     // wiping out whatever visibility the user had set manually.
     syncPanelBtns();
     refreshActivePanel('water');
@@ -166,6 +166,8 @@ function initializeUrbanTwinMap(config) {
   // Every style (the first one and each basemap switch) starts with its own
   // 3D trees visible; hide them again if the active tool needs it.
   map.on('style.load', syncBasemapTrees);
+  // A basemap switch drops the lens's grey wash with the old style.
+  map.on('style.load', syncLensDim);
 
   map.addControl(new mapboxgl.NavigationControl(), 'top-right');
   map.addControl(new mapboxgl.FullscreenControl(), 'top-right');
@@ -313,6 +315,39 @@ function syncBasemapTrees() {
     if (!BASEMAP_TREE_PATTERN.test(layer.id) && !BASEMAP_TREE_PATTERN.test(layer['source-layer'] || '')) continue;
     map.setLayoutProperty(layer.id, 'visibility', show ? 'visible' : 'none');
   }
+}
+
+const LENS_DIM_ID = 'lens-dim';
+
+/**
+ * Grey the basemap while a lens is open (Config.js::LENSES): a translucent
+ * `background` layer drawn above the basemap and below our own layers.
+ * Placed under the lowest loaded catalog layer, or on top when none is
+ * loaded yet (layers added later go above it). Fades in and out; instant
+ * with prefers-reduced-motion.
+ */
+function syncLensDim() {
+  let style;
+  try { style = map && map.getStyle(); } catch (_) { return; }
+  if (!style) return;
+  const on = !!LENSES[activeTool];
+  const fade = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : LENS_DIM_FADE_MS;
+
+  if (!map.getLayer(LENS_DIM_ID)) {
+    if (!on) return;
+    const ownIds = new Set(Object.values(loadedLayers).flatMap(entry => entry.layerIds));
+    const beforeId = style.layers.find(layer => ownIds.has(layer.id))?.id;
+    map.addLayer({
+      id: LENS_DIM_ID,
+      type: 'background',
+      paint: {
+        'background-color': LENS_DIM_COLOR,
+        'background-opacity': 0,
+      },
+    }, beforeId);
+  }
+  map.setPaintProperty(LENS_DIM_ID, 'background-opacity-transition', { duration: fade, delay: 0 });
+  map.setPaintProperty(LENS_DIM_ID, 'background-opacity', on ? LENS_DIM_OPACITY : 0);
 }
 
 /**

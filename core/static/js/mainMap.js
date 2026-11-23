@@ -330,8 +330,8 @@ document.body.addEventListener('htmx:afterSwap', function(evt) {
       || document.querySelector('#toolbar .tool-button.active')?.dataset?.panelTitle
       || 'Info';
     // 'visible' is the class the CSS shows the panel with (there is no rule for
-    // 'open'). Tools without a TOOL_CONTENT entry (e.g. Housing) never got it
-    // from the toolbar click handler, so the panel stayed hidden.
+    // 'open'). Lenses with a panel URL (e.g. Housing) don't get it from the
+    // rail click handler, so the swap shows the panel.
     document.getElementById('side-panel').classList.add('visible');
     document.getElementById('panel-title').textContent = title;
   }
@@ -355,24 +355,13 @@ function climateParam() {
     `&climate_heat=${encodeURIComponent(window.CLIMATE_HEAT || 'average')}`;
 }
 
-// Registry of toolbar panels driven by the selected administrative unit
-// (level/location[/year]). Add an entry here when wiring up a new
-// indicator panel (e.g. housing, energy) to admin-unit selection —
+// Registry of rail panels driven by the selected administrative unit
+// (level/location[/year]): every lens with a `panel` URL builder in
+// Config.js::LENSES. Give a new indicator panel's lens a `panel` there —
 // syncPanelBtns/refreshActivePanel then handle it automatically, no other
 // changes needed in Map_init.js.
-const ADMIN_PANEL_TOOLS = {
-  water: (level, location) =>
-    `/watersupply/indicators/${level}/${location}/${window.ACTIVE_YEAR}/${populationQuery()}&${climateParam()}`,
-  // Urban heat has no year and does not depend on population.
-  temperature: (level, location) =>
-    `/urban_heat/indicators/${level}/${location}/?${climateParam()}`,
-  // Same URL shape as water: housing/urls.py is indicators/<level>/<location>/<year>/.
-  housing: (level, location) =>
-    `/housing/indicators/${level}/${location}/${window.ACTIVE_YEAR}/${populationQuery()}`,
-  // The building stock has no year; year + population only drive the per-capita cards.
-  builtup: (level, location) =>
-    `/builtup/indicators/${level}/${location}/${window.ACTIVE_YEAR}/${populationQuery()}`,
-};
+const ADMIN_PANEL_TOOLS = Object.fromEntries(
+  Object.entries(LENSES).filter(([, lens]) => lens.panel).map(([id, lens]) => [id, lens.panel]));
 
 function syncPanelBtns() {
   const level = window.ACTIVE_LEVEL || 'province';
@@ -398,11 +387,13 @@ function findActiveAdminTool() {
 
 // Refreshes whichever admin-panel-driven panel is currently open. Pass
 // fallbackTool to open one when none is open yet (e.g. first map click);
-// omit it to no-op when the open panel isn't admin-unit-driven.
+// omit it to no-op when the open panel isn't admin-unit-driven. The fallback
+// applies under Overview only: a lens without an indicator panel (Population,
+// Energy, ...) keeps its own panel when a unit is clicked.
 function refreshActivePanel(fallbackTool = null) {
   // Panning or a click on a neighbourhood must not replace the edit form
   if (typeof isEditing === 'function' && isEditing()) return;
-  const tool = findActiveAdminTool() || fallbackTool;
+  const tool = findActiveAdminTool() || (LENSES[activeTool] ? null : fallbackTool);
   const btn = tool && document.querySelector(`[data-tool="${tool}"]`);
   if (!btn) return;
   htmx.ajax('GET', btn.getAttribute('hx-get'), {

@@ -52,74 +52,11 @@
     <div id="map"></div>
 
     <!-- LEFT TOOLBAR -->
-    <div class="toolbar" id="toolbar">
+    <!-- Lens rail: drawn by MapUI.js::renderLensRail from Config.js::LENSES -->
+    <nav class="toolbar" id="toolbar" aria-label="Topics">
       <div class="toolbar-grip" title="Drag to move">⠿</div>
-      <button class="tool-button active" data-tool="overview" title="Overview" aria-label="Overview">
-        <span class="bi bi-map" aria-hidden="true"></span>
-        <span class="tool-label">Overview</span>
-      </button>
-      <button class="tool-button" data-tool="administrative" title="Administrative units" aria-label="Administrative units">
-        <span class="bi bi-bounding-box" aria-hidden="true"></span>
-        <span class="tool-label">Areas</span>
-      </button>
-
-      <button class="tool-button" data-tool="builtup" title="Built-up" aria-label="Built-up"
-        data-panel-title="Built-up"
-        hx-get="{% url 'builtup:builtup_indicators' level='province' location='Demo' year=2025 %}"
-        hx-target="#panel-body"
-        hx-indicator="#map-loader"
-        hx-swap="innerHTML">
-        <span class="bi bi-buildings" aria-hidden="true"></span>
-        <span class="tool-label">Built-up</span>
-      </button>
-      <button class="tool-button" data-tool="housing" title="Housing" aria-label="Housing"
-        data-panel-title="Housing"
-        hx-get="{% url 'housing:housing_indicators' level='province' location='Demo' year=2025 %}"
-        hx-target="#panel-body"
-        hx-indicator="#map-loader"
-        hx-swap="innerHTML">
-        <span class="bi bi-house-door" aria-hidden="true"></span>
-        <span class="tool-label">Housing</span>
-      </button>
-
-      <button class="tool-button" data-tool="energy" title="Energy" aria-label="Energy">
-        <span class="bi bi-lightning-charge" aria-hidden="true"></span>
-        <span class="tool-label">Energy</span>
-      </button>
-
-      <button class="tool-button" data-tool="temperature" title="Urban heat" aria-label="Urban heat"
-        data-panel-title="Urban heat"
-        hx-get="{% url 'urban_heat:heat_indicators' level='province' location='Demo'%}"
-        hx-target="#panel-body"
-        hx-indicator="#map-loader"
-        hx-swap="innerHTML">
-        <span class="bi bi-thermometer-sun" aria-hidden="true"></span>
-        <span class="tool-label">Heat</span>
-      </button>
-      <button class="tool-button" data-tool="green" title="Green and blue space" aria-label="Green and blue space">
-        <span class="bi bi-tree" aria-hidden="true"></span>
-        <span class="tool-label">Green</span>
-      </button>
-      <button class="tool-button" data-tool="water" title="Water supply" aria-label="Water supply"
-        data-panel-title="Water supply"
-        hx-get="{% url 'watersupply:water_indicators' level='province' location='Demo' year=2025 %}"
-        hx-target="#panel-body"
-        hx-indicator="#map-loader"
-        hx-swap="innerHTML">
-        <span class="bi bi-droplet" aria-hidden="true"></span>
-        <span class="tool-label">Water</span>
-      </button>
-      <button class="tool-button" data-tool="physicalEnv" title="Ground: soil, terrain and land cover" aria-label="Ground: soil, terrain and land cover">
-        <span class="bi bi-layers-half" aria-hidden="true"></span>
-        <span class="tool-label">Ground</span>
-      </button>
-      {% comment %}
-      <button class="tool-button" data-tool="satellite" title="Satellite" aria-label="Satellite">
-        <span class="bi bi-globe-europe-africa" aria-hidden="true"></span>
-        <span class="tool-label">Satellite</span>
-      </button>
-      {% endcomment %}
-    </div>
+      <div class="lens-rail" id="lens-rail"></div>
+    </nav>
 
     <!-- ONBOARDING HINT / TOUR TRIGGER -->
     <div class="onboarding-hint" id="onboarding-hint">
@@ -173,6 +110,10 @@
         </div>
       </div>
 
+      <!-- Under a lens: opens the All layers drawer (Layers.js::toggleLayersDrawer) -->
+      <button type="button" class="layers-drawer-btn" id="btn-all-layers"
+              aria-controls="layer-list" aria-expanded="false"></button>
+
       <div class="basemap-selector">
         <label for="basemap-select">Basemap</label>
         <select id="basemap-select">
@@ -186,9 +127,8 @@
       </div>
 
       <p class="layers-stats" aria-live="polite">
-        <span id="layers-count">0</span> layers ·
-        <span id="features-count">0</span> features loaded ·
-        <span id="visible-count">0</span> shown
+        <span id="visible-count">0</span> of <span id="layers-count">0</span> layers shown,
+        <span id="features-count">0</span> features loaded
       </p>
 
       <div class="layers-panel-footer">

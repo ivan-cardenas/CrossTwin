@@ -14,43 +14,43 @@ function initializeUI() {
   const panelBody  = document.getElementById('panel-body');
   const hint       = document.getElementById('onboarding-hint');
 
-  // ---- Toolbar clicks ---------------------------------------------------
+  // ---- Lens rail --------------------------------------------------------
+  renderLensRail();
+
+  // A lens's indicator panel arrives through the button's own hx-get; a lens
+  // with an intro shows it here; Overview closes the panel.
   toolbar?.addEventListener('click', (evt) => {
     const btn = evt.target.closest('.tool-button');
     if (!btn) return;
 
     const tool = btn.dataset.tool;
+    const lens = LENSES[tool];
 
-    toolbar.querySelectorAll('.tool-button').forEach(b =>
-      b.classList.toggle('active', b === btn)
-    );
+    markActiveLens(tool);
     sync3DBuildingColor();
     syncBasemapTrees();     // 'green' shows only the database's trees
 
     if (hint) hint.remove();
 
-    // Basemap switch
-    changeBasemap(tool === 'satellite' ? 'satellite' : 'DigitalTwin');
-
     // Groundwater WMS toggle
     if (tool === 'groundwater') toggleGroundwaterLayer();
 
-    // Filter & activate layers for the tool
-    filterLayersByTool(tool);
-    if (tool !== 'overview' && tool !== 'layers' && tool !== 'satellite') {
-      activateToolLayers(tool);
-    }
+    if (lens) openLens(tool); else closeLens();
 
-    layersPanel?.classList.add('visible');
-
-    // Side panel info
-    const content = TOOL_CONTENT[tool];
-    if (content && panelTitle && panelBody) {
-      panelTitle.textContent = content.title;
-      panelBody.innerHTML = content.body;
+    if (!lens) {
+      sidePanel?.classList.remove('visible');
+    } else if (lens.intro && panelTitle && panelBody) {
+      panelTitle.textContent = lens.title;
+      panelBody.innerHTML = lens.intro;
       sidePanel?.classList.add('visible');
     }
+    if (lens?.opensPopulationDock
+        && !document.getElementById('population-panel')?.classList.contains('visible')) {
+      togglePopulationPanel();
+    }
   });
+
+  document.getElementById('btn-all-layers')?.addEventListener('click', toggleLayersDrawer);
 
   // ---- Panel close buttons ----------------------------------------------
   document.getElementById('panel-close')?.addEventListener('click', () => {

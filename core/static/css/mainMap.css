@@ -240,6 +240,9 @@
     flex-direction: column;
     align-items: stretch;  /* buttons fill the full width */
     gap: 8px;              /* breathing room between buttons */
+    max-height: calc(100% - 140px);   /* clear of header and bottom bar */
+    overflow-y: auto;
+    scrollbar-width: none;
     z-index: 10;
 }
 
@@ -300,6 +303,32 @@
     color: var(--text-secondary);
 }
 
+
+/* Lens rail (MapUI.js::renderLensRail): Overview, then one group per
+   Config.js::LENS_GROUPS entry, each opened by its caption. */
+.lens-rail {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.lens-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-ui);
+}
+
+.lens-group-label {
+    font-size: 9px;
+    line-height: 1.15;
+    font-weight: 600;
+    letter-spacing: -0.01em;   /* "Environment" fits the 52 px column unbroken */
+    text-align: center;
+    color: var(--text-tertiary);
+    margin: 0 -4px;            /* may use the rail's padding, never the next word */
+}
 
 /* Toolbar divider — same as actions-divider, used between groups */
 .toolbar .actions-divider {
@@ -668,6 +697,29 @@
 .basemap-selector select:focus {
     border-color: rgba(var(--accent-rgb), 0.4);
 }
+
+/* Under a lens the panel lists that lens's layers; the rest sit in the
+   All layers drawer (Layers.js::filterLayersByLens / toggleLayersDrawer). */
+.layers-panel.lens-filtered:not(.show-all) .outside-lens { display: none; }
+
+.layers-drawer-btn {
+    display: none;
+    width: 100%;
+    padding: 6px 10px;
+    border: 0;
+    border-top: 1px solid var(--border-ui);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 11px;
+    text-align: left;
+    cursor: pointer;
+}
+.layers-panel.lens-filtered .layers-drawer-btn { display: block; }
+.layers-drawer-btn:hover { color: var(--text-main); background: var(--bg-raised); }
+.layers-drawer-btn .bi { margin-right: 4px; }
+
+/* The counts belong to the full list: Overview, or the open drawer */
+.layers-panel.lens-filtered:not(.show-all) .layers-stats { display: none; }
 
 /* Layer / feature / shown counts, moved here from the bottom bar */
 .layers-stats {
@@ -1972,6 +2024,10 @@
 
     .tool-button .tool-label { display: none; }
     .tool-button span.bi { font-size: 13px; }
+    .lens-rail,
+    .lens-group { flex-direction: row; align-items: center; }
+    .lens-group { padding: 0 0 0 6px; border-top: 0; border-left: 1px solid var(--border-ui); }
+    .lens-group-label { display: none; }
 
     .layers-panel,
     .side-panel {

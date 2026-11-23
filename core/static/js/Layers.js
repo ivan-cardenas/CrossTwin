@@ -76,9 +76,11 @@ async function loadLayerCatalog(appLabels) {
   // background fetch) re-includes 'administrative' layers already loaded, and
   // must not clobber their loadedLayers/visibility state.
   const existingKeys = new Set(availableLayers.map(l => l.key));
+  const added = [];
   for (const layer of data.layers) {
     if (!existingKeys.has(layer.key)) {
       availableLayers.push(layer);
+      added.push(layer);
       // is_active is only set on WMS layers; a slow-loading one (e.g. the
       // KNMI radar) can be flagged inactive so it starts unchecked instead
       // of auto-loading when its panel opens.
@@ -87,6 +89,7 @@ async function loadLayerCatalog(appLabels) {
   }
 
   renderLayerList();
+  applyLensToNewLayers(added);
   updateIndicators();
 }
 
@@ -964,45 +967,114 @@ function toggleGroundwaterLayer() {
   repositionDynamicLegends();
 }
 
-// ---- Tool-based filtering ---------------------------------------------
+// ---- Lenses (Config.js::LENSES) ----------------------------------------
 
-function filterLayersByTool(toolId) {
-  activeTool = toolId;
-  const categories = TOOL_CATEGORIES[toolId] || [];
+// Layers shown before the first lens opened; Overview puts them back.
+// null while no lens is open. Switching from one lens to another keeps it.
+let lensRestoreKeys = null;
 
-  availableLayers.forEach(layer => {
-    const layerEl = document.getElementById(`layer-item-${layer.key}`);
-    const matches = categories.includes(layer.app_label);
-    if (layerEl) layerEl.style.display = matches ? '' : 'none';
-  });
-
-  document.querySelectorAll('.app-group').forEach(group => {
-    const visibleItems = group.querySelectorAll('.layer-item:not([style*="display: none"])');
-    group.style.display = visibleItems.length > 0 ? '' : 'none';
-  });
-
-  const panelTitle = document.querySelector('.layers-panel-title');
-  if (panelTitle) {
-    const toolNames = {
-      overview: 'All layers',
-      temperature: 'Urban heat layers', green: 'Green and blue layers',
-      water: 'Water supply layers', groundwater: 'Groundwater layers',
-    };
-    panelTitle.innerHTML = `<i class="bi bi-layers"></i> ${toolNames[toolId] || 'Layers'}`;
-  }
+function lensApps(toolId) {
+  return LENSES[toolId]?.apps || null;
 }
 
-function activateToolLayers(toolId) {
-  const categories = TOOL_CATEGORIES[toolId];
-  if (!categories) return;
+/** Show or hide one catalog layer and keep its checkbox in step. */
+function setLayerShown(key, shown) {
+  toggleLayerVisibility(key, shown);
+  const cb = document.getElementById(`toggle-${key}`);
+  if (cb) cb.checked = shown;
+}
 
+function shownLayerKeys() {
+  return new Set(Object.keys(loadedLayers).filter(key => layerVisibility[key] !== false));
+}
+
+/**
+ * Open a lens: only its layers on (their legends follow toggleLayerVisibility),
+ * the layers panel filtered to them, the basemap greyed.
+ */
+function openLens(toolId) {
+  const apps = lensApps(toolId);
+  if (!apps) return closeLens();
+  if (lensRestoreKeys === null) lensRestoreKeys = shownLayerKeys();
+  activeTool = toolId;
   availableLayers.forEach(layer => {
     if (isWeatherPillLayer(layer)) return;
-    const matches = categories.includes(layer.app_label);
-    toggleLayerVisibility(layer.key, matches);
-    const cb = document.getElementById(`toggle-${layer.key}`);
-    if (cb) cb.checked = matches;
+    setLayerShown(layer.key, apps.includes(layer.app_label));
   });
+  filterLayersByLens(toolId);
+  syncLensDim();
+}
+
+/** Back to Overview (no lens): the layers shown before the first lens return. */
+function closeLens() {
+  activeTool = 'overview';
+  if (lensRestoreKeys !== null) {
+    const restore = lensRestoreKeys;
+    lensRestoreKeys = null;
+    availableLayers.forEach(layer => {
+      if (isWeatherPillLayer(layer)) return;
+      const shown = restore.has(layer.key);
+      if (shown || loadedLayers[layer.key]) setLayerShown(layer.key, shown);
+    });
+  }
+  filterLayersByLens('overview');
+  syncLensDim();
+}
+
+/**
+ * Catalog layers that arrive while a lens is open (the background catalog
+ * fetch, Layers.js::loadLayerCatalog) follow the lens like the others.
+ */
+function applyLensToNewLayers(layers) {
+  const apps = lensApps(activeTool);
+  if (!apps) return;
+  layers.forEach(layer => {
+    if (!isWeatherPillLayer(layer)) setLayerShown(layer.key, apps.includes(layer.app_label));
+  });
+}
+
+/**
+ * Layers panel under a lens: "<lens> layers" only, with an All layers drawer
+ * for the rest (and the counts). Under Overview it lists every layer.
+ * Re-run by MapUI.js::renderLayerList, which rebuilds the list.
+ */
+function filterLayersByLens(toolId) {
+  const lens = LENSES[toolId];
+  const apps = lens?.apps || null;
+
+  availableLayers.forEach(layer => {
+    document.getElementById(`layer-item-${layer.key}`)
+      ?.classList.toggle('outside-lens', !!apps && !apps.includes(layer.app_label));
+  });
+  document.querySelectorAll('#layer-list .app-group').forEach(group => {
+    group.classList.toggle('outside-lens', !group.querySelector('.layer-item:not(.outside-lens)'));
+  });
+
+  const panel = document.getElementById('layers-panel');
+  panel?.classList.toggle('lens-filtered', !!apps);
+  if (!apps) panel?.classList.remove('show-all');
+
+  const title = document.querySelector('.layers-panel-title');
+  if (title) title.innerHTML = `<i class="bi bi-layers"></i> ${apps ? `${lens.label} layers` : 'All layers'}`;
+  syncLayersDrawer();
+}
+
+/** Text and state of the All layers drawer button. */
+function syncLayersDrawer() {
+  const panel = document.getElementById('layers-panel');
+  const btn = document.getElementById('btn-all-layers');
+  if (!panel || !btn) return;
+  const open = panel.classList.contains('show-all');
+  const lens = LENSES[activeTool];
+  btn.setAttribute('aria-expanded', String(open));
+  btn.innerHTML = open
+    ? `<i class="bi bi-chevron-up"></i> Only ${lens ? lens.label : ''} layers`
+    : `<i class="bi bi-chevron-down"></i> All layers (${availableLayers.filter(l => !isWeatherPillLayer(l)).length})`;
+}
+
+function toggleLayersDrawer() {
+  document.getElementById('layers-panel')?.classList.toggle('show-all');
+  syncLayersDrawer();
 }
 
 // ---- Helpers ----------------------------------------------------------
