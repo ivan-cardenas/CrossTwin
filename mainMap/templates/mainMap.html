@@ -54,69 +54,69 @@
     <!-- LEFT TOOLBAR -->
     <div class="toolbar" id="toolbar">
       <div class="toolbar-grip" title="Drag to move">⠿</div>
-      <button class="tool-button active" data-tool="overview">
-        <span>👁️</span>
-        <div class="tool-tooltip">Overview</div>
+      <button class="tool-button active" data-tool="overview" title="Overview" aria-label="Overview">
+        <span class="bi bi-map" aria-hidden="true"></span>
+        <span class="tool-label">Overview</span>
       </button>
-      <button class="tool-button" data-tool="administrative">
-        <span>📑</span>
-        <div class="tool-tooltip">Administrative Data</div>
+      <button class="tool-button" data-tool="administrative" title="Administrative units" aria-label="Administrative units">
+        <span class="bi bi-bounding-box" aria-hidden="true"></span>
+        <span class="tool-label">Areas</span>
       </button>
 
-      <button class="tool-button" data-tool="builtup"
-        data-panel-title="BUILT-UP"
+      <button class="tool-button" data-tool="builtup" title="Built-up" aria-label="Built-up"
+        data-panel-title="Built-up"
         hx-get="{% url 'builtup:builtup_indicators' level='province' location='Demo' year=2025 %}"
         hx-target="#panel-body"
         hx-indicator="#map-loader"
         hx-swap="innerHTML">
-        <span>🏗️</span>
-        <div class="tool-tooltip">Built-up</div>
+        <span class="bi bi-buildings" aria-hidden="true"></span>
+        <span class="tool-label">Built-up</span>
       </button>
-      <button class="tool-button" data-tool="housing"
-        data-panel-title="HOUSING"
+      <button class="tool-button" data-tool="housing" title="Housing" aria-label="Housing"
+        data-panel-title="Housing"
         hx-get="{% url 'housing:housing_indicators' level='province' location='Demo' year=2025 %}"
         hx-target="#panel-body"
         hx-indicator="#map-loader"
         hx-swap="innerHTML">
-        <span>🏘️</span>
-        <div class="tool-tooltip">Housing</div>
+        <span class="bi bi-house-door" aria-hidden="true"></span>
+        <span class="tool-label">Housing</span>
       </button>
 
-      <button class="tool-button" data-tool="energy">
-        <span>⚡</span>
-        <div class="tool-tooltip">Energy</div>
+      <button class="tool-button" data-tool="energy" title="Energy" aria-label="Energy">
+        <span class="bi bi-lightning-charge" aria-hidden="true"></span>
+        <span class="tool-label">Energy</span>
       </button>
 
-      <button class="tool-button" data-tool="temperature"
-        data-panel-title="URBAN HEAT"
+      <button class="tool-button" data-tool="temperature" title="Urban heat" aria-label="Urban heat"
+        data-panel-title="Urban heat"
         hx-get="{% url 'urban_heat:heat_indicators' level='province' location='Demo'%}"
         hx-target="#panel-body"
         hx-indicator="#map-loader"
         hx-swap="innerHTML">
-        <span>🌡️</span>
-        <div class="tool-tooltip">Heat</div>
+        <span class="bi bi-thermometer-sun" aria-hidden="true"></span>
+        <span class="tool-label">Heat</span>
       </button>
-      <button class="tool-button" data-tool="green">
-        <span style="font-size: 1em;">🌳</span>
-        <div class="tool-tooltip">Green and Blue Space</div>
+      <button class="tool-button" data-tool="green" title="Green and blue space" aria-label="Green and blue space">
+        <span class="bi bi-tree" aria-hidden="true"></span>
+        <span class="tool-label">Green</span>
       </button>
-      <button class="tool-button" data-tool="water"
-        data-panel-title="WATER SUPPLY"
+      <button class="tool-button" data-tool="water" title="Water supply" aria-label="Water supply"
+        data-panel-title="Water supply"
         hx-get="{% url 'watersupply:water_indicators' level='province' location='Demo' year=2025 %}"
         hx-target="#panel-body"
         hx-indicator="#map-loader"
         hx-swap="innerHTML">
-  <span>🚰</span>
-  <div class="tool-tooltip">Water Supply</div>
-</button>
-      <button class="tool-button" data-tool="physicalEnv">
-        <spanstyle="font-size: 1em;">🪨</span>
-        <div class="tool-tooltip">Physical Environment</div>
+        <span class="bi bi-droplet" aria-hidden="true"></span>
+        <span class="tool-label">Water</span>
+      </button>
+      <button class="tool-button" data-tool="physicalEnv" title="Ground: soil, terrain and land cover" aria-label="Ground: soil, terrain and land cover">
+        <span class="bi bi-layers-half" aria-hidden="true"></span>
+        <span class="tool-label">Ground</span>
       </button>
       {% comment %}
-      <button class="tool-button" data-tool="satellite">
-        <span>🛰️</span>
-        <div class="tool-tooltip">Satellite</div>
+      <button class="tool-button" data-tool="satellite" title="Satellite" aria-label="Satellite">
+        <span class="bi bi-globe-europe-africa" aria-hidden="true"></span>
+        <span class="tool-label">Satellite</span>
       </button>
       {% endcomment %}
     </div>
@@ -161,7 +161,7 @@
     <div class="layers-panel" id="layers-panel">
       <div class="layers-panel-header">
         <div class="layers-panel-title">
-          <i class="bi bi-layers"></i> Database Layers
+          <i class="bi bi-layers"></i> Layers
         </div>
         <button class="layers-panel-close" id="layers-panel-close">✕</button>
       </div>
@@ -184,6 +184,12 @@
           <option value="outdoors">Outdoors</option>
         </select>
       </div>
+
+      <p class="layers-stats" aria-live="polite">
+        <span id="layers-count">0</span> layers ·
+        <span id="features-count">0</span> features loaded ·
+        <span id="visible-count">0</span> shown
+      </p>
 
       <div class="layers-panel-footer">
         <button
@@ -586,32 +592,12 @@
           </button>
         </div>
 
-        <div class="indicator-pill" data-indicator="layers">
-          <div class="indicator-icon">📍</div>
-          <div class="indicator-meta">
-            <span class="indicator-label">Layers</span>
-            <span class="indicator-value" id="layers-count">0</span>
-          </div>
-        </div>
-
-        <div class="indicator-pill" data-indicator="features">
-          <div class="indicator-icon">🔷</div>
-          <div class="indicator-meta">
-            <span class="indicator-label">Features</span>
-            <span class="indicator-value" id="features-count">0</span>
-          </div>
-        </div>
-
-        <div class="indicator-pill" data-indicator="visible">
-          <div class="indicator-icon">👁️</div>
-          <div class="indicator-meta">
-            <span class="indicator-label">Visible</span>
-            <span class="indicator-value" id="visible-count">0</span>
-          </div>
-        </div>
+        <button class="mode-btn" id="btn-layers" aria-controls="layers-panel" title="Show or hide the layers panel">
+          <span class="bi bi-layers" aria-hidden="true"></span> Layers
+        </button>
 
         <div class="indicator-pill" data-indicator="population">
-          <div class="indicator-icon">👤</div>
+          <div class="indicator-icon"><span class="bi bi-people" aria-hidden="true"></span></div>
           <div class="indicator-meta">
             <span class="indicator-label">Population</span>
             <span class="indicator-value" id="population-count">0</span>
@@ -631,10 +617,10 @@
 
       <div class="bottom-right">
         <button class="mode-btn" id="btn-dashboard">
-          <span>📊</span> Dashboard
+          <span class="bi bi-bar-chart" aria-hidden="true"></span> Dashboard
         </button>
-        <button class="mode-btn" id="btn-scenarios">
-          <span>🧩</span> Scenarios
+        <button class="mode-btn" id="btn-scenarios" data-panel-title="Scenarios">
+          <span class="bi bi-cloud-sun" aria-hidden="true"></span> Scenarios
         </button>
       </div>
     </div>

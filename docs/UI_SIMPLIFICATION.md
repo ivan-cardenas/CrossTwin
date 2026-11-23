@@ -1,0 +1,122 @@
+# Map UI simplification — step 0: baseline
+
+Step 0 of the plan in [`CrossTwin Map Simplification.html`](CrossTwin%20Map%20Simplification.html).
+It changes no code: it records how hard the current map screen is to use, so step 7
+can repeat the same test and show whether steps 1–6 helped.
+
+Screen under test: `mainMap/templates/mainMap.html` on branch `Redesign-UI` at 75a09c7
+(23 Nov 2026). Rerun the dry run below if the screen changes before the sessions.
+
+## Participants
+
+3–5 people who have never used CrossTwin: urban planners, planning or geo students.
+No staff accounts for tasks 1–2; task 3 needs a staff login (the generator is staff only),
+which the facilitator logs in before the task.
+
+Record per participant only: role, map/GIS experience (none / some / daily), date.
+No names in this file.
+
+## Setup
+
+- Fresh browser profile (no cached tour state, no dragged overlays), 1920 × 1080 window.
+- Database: the example data (`uv run python tools/example_db.py load`), city Enschede,
+  TiTiler running (`start.bat`).
+- Start every task from the map as it opens: Overview tool active, year 2025, current climate,
+  no panels open. Reload the page between tasks.
+- Screen + audio recording; the facilitator also counts clicks live.
+
+## Protocol
+
+1. Read the task aloud; hand over the card with the task text. Do not name controls.
+2. Ask the participant to think aloud. Start the timer at the first mouse move.
+3. Stop when the participant states the answer (task 1–2) or the layout is stored or
+   previewed with ~300 homes (task 3), or after **5 minutes** (= not completed).
+4. Help only after 60 s without progress, and log it as an assist.
+5. At task end, before anything is closed, count the open overlays (see below).
+6. After all tasks: "What was the hardest part?" and "What did you expect to find where?"
+
+## Tasks
+
+The minimum paths are today's shortest routes; walk them once before the first session
+(dry run) and correct them here if the count differs.
+
+| # | Task (read aloud) | Done when | Minimum path today | Clicks | Target after step 7 |
+|---|---|---|---|---|---|
+| 1 | "How hot does my neighbourhood get in 2050?" (point at a neighbourhood in Enschede) | Participant reads the PET/UTCI value of that neighbourhood for 2050 | Heat tool (🌡️) → neighbourhood on the map → Scenarios → 2050 High-dry → heat mode *Heat-wave day* → read the heat panel | 6 | 3 |
+| 2 | "Which homes have no water supply?" | Participant points at the drop markers and says how many / where | Water Supply tool (🚰) → read the drops (legend explains them) | 2 | 2, with the advisor tray naming the count |
+| 3 | "Sketch 300 homes on this field." (point at an empty field) | Preview shows ≈ 300 dwellings | Actions → Neighbourhood generator → draw outline → set target dwellings (21-field form) | 4 + form | 4, with a 4-field form |
+
+## What to record
+
+Per participant and task:
+
+- **Time** (s) to done, or `DNF` at 5 min.
+- **Clicks** (all mouse clicks incl. misclicks; drawing vertices in task 3 count as one).
+- **Detours**: each control opened that is not on the minimum path (e.g. Layers panel,
+  Actions menu in task 1, Dashboard). Name them.
+- **Stuck points**: where the participant paused > 10 s or said they were lost, with a quote.
+- **Assists**: number and what was said.
+- **Open overlays at task end** (count rule below).
+- **Hover-reliance**: did they need the toolbar tooltips to identify a topic? (yes/no)
+
+### Overlay count rule
+
+Count every floating element over the map that is open at task end, from this list
+(17 that can be open together today):
+
+toolbar · onboarding hint · guided tour card · layers panel · side panel · population dock ·
+LST card · SVF card · Degree of Urbanisation card · generator card · thermal comfort card
+(+ person panel counts as its own) · map settings card · legend stack (count 1 if any legend
+shows) · weather pill (+ radar button counts if shown) · WMS time dock · actions menu ·
+backup bar.
+
+Not counted: the bottom bar and the camera buttons (always present).
+
+## Results
+
+Fill in after the sessions. One row per participant × task.
+
+| P | Role | GIS exp. | Task | Time (s) | Clicks | Detours | Stuck points | Assists | Overlays | Hover-reliant |
+|---|---|---|---|---|---|---|---|---|---|---|
+| P1 | | | 1 | | | | | | | |
+| P1 | | | 2 | | | | | | | |
+| P1 | | | 3 | | | | | | | |
+
+### Summary
+
+| Task | Median time | Median clicks | Completed | Median overlays |
+|---|---|---|---|---|
+| 1 | | | /n | |
+| 2 | | | /n | |
+| 3 | | | /n | |
+
+Recurring stuck points (seen in ≥ 2 participants), and which plan step addresses each:
+
+-
+
+## Inventory facts at baseline
+
+Counted from the markup at 75a09c7, for comparison after each step:
+
+- Left toolbar: 9 topic buttons, emoji only, labels on hover. Energy, Green and Blue Space
+  and Physical Environment open no indicator panel.
+- Bottom bar: Layers / Features / Visible / Population counters, Actions (with year),
+  Dashboard, Scenarios.
+- Year is set in two places: Actions menu year slider and the Scenarios panel (synced both ways).
+- Neighbourhood generator card: 21 inputs. Thermal comfort card: 22 inputs (incl. the
+  person panel).
+- Guided tour: 8 text steps.
+
+## Step 1 — declutter (done 23 Nov 2026)
+
+- Toolbar: emoji → Bootstrap Icons with always-visible labels (Overview, Areas, Built-up,
+  Housing, Energy, Heat, Green, Water, Ground); full names in `title`/`aria-label`
+  (labels hide below 768 px, where the toolbar is a row of round buttons). Toolbar 64 px wide.
+- Bottom bar: Layers / Features / Visible counters removed; a **Layers** button opens the
+  layers panel, whose footer now shows the three counts (`.layers-stats`).
+- Sentence-case panel titles (`.side-panel-title` no longer uppercased; JS and
+  `data-panel-title` strings changed too). Panels refreshed via `htmx.ajax` take the title
+  of their source button, else of the active topic, instead of "INFO".
+- Topics without indicators (Areas, Energy, Green, Ground) open a "No indicators yet" panel
+  that points at their layers (`Config.js::TOOL_CONTENT`).
+- Remaining emoji in the bottom bar (Population, Dashboard, Scenarios) → Bootstrap Icons.

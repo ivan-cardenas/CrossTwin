@@ -116,19 +116,28 @@ function initializeUI() {
     syncPopulationPill();
   }
 
-  // ---- Indicator pills --------------------------------------------------
-  document.querySelectorAll('.indicator-pill').forEach(pill => {
-    pill.addEventListener('click', () => {
-      const type = pill.dataset.indicator;
-      if (type === 'layers' || type === 'visible') {
-        layersPanel?.classList.toggle('visible');
-        sidePanel?.classList.remove('visible');
-      }
-      // The population dock is independent of the side panel: an indicator
-      // panel stays open while it is shown.
-      if (type === 'population') togglePopulationPanel();
-    });
+  // ---- Layers button ----------------------------------------------------
+  // Opens/closes the layers panel (the layer/feature/visible counts live in
+  // its footer now, MapUI.js::updateIndicators).
+  const layersBtn = document.getElementById('btn-layers');
+  layersBtn?.addEventListener('click', () => {
+    layersPanel?.classList.toggle('visible');
   });
+  if (layersPanel && layersBtn) {
+    const syncLayersBtn = () => {
+      const open = layersPanel.classList.contains('visible');
+      layersBtn.classList.toggle('active', open);
+      layersBtn.setAttribute('aria-expanded', String(open));
+    };
+    new MutationObserver(syncLayersBtn)
+      .observe(layersPanel, { attributes: true, attributeFilter: ['class'] });
+    syncLayersBtn();
+  }
+
+  // ---- Population pill --------------------------------------------------
+  // The population dock is independent of the side panel: an indicator
+  // panel stays open while it is shown.
+  populationPill?.addEventListener('click', togglePopulationPanel);
 
   // ---- Legend stack repositioning ---------------------------------------
   // The legend stack (bottom-right) must dodge the side panel and the

@@ -45,7 +45,7 @@ function showDashboardSummary() {
   const visibleLayers = Object.values(layerVisibility).filter(Boolean).length;
   const loadedCount   = Object.keys(loadedLayers).length;
 
-  if (panelTitle) panelTitle.textContent = 'DASHBOARD';
+  if (panelTitle) panelTitle.textContent = 'Dashboard';
   if (panelBody) {
     panelBody.innerHTML = `
       <div class="dashboard-grid">

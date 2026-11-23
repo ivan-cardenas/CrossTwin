@@ -42,7 +42,7 @@ Colours: climate.change_tone (Table 1) and mainMap.views.change_tone (effects).
       <button type="button" class="climate-btn{% if p.key == scenario.key %} is-active{% endif %}"
               aria-pressed="{% if p.key == scenario.key %}true{% else %}false{% endif %}"
               hx-get="{% url 'weather:climate_panel' %}?climate={{ p.key }}&heat={{ heat }}{{ loc }}{{ unit_q }}"
-              hx-target="#panel-body" hx-swap="innerHTML" data-panel-title="SCENARIOS">
+              hx-target="#panel-body" hx-swap="innerHTML" data-panel-title="Scenarios">
         <b>{{ p.kea_label }}</b>
         <small>{% if p.active %}{{ p.pathway }}{% else %}today{% endif %}</small>
       </button>
@@ -76,7 +76,7 @@ Colours: climate.change_tone (Table 1) and mainMap.views.change_tone (effects).
                   aria-label="{{ p.year }} {{ s.label }}: {{ p.value|stringformat:'+.1f' }} °C{% if not p.published %}, interpolated{% endif %}"
                   hx-get="{% url 'weather:climate_panel' %}?climate={{ p.key }}&heat={{ heat }}{{ loc }}{{ unit_q }}"
                   hx-trigger="click, keyup[key=='Enter']"
-                  hx-target="#panel-body" hx-swap="innerHTML" data-panel-title="SCENARIOS">
+                  hx-target="#panel-body" hx-swap="innerHTML" data-panel-title="Scenarios">
             <title>{{ p.year }} {{ s.label }}: {{ p.value|stringformat:'+.1f' }} °C{% if not p.published %} (interpolated){% endif %}</title>
           </circle>
           {% endfor %}{% endfor %}
@@ -97,7 +97,7 @@ Colours: climate.change_tone (Table 1) and mainMap.views.change_tone (effects).
                       aria-label="{{ c.label }}, {{ c.period }}"
                       title="{{ c.label }} · {{ c.period }}{% if c.global_warming_c %} · +{{ c.global_warming_c }} °C global{% endif %}"
                       hx-get="{% url 'weather:climate_panel' %}?climate={{ c.key }}&heat={{ heat }}{{ loc }}{{ unit_q }}"
-                      hx-target="#panel-body" hx-swap="innerHTML" data-panel-title="SCENARIOS">
+                      hx-target="#panel-body" hx-swap="innerHTML" data-panel-title="Scenarios">
                 <b>{{ c.summer_tx_c|stringformat:"+.1f" }}°</b>
               </button>
             </td>
@@ -118,7 +118,7 @@ Colours: climate.change_tone (Table 1) and mainMap.views.change_tone (effects).
       <button type="button" class="climate-seg{% if mode == heat %} is-active{% endif %}{% if mode == 'warmest' %} is-warmest{% endif %}"
               aria-pressed="{% if mode == heat %}true{% else %}false{% endif %}"
               hx-get="{% url 'weather:climate_panel' %}?climate={{ scenario.key }}&heat={{ mode }}{{ loc }}{{ unit_q }}"
-              hx-target="#panel-body" hx-swap="innerHTML" data-panel-title="SCENARIOS">{{ label }}</button>
+              hx-target="#panel-body" hx-swap="innerHTML" data-panel-title="Scenarios">{{ label }}</button>
       {% endfor %}
     </div>
     {% if season_deltas %}

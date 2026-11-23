@@ -117,7 +117,7 @@ function _attachEditor(editor) {
   map.triggerRepaint();
   editState = { key, pk, geomType, input, editor, hidden: _hideOriginal(key, pk) };
 
-  document.getElementById('panel-title').textContent = 'EDIT FEATURE';
+  document.getElementById('panel-title').textContent = 'Edit feature';
   if (map.getPitch() > 0) map.easeTo({ pitch: 0, duration: 400 });
 
   if (geometry) {

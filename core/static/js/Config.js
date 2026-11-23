@@ -107,34 +107,60 @@ const TOOL_CATEGORIES = {
 
 const TOOL_CONTENT = {
   overview: {
-    title: 'OVERVIEW',
+    title: 'Overview',
     body: `
-      <p>Welcome to the Urban Digital Twin. Use camera tools to explore the 3D city.</p>
-      <p>Click the <strong>📑 Layers</strong> button to manage database layers, or select thematic views from the toolbar.</p>
+      <p>Welcome to the Urban Digital Twin. Use the camera buttons to explore the 3D city.</p>
+      <p>Pick a topic on the left to see its indicators, or open <strong>Layers</strong> in the bottom bar to switch map layers on and off.</p>
     `
   },
   temperature: {
-    title: 'URBAN HEAT',
+    title: 'Urban heat',
     body: `
       <p>Visualize heat stress hotspots by overlaying land surface temperature data.</p>
       <p>Use this view for metrics like average heat index, exposed population, and priority cooling areas.</p>
     `
   },
   green: {
-    title: 'GREEN INFRASTRUCTURE',
-    body: `<p>View parks, trees, and green spaces. Combine with heat indicators to locate greening priorities.</p>`
+    title: 'Green and blue space',
+    body: `
+      <p class="no-indicators">No indicators yet.</p>
+      <p>Its map layers (parks, trees, green spaces, water bodies) are switched on and listed in the Layers panel. Combine them with the Heat topic to find where greening helps most.</p>
+    `
   },
   water: {
-    title: 'WATER INFRASTRUCTURE',
+    title: 'Water supply',
     body: `<p>Display water pipes, wells, and supply network. Relate demand to housing and population forecasts.</p>`
   },
   groundwater: {
-    title: 'GROUNDWATER LEVELS',
+    title: 'Groundwater levels',
     body: `
       <p>Groundwater depth measurements from the Dutch national registry (BRO).</p>
       <p>GHG = Average Highest Groundwater Level (Gemiddeld Hoogste Grondwaterstand)</p>
     `
-  }
+  },
+  // Topics without an indicator panel yet: say so, and point at their layers
+  // (switched on by Events.js::activateToolLayers when the topic is picked).
+  administrative: {
+    title: 'Administrative units',
+    body: `
+      <p class="no-indicators">No indicators yet.</p>
+      <p>Provinces, cities, districts and neighbourhoods are listed in the Layers panel. Click a unit on the map to make it the area the other topics report on.</p>
+    `
+  },
+  energy: {
+    title: 'Energy',
+    body: `
+      <p class="no-indicators">No indicators yet.</p>
+      <p>Its map layers are switched on and listed in the Layers panel.</p>
+    `
+  },
+  physicalEnv: {
+    title: 'Ground',
+    body: `
+      <p class="no-indicators">No indicators yet.</p>
+      <p>Soil, terrain (DEM, DSM), land cover and groundwater layers are switched on and listed in the Layers panel. Soil and groundwater feed the Water topic's recharge card.</p>
+    `
+  },
 };
 
 const LOADER_SHOW_DELAY_MS = 8000;  // only surface it for genuinely slow loads
@@ -171,19 +197,19 @@ const TOUR_STEPS = [
   {
     num: 1,
     title: "① Select Topic",
-    desc: "Start by picking a thematic domain from the left toolbar — Housing, Energy, Heat, Water Supply, and more. Each icon switches the data context for the entire platform.",
+    desc: "Start by picking a topic from the left toolbar: Housing, Energy, Heat, Water and more. Each one switches the data context for the whole platform.",
     target: ".toolbar",
   },
   {
     num: 2,
     title: "② Explore Current Data",
-    desc: "Click the 📑 Administrative Data icon to open the Database Layers panel. Browse all available spatial datasets, toggle individual layers on/off, and choose a basemap style.",
+    desc: "Click Areas to open the Layers panel with the administrative units, or Layers in the bottom bar for every dataset. Switch layers on and off and choose a basemap style.",
     target: '[data-tool="administrative"]',
   },
   {
     num: 3,
     title: "③ Explore Indicators",
-    desc: "Select a thematic tool like 🚰 Water Supply or 🌡️ Heat to load live KPI dashboards in the right panel. Indicators are calculated directly from the spatial database.",
+    desc: "Pick a topic like Water or Heat to load its indicators in the right panel. Indicators are calculated directly from the spatial database.",
     target: ".side-panel",
   },
   {

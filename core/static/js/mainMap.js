@@ -322,7 +322,13 @@ if (!localStorage.getItem('crosstwin_tour_seen')) {
 
 document.body.addEventListener('htmx:afterSwap', function(evt) {
   if (evt.detail.target.id === 'panel-body') {
-    const title = evt.detail.elt?.dataset?.panelTitle || 'INFO';
+    // Panel refreshes sent with htmx.ajax (admin-unit clicks, year changes)
+    // have no source element: fall back to the active topic's title.
+    // htmx.ajax's `source` arrives as requestConfig.elt (detail.elt is then the target).
+    const title = evt.detail.elt?.dataset?.panelTitle
+      || evt.detail.requestConfig?.elt?.dataset?.panelTitle
+      || document.querySelector('#toolbar .tool-button.active')?.dataset?.panelTitle
+      || 'Info';
     // 'visible' is the class the CSS shows the panel with (there is no rule for
     // 'open'). Tools without a TOOL_CONTENT entry (e.g. Housing) never got it
     // from the toolbar click handler, so the panel stayed hidden.

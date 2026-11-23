@@ -228,7 +228,7 @@
     top: 50%;
     left: 12px;
     transform: translateY(-50%);
-    width: 56px;           /* wide enough for icon + short label */
+    width: 64px;           /* icon + always-visible label */
     padding: 8px 6px;
     background: var(--overlay-bg);
     backdrop-filter: var(--overlay-blur);
@@ -275,11 +275,12 @@
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 1px 3px rgba(0,0,0,0.5);
 }
 
-.tool-button span.bi { font-size: 15px; }
+.tool-button span.bi { font-size: 16px; line-height: 1; }
 
-/* Small label below the icon — white-space: nowrap so it never clips */
+/* Always-visible label below the icon (Map simplification step 1); the full
+   name is the button's title/aria-label. nowrap so it never clips. */
 .tool-button .tool-label {
-    font-size: 9px;
+    font-size: 10px;
     font-weight: 500;
     letter-spacing: 0.03em;
     white-space: nowrap;
@@ -299,25 +300,6 @@
     color: var(--text-secondary);
 }
 
-.tool-tooltip {
-    position: absolute;
-    left: calc(100% + 8px);
-    top: 50%;
-    transform: translateY(-50%);
-    padding: 3px 8px;
-    border-radius: 4px;
-    background: var(--bg-panel);
-    border: 1px solid var(--border-ui);
-    color: var(--text-main);
-    font-size: 11px;
-    white-space: nowrap;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.1s ease;
-    z-index: 100;
-}
-
-.tool-button:hover .tool-tooltip { opacity: 1; }
 
 /* Toolbar divider — same as actions-divider, used between groups */
 .toolbar .actions-divider {
@@ -407,7 +389,7 @@
 
 .layers-panel {
     position: absolute;
-    left: 76px;
+    left: 84px;
     top: 44px;
     width: 264px;
     max-height: calc(100vh - 144px);
@@ -687,6 +669,16 @@
     border-color: rgba(var(--accent-rgb), 0.4);
 }
 
+/* Layer / feature / shown counts, moved here from the bottom bar */
+.layers-stats {
+    margin: 0;
+    padding: 5px 10px;
+    border-top: 1px solid var(--border-ui);
+    font-size: 10px;
+    color: var(--text-tertiary);
+    font-variant-numeric: tabular-nums;
+}
+
 .layers-panel-footer {
     display: flex;
     gap: 4px;
@@ -782,11 +774,16 @@
 .side-panel-header:active { cursor: grabbing; }
 
 .side-panel-title {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--text-tertiary);
+    font-size: 13px;
+    letter-spacing: 0.01em;
+    color: var(--text-secondary);
     font-weight: 600;
+}
+
+/* Topics without an indicator panel yet (Config.js::TOOL_CONTENT) */
+.side-panel-body .no-indicators {
+    font-weight: 600;
+    color: var(--text-secondary);
 }
 
 .side-panel-close {
@@ -1118,7 +1115,7 @@
 
 .onboarding-hint {
     position: absolute;
-    left: 76px;
+    left: 84px;
     top: 50%;
     transform: translateY(-50%);
     max-width: 200px;
@@ -1975,7 +1972,6 @@
 
     .tool-button .tool-label { display: none; }
     .tool-button span.bi { font-size: 13px; }
-    .tool-tooltip { display: none; }
 
     .layers-panel,
     .side-panel {
@@ -2012,7 +2008,7 @@
 
 .population-panel {
     position: absolute;
-    left: 76px;                 /* right of the toolbar */
+    left: 84px;                 /* right of the toolbar */
     right: 12px;
     bottom: var(--bottom-clear); /* above the bottom bar */
     max-height: min(400px, 68vh);
