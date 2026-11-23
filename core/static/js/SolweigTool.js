@@ -6,7 +6,7 @@
 //   POST urban_heat/solweig/calculate/ -> a run in the background, polled at
 //   GET  urban_heat/solweig/runs/<id>/ until done; then its three layers are added.
 // While a KNMI'23 scenario is selected (window.CLIMATE_SCENARIO, Scenarios panel
-// or the Actions menu year; event crosstwin:climate-changed) the card previews
+// or the time chip; event crosstwin:climate-changed) the card previews
 // the weather moved into it (urban_heat/solweig/scenario-met/) and Calculate
 // stores a climate scenario run instead (POST /api/climate/runs/, format=json:
 // one SOLWEIG run on the shifted hour; the current values come from an observed
@@ -522,7 +522,7 @@
       clearTimeout(refreshScenario.timer);
       refreshScenario.timer = setTimeout(refreshScenario, 300);
     }));
-    // The scenario chosen in the Scenarios panel or by the Actions menu year
+    // The scenario chosen in the Scenarios panel or by the time chip
     window.addEventListener('crosstwin:climate-changed', () => {
       if (card.classList.contains('visible')) refreshScenario();
       else refreshButton();

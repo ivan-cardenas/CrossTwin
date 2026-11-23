@@ -323,10 +323,10 @@
 .lens-group-label {
     font-size: 9px;
     line-height: 1.15;
-    font-weight: 600;
+    font-weight: 700;
     letter-spacing: -0.01em;   /* "Environment" fits the 52 px column unbroken */
     text-align: center;
-    color: var(--text-tertiary);
+    color: var(--text-secondary);
     margin: 0 -4px;            /* may use the rail's padding, never the next word */
 }
 
@@ -339,7 +339,7 @@
     border-radius: 0;
 }
 
-/* Year picker (Actions menu): big readout, status line, snapping slider */
+/* Year picker (time menu): big readout, status line, snapping slider */
 .year-picker {
     display: flex;
     flex-direction: column;
@@ -1066,101 +1066,6 @@
 
 .camera-btn:hover { color: var(--text-main); }
 
-.indicator-pill {
-    min-width: 86px;
-    padding: 4px 8px;
-    border-radius: 999px;
-    background: var(--overlay-bg);
-    backdrop-filter: var(--overlay-blur);
-    -webkit-backdrop-filter: var(--overlay-blur);
-    box-shadow: var(--overlay-shadow);
-    border: 1px solid var(--border-ui);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    cursor: pointer;
-    transition: background 0.12s ease;
-}
-
-.indicator-pill:hover { background: var(--bg-raised); }
-
-.indicator-icon {
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: var(--bg-raised);
-    border: 1px solid var(--border-ui);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-secondary);
-    font-size: 11px;
-    flex-shrink: 0;
-}
-
-.indicator-meta {
-    display: flex;
-    flex-direction: column;
-    line-height: 1.2;
-}
-
-.indicator-label {
-    font-size: 9px;
-    color: var(--text-tertiary);
-    text-transform: uppercase;
-    letter-spacing: 0.07em;
-    font-weight: 600;
-}
-
-.indicator-value {
-    font-size: 12px;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-}
-
-.city-name {
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    padding: 4px 10px;
-    border-radius: 999px;
-    background: var(--overlay-bg);
-    backdrop-filter: var(--overlay-blur);
-    -webkit-backdrop-filter: var(--overlay-blur);
-    box-shadow: var(--overlay-shadow);
-    border: 1px solid var(--border-ui);
-    color: var(--text-main);
-}
-
-.mode-btn {
-    padding: 4px 9px;
-    border-radius: 999px;
-    border: 1px solid var(--border-ui);
-    background: var(--overlay-bg);
-    backdrop-filter: var(--overlay-blur);
-    -webkit-backdrop-filter: var(--overlay-blur);
-    box-shadow: var(--overlay-shadow);
-    color: var(--text-tertiary);
-    font-size: 10px;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    transition: color 0.12s ease, border-color 0.12s ease;
-}
-
-.mode-btn span { font-size: 11px; }
-.mode-btn:hover { color: var(--text-main); border-color: var(--border-ui-strong); }
-/* Dashboard button while the side panel is open (same accent as .tool-button.active) */
-.mode-btn.active {
-    background: rgba(var(--accent-rgb), 0.12);
-    border-color: rgba(var(--accent-rgb), 0.35);
-    color: var(--accent);
-}
-
 /* ============================================================
    ONBOARDING HINT
    ============================================================ */
@@ -1539,8 +1444,8 @@
 .map-loader.htmx-request,
 .map-loader-wrap.busy .map-loader { display: flex; }
 
-/* Below the weather pill, which owns the top centre */
-.map-loader-wrap { top: 52px; }
+/* Below the status strip, which owns the top centre */
+.map-loader-wrap { top: 60px; }
 
 /* Server console lines (core/console.py) under the loader while it works */
 .map-loader-log {
@@ -1573,7 +1478,184 @@
 .map-loader-log .log-line.critical { color: #c53030; }
 
 /* ============================================================
-   WEATHER PILL (top centre; WeatherPill.js)
+   STATUS STRIP (top centre; Map simplification step 3)
+   Place + population, the time chip, the weather pill. One capsule; its
+   parts are plain segments split by hairlines, not pills of their own.
+   ============================================================ */
+
+.status-strip {
+    position: absolute;
+    top: 12px;
+    left: var(--strip-centre, 50%);   /* Events.js: centred in the map left of the side panel */
+    transform: translateX(-50%);
+    z-index: 10;
+    display: flex;
+    align-items: stretch;
+    max-width: calc(100% - 24px);
+    padding: 3px;
+    background: var(--overlay-bg);
+    backdrop-filter: var(--overlay-blur);
+    -webkit-backdrop-filter: var(--overlay-blur);
+    box-shadow: var(--overlay-shadow);
+    border: 1px solid var(--border-ui);
+    border-radius: 999px;
+    white-space: nowrap;
+}
+
+.status-strip > * + * { border-left: 1px solid var(--border-ui); }
+
+.strip-place {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 12px 0 14px;
+}
+
+.city-name {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.strip-population {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 8px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+}
+.strip-population:hover,
+.strip-population.active { color: var(--text-main); background: var(--bg-raised); }
+
+/* The time chip: the strip's one loud element. The year is set large in
+   tabular figures; a scenario turns it sky blue, the colour the Scenarios
+   panel and the thermal comfort card already use for "not observed". */
+.time-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 12px;
+    border: 0;
+    background: transparent;
+    color: var(--text-main);
+    font: inherit;
+    cursor: pointer;
+}
+.time-chip:hover,
+.time-chip.active { background: var(--bg-raised); }
+.time-chip-year {
+    font-family: var(--font-mono);
+    font-size: 17px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+.time-chip-climate { font-size: 12px; color: var(--text-secondary); }
+.time-chip-caret { font-size: 10px; color: var(--text-tertiary); transition: transform 0.15s ease; }
+.time-chip.active .time-chip-caret { transform: rotate(180deg); }
+.time-chip.is-scenario .time-chip-year,
+.time-chip.is-scenario .time-chip-climate { color: #7dd3fc; }
+
+.status-strip :focus-visible { outline: 2px solid var(--border-ui-strong); outline-offset: -2px; }
+
+/* Time menu: year, pathway, heat day, Compare (mainMap.js::setTimeMenuOpen) */
+.time-menu {
+    position: absolute;
+    width: 300px;
+    max-width: calc(100% - 16px);
+    padding: 12px;
+    background: var(--overlay-bg);
+    backdrop-filter: var(--overlay-blur);
+    -webkit-backdrop-filter: var(--overlay-blur);
+    box-shadow: var(--overlay-shadow);
+    border: 1px solid var(--border-ui);
+    border-radius: 10px;
+    z-index: 14;
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+}
+.time-menu.visible { display: flex; }
+
+.time-menu-section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-ui);
+}
+.time-menu-label { font-size: 11px; font-weight: 600; color: var(--text-secondary); }
+.time-menu-hint { margin: 0; font-size: 11px; color: var(--text-tertiary); }
+.time-menu-hint[hidden] { display: none; }
+
+.time-pathways {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+}
+.time-pathway {
+    padding: 6px 8px;
+    border: 1px solid var(--border-ui);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+.time-pathway:hover:not(:disabled) { background: var(--bg-raised); color: var(--text-main); }
+.time-pathway[aria-pressed="true"] {
+    border-color: rgba(56, 189, 248, 0.7);
+    background: rgba(56, 189, 248, 0.15);
+    color: #e8f4ff;
+}
+.time-pathway:disabled { opacity: 0.4; cursor: default; }
+
+.time-heat {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid var(--border-ui);
+    border-radius: 6px;
+    background: var(--bg-raised);
+    color: var(--text-main);
+    font: inherit;
+    font-size: 12px;
+}
+.time-heat:disabled { opacity: 0.4; }
+
+.time-compare {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px;
+    border: 1px solid var(--border-ui);
+    border-radius: 6px;
+    background: var(--bg-raised);
+    color: var(--text-main);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.time-compare:hover { border-color: var(--border-ui-strong); }
+
+@media (max-width: 768px) {
+    .status-strip { top: 58px; }      /* under the topic row */
+    .city-name { display: none; }
+    .strip-place { padding: 0 4px; }
+    .time-chip-climate { display: none; }
+}
+
+/* ============================================================
+   WEATHER PILL (inside the status strip; WeatherPill.js)
    Live weather at the map centre; a click opens the Urban Heat panel,
    whose weather sliders turn it into a what-if (amber border + badge).
    ============================================================ */
@@ -1581,17 +1663,20 @@
 /* The wrapper holds the pill and, while it rains, the radar toggle beside it
    (a button can't contain another button). */
 .weather-pill-wrap {
-    position: absolute;
-    top: 12px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 10;
     display: flex;
     align-items: center;
     gap: 6px;
     pointer-events: none;            /* only the buttons take clicks */
 }
 .weather-pill-wrap > * { pointer-events: auto; }
+.status-strip .weather-pill {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    padding: 2px 12px 2px 6px;
+}
 
 .weather-pill {
     display: flex;
@@ -1673,7 +1758,6 @@
 .weather-pill-radar[aria-pressed="true"] { border-color: rgba(56, 189, 248, 0.7); background: rgba(56, 189, 248, 0.15); }
 
 @media (max-width: 768px) {
-    .weather-pill-wrap { top: 8px; }
     .weather-pill { padding: 3px 10px 3px 4px; }
     .weather-pill-meta { display: none; }
 }
@@ -2001,7 +2085,6 @@
         gap: 5px;
     }
 
-    .city-name { order: -1; text-align: center; }
 
     .toolbar {
         top: 12px;
@@ -2046,8 +2129,6 @@
 
     .onboarding-hint::before { display: none; }
 
-    .indicator-pill { min-width: auto; padding: 3px 6px; }
-    .indicator-label { display: none; }
     .dashboard-grid { grid-template-columns: 1fr; }
 }
 
@@ -2057,11 +2138,6 @@
    Opened from the Population pill; independent of the side panel, so an
    indicator panel can stay open next to it (the dock slides left of it).
    ============================================================ */
-.indicator-pill.active {
-    background: rgba(var(--accent-rgb), 0.12);
-    border-color: rgba(var(--accent-rgb), 0.35);
-}
-
 .population-panel {
     position: absolute;
     left: 84px;                 /* right of the toolbar */

@@ -146,3 +146,24 @@ Counted from the markup at 75a09c7, for comparison after each step:
 Not changed, seen while testing: the Heat lens switches on every stored heat raster
 (9 legends in the example data) and each raster added zooms the map to itself; both were
 already so with the old tool buttons.
+
+## Step 3 — one clock and a status strip (done 23 Nov 2026)
+
+- **Status strip** (`#status-strip`, top centre; centred in the part of the map an open
+  side panel leaves free): city name, population (opens the dock), the **time chip**, the
+  weather pill. The loader moved below it (`top: 60px`).
+- **Time chip** → time menu: year slider (moved out of the Actions menu), climate pathway
+  (Low/High × dry/wet, enabled for the decades 2030–2100), heat day, *Compare scenarios*
+  (opens the Scenarios panel). A scenario colours the chip sky blue, the colour the panel
+  already uses for "not observed". Pathway and heat-day choices come from
+  `climate.PATHWAYS` / `HEAT_MODES` through the map view.
+- **One state, no two-way sync:** `mainMap.js::setTime({year, pathway, heat})` is the only
+  writer of `ACTIVE_YEAR`, `CLIMATE_PATHWAY`, `CLIMATE_HEAT` and the derived
+  `CLIMATE_SCENARIO`. The Scenarios panel calls it after its swap; `setActiveYear`,
+  `syncClimateToYear`, `chooseYear` and the Scenarios button badge are gone.
+- **Bottom bar:** camera, Layers, Actions, Dashboard. Population, the year, the city name
+  and the Scenarios button moved to the strip. The mode switch arrives with step 5.
+- Not in this step: the advisor flag (its tray is step 6).
+
+Seen while testing: with a scenario chosen and the Heat lens open, the weather pill
+still shows its own scenario badge next to the time chip (same information twice).

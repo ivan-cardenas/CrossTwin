@@ -87,10 +87,10 @@ function initializeUI() {
     changeBasemap(e.target.value);
   });
 
-  // ---- Dashboard & Scenarios buttons ------------------------------------
+  // ---- Dashboard button -------------------------------------------------
+  // (Scenarios open from the time menu's Compare button, mainMap.js)
   const dashboardBtn = document.getElementById('btn-dashboard');
   dashboardBtn?.addEventListener('click', toggleDashboard);
-  document.getElementById('btn-scenarios')?.addEventListener('click', showScenarios);
 
   // Keep the Dashboard button's "active" state equal to "side panel is open",
   // whichever control opened or closed it (✕, layer pills, toolbar, htmx swap).
@@ -104,7 +104,7 @@ function initializeUI() {
 
   // ---- Population dock --------------------------------------------------
   const populationPanel = document.getElementById('population-panel');
-  const populationPill = document.querySelector('.indicator-pill[data-indicator="population"]');
+  const populationPill = document.querySelector('.strip-population');
   document.getElementById('population-panel-close')?.addEventListener('click', () => {
     populationPanel?.classList.remove('visible');
   });
@@ -134,10 +134,27 @@ function initializeUI() {
     syncLayersBtn();
   }
 
-  // ---- Population pill --------------------------------------------------
+  // ---- Population (status strip) ----------------------------------------
   // The population dock is independent of the side panel: an indicator
   // panel stays open while it is shown.
   populationPill?.addEventListener('click', togglePopulationPanel);
+
+  // ---- Status strip centring ---------------------------------------------
+  // The strip stays centred in the part of the map the side panel leaves free.
+  const syncStripCentre = () => {
+    const wrapper = document.querySelector('.map-wrapper');
+    if (!wrapper) return;
+    // Below 768 px the side panel spans the width: keep the strip centred
+    const free = sidePanel?.classList.contains('visible') && window.matchMedia('(min-width: 769px)').matches
+      ? sidePanel.getBoundingClientRect().left - wrapper.getBoundingClientRect().left
+      : wrapper.clientWidth;
+    document.documentElement.style.setProperty('--strip-centre', `${Math.round(free / 2)}px`);
+  };
+  if (sidePanel) {
+    new MutationObserver(syncStripCentre).observe(sidePanel, { attributes: true, attributeFilter: ['class'] });
+  }
+  window.addEventListener('resize', syncStripCentre);
+  syncStripCentre();
 
   // ---- Legend stack repositioning ---------------------------------------
   // The legend stack (bottom-right) must dodge the side panel and the

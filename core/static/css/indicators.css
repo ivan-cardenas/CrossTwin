@@ -846,14 +846,6 @@ input[type="range"].zone-slider::-moz-range-thumb {
 .climate-source { margin: 8px 0 0; font-size: 0.68rem; color: var(--c-faint); }
 .climate-source a { color: #7dd3fc; }
 .pop-extrapolated { color: #fcd34d; opacity: 0.85; }
-#btn-scenarios .climate-active-badge {
-  margin-left: 4px;
-  padding: 0 6px;
-  border-radius: 8px;
-  font-size: 0.65rem;
-  background: rgba(56, 189, 248, 0.2);
-  color: #7dd3fc;
-}
 
 /* Thermal Comfort card while a KNMI'23 scenario is selected (SolweigTool.js) */
 .solweig-scenario { margin-top: 6px; padding: 6px 8px; border-radius: 6px;

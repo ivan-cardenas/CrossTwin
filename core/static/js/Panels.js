@@ -241,11 +241,12 @@ function initPopulationHover() {
 
 /**
  * Scenarios panel: the KNMI'23 climate scenarios of the Klimaateffectatlas,
- * rendered by the server (weather/views.py::climate_panel). The chosen one is
- * kept in window.CLIMATE_SCENARIO, the heat mode ('average' = observed
- * season | 'winter' … 'autumn' | 'warmest' = heat-wave day) in window.CLIMATE_HEAT; both go to the Urban Heat and Water
- * Supply panels (climateParam / syncPanelBtns in mainMap.js). The map centre
- * picks the station marked nearest in the panel's heat table.
+ * rendered by the server (weather/views.py::climate_panel), opened by the
+ * time menu's Compare button. It shows the scenario of the time state
+ * (mainMap.js::setTime: window.CLIMATE_SCENARIO, CLIMATE_HEAT = 'average'
+ * observed season | 'winter' … 'autumn' | 'warmest' heat-wave day), and a
+ * choice in it goes back through setTime. The map centre picks the station
+ * marked nearest in the panel's heat table.
  */
 function showScenarios() {
   const sidePanel = document.getElementById('side-panel');
@@ -259,46 +260,30 @@ function showScenarios() {
   htmx.ajax('GET', `/weather/climate/panel/?climate=${key}&heat=${heat}${loc}${unit}`, {
     target: '#panel-body',
     swap: 'innerHTML',
-    source: document.getElementById('btn-scenarios'),
+    source: document.getElementById('time-compare'),
   });
   sidePanel?.classList.add('visible');
   document.getElementById('layers-panel')?.classList.remove('visible');
 }
 
-/** Show the active scenario on the Scenarios button ("2050 High, dry"). */
-function renderClimateBadge(label) {
-  const btn = document.getElementById('btn-scenarios');
-  if (!btn) return;
-  let badge = btn.querySelector('.climate-active-badge');
-  if (!label) { badge?.remove(); return; }
-  if (!badge) {
-    badge = document.createElement('span');
-    badge.className = 'climate-active-badge';
-    btn.appendChild(badge);
-  }
-  badge.textContent = label;
-}
-
-// After the panel is swapped in, adopt its scenario: every panel URL gets
-// ?climate= from now on. Choosing a scenario only changes the what-if, and
-// moves the population year with it (current -> 2025, 2050 / 2100 -> that
-// year, data-climate-year). If effects were shown, they are recalculated.
+// After the panel is swapped in, its scenario becomes the time state
+// (mainMap.js::setTime): the year is the scenario's population year
+// (current -> 2025, a horizon -> that year, data-climate-year), the pathway
+// the key's suffix. The panel is the caller, so it is not refreshed again.
+// If effects were shown, they are recalculated.
 document.addEventListener('htmx:afterSwap', function (evt) {
   const panel = evt.detail.target?.querySelector?.('#climate-panel');
   if (!panel) return;
   const key = panel.dataset.climate || 'current';
   const heat = panel.dataset.climateHeat || 'average';
   const changed = key !== (window.CLIMATE_SCENARIO || 'current') || heat !== (window.CLIMATE_HEAT || 'average');
-  const keyChanged = key !== (window.CLIMATE_SCENARIO || 'current');
   if (changed) {
-    window.CLIMATE_SCENARIO = key;
-    window.CLIMATE_HEAT = heat;
-    renderClimateBadge(panel.dataset.climateLabel);
-    if (typeof syncPanelBtns === 'function') syncPanelBtns();
-    // Tools that follow the scenario (SolweigTool.js) listen to this
-    window.dispatchEvent(new CustomEvent('crosstwin:climate-changed', { detail: { key, heat } }));
+    setTime({
+      year: panel.dataset.climateYear,
+      pathway: key.includes('_') ? key.split('_')[1] : undefined,
+      heat,
+    }, { refreshPanel: false });
   }
-  if (keyChanged && typeof setActiveYear === 'function') setActiveYear(panel.dataset.climateYear, {refreshPanel: false});
   if (changed && window.CLIMATE_EFFECTS_SHOWN) loadClimateEffects();
 });
 

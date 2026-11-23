@@ -493,19 +493,82 @@
       </div>
     </div>
 
-    <!-- WEATHER PILL (top centre): live weather at the map centre; a click opens
-         the Urban Heat panel, whose weather sliders adjust it (WeatherPill.js). -->
-    <div class="weather-pill-wrap" id="weather-pill-wrap">
-      <button type="button" class="weather-pill" id="weather-pill" hidden
-              data-live-url="{% url 'weather:live_weather' %}"
-              aria-label="Weather at the map centre">
-        <span class="weather-pill-icon" id="weather-pill-icon">🌡️</span>
-        <span class="weather-pill-temp" id="weather-pill-temp">–</span>
-        <span class="weather-pill-meta" id="weather-pill-meta"></span>
-        <span class="weather-pill-badge" id="weather-pill-badge" hidden>What-if</span>
+    <!-- STATUS STRIP (top centre; Map simplification step 3): the place and its
+         population (opens the dock), the time chip = the one place to set the
+         year and the KNMI'23 climate scenario (mainMap.js::setTime), and the
+         live weather (WeatherPill.js; a click opens the Urban Heat lens). -->
+    <div class="status-strip" id="status-strip">
+      <div class="strip-place">
+        <span class="city-name">{{ city_name|default:"Enschede" }}</span>
+        <button type="button" class="strip-population" data-indicator="population"
+                aria-controls="population-panel" title="Population forecast">
+          <span class="bi bi-people" aria-hidden="true"></span>
+          <span id="population-count">0</span>
+        </button>
+      </div>
+      <button type="button" class="time-chip" id="time-chip"
+              aria-haspopup="dialog" aria-expanded="false" aria-controls="time-menu">
+        <span class="time-chip-year" id="time-chip-year">2025</span>
+        <span class="time-chip-climate" id="time-chip-climate">Current climate</span>
+        <span class="bi bi-chevron-down time-chip-caret" aria-hidden="true"></span>
       </button>
-      <button type="button" class="weather-pill-radar" id="weather-pill-radar" hidden
-              aria-pressed="false" title="Show the KNMI rain radar">🌧 Radar</button>
+      <div class="weather-pill-wrap" id="weather-pill-wrap">
+        <button type="button" class="weather-pill" id="weather-pill" hidden
+                data-live-url="{% url 'weather:live_weather' %}"
+                aria-label="Weather at the map centre">
+          <span class="weather-pill-icon" id="weather-pill-icon">🌡️</span>
+          <span class="weather-pill-temp" id="weather-pill-temp">–</span>
+          <span class="weather-pill-meta" id="weather-pill-meta"></span>
+          <span class="weather-pill-badge" id="weather-pill-badge" hidden>What-if</span>
+        </button>
+        <button type="button" class="weather-pill-radar" id="weather-pill-radar" hidden
+                aria-pressed="false" title="Show the KNMI rain radar">🌧 Radar</button>
+      </div>
+    </div>
+
+    <!-- TIME MENU: opened from the time chip. Year, climate pathway (decades
+         2030-2100) and heat day, read by every panel; Compare opens the
+         Scenarios panel. Pathways and heat days: weather/calculations/climate.py. -->
+    <div class="time-menu" id="time-menu" role="dialog" aria-label="Year and climate scenario">
+      <!-- Year picker (mainMap.js: initYearPicker). The slider snaps to these
+           years; dragging only moves the readout, releasing applies the year. -->
+      <div class="year-picker" id="year-picker"
+           data-years="2025,2026,2027,2030,2040,2050,2060,2070,2080,2090,2100"
+           data-ticks="2025,2050,2100">
+        <div class="year-readout">
+          <button type="button" class="year-step" data-step="-1" aria-label="Previous year"><span class="bi bi-chevron-left"></span></button>
+          <output class="year-value" id="year-value" for="year-slider" aria-live="polite">2025</output>
+          <button type="button" class="year-step" data-step="1" aria-label="Next year"><span class="bi bi-chevron-right"></span></button>
+        </div>
+        <p class="year-status" id="year-status">Current population, current climate</p>
+        <input type="range" class="year-slider" id="year-slider" min="0" max="10" step="1" value="0"
+               aria-label="Year" aria-valuetext="2025">
+        <div class="year-ticks" id="year-ticks" aria-hidden="true"></div>
+      </div>
+
+      <div class="time-menu-section" role="group" aria-labelledby="time-pathway-label">
+        <span class="time-menu-label" id="time-pathway-label">Climate pathway</span>
+        <div class="time-pathways">
+          {% for code, info in climate_pathways.items %}
+          <button type="button" class="time-pathway is-{{ info.variant }}" data-pathway="{{ code }}"
+                  aria-pressed="false" title="{{ info.emissions|capfirst }} emissions, {{ info.variant }} variant">{{ info.label }}</button>
+          {% endfor %}
+        </div>
+        <p class="time-menu-hint" id="time-pathway-hint">Pathways apply from 2030; earlier years use today's climate.</p>
+      </div>
+
+      <div class="time-menu-section">
+        <label class="time-menu-label" for="time-heat">Heat day</label>
+        <select id="time-heat" class="time-heat">
+          {% for mode, label in climate_heat_modes.items %}
+          <option value="{{ mode }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <button type="button" class="time-compare" id="time-compare" data-panel-title="Scenarios">
+        <span class="bi bi-layout-split" aria-hidden="true"></span> Compare scenarios
+      </button>
     </div>
 
     <!-- MAP LOADER + the server's console lines while it works (ConsoleFeed.js) -->
@@ -536,31 +599,17 @@
           <span class="bi bi-layers" aria-hidden="true"></span> Layers
         </button>
 
-        <div class="indicator-pill" data-indicator="population">
-          <div class="indicator-icon"><span class="bi bi-people" aria-hidden="true"></span></div>
-          <div class="indicator-meta">
-            <span class="indicator-label">Population</span>
-            <span class="indicator-value" id="population-count">0</span>
-          </div>
-        </div>
-
         <button class="mode-btn" id="actions-menu-btn"
                 aria-haspopup="true" aria-expanded="false" aria-controls="actions-menu">
-          <span class="bi bi-sliders"></span> Actions ·
-          <span id="actions-menu-year">2025</span>
+          <span class="bi bi-sliders"></span> Actions
           <span class="actions-menu-caret">▴</span>
           <span class="stale-dot" hidden title="Buildings changed in this view: recalculate SVF / thermal comfort"></span>
         </button>
       </div>
 
-      <div class="city-name">{{ city_name|default:"Enschede" }}</div>
-
       <div class="bottom-right">
         <button class="mode-btn" id="btn-dashboard">
           <span class="bi bi-bar-chart" aria-hidden="true"></span> Dashboard
-        </button>
-        <button class="mode-btn" id="btn-scenarios" data-panel-title="Scenarios">
-          <span class="bi bi-cloud-sun" aria-hidden="true"></span> Scenarios
         </button>
       </div>
     </div>
@@ -613,26 +662,6 @@
         </button>
       </div>
 
-      <!-- Year selector -->
-      <div class="actions-divider"></div>
-      <div class="actions-header">
-        <span class="actions-title">SELECT YEAR</span>
-      </div>
-      <!-- Year picker (mainMap.js: initYearPicker). The slider snaps to these
-           years; dragging only moves the readout, releasing applies the year. -->
-      <div class="year-picker" id="year-picker"
-           data-years="2025,2026,2027,2030,2040,2050,2060,2070,2080,2090,2100"
-           data-ticks="2025,2050,2100">
-        <div class="year-readout">
-          <button type="button" class="year-step" data-step="-1" aria-label="Previous year"><span class="bi bi-chevron-left"></span></button>
-          <output class="year-value" id="year-value" for="year-slider" aria-live="polite">2025</output>
-          <button type="button" class="year-step" data-step="1" aria-label="Next year"><span class="bi bi-chevron-right"></span></button>
-        </div>
-        <p class="year-status" id="year-status">Current population · current climate</p>
-        <input type="range" class="year-slider" id="year-slider" min="0" max="10" step="1" value="0"
-               aria-label="Year" aria-valuetext="2025">
-        <div class="year-ticks" id="year-ticks" aria-hidden="true"></div>
-      </div>
     </div>
   </div>
 </div>

@@ -235,8 +235,8 @@ const TOUR_STEPS = [
   {
     num: 4,
     title: "④ Select Scenarios",
-    desc: "Use the Dashboard and Scenarios buttons at the bottom-right. Adjust sliders and input overrides (e.g. consumption, interest rate) to model what-if futures and compare years.",
-    target: ".bottom-right",
+    desc: "The time chip at the top sets the year and the climate scenario for every panel. Compare scenarios opens the KNMI'23 scenarios; the sliders in a panel (e.g. consumption, interest rate) are what-ifs on top.",
+    target: "#time-chip",
   },
   {
     num: 5,
@@ -253,7 +253,7 @@ const TOUR_STEPS = [
   {
     num: 7,
     title: "⑦ View Results",
-    desc: "Results populate the side panel as charts, KPI cards, and new map layers. Use the year selector in the Actions menu to compare the current baseline against future scenario projections.",
+    desc: "Results populate the side panel as charts, KPI cards, and new map layers. Use the time chip at the top to compare the current baseline against future scenario projections.",
     target: "#panel-body",
   },
   {
