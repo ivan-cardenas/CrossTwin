@@ -37,6 +37,7 @@
 <script src="{% static 'js/info_popover.js' %}"></script>
 <script src="{% static 'js/MapSettings.js' %}"></script>
 <script src="{% static 'js/Modes.js' %}"></script>
+<script src="{% static 'js/Tasks.js' %}"></script>
 <script src="{% static 'js/Events.js' %}"></script>
 <script src="{% static 'js/Map_init.js' %}"></script>
 {% endblock %} {% block header_actions %}
@@ -72,8 +73,29 @@
     <!-- ONBOARDING HINT / TOUR TRIGGER -->
     <div class="onboarding-hint" id="onboarding-hint">
       <strong>Start here</strong>
-      <p>New to CrossTwin? Follow the 8-step guided tour to explore the platform.</p>
-      <button class="onboarding-tour-btn" id="start-tour-btn">▶ Start Guided Tour</button>
+      <p>Pick a question. Each one runs on the live map and points at the next control.</p>
+      <!-- Task starts (core/static/js/Tasks.js, steps in Config.js::TASKS) -->
+      <button type="button" class="onboarding-task" data-task="heat">How hot does my neighbourhood get in 2050?</button>
+      <button type="button" class="onboarding-task" data-task="water">Which homes have no water supply?</button>
+      {% if user.is_staff %}<button type="button" class="onboarding-task" data-task="sketch">Sketch 300 homes on this field.</button>{% endif %}
+      <button class="onboarding-tour-btn" id="start-tour-btn">Classic guided tour</button>
+      <label class="onboarding-classic" title="Start the 8-step text tour on a first visit, as before">
+        <input type="checkbox" id="classic-tour-pref"> Classic tour on first visit
+      </label>
+    </div>
+
+    <!-- TASK GUIDE: one step of the running task start (Tasks.js) -->
+    <div class="task-guide" id="task-guide" role="status" aria-live="polite" hidden>
+      <div class="task-guide-head">
+        <strong id="task-guide-title"></strong>
+        <span id="task-guide-count"></span>
+        <button type="button" class="task-guide-close" id="task-guide-close" aria-label="End this task">✕</button>
+      </div>
+      <p id="task-guide-text"></p>
+      <div class="task-guide-nav">
+        <button type="button" class="tour-btn tour-btn-secondary" id="task-guide-prev">← Back</button>
+        <button type="button" class="tour-btn tour-btn-primary" id="task-guide-next">Next →</button>
+      </div>
     </div>
 
     <!-- DEMO TOUR CARD -->

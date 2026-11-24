@@ -212,7 +212,56 @@ const BUILDING_COLOR_BY_TOOL = {
   groundwater: '#b4e7e3',
 };
 
-// ── GUIDED TOUR ────────────────────────────────────────────────────────────
+// ── TASK STARTS (Tasks.js) ─────────────────────────────────────────────────
+// Three questions people come with. Each step does something on the live map
+// when it opens (run) and points at the next control (target).
+const TASKS = {
+  heat: {
+    title: 'How hot does my neighbourhood get in 2050?',
+    steps: [
+      { text: 'The Heat topic is open: its layers and legend are on and the rest of the map is greyed.',
+        run: () => openLensFromRail('temperature'), target: '[data-tool="temperature"]' },
+      { text: 'The time chip now reads 2050 with a heat-and-drought climate. Change the year or pathway here.',
+        run: () => window.setTime && window.setTime({ year: 2050 }), target: '#time-chip' },
+      { text: 'Click your neighbourhood on the map. The panel gives the PET and heat-stress days for 2050; "Show on map" draws where they come from.',
+        target: '#panel-body' },
+    ],
+  },
+  water: {
+    title: 'Which homes have no water supply?',
+    steps: [
+      { text: 'The Water topic is open. Zoom in to your city: homes that no pipe reaches get a drop with a red ring.',
+        run: () => openLensFromRail('water'), target: '[data-tool="water"]' },
+      { text: 'The flag counts them and gives the number of residents in view. Click a drop for one home.',
+        target: '#advisor-flag' },
+    ],
+  },
+  sketch: {
+    title: 'Sketch 300 homes on this field.',
+    steps: [
+      { text: 'Edit mode is on: changes can be stored.',
+        run: () => window.setMapMode && window.setMapMode('edit'), target: '#mode-switch' },
+      { text: 'The generator is open with 300 dwellings as the target. Pick a style.',
+        run: () => openGenerator(300), target: '#generator-style-cards' },
+      { text: 'Press Draw outline, click the corners of the field and double-click to finish.',
+        target: '#generator-draw' },
+      { text: 'Check the site findings and the metrics; nothing is stored until you press Store.',
+        target: '#generator-commit' },
+    ],
+  },
+};
+
+function openLensFromRail(tool) {
+  document.querySelector(`#toolbar .tool-button[data-tool="${tool}"]`)?.click();
+}
+
+function openGenerator(units) {
+  document.getElementById('generatorToolBtn')?.click();
+  const input = document.getElementById('generator-target_units');
+  if (input) { input.value = String(units); input.dispatchEvent(new Event('input', { bubbles: true })); }
+}
+
+// ── GUIDED TOUR (classic) ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 const TOUR_STEPS = [
   {
     num: 1,

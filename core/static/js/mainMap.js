@@ -266,12 +266,8 @@ function endTour() {
   document.getElementById('demo-tour').classList.add('hidden');
   clearTourHighlight();
   localStorage.setItem('crosstwin_tour_seen', '1');
-  // Show hint as a restart button
   const hint = document.getElementById('onboarding-hint');
-  hint.style.display = '';
-  hint.querySelector('p').textContent = 'Want to see the walkthrough again?';
-  const btn = hint.querySelector('#start-tour-btn');
-  if (btn) btn.textContent = '↺ Restart Tour';
+  if (hint) hint.style.display = '';
 }
 
 function renderTourStep(idx) {
@@ -321,8 +317,15 @@ document.querySelectorAll('.tour-step-dot').forEach((dot, i) => {
   dot.addEventListener('click', () => { tourStep = i; renderTourStep(tourStep); });
 });
 
-// Auto-start on first visit (after map loads)
-if (!localStorage.getItem('crosstwin_tour_seen')) {
+// "Classic tour on first visit": the old 8-step text tour starts by itself, as before step 7.
+// Otherwise a first visit shows the task starts (#onboarding-hint) and nothing runs until one is picked.
+const classicPref = document.getElementById('classic-tour-pref');
+if (classicPref) {
+  classicPref.checked = localStorage.getItem('crosstwin_classic_tour') === '1';
+  classicPref.addEventListener('change', () =>
+    localStorage.setItem('crosstwin_classic_tour', classicPref.checked ? '1' : '0'));
+}
+if (!localStorage.getItem('crosstwin_tour_seen') && localStorage.getItem('crosstwin_classic_tour') === '1') {
   setTimeout(startTour, 1200);
 }
 // ── END GUIDED TOUR ────────────────────────────────────────────────────────

@@ -1352,19 +1352,30 @@
 }
 .tour-btn-ghost:hover { color: var(--text-secondary); }
 
-/* Pulsing highlight ring applied to whichever element the current step targets */
+/* Blinking highlight on whichever element the current step targets: the ring
+   and its glow switch on and off so the next control to click stands out. */
 .tour-highlight {
-    outline: 2px solid var(--accent) !important;
+    outline: 3px solid var(--accent) !important;
     outline-offset: 3px;
     border-radius: 8px;
-    animation: tourPulse 1.8s ease-in-out infinite;
+    animation: tourBlink 1s steps(1, end) infinite, tourPulse 1.8s ease-in-out infinite;
     position: relative;
     z-index: 50;
+}
+
+@keyframes tourBlink {
+    0%, 100% { outline-color: var(--accent); background-color: rgba(var(--accent-rgb), 0.28); }
+    50%      { outline-color: transparent;   background-color: transparent; }
 }
 
 @keyframes tourPulse {
     0%, 100% { box-shadow: 0 0 0 4px rgba(var(--accent-rgb), 0.18); }
     50%       { box-shadow: 0 0 0 10px rgba(var(--accent-rgb), 0.06); }
+}
+
+/* Reduced motion: a steady ring, no blinking */
+@media (prefers-reduced-motion: reduce) {
+    .tour-highlight { animation: none; box-shadow: 0 0 0 6px rgba(var(--accent-rgb), 0.25); }
 }
 
 @media (max-width: 768px) {
@@ -3295,3 +3306,52 @@ body[data-map-mode="edit"] #side-panel .summary-more { display: none; }
 }
 .generator-style-card span { font-size: 11px; color: var(--text-secondary); }
 .generator-style-card.is-selected { border-color: var(--border-ui-strong); box-shadow: inset 0 0 0 1px var(--border-ui-strong); }
+
+/* Task starts (Map simplification step 7; core/static/js/Tasks.js) */
+.onboarding-hint { max-width: 230px; }
+.onboarding-task {
+    display: block;
+    width: 100%;
+    margin-top: 6px;
+    padding: 6px 8px;
+    text-align: left;
+    background: var(--accent);
+    color: var(--on-accent);
+    border: none;
+    border-radius: 5px;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.onboarding-task:hover { background: var(--accent-strong); }
+.onboarding-tour-btn { background: transparent; color: var(--text-secondary); border: 1px solid var(--border-ui); font-weight: 500; letter-spacing: 0; }
+.onboarding-tour-btn:hover { color: var(--text-main); background: var(--bg-raised); }
+.onboarding-classic { display: flex; gap: 6px; align-items: center; margin-top: 8px; font-size: 11px; color: var(--text-tertiary); cursor: pointer; }
+
+.task-guide {
+    position: absolute;
+    left: 84px;
+    bottom: 64px;
+    width: 300px;
+    max-width: calc(100% - 96px);
+    padding: 10px 12px;
+    background: var(--overlay-bg);
+    backdrop-filter: var(--overlay-blur);
+    -webkit-backdrop-filter: var(--overlay-blur);
+    box-shadow: var(--overlay-shadow);
+    border: 1px solid var(--border-ui);
+    border-radius: 8px;
+    color: var(--text-main);
+    font-size: 12px;
+    line-height: 1.45;
+    z-index: 21;
+}
+.task-guide[hidden] { display: none; }
+.task-guide-head { display: flex; gap: 8px; align-items: baseline; }
+.task-guide-head strong { flex: 1; min-width: 0; }
+.task-guide-head span { color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.task-guide-close { border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; }
+.task-guide p { margin: 6px 0 8px; color: var(--text-secondary); }
+.task-guide-nav { display: flex; gap: 6px; justify-content: flex-end; }
+@media (max-width: 768px) { .task-guide { left: 12px; max-width: calc(100% - 24px); } }
