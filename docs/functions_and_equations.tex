@@ -845,6 +845,8 @@ with $g$ the ground as above. The land cover of the latest year is mapped to SOL
 
 \textbf{SOLWEIG.} \code{solweig-gpu} \cite{SolweigGPU} (PyTorch; CUDA when available) computes wall heights and aspects, the sky view factors and shadow matrices (cached per input hash), and SOLWEIG 2022a's radiant fluxes, mean radiant temperature $T_{mrt}$ and UTCI \cite{Lindberg2008SOLWEIG, Blazejczyk2013UTCI}. The solar position comes from the centre of the input grid and its timezone on that date (SPA), so it follows the view. The analysed hour is band~2; the halo is cropped off.
 
+\textbf{PET person.} PET holds for one person, set in the tool's person pill (\code{urban\_heat/calculations/person.py}). Clothing insulation is the sum of the garments' values, $I_{cl} = \sum_i I_{clu,i}$ (ASHRAE 55-2020, Table 5.2.2.2B; ISO 7730:2005, Annex C), the activity gives the metabolic rate $M = \text{met} \cdot 58.15\,\si{W/m^2}$ (ISO 8996), and the body surface is $A_{Du} = 0.203\, W^{0.425} H^{0.725}$ \cite{DuBois1916} with $W$ in \si{kg} and $H$ in \si{m}. The default is the reference person of \cite{Hoppe1999PET}: 35 years, \SI{1.75}{m}, \SI{75}{kg}, 0.9\,clo, 1.37\,met, seated; runs without a stored person use it. A scenario run is compared only with an observed run for the same person.
+
 \textbf{PET.} \code{pipeline.urban\_pet} calls the \code{pet-adjusted} package (\code{urban\_pet\_from\_rasters}) on the SOLWEIG window, before the halo is cropped. It solves the steady-state model of \cite{Hoppe1999PET} as corrected by \cite{Walther2018PET} (a vectorised port of \code{pythermalcomfort.pet\_steady}; standard person: 35 years, \SI{1.75}{m}, \SI{75}{kg}, 0.9\,clo, 1.37\,met) per cell, with air temperature and wind adjusted to the street after \cite{Koopmans2020PET}:
 \begin{align}
   T_a(x) &= T_{ref} + \mathrm{UHI}_{max}(x)\, f(d, h), \qquad
@@ -1108,6 +1110,7 @@ Beyond the CBS 85173NED forecasts used for the \texttt{Population\_Growth} $\to$
 \bibitem{Koopmans2020PET} Koopmans, S., Heusinkveld, B. G., \& Steeneveld, G. J. (2020). A standardized Physical Equivalent Temperature urban heat map at 1-m spatial resolution to facilitate climate stress tests in the Netherlands. \textit{Building and Environment}, 181, 106984.
 \bibitem{Hoppe1999PET} Höppe, P. (1999). The physiological equivalent temperature -- a universal index for the biometeorological assessment of the thermal environment. \textit{International Journal of Biometeorology}, 43(2), 71--75.
 
+\bibitem{DuBois1916} DuBois, D., \& DuBois, E. F. (1916). A formula to estimate the approximate surface area if height and weight be known. \textit{Archives of Internal Medicine}, 17, 863--871.
 \bibitem{Walther2018PET} Walther, E., \& Goestchel, Q. (2018). The P.E.T. comfort index: Questioning the model. \textit{Building and Environment}, 137, 1--10.
 
 \bibitem{Hersbach2020ERA5} Hersbach, H., Bell, B., Berrisford, P., et al. (2020). The ERA5 global reanalysis. \textit{Quarterly Journal of the Royal Meteorological Society}, 146(730), 1999--2049.
