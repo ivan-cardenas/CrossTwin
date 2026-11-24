@@ -72,7 +72,22 @@
       derived: document.getElementById('solweig-person-derived'),
       garments: document.getElementById('solweig-person-garments'),
       clo: document.getElementById('solweig-person-clo'),
+      figure: document.getElementById('solweig-person-figure'),
+      presets: document.getElementById('solweig-person-presets'),
+      sexSeg: document.getElementById('solweig-person-sex-seg'),
+      positionSeg: document.getElementById('solweig-person-position-seg'),
+      activitySeg: document.getElementById('solweig-person-activity-seg'),
+      tabs: document.getElementById('solweig-person-tabs'),
+      gauge: document.getElementById('solweig-person-clo-gauge'),
     };
+    // Short names for the buttons (the selects keep the full labels).
+    const PRESET_SHORT = { standard: 'Reference', summer_walker: 'Summer walker', office: 'Office',
+                           older_seated: 'Older, seated', child: 'Child', winter: 'Winter walker' };
+    const ACTIVITY_SHORT = { seated: 'Seated', standing: 'Standing', reference: 'Light', walk_slow: 'Stroll',
+                             walk: 'Walk', walk_fast: 'Brisk' };
+    // Figure part → garment group of the picker.
+    const REGION_GROUP = { Tops: 'Tops', Legs: 'Legs', Feet: 'Feet', Underwear: 'Underwear' };
+    let garmentGroup = 'Tops';
     const PERSON_INPUTS = ['preset', 'age', 'sex', 'weight', 'height', 'activity', 'position'];
     const pf = Object.fromEntries(PERSON_INPUTS.map(f => [f, document.getElementById(`solweig-person-${f}`)]));
     let personOptions = null;
@@ -103,14 +118,17 @@
       opt(pf.position, o.positions.map(x => [x, x]));
       ['age', 'weight', 'height'].forEach(f => { pf[f].min = o.limits[f].min; pf[f].max = o.limits[f].max; });
       person.garments.innerHTML = '';
+      person.tabs.innerHTML = '';
+      if (!o.garments.some(g => g.group === garmentGroup)) garmentGroup = o.garments[0].group;
       o.garments.forEach(group => {
-        const head = document.createElement('div');
-        head.className = 'person-garment-group';
-        head.textContent = group.group;
-        person.garments.append(head);
+        const tab = personButton(group.group, 'person-tab');
+        tab.dataset.group = group.group;
+        tab.addEventListener('click', () => setGarmentGroup(group.group));
+        person.tabs.append(tab);
         group.items.forEach(g => {
           const label = document.createElement('label');
-          label.className = 'person-garment';
+          label.className = 'person-chip';
+          label.dataset.group = group.group;
           const box = Object.assign(document.createElement('input'), { type: 'checkbox', value: g.key });
           const name = document.createElement('span');
           name.textContent = g.label;
@@ -120,6 +138,109 @@
           person.garments.append(label);
         });
       });
+      // Segmented buttons and chips that drive the (hidden) selects.
+      person.presets.replaceChildren(...o.presets.map(x => {
+        const b = personButton(PRESET_SHORT[x.key] || x.label, 'person-preset');
+        b.title = x.label;
+        b.dataset.value = x.key;
+        b.addEventListener('click', () => chooseSelect(pf.preset, x.key));
+        return b;
+      }));
+      person.sexSeg.replaceChildren(...o.sexes.map(s => {
+        const b = personButton(s === 'female' ? '♀ Female' : '♂ Male', 'person-seg-btn');
+        b.dataset.value = s;
+        b.addEventListener('click', () => chooseSelect(pf.sex, s));
+        return b;
+      }));
+      person.positionSeg.replaceChildren(...o.positions.map(s => {
+        const b = personButton(s === 'sitting' ? 'Sitting' : 'Standing', 'person-seg-btn');
+        b.dataset.value = s;
+        b.addEventListener('click', () => chooseSelect(pf.position, s));
+        return b;
+      }));
+      person.activitySeg.replaceChildren(...o.activities.map(a => {
+        const b = personButton(ACTIVITY_SHORT[a.key] || a.label, 'person-seg-btn');
+        const met = document.createElement('small');
+        met.textContent = `${a.met} met`;
+        b.append(met);
+        b.title = a.label;
+        b.dataset.value = a.key;
+        b.addEventListener('click', () => chooseSelect(pf.activity, a.key));
+        return b;
+      }));
+    }
+
+    function personButton(text, className) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = className;
+      b.append(document.createTextNode(text));
+      return b;
+    }
+
+    // A button sets its (hidden) select and fires the select's own change handler.
+    function chooseSelect(select, value) {
+      if (select.value === value) return;
+      select.value = value;
+      select.dispatchEvent(new Event('change'));
+    }
+
+    function setGarmentGroup(group) {
+      garmentGroup = group;
+      syncPersonUI();
+    }
+
+    // Everything on the panel that mirrors the form fields: figure, outputs, pressed buttons,
+    // garment tabs and chips, clo gauge and the derived values.
+    function syncPersonUI() {
+      if (!personOptions) return;
+      const chosen = checkedGarments();
+      const state = {
+        sex: pf.sex.value, position: pf.position.value, age: pf.age.value, height: pf.height.value,
+        weight: pf.weight.value, activity: pf.activity.value, garments: chosen, region: garmentGroup,
+      };
+      window.PersonFigure?.render(person.figure, state);
+      document.getElementById('solweig-person-age-out').textContent = `${pf.age.value} y`;
+      document.getElementById('solweig-person-height-out').textContent = `${Number(pf.height.value).toFixed(2)} m`;
+      document.getElementById('solweig-person-weight-out').textContent = `${pf.weight.value} kg`;
+      const press = (container, value) => container.querySelectorAll('button').forEach(b => {
+        b.setAttribute('aria-pressed', String(b.dataset.value === value));
+      });
+      press(person.presets, pf.preset.value);
+      press(person.sexSeg, pf.sex.value);
+      press(person.positionSeg, pf.position.value);
+      press(person.activitySeg, pf.activity.value);
+      const counts = {};
+      person.garments.querySelectorAll('input:checked').forEach(i => {
+        const g = i.closest('.person-chip').dataset.group;
+        counts[g] = (counts[g] || 0) + 1;
+      });
+      person.tabs.querySelectorAll('.person-tab').forEach(t => {
+        t.setAttribute('aria-pressed', String(t.dataset.group === garmentGroup));
+        t.dataset.count = counts[t.dataset.group] || '';
+      });
+      person.garments.querySelectorAll('.person-chip').forEach(c => { c.hidden = c.dataset.group !== garmentGroup; });
+      const clo = Number(person.clo.value) || 0;
+      person.gauge.style.setProperty('--clo-fill', `${Math.min(clo / 2, 1) * 100}%`);
+      person.gauge.dataset.clo = `${clo.toFixed(2)} clo`;
+    }
+
+    function showDerived(info) {
+      const tile = (value, unit) => {
+        const d = document.createElement('div');
+        d.className = 'person-tile';
+        const v = document.createElement('b');
+        v.textContent = value;
+        const u = document.createElement('span');
+        u.textContent = unit;
+        d.append(v, u);
+        return d;
+      };
+      const note = document.createElement('p');
+      note.textContent = info.clothing;
+      person.derived.replaceChildren(
+        tile(info.clo.toFixed(2), 'clo'), tile(info.met, 'met'), tile(info.metabolic_w, 'W metabolic'),
+        tile(info.body_surface_m2, 'm² skin'), tile(info.bmi, 'BMI'), note);
     }
 
     function showPerson(p, info) {
@@ -132,9 +253,8 @@
       person.clo.disabled = chosen.size > 0;
       person.summary.textContent = `${info.preset_label} · ${info.short}`;
       person.btn.title = `PET as felt by: ${info.label}`;
-      person.derived.textContent =
-        `${info.clo.toFixed(2)} clo (${info.clothing}) · ${info.met} met → ${info.metabolic_w} W · ` +
-        `body surface ${info.body_surface_m2} m² · BMI ${info.bmi}`;
+      showDerived(info);
+      syncPersonUI();
       refreshButton();
     }
 
@@ -505,7 +625,14 @@
     ['age', 'sex', 'weight', 'height', 'position'].forEach(f => pf[f].addEventListener('change', () => resolvePerson()));
     // A new activity sets its own met and posture.
     pf.activity.addEventListener('change', () => { pf.position.value = ''; resolvePerson(); });
-    person.garments.addEventListener('change', () => resolvePerson());
+    person.garments.addEventListener('change', () => { syncPersonUI(); resolvePerson(); });
+    // Sliders move the figure while dragging; the server resolves on release (the change above).
+    ['age', 'weight', 'height'].forEach(f => pf[f].addEventListener('input', syncPersonUI));
+    // Tapping a body part opens its garments.
+    person.figure.addEventListener('click', e => {
+      const region = e.target.closest('[data-region]')?.dataset.region;
+      if (region && REGION_GROUP[region]) setGarmentGroup(REGION_GROUP[region]);
+    });
     person.clo.addEventListener('change', () => resolvePerson());
     el.close.addEventListener('click', close);
     el.calculate.addEventListener('click', calculate);

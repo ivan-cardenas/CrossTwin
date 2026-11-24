@@ -296,7 +296,7 @@ The Scenarios panel's *Calculate effects* (staff) stores a `weather.ClimateScena
 ## Installation
 
 ```bash
-uv sync --extra solweig          # solweig-gpu, torch (CUDA 12.8 wheels), pet-adjusted
+uv sync --inexact --extra solweig          # solweig-gpu, torch (CUDA 12.8 wheels), pet-adjusted
 uv run python -c "import torch; print(torch.cuda.is_available())"
 ```
 

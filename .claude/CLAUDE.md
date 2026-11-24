@@ -27,7 +27,8 @@ The project focuses on **Dutch geospatial data** — the default CRS is EPSG:289
 ## Common Commands
 
 ```bash
-uv sync                      # install/update .venv from uv.lock (--extra solweig for thermal comfort)
+uv sync                      # install/update .venv from uv.lock (removes installed extras: with an extra always use --inexact)
+uv sync --inexact --extra solweig   # add an extra WITHOUT removing the other installed extras (never plain `uv sync --extra X`)
 uv add <pkg>                 # add a dependency (updates pyproject.toml and uv.lock)
 setup_db.bat                 # first-time PostGIS DB + .env setup (Windows)
 

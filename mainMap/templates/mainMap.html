@@ -27,6 +27,7 @@
 <script src="{% static 'js/Editing.js' %}"></script>
 <script src="{% static 'js/LstTool.js' %}"></script>
 <script src="{% static 'js/SvfTool.js' %}"></script>
+<script src="{% static 'js/PersonFigure.js' %}"></script>
 <script src="{% static 'js/SolweigTool.js' %}"></script>
 <script src="{% static 'js/DegurbaTool.js' %}"></script>
 <script src="{% static 'js/GeneratorTool.js' %}"></script>
@@ -375,29 +376,49 @@
             </button>
             <div class="person-panel" id="solweig-person-panel" hidden
                  data-person-url="{% url 'urban_heat:solweig_person' %}">
-              <div class="lst-card-fields person-row">
-                <label>Person <select id="solweig-person-preset"></select></label>
+              <!-- The selects are the source of truth (SolweigTool.js); the segmented
+                   buttons, chips and figure below drive them. -->
+              <div hidden>
+                <select id="solweig-person-preset"></select>
+                <select id="solweig-person-sex"></select>
+                <select id="solweig-person-activity"></select>
+                <select id="solweig-person-position"></select>
               </div>
-              <div class="lst-card-fields person-row">
-                <label>Age y <input type="number" id="solweig-person-age" step="1"></label>
-                <label>Sex <select id="solweig-person-sex"></select></label>
-                <label>Weight kg <input type="number" id="solweig-person-weight" step="1"></label>
-                <label>Height m <input type="number" id="solweig-person-height" step="0.01"></label>
+              <div class="person-presets" id="solweig-person-presets" role="group" aria-label="Ready-made people"></div>
+              <div class="person-stage">
+                <div class="person-figure" id="solweig-person-figure"></div>
+                <div class="person-side">
+                  <div class="person-seg" id="solweig-person-sex-seg" role="group" aria-label="Sex"></div>
+                  <div class="person-seg" id="solweig-person-position-seg" role="group" aria-label="Posture"></div>
+                  <label class="person-slider">
+                    <span>Age <output id="solweig-person-age-out"></output></span>
+                    <input type="range" id="solweig-person-age" step="1">
+                  </label>
+                  <label class="person-slider">
+                    <span>Height <output id="solweig-person-height-out"></output></span>
+                    <input type="range" id="solweig-person-height" step="0.01">
+                  </label>
+                  <label class="person-slider">
+                    <span>Weight <output id="solweig-person-weight-out"></output></span>
+                    <input type="range" id="solweig-person-weight" step="1">
+                  </label>
+                </div>
               </div>
-              <div class="lst-card-fields person-row person-activity">
-                <label>Activity <select id="solweig-person-activity"></select></label>
-                <label>Posture <select id="solweig-person-position"></select></label>
-              </div>
+              <div class="person-seg person-activity-seg" id="solweig-person-activity-seg" role="group" aria-label="Activity"></div>
               <div class="person-clothing">
                 <div class="person-clothing-head">
-                  <span>Clothing</span>
-                  <label class="person-clo" title="Icl = Σ Iclu of the ticked garments (ASHRAE 55). Without garments, type the clo.">
+                  <span>Clothing · tap the figure or a group</span>
+                  <label class="person-clo" title="Icl = Σ Iclu of the chosen garments (ASHRAE 55). Without garments, type the clo.">
                     clo <input type="number" id="solweig-person-clo" step="0.01" min="0" max="3">
                   </label>
                 </div>
+                <div class="person-clo-gauge" id="solweig-person-clo-gauge" aria-hidden="true">
+                  <i></i><span>0</span><span>0.5</span><span>1</span><span>1.5</span><span>2+</span>
+                </div>
+                <div class="person-tabs" id="solweig-person-tabs" role="group" aria-label="Garment group"></div>
                 <div class="person-garments" id="solweig-person-garments"></div>
               </div>
-              <div class="lst-view-info person-derived" id="solweig-person-derived"></div>
+              <div class="person-derived" id="solweig-person-derived"></div>
             </div>
           </div>
           <!-- Shown while a KNMI'23 scenario is selected (Scenarios panel / year): the

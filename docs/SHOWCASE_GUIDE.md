@@ -15,7 +15,7 @@ A step-by-step demo script for students who already know GIS (layers, CRS, vecto
 | Django **and** TiTiler run | `start.bat` (or `runserver 8000` + `uvicorn tiler:app --port 8001`) |
 | Raster tiles show | Open the map, switch on a DSM or land-cover raster layer |
 | Staff account exists | `uv run python manage.py createsuperuser` — needed for steps 8–10 |
-| Optional tools | SOLWEIG: `uv sync --extra solweig` (GPU helps). LST: `GEE_PROJECT_ID` in `.env`. Live weather: internet access |
+| Optional tools | SOLWEIG: `uv sync --inexact --extra solweig` (GPU helps). LST: `GEE_PROJECT_ID` in `.env`. Live weather: internet access |
 | Backup point | Create a restore point in the backup bar before step 9, so you can undo the demo edits |
 
 Rehearse once at the zoom level you will present at. Keep a second browser tab with `docs/dag_view.html` open for step 10.

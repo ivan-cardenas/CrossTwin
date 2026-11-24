@@ -48,7 +48,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Thermal comfort (SOLWEIG, urban_heat/solweig/): uv sync --extra solweig
+# Thermal comfort (SOLWEIG, urban_heat/solweig/): uv sync --inexact --extra solweig
 # torch is listed so [tool.uv.sources] can point it at the CUDA wheels.
 solweig = [
     "solweig-gpu>=2.0.0",
@@ -57,7 +57,7 @@ solweig = [
     # [solweig] extra: that pins gdal from PyPI, which has no Windows wheel.
     "pet-adjusted>=0.1.5",
 ]
-# Graphify: uv sync --extra graphify
+# Graphify: uv sync --inexact --extra graphify
 graphify = [
     "graphifyy>=0.8.0",
 ]

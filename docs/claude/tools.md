@@ -9,7 +9,7 @@ Less frequent commands (the everyday ones stay in `.claude/CLAUDE.md`).
 uv run python manage.py export_cogs
 
 # Thermal comfort (SOLWEIG-GPU: torch with CUDA 12.8 wheels, pet-adjusted for PET) — optional extra
-uv sync --extra solweig
+uv sync --inexact --extra solweig
 
 # LST from Landsat 9 + the NDVI layer (Earth Engine, GEE_PROJECT_ID); --list-scenes, --scene, --dry-run
 uv run python manage.py calculate_lst --city Enschede
