@@ -5,16 +5,15 @@
 
   <!-- Header -->
   <div style="margin-bottom:16px;">
-    <div style="font-size:10px; letter-spacing:0.14em; text-transform:uppercase;
-                color:rgba(232,244,255,0.45); margin-bottom:4px;">
+    <div class="ind-kicker">
       Housing Indicators
     </div>
-    <div style="font-family:var(--font-base); font-size:1.1rem; font-weight:700;">
+    <div class="ind-unit">
       {{ location }}
-      <span style="color:rgba(232,244,255,0.4); font-size:0.85rem;">· {{ year }}</span>
+      <span class="ind-year">· {{ year }}</span>
     </div>
     {% if indicators.population %}
-    <div id="panel-population" style="margin-top:4px; font-size:0.78rem; color:rgba(232,244,255,0.55);">
+    <div id="panel-population" style="margin-top:4px; font-size:0.78rem; color:rgba(var(--accent-1-rgb), 0.55);">
       👥 {{ indicators.population|intcomma }} inhabitants{% if indicators.population_extrapolated %} <span class="pop-extrapolated" title="Beyond the imported CBS projection: the CBS trend (compound annual growth between its first and last year) continued">· trend extrapolation</span>{% endif %}
       <span style="opacity:.7;">· {{ pop_scenario|default:"prognose" }}{% if pop_growth %}, {{ pop_growth|floatformat:1 }}%/yr extra growth{% endif %}</span>
     </div>
@@ -63,10 +62,10 @@
     {% if indicators.household_size %}
     <div>
       <span id="zone-tag" class="threshold-tag ok">Typical</span>
-      <span style="font-size:10px; color:rgba(232,244,255,0.45);">CBS {{ indicators.household_size_year }}: {{ indicators.household_size_stored }}</span>
+      <span style="font-size:10px; color:rgba(var(--accent-1-rgb), 0.45);">CBS {{ indicators.household_size_year }}: {{ indicators.household_size_stored }}</span>
     </div>
     {% else %}
-    <div style="font-size:0.8rem; color:rgba(232,244,255,0.55);">
+    <div style="font-size:0.8rem; color:rgba(var(--accent-1-rgb), 0.55);">
       No household size for this area yet — import <em>Private households</em> and the <em>Population forecast</em> (CBS) in Retrieve Data.
     </div>
     {% endif %}

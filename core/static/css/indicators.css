@@ -1,18 +1,11 @@
 /* ── Panel — Card base ──────────────────── */
+/* Colour tokens (--surface, --border, --accent, --accent2/3, --series-supply)
+   live in theme.css and follow the light/dark theme. Only dashboard aliases here. */
 :root {
-  --surface:   rgba(255,255,255,0.04);
-  --border:    rgba(255,255,255,0.08);
-  --border-hi: rgba(255,255,255,0.20);
-  --accent:    #2E6478; /* Blueprint Cyanotype (UI tint of #1F4E5F) */
-  --accent2:   #B5674A; /* Zoning Brick */
-  --accent3:   #C99A3E; /* Survey Ochre */
-  /* Series colours for charts on the dark panel (dataviz validator: lightness,
-     chroma, CVD and 3:1 contrast pass on #151618). Supply is a brighter step
-     of the cyanotype hue: --accent itself is too dark to read as a mark. */
-  --series-supply: #2F8FBF;
-  --series-demand: #B5674A;
-  --text:      #ececea;
-  --muted:     rgba(236,236,234,0.45);
+  --border-hi: var(--border-strong);
+  --series-demand: var(--accent2);
+  --text:      var(--text-primary);
+  --muted:     var(--text-tertiary);
 }
 
 .grid {
@@ -25,18 +18,18 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-left: 2px solid var(--accent-card, var(--accent));
-  border-radius: 6px;
+  border-radius: var(--r-card);
   padding: 20px 18px 16px;
   display: flex;
   flex-direction: column;
   gap: 14px;
   position: relative;
   overflow: hidden;
-  transition: border-color 0.2s;
+  transition: border-color var(--dur) ease;
   cursor: default;
 }
 
-.card:hover { border-color: var(--border-hi); border-left-color: var(--accent-card, var(--accent)); }
+.card:hover { border-color: rgba(var(--accent-rgb), 0.7); border-left-color: var(--accent-card, var(--accent)); }
 
 .card.c2 { --accent-card: var(--accent2); }
 .card.c3 { --accent-card: var(--accent3); }
@@ -45,8 +38,8 @@
 .card-icon {
   width: 36px; height: 36px;
   border-radius: 4px;
-  background: rgba(46,100,120,0.10);
-  border: 1px solid rgba(46,100,120,0.25);
+  background: rgba(var(--accent-rgb),0.10);
+  border: 1px solid rgba(var(--accent-rgb),0.25);
   display: flex; align-items: center; justify-content: center;
   font-size: 17px;
 }
@@ -55,16 +48,18 @@
 .card.c3 .card-icon { background: rgba(201,154,62,0.10);  border-color: rgba(201,154,62,0.25); }
 
 .card-label {
+  font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: 0.14em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--muted);
 }
 
 .card-value {
-  font-family: var(--font-base);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 1.6rem;
-  font-weight: 700;
+  font-weight: 500;
   line-height: 1;
   color: var(--text);
 }
@@ -80,7 +75,7 @@
 .bar-track {
   width: 100%;
   height: 4px;
-  background: rgba(255,255,255,0.06);
+  background: var(--surface-hover);
   border-radius: 99px;
   overflow: hidden;
   margin-top: auto;
@@ -132,7 +127,7 @@
 .balance-sub::before { content: "· "; }
 .balance-track {
   height: 8px;
-  background: rgba(255,255,255,0.04);   /* the shared scale's full length */
+  background: var(--surface-strong);   /* the shared scale's full length */
   border-radius: 0 4px 4px 0;
 }
 .balance-fill {
@@ -153,17 +148,33 @@
 }
 .indicators-page header { margin-bottom: 16px; }
 .indicators-page header h1 {
-  font-family: var(--font-base);
-  font-size: 1.8rem;
-  font-weight: 700;
-  margin: 4px 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-display);
+  font-weight: 600;
+  line-height: 0.95;
+  letter-spacing: var(--tracking-display);
+  text-transform: uppercase;
+  margin: 8px 0;
+  animation: ctMastIn var(--dur-reveal) var(--ease-out) both;
 }
 .indicators-page .label-tag {
   font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: 0.14em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--muted);
+}
+.indicators-page .label-tag::before { content: "4  "; color: var(--accent); }
+
+/* Staggered rise on every (re)render of the grid, incl. HTMX swaps */
+.grid > .card { animation: ctRise var(--dur-reveal) var(--ease-out) both; }
+.grid > .card:nth-child(2) { animation-delay: 60ms; }
+.grid > .card:nth-child(3) { animation-delay: 120ms; }
+.grid > .card:nth-child(4) { animation-delay: 180ms; }
+.grid > .card:nth-child(5) { animation-delay: 240ms; }
+.grid > .card:nth-child(n+6) { animation-delay: 300ms; }
+@media (prefers-reduced-motion: reduce) {
+  .grid > .card, .indicators-page header h1 { animation: none; }
 }
 
 /* ── Pips ─────────────────────────────────────────────── */
@@ -178,8 +189,8 @@
 .pip {
   width: 10px; height: 10px;
   border-radius: 50%;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.10);
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
   flex-shrink: 0;
   transition: background 0.2s, border-color 0.2s;
 }
@@ -291,7 +302,7 @@ input[type="range"].zone-slider::-webkit-slider-thumb {
   width: 16px; height: 16px;
   border-radius: 50%;
   background: var(--thumb-col, var(--accent2));
-  box-shadow: 0 0 0 3px rgba(0,0,0,0.4);
+  box-shadow: 0 0 0 3px var(--bg-0);
   transition: background 0.2s, transform 0.15s;
   cursor: grab;
 }
@@ -305,7 +316,7 @@ input[type="range"].zone-slider::-moz-range-thumb {
   width: 16px; height: 16px;
   border: none; border-radius: 50%;
   background: var(--thumb-col, var(--accent2));
-  box-shadow: 0 0 0 3px rgba(0,0,0,0.4);
+  box-shadow: 0 0 0 3px var(--bg-0);
 }
 
 .slider-threshold-labels {
@@ -313,7 +324,7 @@ input[type="range"].zone-slider::-moz-range-thumb {
   justify-content: space-between;
   margin-top: 8px;
   font-size: 9px;
-  color: rgba(236,236,234,0.35);
+  color: rgba(var(--accent-1-rgb), 0.35);
   font-family: var(--font-mono);
 }
 
@@ -372,8 +383,8 @@ input[type="range"].zone-slider::-moz-range-thumb {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  border: 1px solid rgba(236,236,234,0.22);
-  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(var(--accent-1-rgb), 0.22);
+  background: rgba(var(--accent-1-rgb), 0.03);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -385,7 +396,7 @@ input[type="range"].zone-slider::-moz-range-thumb {
   font-weight: 500;
   font-size: 9.5px;
   line-height: 1;
-  color: rgba(236,236,234,0.5);
+  color: var(--text-tertiary);
   transition: color 0.2s;
 }
 
@@ -407,8 +418,8 @@ input[type="range"].zone-slider::-moz-range-thumb {
 
 .info-btn:hover .info-btn-mark,
 .info-btn:focus-visible .info-btn-mark {
-  border-color: rgba(46,100,120,0.55);
-  background: rgba(46,100,120,0.07);
+  border-color: rgba(var(--accent-rgb), 0.55);
+  background: rgba(var(--accent-rgb), 0.07);
 }
 
 .info-btn:hover .info-btn-glyph,
@@ -418,16 +429,17 @@ input[type="range"].zone-slider::-moz-range-thumb {
 .info-btn:focus-visible .tick { opacity: 1; transform: scale(1); }
 
 .info-btn:focus-visible { outline: none; }
-.info-btn:focus-visible .info-btn-mark { box-shadow: 0 0 0 2px rgba(46,100,120,0.2); }
+.info-btn:focus-visible .info-btn-mark { box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.2); }
 
 #info-popover {
   position: fixed;
   width: 340px;
   max-width: calc(100vw - 16px);
-  background: #101617;
-  border: 1px solid rgba(46,100,120,0.35);
-  border-radius: 3px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+  background: var(--bg-1);
+  border: 1px solid var(--border-strong);
+  border-top: 1px solid var(--accent);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-soft);
   z-index: 2000;
   visibility: hidden;
   pointer-events: none;
@@ -450,7 +462,7 @@ input[type="range"].zone-slider::-moz-range-thumb {
   overflow-y: auto;
   padding: 12px 14px 13px;
   scrollbar-width: thin;
-  scrollbar-color: rgba(46,100,120,0.5) transparent;
+  scrollbar-color: rgba(var(--accent-rgb), 0.5) transparent;
 }
 
 /* Diamond notch stands in for a leader line back to the trigger mark */
@@ -459,8 +471,8 @@ input[type="range"].zone-slider::-moz-range-thumb {
   width: 7px;
   height: 7px;
   left: var(--notch-offset, calc(100% - 24px));
-  background: #101617;
-  border: 1px solid rgba(46,100,120,0.35);
+  background: var(--bg-1);
+  border: 1px solid var(--accent);
   transform: rotate(45deg);
 }
 
@@ -478,12 +490,14 @@ input[type="range"].zone-slider::-moz-range-thumb {
 
 #info-popover .info-popover-title {
   display: block;
-  font-family: var(--font-base);
+  font-family: var(--font-display);
   font-weight: 600;
-  font-size: 13px;
-  letter-spacing: -0.01em;
-  color: var(--text);
-  margin-bottom: 4px;
+  font-size: 1.25rem;
+  line-height: 1.05;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+  margin-bottom: 6px;
 }
 
 #info-popover .info-section-label {
@@ -494,7 +508,7 @@ input[type="range"].zone-slider::-moz-range-thumb {
   font-weight: 500;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: #7fb3c6; /* lighter accent: --accent is too dark for 9.5px text on #101617 */
+  color: var(--accent);
 }
 
 #info-popover .info-popover-text {
@@ -502,7 +516,7 @@ input[type="range"].zone-slider::-moz-range-thumb {
   font-family: var(--font-body);
   font-size: 12px;
   line-height: 1.55;
-  color: rgba(236,236,234,0.76);
+  color: rgba(var(--accent-1-rgb), 0.76);
 }
 
 /* Equations: one per line on a faint panel, fractions stacked */
@@ -511,8 +525,8 @@ input[type="range"].zone-slider::-moz-range-thumb {
   flex-direction: column;
   gap: 7px;
   padding: 8px 10px;
-  background: rgba(46,100,120,0.10);
-  border-left: 2px solid rgba(46,100,120,0.55);
+  background: rgba(var(--accent-rgb), 0.10);
+  border-left: 2px solid rgba(var(--accent-rgb), 0.55);
   border-radius: 2px;
 }
 
@@ -533,7 +547,7 @@ input[type="range"].zone-slider::-moz-range-thumb {
   line-height: 1.3;
 }
 
-#info-popover .eq-num { padding: 0 3px 1px; border-bottom: 1px solid rgba(236,236,234,0.6); }
+#info-popover .eq-num { padding: 0 3px 1px; border-bottom: 1px solid rgba(var(--accent-1-rgb), 0.6); }
 #info-popover .eq-den { padding: 1px 3px 0; }
 #info-popover .info-eq sup { font-size: 0.75em; }
 
@@ -552,16 +566,16 @@ input[type="range"].zone-slider::-moz-range-thumb {
   white-space: nowrap;
 }
 
-#info-popover .info-where dd { margin: 0; color: rgba(236,236,234,0.68); }
+#info-popover .info-where dd { margin: 0; color: rgba(var(--accent-1-rgb), 0.68); }
 
 #info-popover .info-popover-note {
   margin: 10px 0 0;
   padding-top: 8px;
-  border-top: 1px dashed rgba(236,236,234,0.14);
+  border-top: 1px dashed rgba(var(--accent-1-rgb), 0.14);
   font-family: var(--font-body);
   font-size: 11.5px;
   line-height: 1.5;
-  color: rgba(236,236,234,0.62);
+  color: rgba(var(--accent-1-rgb), 0.62);
 }
 
 /* ── Card animations ──────────────────────────────────── */
@@ -585,33 +599,44 @@ input[type="range"].zone-slider::-moz-range-thumb {
   grid-template-columns: 70px 1fr 44px 34px;
   align-items: center;
   gap: 8px;
-  font-size: 11px;
-  color: rgba(232, 244, 255, 0.65);
-  margin: 4px 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin: 6px 0;
 }
-.heat-weather-row input[type="range"] { width: 100%; accent-color: #38bdf8; }
+.heat-weather-row input[type="range"] { width: 100%; }
 .heat-weather-row output {
   text-align: right;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
   font-weight: 600;
-  color: rgba(232, 244, 255, 0.95);
+  letter-spacing: var(--tracking-display);
+  color: var(--text-primary);
   font-variant-numeric: tabular-nums;
 }
-.heat-weather-row small { color: rgba(232, 244, 255, 0.45); }
+.heat-weather-row small { color: var(--text-tertiary); }
 .heat-weather-reset {
   font-size: 10px;
   padding: 3px 8px;
-  border-radius: 999px;
-  border: 1px solid rgba(245, 158, 11, 0.5);
-  background: rgba(245, 158, 11, 0.1);
-  color: #f59e0b;
+  border-radius: var(--r-pill);
+  border: 1px solid rgba(var(--accent-rgb), 0.55);
+  background: rgba(var(--accent-rgb), 0.08);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
   cursor: pointer;
+  transition: background-color var(--dur) ease, border-color var(--dur) ease;
 }
+.heat-weather-reset:hover { background: rgba(var(--accent-rgb), 0.18); border-color: var(--accent); }
 .heat-weather-reset[hidden] { display: none; }
 
 .heat-weather-card.is-whatif { border-left-color: #f59e0b; }
 .heat-weather-source {
   font-size: 10px;
-  color: rgba(232, 244, 255, 0.45);
+  color: rgba(var(--accent-1-rgb), 0.45);
   margin-bottom: 8px;
   display: flex;
   gap: 6px;
@@ -622,16 +647,16 @@ input[type="range"].zone-slider::-moz-range-thumb {
 .heat-weather-stress {
   margin-top: 10px;
   padding-top: 8px;
-  border-top: 1px solid rgba(232, 244, 255, 0.08);
+  border-top: 1px solid rgba(var(--accent-1-rgb), 0.08);
 }
 .heat-weather-label {
   font-size: 9px;
-  color: rgba(232, 244, 255, 0.45);
+  color: rgba(var(--accent-1-rgb), 0.45);
   text-transform: uppercase;
   letter-spacing: 0.1em;
 }
 .heat-weather-value { font-family: var(--font-base); font-size: 0.9rem; font-weight: 600; }
-.heat-weather-value span { font-size: 0.7rem; color: rgba(232, 244, 255, 0.45); }
+.heat-weather-value span { font-size: 0.7rem; color: rgba(var(--accent-1-rgb), 0.45); }
 
 /* ── KNMI'23 climate scenarios (weather/calculations/climate.py) ── */
 .climate-note {
@@ -644,18 +669,18 @@ input[type="range"].zone-slider::-moz-range-thumb {
    the "?" buttons; colour carries the meaning of a change (tone classes
    below), so the text can stay short. */
 .climate-panel {
-  --c-muted: rgba(232, 244, 255, 0.55);
-  --c-faint: rgba(232, 244, 255, 0.4);
-  --c-line: rgba(232, 244, 255, 0.08);
+  --c-muted: rgba(var(--accent-1-rgb), 0.55);
+  --c-faint: rgba(var(--accent-1-rgb), 0.4);
+  --c-line: rgba(var(--accent-1-rgb), 0.08);
   --c-accent: #38bdf8;
   --c-dry: #e3a33b;
   --c-wet: #38bdf8;
-  padding: 0 4px; font-size: 0.8rem; color: rgba(232, 244, 255, 0.85);
+  padding: 0 4px; font-size: 0.8rem; color: rgba(var(--accent-1-rgb), 0.85);
   display: flex; flex-direction: column; gap: 14px;
 }
 .climate-panel h4 {
   display: flex; align-items: center; gap: 6px;
-  margin: 0 0 6px; font-size: 0.78rem; font-weight: 600; color: rgba(232, 244, 255, 0.75);
+  margin: 0 0 6px; font-size: 0.78rem; font-weight: 600; color: rgba(var(--accent-1-rgb), 0.75);
 }
 .climate-panel h4 .info-btn { margin-left: auto; }
 .climate-panel .unit { color: var(--c-faint); }
@@ -663,7 +688,7 @@ input[type="range"].zone-slider::-moz-range-thumb {
 /* Header: the chosen scenario, its variant as the left rule */
 .climate-head {
   display: flex; align-items: flex-start; gap: 8px;
-  padding: 2px 0 2px 10px; border-left: 3px solid rgba(232, 244, 255, 0.25);
+  padding: 2px 0 2px 10px; border-left: 3px solid rgba(var(--accent-1-rgb), 0.25);
 }
 .climate-head.is-dry { border-left-color: var(--c-dry); }
 .climate-head.is-wet { border-left-color: var(--c-wet); }
@@ -680,7 +705,7 @@ input[type="range"].zone-slider::-moz-range-thumb {
 .climate-btn {
   display: flex; flex-direction: column; gap: 2px;
   padding: 8px 10px; border-radius: 8px;
-  border: 1px solid rgba(232, 244, 255, 0.12); background: rgba(232, 244, 255, 0.04);
+  border: 1px solid rgba(var(--accent-1-rgb), 0.12); background: rgba(var(--accent-1-rgb), 0.04);
   color: inherit; font: inherit; text-align: left; cursor: pointer;
 }
 .climate-btn:hover { border-color: rgba(56, 189, 248, 0.5); }
@@ -690,7 +715,7 @@ input[type="range"].zone-slider::-moz-range-thumb {
 .climate-btn small { font-size: 0.68rem; color: var(--c-muted); }
 .climate-more { margin-top: 8px; }
 .climate-more > summary { cursor: pointer; font-size: 0.72rem; color: var(--c-muted); width: fit-content; }
-.climate-more > summary:hover { color: rgba(232, 244, 255, 0.9); }
+.climate-more > summary:hover { color: rgba(var(--accent-1-rgb), 0.9); }
 .climate-more[open] > summary { margin-bottom: 6px; }
 .climate-grid { width: 100%; border-collapse: separate; border-spacing: 4px; }
 .climate-grid th { font-size: 0.68rem; font-weight: 600; color: var(--c-muted); text-align: left; }
@@ -709,7 +734,7 @@ input[type="range"].zone-slider::-moz-range-thumb {
 .climate-curve { margin: 0 0 8px; }
 .climate-curve figcaption { display: flex; align-items: center; gap: 4px; font-size: 0.68rem; color: var(--c-muted); margin-bottom: 2px; }
 .climate-curve svg { display: block; width: 100%; height: auto; }
-.climate-curve-grid { stroke: rgba(232, 244, 255, 0.08); stroke-width: 1; }
+.climate-curve-grid { stroke: rgba(var(--accent-1-rgb), 0.08); stroke-width: 1; }
 .climate-curve-tick { fill: var(--c-faint); font-size: 9px; font-variant-numeric: tabular-nums; }
 .climate-curve-line { stroke-width: 1.6; }
 .climate-curve-line.is-dry { stroke: var(--c-dry); }
@@ -719,21 +744,21 @@ input[type="range"].zone-slider::-moz-range-thumb {
 .climate-curve-pt.is-dry { fill: var(--c-dry); }
 .climate-curve-pt.is-wet { fill: var(--c-wet); }
 .climate-curve-pt.is-published { opacity: 1; }
-.climate-curve-pt:hover, .climate-curve-pt:focus-visible { opacity: 1; stroke: #e8f4ff; stroke-width: 1.5; outline: none; }
+.climate-curve-pt:hover, .climate-curve-pt:focus-visible { opacity: 1; stroke: var(--text-primary); stroke-width: 1.5; outline: none; }
 .climate-curve-pt.is-active { opacity: 1; stroke: var(--c-accent); stroke-width: 2; }
 
 /* Heat day: one segmented control */
 .climate-segments { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
 .climate-seg {
-  padding: 6px; border-radius: 6px; border: 1px solid rgba(232, 244, 255, 0.12);
-  background: transparent; color: rgba(232, 244, 255, 0.75); font: inherit; font-size: 0.72rem; cursor: pointer; line-height: 1.25;
+  padding: 6px; border-radius: 6px; border: 1px solid rgba(var(--accent-1-rgb), 0.12);
+  background: transparent; color: rgba(var(--accent-1-rgb), 0.75); font: inherit; font-size: 0.72rem; cursor: pointer; line-height: 1.25;
 }
-.climate-seg:hover { border-color: rgba(56, 189, 248, 0.5); color: #e8f4ff; }
-.climate-seg.is-active { border-color: var(--c-accent); background: rgba(56, 189, 248, 0.14); color: #e8f4ff; font-weight: 600; }
+.climate-seg:hover { border-color: rgba(56, 189, 248, 0.5); color: var(--text-primary); }
+.climate-seg.is-active { border-color: var(--c-accent); background: rgba(56, 189, 248, 0.14); color: var(--text-primary); font-weight: 600; }
 .climate-seg.is-warmest.is-active { border-color: #f97316; background: rgba(249, 115, 22, 0.16); }
 .climate-applied { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 8px 0 0; font-size: 0.7rem; font-variant-numeric: tabular-nums; }
 .climate-applied dt { color: var(--c-muted); margin-right: 2px; }
-.climate-applied dd { margin: 0; padding: 2px 6px; border-radius: 4px; background: rgba(232, 244, 255, 0.06); }
+.climate-applied dd { margin: 0; padding: 2px 6px; border-radius: 4px; background: rgba(var(--accent-1-rgb), 0.06); }
 
 /* Tables */
 .climate-table-wrap { overflow-x: auto; }
@@ -774,7 +799,7 @@ input[type="range"].zone-slider::-moz-range-thumb {
   padding: 12px; border-radius: 10px;
   background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.35);
 }
-.climate-cta h4 { color: #e8f4ff; }
+.climate-cta h4 { color: var(--text-primary); }
 .climate-cta-btn {
   display: flex; flex-direction: column; align-items: flex-start; gap: 3px; width: 100%;
   padding: 10px 14px; border: 0; border-radius: 8px; cursor: pointer; text-align: left;
@@ -787,15 +812,15 @@ input[type="range"].zone-slider::-moz-range-thumb {
 .climate-cta-btn[disabled] { opacity: 0.6; cursor: progress; }
 .climate-cta-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; margin-top: 8px; }
 .climate-cta-secondary { flex: 1; flex-direction: row; align-items: baseline; gap: 6px; }
-.climate-cta-hint { margin: 0; font-size: 0.78rem; color: rgba(232, 244, 255, 0.7); }
-.climate-cta-options { font-size: 0.72rem; color: rgba(232, 244, 255, 0.75); }
+.climate-cta-hint { margin: 0; font-size: 0.78rem; color: rgba(var(--accent-1-rgb), 0.7); }
+.climate-cta-options { font-size: 0.72rem; color: rgba(var(--accent-1-rgb), 0.75); }
 .climate-cta-options > summary { cursor: pointer; padding: 8px 4px; }
 .climate-cta-options[open] { flex-basis: 100%; }
 .climate-cta-options-body { display: flex; flex-direction: column; }
 .climate-cta-options label { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
 .climate-cta-options .climate-cta-check { flex-direction: row; align-items: center; gap: 6px; }
 .climate-cta-options input, .climate-cta-options select {
-  background: rgba(0, 0, 0, 0.3); color: inherit; border: 1px solid rgba(232, 244, 255, 0.2); border-radius: 4px; padding: 3px 5px;
+  background: rgba(0, 0, 0, 0.3); color: inherit; border: 1px solid rgba(var(--accent-1-rgb), 0.2); border-radius: 4px; padding: 3px 5px;
 }
 .climate-effects-btn { width: 100%; }
 
@@ -805,7 +830,7 @@ input[type="range"].zone-slider::-moz-range-thumb {
 .climate-run-head b { display: flex; align-items: center; gap: 6px; }
 .climate-run-head b .info-btn { margin-left: auto; }
 .climate-run-head span { color: var(--c-muted); font-size: 0.7rem; }
-.climate-run-status { font-size: 0.72rem; color: rgba(232, 244, 255, 0.7); margin-bottom: 4px; }
+.climate-run-status { font-size: 0.72rem; color: rgba(var(--accent-1-rgb), 0.7); margin-bottom: 4px; }
 .climate-run-status.is-queued::after { content: " ●"; color: var(--c-accent); animation: climate-pulse 1.2s infinite; }
 @keyframes climate-pulse { 50% { opacity: 0.2; } }
 @media (prefers-reduced-motion: reduce) { .climate-run-status.is-queued::after { animation: none; } }
@@ -816,7 +841,7 @@ input[type="range"].zone-slider::-moz-range-thumb {
 .climate-run-note { text-align: left !important; white-space: normal !important; color: var(--c-muted); }
 .climate-run-layers { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .climate-run-layer, .climate-run-open {
-  background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.4); color: #e8f4ff;
+  background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.4); color: var(--text-primary);
   border-radius: 6px; padding: 4px 8px; font-size: 0.72rem; cursor: pointer; text-align: left;
 }
 .climate-run-open { display: flex; flex-direction: column; width: 100%; }
@@ -825,8 +850,8 @@ input[type="range"].zone-slider::-moz-range-thumb {
 .climate-run-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
 .climate-action {
   display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
-  padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(232, 244, 255, 0.16);
-  background: rgba(232, 244, 255, 0.05); color: #e8f4ff; font: inherit; text-align: left; cursor: pointer;
+  padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(var(--accent-1-rgb), 0.16);
+  background: rgba(var(--accent-1-rgb), 0.05); color: var(--text-primary); font: inherit; text-align: left; cursor: pointer;
 }
 .climate-action b { font-size: 0.78rem; }
 .climate-action small { font-size: 0.64rem; color: var(--c-muted); }
@@ -837,11 +862,11 @@ input[type="range"].zone-slider::-moz-range-thumb {
 .climate-action.is-danger { margin-left: auto; border-color: transparent; background: transparent; color: #fca5a5; font-size: 0.72rem; }
 .climate-action.is-danger:hover:not([disabled]) { border-color: rgba(239, 68, 68, 0.5); }
 .climate-effects { margin-top: 4px; }
-.climate-effects-head { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: rgba(232, 244, 255, 0.7); margin-bottom: 4px; }
+.climate-effects-head { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: rgba(var(--accent-1-rgb), 0.7); margin-bottom: 4px; }
 .climate-effects-head .info-btn { margin-left: auto; }
 .climate-effects-loading { margin-top: 8px; font-size: 0.75rem; color: var(--c-muted); }
 .climate-effects-table .climate-effects-section td {
-  padding-top: 10px; font-size: 0.7rem; font-weight: 600; color: rgba(232, 244, 255, 0.6);
+  padding-top: 10px; font-size: 0.7rem; font-weight: 600; color: rgba(var(--accent-1-rgb), 0.6);
 }
 .climate-source { margin: 8px 0 0; font-size: 0.68rem; color: var(--c-faint); }
 .climate-source a { color: #7dd3fc; }
@@ -849,15 +874,285 @@ input[type="range"].zone-slider::-moz-range-thumb {
 
 /* Thermal Comfort card while a KNMI'23 scenario is selected (SolweigTool.js) */
 .solweig-scenario { margin-top: 6px; padding: 6px 8px; border-radius: 6px;
-  background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.45); color: #e8f4ff; line-height: 1.4; }
+  background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.45); color: var(--text-primary); line-height: 1.4; }
 
 /* A heat model that did not run must be impossible to miss (no rasters then) */
 .climate-run-status.is-failed, .climate-run-status.is-unavailable {
   padding: 6px 8px; border-radius: 6px; font-size: 0.74rem;
   background: rgba(239, 68, 68, 0.14); border: 1px solid rgba(239, 68, 68, 0.5); color: #fecaca; }
 .climate-action.is-busy { opacity: 0.6; cursor: progress; }
-.climate-curve-today { stroke: rgba(232, 244, 255, 0.35); stroke-width: 1; stroke-dasharray: 2 2; }
-.climate-curve-offset { stroke: rgba(232, 244, 255, 0.45); stroke-width: 1; stroke-dasharray: 5 3; }
+.climate-curve-today { stroke: rgba(var(--accent-1-rgb), 0.35); stroke-width: 1; stroke-dasharray: 2 2; }
+.climate-curve-offset { stroke: rgba(var(--accent-1-rgb), 0.45); stroke-width: 1; stroke-dasharray: 5 3; }
 
 /* The standalone dashboards have no map: no "Show on map" (step 4) */
 .indicators-page .show-on-map { display: none; }
+
+/* Slim top bar on the standalone dashboard pages */
+.dash-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 12px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ==========================================================================
+   Metrics style (after the "Metrics" section of the reference site):
+   numbered mono kicker, large condensed figure, mono caption under a hairline.
+   Shared by the standalone dashboards and the map side-panel partials.
+   ========================================================================== */
+.grid { counter-reset: ind; gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--r-card); overflow: hidden; }
+
+.grid > .card {
+  counter-increment: ind;
+  background: var(--bg-1);
+  border: 0;
+  border-radius: 0;
+  padding: 18px 20px 16px;
+  gap: 12px;
+  transition: background-color var(--dur) ease;
+}
+.grid > .card:hover { background: var(--bg-2); border: 0; }
+.grid > .card::before {      /* accent hairline that wipes in on hover */
+  content: "";
+  position: absolute; left: 0; right: 0; top: 0; height: 1px;
+  background: var(--accent-card, var(--accent));
+  clip-path: inset(0 100% 0 0);
+  transition: clip-path var(--dur) var(--ease-wipe);
+}
+.grid > .card:hover::before { clip-path: inset(0 0 0 0); }
+
+.card-label {
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.grid > .card .card-label::before,
+.grid > .card .gauge-header .card-label::before {
+  content: counter(ind, decimal-leading-zero) " \2014";
+  color: var(--accent-card, var(--accent));
+}
+
+.card-value {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(2.6rem, 4.2vw, 3.6rem);
+  line-height: 0.95;
+  letter-spacing: var(--tracking-display);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+.card-unit {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+/* Icon: quiet monochrome glyph instead of a tinted tile */
+.card-icon, .card.c2 .card-icon, .card.c3 .card-icon {
+  width: auto; height: auto;
+  background: none; border: 0;
+  font-size: 14px;
+  filter: grayscale(1);
+  opacity: 0.7;
+}
+
+/* Hairline progress rails */
+.bar-track { height: 2px; border-radius: 0; }
+.bar-fill  { border-radius: 0; }
+.balance-track { height: 3px; border-radius: 0; }
+.balance-fill  { border-radius: 0; }
+.balance-value { font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; letter-spacing: var(--tracking-display); }
+
+/* Inline-SVG gauges carry hardcoded presentation colours: follow the theme */
+.card svg text { fill: var(--text-primary); }
+.card svg text[font-family="var(--font-mono)"] { fill: var(--text-tertiary); }
+.card svg text[font-family="var(--font-base)"] { font-family: var(--font-display); font-weight: 600; }
+.card svg [stroke^="rgba(255,255,255"] { stroke: var(--surface-hover); }
+.card svg [stroke="#2E6478"] { stroke: var(--accent); }
+
+@media (max-width: 640px) {
+  .grid { grid-template-columns: 1fr; }
+  .grid > .card.wide { grid-column: auto; }
+}
+
+/* ==========================================================================
+   Indicator name + "On map" button (see docs/claude/indicator-style-guide.md)
+   ========================================================================== */
+
+/* Name: the brightest text on the card, semibold, with the numbered accent prefix */
+.grid > .card .card-label {
+  flex: 1; min-width: 0;
+  font-family: var(--font-base);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-primary);
+}
+.grid > .card .card-label::before {
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  font-weight: 500;
+  letter-spacing: var(--tracking-label);
+}
+.gauge-header, .grid > .card > .card-icon + .card-label { padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+
+/* "On map" pill: a real action, not a ghost icon */
+.card .show-on-map {
+  width: auto; height: auto;
+  gap: 6px;
+  padding: 3px 10px;
+  margin-left: 0;
+  border: 1px solid rgba(var(--accent-rgb), 0.55);
+  border-radius: var(--r-pill);
+  background: rgba(var(--accent-rgb), 0.08);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition: background-color var(--dur) ease, border-color var(--dur) ease, color var(--dur) ease;
+}
+.card .show-on-map:hover { background: rgba(var(--accent-rgb), 0.18); border-color: var(--accent); color: var(--accent-strong); }
+.card .show-on-map[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.card .show-on-map:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ==========================================================================
+   Gauges: hairline arcs, condensed numerals, mono captions
+   ========================================================================== */
+.card.gauge { min-height: 200px; }
+.card svg [stroke-linecap="round"] { stroke-linecap: butt; stroke-width: 3px; }
+.card svg circle[stroke-linecap],
+.card svg path[stroke-linecap] { transition: stroke-dashoffset 1.2s var(--ease-out), stroke var(--dur) ease; }
+.card.gauge svg text[font-weight="700"] {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 22px;
+  letter-spacing: 0;
+  fill: var(--text-primary);
+}
+.card.gauge svg text[font-family="var(--font-mono)"] { font-size: 6px; letter-spacing: 0.08em; text-transform: uppercase; }
+.card.gauge .gauge-body svg { overflow: visible; }
+
+/* ==========================================================================
+   Sliders: hairline rail, condensed value, hollow ring thumb
+   ========================================================================== */
+.slider-container {
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  padding: 18px 20px 16px;
+  gap: 14px;
+  transition: border-color var(--dur) ease;
+}
+.slider-container:hover { border-color: rgba(var(--accent-rgb), 0.7); }
+.slider-container::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1px;
+  background: var(--accent2);
+}
+.slider-header .card-label, .slider-header-left .card-label { font-family: var(--font-base); font-size: 13px; font-weight: 600; color: var(--text-primary); text-transform: none; letter-spacing: 0; }
+.slider-value-display {
+  font-family: var(--font-display);
+  font-size: 2.2rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-display);
+  font-variant-numeric: tabular-nums;
+}
+.slider-unit {
+  font-size: var(--fs-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.slider-zones { height: 2px; border-radius: 0; gap: 2px; }
+.sz-ok   { background: rgba(var(--success-rgb), 0.55); }
+.sz-warn { background: rgba(var(--warning-rgb), 0.55); }
+.sz-bad  { background: rgba(var(--error-rgb), 0.55); }
+input[type="range"].zone-slider { height: 2px; }
+input[type="range"].zone-slider::-webkit-slider-thumb {
+  width: 14px; height: 14px;
+  background: var(--bg-0);
+  border: 2px solid var(--thumb-col, var(--accent2));
+  box-shadow: none;
+}
+input[type="range"].zone-slider::-moz-range-thumb {
+  width: 10px; height: 10px;
+  background: var(--bg-0);
+  border: 2px solid var(--thumb-col, var(--accent2));
+  box-shadow: none;
+}
+input[type="range"].zone-slider:hover::-webkit-slider-thumb { background: var(--thumb-col, var(--accent2)); }
+input[type="range"].zone-slider:focus-visible { outline: 1px solid var(--accent); outline-offset: 6px; }
+.slider-threshold-labels, .slider-threshold-labels span { font-family: var(--font-mono); font-size: 10px; letter-spacing: var(--tracking-label); text-transform: uppercase; color: var(--text-tertiary); }
+.heat-weather-row input[type="range"] { accent-color: var(--accent); }
+
+/* ==========================================================================
+   Narrow type for names: indicator names and the administrative unit name use
+   the extra-condensed display face to cut clutter (see the style guide).
+   ========================================================================== */
+.grid > .card .card-label,
+.slider-header .card-label,
+.slider-header-left .card-label {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  line-height: 1.1;
+}
+.grid > .card .card-label::before { font-size: 10px; }
+
+.ind-kicker {
+  margin-bottom: 4px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.ind-unit {
+  font-family: var(--font-display);
+  font-size: 1.7rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: var(--tracking-display);
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+.ind-year {
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  font-weight: 400;
+  letter-spacing: var(--tracking-label);
+  color: var(--text-tertiary);
+}
+.card svg, .grid svg { color: var(--text-primary); }
+
+/* Light theme: the climate panel's pale-on-tint text is unreadable on a light
+   surface. Tints stay (they are the data colours); the text goes dark. */
+:root[data-theme="light"] .climate-panel [class*="tone-"],
+:root[data-theme="light"] .climate-change,
+:root[data-theme="light"] .climate-change.is-strong,
+:root[data-theme="light"] .climate-tag,
+:root[data-theme="light"] .climate-cta h4,
+:root[data-theme="light"] .climate-seg,
+:root[data-theme="light"] .climate-seg.is-active,
+:root[data-theme="light"] .climate-seg:hover,
+:root[data-theme="light"] .climate-action,
+:root[data-theme="light"] .climate-action.is-danger,
+:root[data-theme="light"] .climate-table thead th.is-season { color: var(--text-primary); }
+:root[data-theme="light"] .climate-source a,
+:root[data-theme="light"] .pop-extrapolated,
+:root[data-theme="light"] .climate-action.is-attention small { color: var(--accent-strong); }
+:root[data-theme="light"] .climate-cta-btn { color: var(--on-accent); }

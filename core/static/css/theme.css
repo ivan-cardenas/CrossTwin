@@ -1,51 +1,83 @@
 /* ==========================================================================
-   CrossTwin Theme
-   Neutral dark — monochrome base, single blue accent for interactive states
+   CrossTwin Theme — editorial dark system (light variant via data-theme="light")
+   Single source of truth for colour, type, radius and motion tokens.
+   Never hardcode colours in component CSS: use these variables.
    ========================================================================== */
 
 :root {
-    --font-base: "Archivo", "Inter", system-ui, sans-serif;
-    --font-body: "Inter", system-ui, sans-serif;
-    --font-mono: "IBM Plex Mono", "Fira Code", monospace;
+    --font-display: "Saira Extra Condensed", "Archivo", "Inter", system-ui, sans-serif;
+    --font-base: "Geist", "Inter", system-ui, sans-serif;
+    --font-body: "Geist", "Inter", system-ui, sans-serif;
+    --font-mono: "Geist Mono", "IBM Plex Mono", ui-monospace, monospace;
+
+    /* Type scale */
+    --fs-label: 11px;
+    --fs-small: 13px;
+    --fs-body: 15px;
+    --fs-display: clamp(40px, 6vw, 72px);
+    --tracking-label: 0.07em;
+    --tracking-display: -0.02em;
+
+    /* Radii */
+    --r-pill: 999px;
+    --r-card: 6px;
+    --r-sm: 3px;
+
+    /* Motion */
+    --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+    --ease-wipe: cubic-bezier(0.65, 0, 0.2, 1);
+    --dur-fast: 0.18s;
+    --dur: 0.3s;
+    --dur-reveal: 0.75s;
 
     /* Layout — written at runtime by JS in base.html */
     --header-height: 48px;
 
     /* Backgrounds */
-    --bg-0:  #080808;   /* page background */
-    --bg-1:  #111111;   /* cards, panels */
-    --bg-2:  #1a1a1a;   /* hover / raised */
-    --bg-3:  #222222;   /* active / pressed */
-    --bg-dropdown: #111111;
+    --bg-0:  #0b0b0c;   /* page background */
+    --bg-1:  #111113;   /* cards, panels */
+    --bg-2:  #18181a;   /* hover / raised */
+    --bg-3:  #202023;   /* active / pressed */
+    --bg-deep: #060606; /* wells, overlays */
+    --bg-dropdown: #111113;
+    --bg-overlay: rgba(11, 11, 12, 0.85);
 
     /* Borders — hairline only */
-    --border:        rgba(255, 255, 255, 0.08);
-    --border-strong: rgba(255, 255, 255, 0.14);
-    --border-focus:  rgba(59, 130, 246, 0.5);
+    --border:        rgba(243, 243, 241, 0.12);
+    --border-strong: rgba(243, 243, 241, 0.22);
+    --border-focus:  rgba(var(--accent-rgb), 0.6);
 
-    /* Text — four steps from bright to invisible */
-    --text-primary:   #f0f0f0;   /* headings, important labels */
-    --text-secondary: #cecece;   /* body copy, descriptions */
-    --text-tertiary:  #d3d3d3;   /* muted labels, help text */
-    --text-dim:       #717171;   /* hairline separators, ghost text */
+    /* Text */
+    --text-primary:   #f8f8f5;
+    --text-secondary: #b8bec4;
+    --text-tertiary:  #8c9095;
+    --text-dim:       #6b6f73;
     --text-white:     #ffffff;
-    --text-black:     #080808;
+    --text-black:     #0b0b0c;
+    --on-accent:      #04191c;   /* text on accent fills */
 
-    /* Single interactive accent — Blueprint Cyanotype, used only for focus/active states.
-       UI tint (#2E6478) of the reference swatch (#1F4E5F) — lightened for text/icon contrast. */
-    --accent:     #2E6478;
-    --accent-rgb: 46, 100, 120;
+    /* Single accent — cool teal. Kept away from red/amber so it never
+       collides with heat/risk legends. */
+    --accent:        #3fb8c4;
+    --accent-strong: #5fd3dc;
+    --accent-deep:   #2E6478;   /* Blueprint Cyanotype, fills behind text */
+    --accent-rgb:    63, 184, 196;
 
-    /* Legacy aliases — mapped neutral so old code doesn't break visually */
-    --accent-1:     #f0f0f0;
-    --accent-2:     #888888;
-    --accent-3:     #2E6478;
-    --accent-4:     #aaaaaa;
-    --accent-1-rgb: 240, 240, 240;
-    --accent-4-rgb: 170, 170, 170;
-    --accent-glow-rgb: 46, 100, 120;
-    --accent-hover: #ffffff;
-    --accent-muted: rgba(255, 255, 255, 0.06);
+    /* Legacy aliases */
+    --accent-1:     var(--text-primary);
+    --accent-2:     var(--text-tertiary);
+    --accent-3:     var(--accent);
+    --accent-4:     var(--text-secondary);
+    --accent-1-rgb: 243, 243, 241;
+    --accent-4-rgb: 163, 167, 170;
+    --accent-glow-rgb: var(--accent-rgb);
+    --accent-hover: var(--accent-strong);
+    --accent-muted: rgba(243, 243, 241, 0.06);
+
+    /* Supporting palette (dashboards) */
+    --accent2: #B5674A;   /* Zoning Brick */
+    --accent3: #C99A3E;   /* Survey Ochre */
+    --series-supply: #2F8FBF;
 
     /* Status */
     --success:     #22c55e;
@@ -59,25 +91,70 @@
     --info-rgb:    59, 130, 246;
     --error-text:  #fca5a5;
 
-    /* Shadow — no color tint */
+    /* Shadow — flat by default */
     --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3);
 
-    /* Surfaces (glass aliases — kept flat, no blur) */
-    --surface:        rgba(255, 255, 255, 0.03);
-    --surface-strong: rgba(255, 255, 255, 0.05);
-    --surface-hover:  rgba(255, 255, 255, 0.07);
-    --surface-inset:  rgba(255, 255, 255, 0.03);
-    --border-soft:    rgba(255, 255, 255, 0.08);
-    --border-medium:  rgba(255, 255, 255, 0.14);
+    /* Surfaces */
+    --surface:        rgba(243, 243, 241, 0.03);
+    --surface-strong: rgba(243, 243, 241, 0.05);
+    --surface-hover:  rgba(243, 243, 241, 0.07);
+    --surface-inset:  rgba(243, 243, 241, 0.03);
+    --border-soft:    var(--border);
+    --border-medium:  var(--border-strong);
 
     /* Print */
     --print-bg:   #ffffff;
     --print-text: #000000;
+
+    color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+    --bg-0:  #f3f3f1;
+    --bg-1:  #ffffff;
+    --bg-2:  #e9eaea;
+    --bg-3:  #e0e1e2;
+    --bg-deep: #e7e8e9;
+    --bg-dropdown: #ffffff;
+    --bg-overlay: rgba(243, 243, 241, 0.88);
+
+    --border:        rgba(11, 11, 12, 0.14);
+    --border-strong: rgba(11, 11, 12, 0.28);
+
+    --text-primary:   #0b0b0c;
+    --text-secondary: #3a3d40;
+    --text-tertiary:  #5c6064;
+    --text-dim:       #8c9095;
+    --text-black:     #0b0b0c;
+    --on-accent:      #ffffff;
+
+    --accent:        #1f7f8a;
+    --accent-strong: #176670;
+    --accent-rgb:    31, 127, 138;
+
+    --accent-1-rgb: 11, 11, 12;
+    --accent-4-rgb: 58, 61, 64;
+    --accent-muted: rgba(11, 11, 12, 0.06);
+
+    --error-text:  #b91c1c;
+    --shadow-soft: 0 1px 2px rgba(11, 11, 12, 0.08), 0 4px 12px rgba(11, 11, 12, 0.06);
+
+    --surface:        rgba(11, 11, 12, 0.03);
+    --surface-strong: rgba(11, 11, 12, 0.05);
+    --surface-hover:  rgba(11, 11, 12, 0.07);
+    --surface-inset:  rgba(11, 11, 12, 0.03);
+
+    color-scheme: light;
 }
 
 /* ==========================================================================
    Base
    ========================================================================== */
+
+html {
+    scroll-behavior: smooth;
+    scroll-padding-top: var(--header-height);
+}
 
 body {
     font-family: var(--font-body);
@@ -85,56 +162,123 @@ body {
     color: var(--text-primary);
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;
+    transition: background-color var(--dur) ease, color var(--dur) ease;
 }
+
+/* The app shell scrolls inside <main>, not the window */
+main { scroll-behavior: smooth; }
+
+::selection { background: rgba(var(--accent-rgb), 0.3); }
 
 /* ==========================================================================
    Header & footer chrome
    ========================================================================== */
 
 .app-header {
+    position: relative;
     border-bottom: 1px solid var(--border);
-    background: var(--bg-0);
-    /* Height is content-driven (padding below).
-       JS reads offsetHeight after render and writes --header-height. */
+    background: var(--bg-overlay);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    /* Height is content-driven; JS writes --header-height. */
 }
 
-/* Prototype / environment badge in the header */
-.header-badge {
-    padding: 0.15rem 0.5rem;
-    font-size: 0.65rem;
+.brand-mark {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 22px;
+    line-height: 1;
+    letter-spacing: 0.02em;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    color: var(--text-primary);
+}
+
+.brand-sub {
+    font-family: var(--font-mono);
+    font-size: var(--fs-label);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+}
+
+/* Primary navigation: mono uppercase, accent underline wipes in */
+.app-nav { display: flex; align-items: center; gap: 1.5rem; }
+
+.app-nav a {
+    position: relative;
+    padding: 0.25rem 0;
+    font-family: var(--font-mono);
+    font-size: var(--fs-label);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: color var(--dur-fast) ease;
+}
+
+.app-nav a::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: -2px;
+    height: 1px;
+    background: var(--accent);
+    clip-path: inset(0 100% 0 0);
+    transition: clip-path var(--dur) var(--ease-wipe);
+}
+
+.app-nav a:hover,
+.app-nav a[aria-current="page"] { color: var(--text-primary); }
+
+.app-nav a:hover::after,
+.app-nav a[aria-current="page"]::after { clip-path: inset(0 0 0 0); }
+
+/* Pill badge in the header */
+.header-badge {
+    padding: 0.15rem 0.6rem;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
     color: var(--text-tertiary);
     border: 1px solid var(--border);
-    border-radius: 3px;
+    border-radius: var(--r-pill);
 }
 
-/* Header buttons: log in / out, map settings */
+/* Header buttons: log in / out, map settings, theme toggle */
 .header-btn {
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
-    padding: 0.2rem 0.6rem;
-    font-size: 0.72rem;
+    padding: 0.25rem 0.75rem;
+    font-family: var(--font-mono);
+    font-size: var(--fs-label);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
     color: var(--text-secondary);
     background: transparent;
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--r-pill);
     cursor: pointer;
     text-decoration: none;
+    transition: border-color var(--dur) ease, color var(--dur) ease, background-color var(--dur) ease;
 }
-.header-btn:hover { color: var(--text-primary); border-color: var(--text-tertiary); }
-.header-user { font-size: 0.72rem; color: var(--text-tertiary); }
+.header-btn:hover { color: var(--text-primary); border-color: var(--accent); }
+.header-btn--icon { padding: 0.25rem 0.55rem; }
+.header-user { font-family: var(--font-mono); font-size: var(--fs-label); color: var(--text-tertiary); }
 
 .app-footer {
     border-top: 1px solid var(--border);
+    font-family: var(--font-mono);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
 }
 
 /* ==========================================================================
-   Glass — kept for compatibility, rendered flat
+   Surfaces — flat hairline panels
    ========================================================================== */
 
-.glass {
+.glass,
+.ct-surface {
     background: var(--bg-1);
     border: 1px solid var(--border);
 }
@@ -145,12 +289,94 @@ body {
 }
 
 /* ==========================================================================
-   Animation
+   Components: .ct-btn .ct-card .ct-label .ct-display .ct-chip .ct-divider
    ========================================================================== */
 
-.fade-in {
-    animation: fadeIn 0.25s ease;
+.ct-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.55rem 1.25rem;
+    font-family: var(--font-base);
+    font-size: var(--fs-small);
+    font-weight: 500;
+    color: var(--text-primary);
+    background: transparent;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-pill);
+    text-decoration: none;
+    cursor: pointer;
+    transition: border-color var(--dur) ease, background-color var(--dur) ease, color var(--dur) ease;
 }
+.ct-btn:hover { border-color: var(--accent); }
+.ct-btn--arrow::after {
+    content: "\2192";
+    transition: transform var(--dur) var(--ease-out);
+}
+.ct-btn--arrow:hover::after { transform: translateX(4px); }
+.ct-btn--primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--on-accent);
+}
+.ct-btn--primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
+
+.ct-card {
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    border-radius: var(--r-card);
+    transition: border-color var(--dur) ease, background-color var(--dur) ease;
+}
+.ct-card:hover { border-color: rgba(var(--accent-rgb), 0.7); }
+
+.ct-label {
+    font-family: var(--font-mono);
+    font-size: var(--fs-label);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+}
+
+.ct-display {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: var(--fs-display);
+    line-height: 0.95;
+    letter-spacing: var(--tracking-display);
+    text-transform: uppercase;
+    color: var(--text-primary);
+}
+
+.ct-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.7rem;
+    font-family: var(--font-mono);
+    font-size: var(--fs-label);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--r-pill);
+    transition: border-color var(--dur) ease, background-color var(--dur) ease;
+}
+.ct-chip:hover { border-color: var(--accent); }
+
+.ct-divider {
+    height: 1px;
+    background: var(--border-strong);
+    border: 0;
+}
+
+.ct-num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* ==========================================================================
+   Motion — scroll reveals (js/ui/theme.js adds [data-revealed])
+   ========================================================================== */
+
+.fade-in { animation: fadeIn 0.25s ease; }
 
 @keyframes fadeIn {
     from { opacity: 0; }
@@ -160,6 +386,62 @@ body {
 @keyframes pulse-glow {
     0%, 100% { opacity: 0.6; }
     50%       { opacity: 1; }
+}
+
+@keyframes ctMastIn {
+    from { transform: translate3d(0, 6%, 0); clip-path: inset(0 0 100% 0); }
+    to   { transform: none; clip-path: inset(0 0 0 0); }
+}
+
+@keyframes ctLineIn {
+    from { clip-path: inset(0 50% 0 50%); }
+    to   { clip-path: inset(0 0 0 0); }
+}
+
+@keyframes ctCaret {
+    0%, 49%   { opacity: 1; }
+    50%, 100% { opacity: 0; }
+}
+
+@keyframes ctRise {
+    from { opacity: 0; transform: translate3d(0, 14px, 0); }
+    to   { opacity: 1; transform: none; }
+}
+
+/* Hidden until revealed; only when JS is running (html.js) so no-JS stays visible */
+.js .reveal:not([data-revealed]),
+.js .reveal-mast:not([data-revealed]),
+.js .reveal-line:not([data-revealed]) { opacity: 0; }
+
+.reveal[data-revealed] {
+    animation: ctRise var(--dur-reveal) var(--ease-out) both;
+    animation-delay: calc(var(--i, 0) * 60ms);
+}
+.reveal-mast[data-revealed] {
+    animation: ctMastIn var(--dur-reveal) var(--ease-out) both;
+    animation-delay: calc(var(--i, 0) * 60ms);
+}
+.reveal-line[data-revealed] {
+    animation: ctLineIn 0.8s var(--ease-wipe) 0.15s both;
+}
+
+.ct-caret::after {
+    content: "";
+    display: inline-block;
+    width: 0.08em; height: 0.9em;
+    margin-left: 0.1em;
+    background: var(--accent);
+    vertical-align: -0.05em;
+    animation: ctCaret 1s steps(1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html, main { scroll-behavior: auto; }
+    .js .reveal:not([data-revealed]),
+    .js .reveal-mast:not([data-revealed]),
+    .js .reveal-line:not([data-revealed]) { opacity: 1; }
+    .reveal[data-revealed], .reveal-mast[data-revealed], .reveal-line[data-revealed],
+    .ct-caret::after, .fade-in { animation: none; }
 }
 
 /* ==========================================================================
@@ -175,12 +457,12 @@ body {
     width: 100%;
     background: var(--bg-1);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--r-card);
     padding: 0.5rem 0.75rem;
     color: var(--text-primary);
     font-family: var(--font-body);
     font-size: 0.875rem;
-    transition: border-color 0.15s ease;
+    transition: border-color var(--dur) ease;
     outline: none;
 }
 
@@ -216,7 +498,7 @@ body {
 
 .upload-form select {
     appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23555555'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%238c9095'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 0.625rem center;
     background-size: 1rem;
@@ -252,7 +534,7 @@ body {
     top: 50%;
     width: 4px;
     height: 7px;
-    border: solid #fff;
+    border: solid var(--on-accent);
     border-width: 0 1.5px 1.5px 0;
     transform: translate(-50%, -60%) rotate(45deg);
 }
@@ -291,54 +573,50 @@ ul.errorlist li::before {
    Buttons — three clear tonal levels so they read on dark surfaces
    ------------------------------------------------------------------ */
 
-/* Primary: light on dark — strongest contrast */
+/* Primary: accent fill */
 .btn-primary {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 0.375rem;
-    padding: 0.5rem 1.125rem;
-    background: #e8e8e8;
-    border: 1px solid #d0d0d0;
-    border-radius: 6px;
-    color: #0a0a0a;
+    padding: 0.5rem 1.25rem;
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: var(--r-pill);
+    color: var(--on-accent);
     font-weight: 600;
     font-size: 0.875rem;
     font-family: var(--font-base);
     cursor: pointer;
-    transition: background 0.12s ease;
+    transition: background-color var(--dur) ease, border-color var(--dur) ease;
     text-decoration: none;
-    letter-spacing: 0.01em;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.15), 0 1px 2px rgba(0,0,0,0.4);
 }
 
-.btn-primary:hover  { background: #f5f5f5; border-color: #ddd; }
-.btn-primary:active { background: #d8d8d8; }
+.btn-primary:hover  { background: var(--accent-strong); border-color: var(--accent-strong); }
+.btn-primary:active { background: var(--accent-deep); border-color: var(--accent-deep); }
 
-/* Secondary: dark surface with visible border — mid contrast */
+/* Secondary: hairline, accent border on hover */
 .btn-secondary {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 0.375rem;
-    padding: 0.5rem 1.125rem;
-    background: #1c1c1c;
-    border: 1px solid #2e2e2e;
-    border-radius: 6px;
-    color: #d0d0d0;
+    padding: 0.5rem 1.25rem;
+    background: transparent;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-pill);
+    color: var(--text-primary);
     font-weight: 500;
     font-size: 0.875rem;
     font-family: var(--font-body);
     cursor: pointer;
-    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+    transition: border-color var(--dur) ease, background-color var(--dur) ease;
     text-decoration: none;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 1px 2px rgba(0,0,0,0.3);
 }
 
 .btn-secondary:hover {
-    background: #242424;
-    border-color: #3a3a3a;
-    color: #f0f0f0;
+    background: var(--surface-hover);
+    border-color: var(--accent);
 }
 
 /* ==========================================================================
@@ -372,10 +650,11 @@ table.dataframe td {
 .table-wrapper th,
 table.dataframe th {
     background: var(--bg-1);
-    font-weight: 600;
-    font-size: 0.75rem;
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-size: var(--fs-label);
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: var(--tracking-label);
     color: var(--text-secondary);
     position: sticky;
     top: 0;
@@ -476,7 +755,7 @@ code {
 .loading-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(8, 8, 8, 0.75);
+    background: var(--bg-overlay);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -599,3 +878,62 @@ code {
         color: var(--print-text);
     }
 }
+
+/* ==========================================================================
+   Range sliders (weather, population, year): 2px hairline rail, hollow ring thumb.
+   Same look as .zone-slider on the indicator dashboards.
+   ========================================================================== */
+.heat-weather-row input[type="range"],
+.pop-row input[type="range"],
+.year-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    accent-color: var(--accent);
+}
+.heat-weather-row input[type="range"]::-webkit-slider-runnable-track,
+.pop-row input[type="range"]::-webkit-slider-runnable-track,
+.year-slider::-webkit-slider-runnable-track {
+    height: 2px;
+    background: var(--border-strong);
+    border-radius: 0;
+}
+.heat-weather-row input[type="range"]::-moz-range-track,
+.pop-row input[type="range"]::-moz-range-track,
+.year-slider::-moz-range-track {
+    height: 2px;
+    background: var(--border-strong);
+    border-radius: 0;
+}
+.heat-weather-row input[type="range"]::-moz-range-progress,
+.pop-row input[type="range"]::-moz-range-progress,
+.year-slider::-moz-range-progress { height: 2px; background: var(--accent); }
+.heat-weather-row input[type="range"]::-webkit-slider-thumb,
+.pop-row input[type="range"]::-webkit-slider-thumb,
+.year-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    margin-top: -6px;               /* centre on the 2px track */
+    border-radius: 50%;
+    background: var(--bg-0);
+    border: 2px solid var(--accent);
+    box-shadow: none;
+    cursor: grab;
+    transition: background-color var(--dur-fast) ease;
+}
+.heat-weather-row input[type="range"]::-moz-range-thumb,
+.pop-row input[type="range"]::-moz-range-thumb,
+.year-slider::-moz-range-thumb {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--bg-0);
+    border: 2px solid var(--accent);
+    box-shadow: none;
+    cursor: grab;
+}
+.heat-weather-row input[type="range"]:hover::-webkit-slider-thumb,
+.pop-row input[type="range"]:hover::-webkit-slider-thumb,
+.year-slider:hover::-webkit-slider-thumb { background: var(--accent); }
+.heat-weather-row input[type="range"]:active::-webkit-slider-thumb,
+.pop-row input[type="range"]:active::-webkit-slider-thumb,
+.year-slider:active::-webkit-slider-thumb { cursor: grabbing; }

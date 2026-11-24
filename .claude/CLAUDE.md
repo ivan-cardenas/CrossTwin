@@ -17,6 +17,7 @@ The project focuses on **Dutch geospatial data** — the default CRS is EPSG:289
 | Any DAG edge, `save()` equation, receiver or `chain.py` | [docs/claude/dag-contract.md](../docs/claude/dag-contract.md) (full contract) + [docs/DAG_COVERAGE.md](../docs/DAG_COVERAGE.md); `/dag-edge` skill |
 | Signals, cascades, bulk writes | [docs/claude/signals.md](../docs/claude/signals.md) |
 | Importer, external catalog, `BulkWriter` | [docs/claude/importer.md](../docs/claude/importer.md) |
+| Indicator cards, gauges, sliders, "On map" button (any new indicator) | [docs/claude/indicator-style-guide.md](../docs/claude/indicator-style-guide.md) |
 | Map page, JS tools/cards, rasters/COGs, TiTiler | [docs/claude/map-frontend.md](../docs/claude/map-frontend.md) |
 | Map editing, backup/restore | [docs/claude/map-editing.md](../docs/claude/map-editing.md) |
 | URLs / endpoints | [docs/claude/api-routes.md](../docs/claude/api-routes.md) |

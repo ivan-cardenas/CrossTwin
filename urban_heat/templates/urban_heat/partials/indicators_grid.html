@@ -86,7 +86,7 @@
     <div class="gauge-body bottom">
       <svg viewBox="0 0 120 70" width="160" height="95" aria-hidden="true">
         <path d="M 10,65 A 50,50 0 0 1 110,65"
-              fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10" stroke-linecap="round"/>
+              fill="none" stroke="currentColor" stroke-opacity="0.06" stroke-width="10" stroke-linecap="round"/>
         <path id="gauge-lst"
               d="M 10,65 A 50,50 0 0 1 110,65"
               fill="none" stroke="#ef4444" stroke-width="10" stroke-linecap="round"
@@ -94,13 +94,13 @@
               style="transition: stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)"/>
         <text x="60" y="55" text-anchor="middle"
               font-family="var(--font-base)" font-size="15" font-weight="700"
-              fill="#e8f4ff" id="gauge-lst-txt">–</text>
+              fill="currentColor" id="gauge-lst-txt">–</text>
         <text x="60" y="67" text-anchor="middle"
               font-family="var(--font-mono)" font-size="7"
-              fill="rgba(232,244,255,0.45)">°C mean</text>
+              fill="currentColor" fill-opacity="0.45">°C mean</text>
       </svg>
     </div>
-    <div style="display:flex; gap:12px; font-size:9px; color:rgba(232,244,255,0.45); font-family:var(--font-mono);">
+    <div style="display:flex; gap:12px; font-size:9px; color:rgba(var(--accent-1-rgb), 0.45); font-family:var(--font-mono);">
       <span>Min: {% if indicators.lst_min != None %}{{ indicators.lst_min }}°C{% else %}—{% endif %}</span>
       <span>Max: {% if indicators.lst_max != None %}{{ indicators.lst_max }}°C{% else %}—{% endif %}</span>
     </div>
@@ -119,7 +119,7 @@
     <div class="gauge-body bottom">
       <svg viewBox="0 0 120 70" width="160" height="95" aria-hidden="true">
         <path d="M 10,65 A 50,50 0 0 1 110,65"
-              fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10" stroke-linecap="round"/>
+              fill="none" stroke="currentColor" stroke-opacity="0.06" stroke-width="10" stroke-linecap="round"/>
         <path id="gauge-pet"
               d="M 10,65 A 50,50 0 0 1 110,65"
               fill="none" stroke="#f59e0b" stroke-width="10" stroke-linecap="round"
@@ -127,22 +127,22 @@
               style="transition: stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)"/>
         <text x="60" y="55" text-anchor="middle"
               font-family="var(--font-base)" font-size="15" font-weight="700"
-              fill="#e8f4ff" id="gauge-pet-txt">–</text>
+              fill="currentColor" id="gauge-pet-txt">–</text>
         <text x="60" y="67" text-anchor="middle"
               font-family="var(--font-mono)" font-size="7"
-              fill="rgba(232,244,255,0.45)">°C mean</text>
+              fill="currentColor" fill-opacity="0.45">°C mean</text>
       </svg>
     </div>
     {% if indicators.pet_category %}
     <div style="font-size:9px; letter-spacing:0.12em; text-transform:uppercase; padding:3px 8px;
                 border-radius:4px; align-self:flex-start;
                 color:{% if 'Heat' in indicators.pet_category %}#ef4444{% elif 'Cold' in indicators.pet_category %}#2E6478{% else %}#22c55e{% endif %};
-                background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1);">
+                background:rgba(var(--accent-1-rgb), 0.05); border:1px solid rgba(var(--accent-1-rgb), 0.1);">
       {{ indicators.pet_category }}
     </div>
     {% endif %}
     {% if indicators.pet_person %}
-    <div class="pet-person-note" style="font-size:9px; color:rgba(232,244,255,0.6); font-family:var(--font-mono);"
+    <div class="pet-person-note" style="font-size:9px; color:rgba(var(--accent-1-rgb), 0.6); font-family:var(--font-mono);"
          title="PET as felt by: {{ indicators.pet_person.label }} ({{ indicators.pet_person.clothing }}; {{ indicators.pet_person.metabolic_w }} W metabolic heat)">
       🧍 For: {{ indicators.pet_person.short }}
     </div>
@@ -163,7 +163,7 @@
     <div class="gauge-body bottom">
       <svg viewBox="0 0 120 70" width="160" height="95" aria-hidden="true">
         <path d="M 10,65 A 50,50 0 0 1 110,65"
-              fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10" stroke-linecap="round"/>
+              fill="none" stroke="currentColor" stroke-opacity="0.06" stroke-width="10" stroke-linecap="round"/>
         <path id="gauge-utci"
               d="M 10,65 A 50,50 0 0 1 110,65"
               fill="none" stroke="#ef4444" stroke-width="10" stroke-linecap="round"
@@ -171,17 +171,17 @@
               style="transition: stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)"/>
         <text x="60" y="55" text-anchor="middle"
               font-family="var(--font-base)" font-size="15" font-weight="700"
-              fill="#e8f4ff" id="gauge-utci-txt">–</text>
+              fill="currentColor" id="gauge-utci-txt">–</text>
         <text x="60" y="67" text-anchor="middle"
               font-family="var(--font-mono)" font-size="7"
-              fill="rgba(232,244,255,0.45)">°C mean</text>
+              fill="currentColor" fill-opacity="0.45">°C mean</text>
       </svg>
     </div>
     {% if indicators.utci_category %}
     <div style="font-size:9px; letter-spacing:0.12em; text-transform:uppercase; padding:3px 8px;
                 border-radius:4px; align-self:flex-start;
                 color:{% if 'Heat' in indicators.utci_category %}#ef4444{% elif 'Cold' in indicators.utci_category %}#2E6478{% else %}#22c55e{% endif %};
-                background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1);">
+                background:rgba(var(--accent-1-rgb), 0.05); border:1px solid rgba(var(--accent-1-rgb), 0.1);">
       {{ indicators.utci_category }}
     </div>
     {% endif %}
@@ -201,7 +201,7 @@
     <div class="gauge-body bottom">
       <svg viewBox="0 0 120 70" width="160" height="95" aria-hidden="true">
         <path d="M 10,65 A 50,50 0 0 1 110,65"
-              fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10" stroke-linecap="round"/>
+              fill="none" stroke="currentColor" stroke-opacity="0.06" stroke-width="10" stroke-linecap="round"/>
         <path id="gauge-wbgt"
               d="M 10,65 A 50,50 0 0 1 110,65"
               fill="none" stroke="{{ indicators.wbgt_color|default:'#ef4444' }}" stroke-width="10" stroke-linecap="round"
@@ -209,17 +209,17 @@
               style="transition: stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)"/>
         <text x="60" y="55" text-anchor="middle"
               font-family="var(--font-base)" font-size="15" font-weight="700"
-              fill="#e8f4ff" id="gauge-wbgt-txt">–</text>
+              fill="currentColor" id="gauge-wbgt-txt">–</text>
         <text x="60" y="67" text-anchor="middle"
               font-family="var(--font-mono)" font-size="7"
-              fill="rgba(232,244,255,0.45)">°C mean</text>
+              fill="currentColor" fill-opacity="0.45">°C mean</text>
       </svg>
     </div>
     {% if indicators.wbgt_category %}
     <div style="font-size:9px; letter-spacing:0.12em; text-transform:uppercase; padding:3px 8px;
                 border-radius:4px; align-self:flex-start;
                 color:{{ indicators.wbgt_color }};
-                background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1);">
+                background:rgba(var(--accent-1-rgb), 0.05); border:1px solid rgba(var(--accent-1-rgb), 0.1);">
       {{ indicators.wbgt_category }}
     </div>
     {% endif %}
@@ -238,7 +238,7 @@
     <div class="gauge-body" style="flex:1;display:flex;justify-content:center;align-items:center;">
       <svg viewBox="0 0 100 100" width="110" height="110" aria-hidden="true">
         <circle cx="50" cy="50" r="38"
-                fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="12"/>
+                fill="none" stroke="currentColor" stroke-opacity="0.06" stroke-width="12"/>
         <circle id="gauge-svf"
                 cx="50" cy="50" r="38"
                 fill="none" stroke="#2E6478" stroke-width="12" stroke-linecap="round"
@@ -247,10 +247,10 @@
                 style="transition: stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)"/>
         <text x="50" y="46" text-anchor="middle"
               font-family="var(--font-base)" font-size="18" font-weight="700"
-              fill="#e8f4ff" id="gauge-svf-txt">–</text>
+              fill="currentColor" id="gauge-svf-txt">–</text>
         <text x="50" y="59" text-anchor="middle"
               font-family="var(--font-mono)" font-size="8"
-              fill="rgba(232,244,255,0.45)">mean (0–1)</text>
+              fill="currentColor" fill-opacity="0.45">mean (0–1)</text>
       </svg>
     </div>
   </div>
@@ -276,16 +276,16 @@
     </div>
     <div style="display:flex; gap:16px; margin-top:10px;">
       <div>
-        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Parks</div>
-        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.park_area_km2 }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">km²</span></div>
+        <div style="font-size:9px; color:rgba(var(--accent-1-rgb), 0.45); text-transform:uppercase; letter-spacing:0.1em;">Parks</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.park_area_km2 }} <span style="font-size:0.7rem; color:rgba(var(--accent-1-rgb), 0.45);">km²</span></div>
       </div>
       <div>
-        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Other Green</div>
-        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.green_lc_km2 }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">km²</span></div>
+        <div style="font-size:9px; color:rgba(var(--accent-1-rgb), 0.45); text-transform:uppercase; letter-spacing:0.1em;">Other Green</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.green_lc_km2 }} <span style="font-size:0.7rem; color:rgba(var(--accent-1-rgb), 0.45);">km²</span></div>
       </div>
       <div>
-        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Total</div>
-        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.total_green_km2 }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">km²</span></div>
+        <div style="font-size:9px; color:rgba(var(--accent-1-rgb), 0.45); text-transform:uppercase; letter-spacing:0.1em;">Total</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.total_green_km2 }} <span style="font-size:0.7rem; color:rgba(var(--accent-1-rgb), 0.45);">km²</span></div>
       </div>
     </div>
   </div>
@@ -299,31 +299,31 @@
     </div>
     <div style="display:flex; gap:16px; flex-wrap:wrap;">
       <div>
-        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Buildings</div>
+        <div style="font-size:9px; color:rgba(var(--accent-1-rgb), 0.45); text-transform:uppercase; letter-spacing:0.1em;">Buildings</div>
         <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.building_count }}</div>
       </div>
       <div>
-        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Avg Height</div>
-        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.avg_height_m }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">m</span></div>
+        <div style="font-size:9px; color:rgba(var(--accent-1-rgb), 0.45); text-transform:uppercase; letter-spacing:0.1em;">Avg Height</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.avg_height_m }} <span style="font-size:0.7rem; color:rgba(var(--accent-1-rgb), 0.45);">m</span></div>
       </div>
       <div>
-        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Max Height</div>
-        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.max_height_m }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">m</span></div>
+        <div style="font-size:9px; color:rgba(var(--accent-1-rgb), 0.45); text-transform:uppercase; letter-spacing:0.1em;">Max Height</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.max_height_m }} <span style="font-size:0.7rem; color:rgba(var(--accent-1-rgb), 0.45);">m</span></div>
       </div>
       <div>
-        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Aspect Ratio (H/W)</div>
+        <div style="font-size:9px; color:rgba(var(--accent-1-rgb), 0.45); text-transform:uppercase; letter-spacing:0.1em;">Aspect Ratio (H/W)</div>
         <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">
           <span style="color:{% if indicators.aspect_ratio > 1.5 %}#ef4444{% elif indicators.aspect_ratio > 1.0 %}#f59e0b{% else %}#22c55e{% endif %};">
             {{ indicators.aspect_ratio }}
           </span>
         </div>
-        <div style="font-size:9px; color:rgba(232,244,255,0.45);">
+        <div style="font-size:9px; color:rgba(var(--accent-1-rgb), 0.45);">
           {% if indicators.aspect_ratio_source == "stored" %}{{ indicators.canyon_streets }} street canyons · {{ indicators.canyon_open_pct }}% open · {{ indicators.canyon_deep_pct }}% deep{% else %}proxy: avg height / avg width{% endif %}
         </div>
       </div>
       <div>
-        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Footprint</div>
-        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.footprint_km2 }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">km²</span></div>
+        <div style="font-size:9px; color:rgba(var(--accent-1-rgb), 0.45); text-transform:uppercase; letter-spacing:0.1em;">Footprint</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.footprint_km2 }} <span style="font-size:0.7rem; color:rgba(var(--accent-1-rgb), 0.45);">km²</span></div>
       </div>
     </div>
   </div>
@@ -342,12 +342,12 @@
             {{ indicators.suhii_mean }}°C
           </span>
         {% else %}
-          <span style="color:rgba(232,244,255,0.35);">—</span>
+          <span style="color:rgba(var(--accent-1-rgb), 0.35);">—</span>
         {% endif %}
       </div>
       <div class="card-unit">mean intensity</div>
     </div>
-    <div style="display:flex; gap:12px; margin-top:8px; font-size:9px; color:rgba(232,244,255,0.45); font-family:var(--font-mono);">
+    <div style="display:flex; gap:12px; margin-top:8px; font-size:9px; color:rgba(var(--accent-1-rgb), 0.45); font-family:var(--font-mono);">
       <span>Min: {% if indicators.suhii_min != None %}{{ indicators.suhii_min }}°C{% else %}—{% endif %}</span>
       <span>Max: {% if indicators.suhii_max != None %}{{ indicators.suhii_max }}°C{% else %}—{% endif %}</span>
     </div>
@@ -364,7 +364,7 @@
       <div class="card-value">{{ indicators.nbs_count }}</div>
       <div class="card-unit">interventions</div>
     </div>
-    <div style="margin-top:6px; font-size:9px; color:rgba(232,244,255,0.45); font-family:var(--font-mono);">
+    <div style="margin-top:6px; font-size:9px; color:rgba(var(--accent-1-rgb), 0.45); font-family:var(--font-mono);">
       {{ indicators.nbs_area_km2 }} km² covered ({{ indicators.nbs_area_m2 }} m²)
     </div>
   </div>

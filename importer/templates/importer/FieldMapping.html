@@ -6,8 +6,8 @@
     <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div class="space-y-2">
             <p class="text-[11px] uppercase tracking-[0.28em] text-cyan-100/80">Step 2 of 2</p>
-            <h1 class="text-2xl md:text-3xl font-semibold text-slate-50">Field Mapping</h1>
-            <p class="text-slate-300 max-w-2xl">Map your source columns to the <code class="px-2 py-0.5 rounded bg-white/10 text-cyan-300 text-sm">{{ target_model }}</code> model fields.</p>
+            <h1 class="text-2xl md:text-3xl font-semibold ct-text-primary">Field Mapping</h1>
+            <p class="ct-text-secondary max-w-2xl">Map your source columns to the <code class="px-2 py-0.5 rounded bg-white/10 ct-text-accent text-sm">{{ target_model }}</code> model fields.</p>
         </div>
         <a href="{% url 'importer:upload_geodata' %}" class="btn-secondary text-sm">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -20,30 +20,30 @@
     <!-- Detected Columns Info -->
     <div class="glass rounded-xl p-5 space-y-4">
         <div class="flex items-center justify-between">
-            <h3 class="text-sm font-semibold text-slate-100 flex items-center gap-2">
-                <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <h3 class="text-sm font-semibold ct-text-primary flex items-center gap-2">
+                <svg class="w-4 h-4 ct-text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                 </svg>
                 Detected Columns
             </h3>
-            <span class="text-xs text-slate-400">{{ columns|length }} columns found</span>
+            <span class="text-xs ct-text-tertiary">{{ columns|length }} columns found</span>
         </div>
         <div class="flex flex-wrap gap-2">
             {% for col in columns %}
-            <span class="px-2.5 py-1 text-xs rounded-lg bg-white/5 border border-white/10 text-slate-300">{{ col }}</span>
+            <span class="px-2.5 py-1 text-xs rounded-lg bg-white/5 border border-white/10 ct-text-secondary">{{ col }}</span>
             {% endfor %}
         </div>
     </div>
 
     <!-- Data Preview -->
     <div class="glass rounded-xl p-5 space-y-4">
-        <h3 class="text-sm font-semibold text-slate-100 flex items-center gap-2">
-            <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <h3 class="text-sm font-semibold ct-text-primary flex items-center gap-2">
+            <svg class="w-4 h-4 ct-text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"></path>
             </svg>
             Sample Data (First 5 Rows)
         </h3>
-        <div class= "text-sm text-slate-300"> CRS: {{crs|safe}} </div>
+        <div class= "text-sm ct-text-secondary"> CRS: {{crs|safe}} </div>
         <div class="table-wrapper">
             {{ sample|safe }}
         </div>
@@ -56,8 +56,8 @@
 
         <!-- Field Mappings -->
         <div class="glass rounded-xl p-6 space-y-6">
-            <h3 class="text-lg font-semibold text-slate-100 flex items-center gap-2">
-                <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <h3 class="text-lg font-semibold ct-text-primary flex items-center gap-2">
+                <svg class="w-5 h-5 ct-text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
                 </svg>
                 Column Mappings
@@ -66,7 +66,7 @@
             <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {% for field, unit in mapping_form.mapping_rows %}
                     <div class="space-y-1.5">
-                        <label class="text-sm font-medium text-slate-100 flex items-center gap-2">
+                        <label class="text-sm font-medium ct-text-primary flex items-center gap-2">
                             {{ field.label }}
                             {% if field.field.required %}
                             <span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">Required</span>
@@ -74,7 +74,7 @@
                         </label>
                         {{ field }}
                         {% if unit %}
-                        <label class="flex items-center gap-2 text-xs text-slate-300">
+                        <label class="flex items-center gap-2 text-xs ct-text-secondary">
                             <span>Unit</span>
                             {{ unit }}
                         </label>
@@ -97,8 +97,8 @@
         <!-- Geometry Settings -->
         {% if mapping_form.target_srid %}
         <div class="glass rounded-xl p-6 space-y-4">
-            <h3 class="text-lg font-semibold text-slate-100 flex items-center gap-2">
-                <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <h3 class="text-lg font-semibold ct-text-primary flex items-center gap-2">
+                <svg class="w-5 h-5 ct-text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064"></path>
                 </svg>
                 Geometry Settings
@@ -121,14 +121,14 @@
                         <p class="text-sm font-medium {% if source_geom_type and source_geom_type in geom_type_info.expected_type %}text-emerald-300{% else %}text-amber-300{% endif %}">
                             Geometry Type Check
                         </p>
-                        <p class="text-sm text-slate-300">
-                            <span class="text-slate-400">Source data:</span> 
-                            <code class="px-1.5 py-0.5 rounded bg-white/10 text-cyan-300 text-xs">{{ source_geom_type|default:"Unknown" }}</code>
+                        <p class="text-sm ct-text-secondary">
+                            <span class="ct-text-tertiary">Source data:</span> 
+                            <code class="px-1.5 py-0.5 rounded bg-white/10 ct-text-accent text-xs">{{ source_geom_type|default:"Unknown" }}</code>
                         </p>
-                        <p class="text-sm text-slate-300">
-                            <span class="text-slate-400">Target field expects:</span> 
-                            <code class="px-1.5 py-0.5 rounded bg-white/10 text-cyan-300 text-xs">{{ geom_type_info.expected_type }}</code>
-                            <span class="text-slate-500">({{ geom_type_info.field_class }})</span>
+                        <p class="text-sm ct-text-secondary">
+                            <span class="ct-text-tertiary">Target field expects:</span> 
+                            <code class="px-1.5 py-0.5 rounded bg-white/10 ct-text-accent text-xs">{{ geom_type_info.expected_type }}</code>
+                            <span class="ct-text-tertiary">({{ geom_type_info.field_class }})</span>
                         </p>
                         {% if source_geom_type and source_geom_type not in geom_type_info.expected_type %}
                         <p class="text-xs text-amber-400 mt-2">
@@ -141,7 +141,7 @@
             {% endif %}
             
             <div class="max-w-sm space-y-1.5">
-                <label class="text-sm font-medium text-slate-100">{{ mapping_form.target_srid.label }}</label>
+                <label class="text-sm font-medium ct-text-primary">{{ mapping_form.target_srid.label }}</label>
                 {{ mapping_form.target_srid }}
                 {% if mapping_form.target_srid.help_text %}
                 <span class="helptext">{{ mapping_form.target_srid.help_text }}</span>
@@ -152,8 +152,8 @@
 
         <!-- Import Options -->
         <div class="glass rounded-xl p-6 space-y-4">
-            <h3 class="text-lg font-semibold text-slate-100 flex items-center gap-2">
-                <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <h3 class="text-lg font-semibold ct-text-primary flex items-center gap-2">
+                <svg class="w-5 h-5 ct-text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
                 </svg>
@@ -162,8 +162,8 @@
             <label class="flex items-center gap-3 cursor-pointer">
                 {{ mapping_form.dry_run }}
                 <div>
-                    <span class="text-sm font-medium text-slate-100">Dry Run Mode</span>
-                    <p class="text-xs text-slate-400">Validate mapping without saving to database</p>
+                    <span class="text-sm font-medium ct-text-primary">Dry Run Mode</span>
+                    <p class="text-xs ct-text-tertiary">Validate mapping without saving to database</p>
                 </div>
             </label>
         </div>
@@ -197,19 +197,19 @@
 
     <!-- Instructions -->
     <div class="glass rounded-xl p-5 space-y-3">
-        <h3 class="text-sm font-semibold text-slate-100 flex items-center gap-2">
-            <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <h3 class="text-sm font-semibold ct-text-primary flex items-center gap-2">
+            <svg class="w-4 h-4 ct-text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
             </svg>
             Instructions
         </h3>
-        <ol class="space-y-2 text-sm text-slate-300 list-decimal list-inside">
-            <li>Use the dropdowns to map each <em class="text-cyan-300">model field</em> to a <em class="text-cyan-300">source column</em>.</li>
-            <li>For <code class="px-1.5 py-0.5 rounded bg-white/10 text-cyan-300 text-xs">City</code>, map <code class="px-1.5 py-0.5 rounded bg-white/10 text-cyan-300 text-xs">cityName</code> and <code class="px-1.5 py-0.5 rounded bg-white/10 text-cyan-300 text-xs">geom</code> (geometry column) at minimum.</li>
-            <li>For <code class="px-1.5 py-0.5 rounded bg-white/10 text-cyan-300 text-xs">ConsumptionCapita</code>, map <code class="px-1.5 py-0.5 rounded bg-white/10 text-cyan-300 text-xs">city</code> (name or id), <code class="px-1.5 py-0.5 rounded bg-white/10 text-cyan-300 text-xs">year</code>, and <code class="px-1.5 py-0.5 rounded bg-white/10 text-cyan-300 text-xs">consumption_capita_L_d</code>.</li>
-            <li>Click <em class="text-cyan-300">Check mapping</em> for a dry run. Fix any errors.</li>
-            <li>When ready, click <em class="text-cyan-300">Import</em> to commit to PostGIS.</li>
+        <ol class="space-y-2 text-sm ct-text-secondary list-decimal list-inside">
+            <li>Use the dropdowns to map each <em class="ct-text-accent">model field</em> to a <em class="ct-text-accent">source column</em>.</li>
+            <li>For <code class="px-1.5 py-0.5 rounded bg-white/10 ct-text-accent text-xs">City</code>, map <code class="px-1.5 py-0.5 rounded bg-white/10 ct-text-accent text-xs">cityName</code> and <code class="px-1.5 py-0.5 rounded bg-white/10 ct-text-accent text-xs">geom</code> (geometry column) at minimum.</li>
+            <li>For <code class="px-1.5 py-0.5 rounded bg-white/10 ct-text-accent text-xs">ConsumptionCapita</code>, map <code class="px-1.5 py-0.5 rounded bg-white/10 ct-text-accent text-xs">city</code> (name or id), <code class="px-1.5 py-0.5 rounded bg-white/10 ct-text-accent text-xs">year</code>, and <code class="px-1.5 py-0.5 rounded bg-white/10 ct-text-accent text-xs">consumption_capita_L_d</code>.</li>
+            <li>Click <em class="ct-text-accent">Check mapping</em> for a dry run. Fix any errors.</li>
+            <li>When ready, click <em class="ct-text-accent">Import</em> to commit to PostGIS.</li>
         </ol>
     </div>
 </div>
-{% endblock content %}
+{% endblock content %}

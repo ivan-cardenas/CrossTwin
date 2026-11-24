@@ -204,7 +204,7 @@ const BASEMAP_BUILDING_OPACITY = 0.25;
 // A colour, or a list of shades: each Mapbox building then takes one shade
 // picked by its feature id (Map_init.js::buildingColorForTool), so the city
 // looks less uniform and a building keeps its shade on every pan and reload.
-const BUILDING_COLOR_DEFAULT = ['#bd643b', '#7c4d37', '#69351d'];
+const BUILDING_COLOR_DEFAULT = ['#bd643b']; // '#7c4d37', '#69351d'
 const BUILDING_COLOR_BY_TOOL = {
   water:       '#cde5fa',
   // temperature: '#c0504d',

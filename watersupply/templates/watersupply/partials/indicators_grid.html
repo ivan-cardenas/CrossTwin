@@ -49,7 +49,7 @@
     <div class="gauge-body" style="flex:1; display:flex; justify-content:center; align-items:center;">
       <svg viewBox="0 0 100 100" width="110" height="110" aria-hidden="true">
         <circle cx="50" cy="50" r="38"
-                fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="12"/>
+                fill="none" stroke="currentColor" stroke-opacity="0.06" stroke-width="12"/>
         <circle id="gauge-sec"
                 cx="50" cy="50" r="38"
                 fill="none" stroke="#2E6478" stroke-width="12"
@@ -59,17 +59,17 @@
                 transform="rotate(-90 50 50)"
                 style="transition: stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)"/>
         <line x1="19.2" y1="46.3" x2="4.3" y2="44.5"
-              stroke="rgba(255,255,255,0.55)" stroke-width="2"
+              stroke="currentColor" stroke-opacity="0.55" stroke-width="2"
               stroke-linecap="round"/>
         <text x="26" y="40" text-anchor="middle"
               font-family="var(--font-mono)" font-size="6.5"
-              fill="rgba(255,255,255,0.45)">100%</text>
+              fill="currentColor" fill-opacity="0.45">100%</text>
         <text x="50" y="46" text-anchor="middle"
               font-family="var(--font-base)" font-size="18" font-weight="700"
-              fill="#e8f4ff" id="gauge-sec-txt">–</text>
+              fill="currentColor" id="gauge-sec-txt">–</text>
         <text x="50" y="59" text-anchor="middle"
               font-family="var(--font-mono)" font-size="8"
-              fill="rgba(232,244,255,0.45)" id="gauge-sec-sub">% covered</text>
+              fill="currentColor" fill-opacity="0.45" id="gauge-sec-sub">% covered</text>
       </svg>
     </div>
     <div id="gauge-sec-badge"
@@ -122,7 +122,7 @@
       </div>
       <div style="display:flex; justify-content:space-between;
                   margin-top:6px; font-size:9px;
-                  color:rgba(232,244,255,0.35); font-family:var(--font-mono);">
+                  color:rgba(var(--accent-1-rgb), 0.35); font-family:var(--font-mono);">
         <span>0%</span>
         <span>{{ indicators.opex_percent }}% of budget cap</span>
         <span>100%</span>
@@ -151,25 +151,25 @@
     </div>
     <div style="display:flex; gap:16px; margin-top:10px;">
       <div>
-        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Apparent</div>
-        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.apparent_losses_m3_d }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">m³/d</span></div>
+        <div style="font-size:9px; color:rgba(var(--accent-1-rgb), 0.45); text-transform:uppercase; letter-spacing:0.1em;">Apparent</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.apparent_losses_m3_d }} <span style="font-size:0.7rem; color:rgba(var(--accent-1-rgb), 0.45);">m³/d</span></div>
       </div>
       <div>
-        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Real</div>
-        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.real_losses_m3_d }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">m³/d</span></div>
+        <div style="font-size:9px; color:rgba(var(--accent-1-rgb), 0.45); text-transform:uppercase; letter-spacing:0.1em;">Real</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.real_losses_m3_d }} <span style="font-size:0.7rem; color:rgba(var(--accent-1-rgb), 0.45);">m³/d</span></div>
       </div>
       <div>
-        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">ILI</div>
+        <div style="font-size:9px; color:rgba(var(--accent-1-rgb), 0.45); text-transform:uppercase; letter-spacing:0.1em;">ILI</div>
         <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">
           {% if indicators.ili != None %}
             <span style="color:{% if indicators.ili <= 2 %}#22c55e{% elif indicators.ili <= 4 %}#f59e0b{% else %}#ef4444{% endif %};">
               {{ indicators.ili }}
             </span>
             {% if not indicators.uarl_reliable %}
-              <span title="Network below the IWA UARL range (3000 connections, 20 per km, 25 m pressure): indicative only" style="font-size:0.65rem; font-weight:400; color:rgba(232,244,255,0.45);">indicative</span>
+              <span title="Network below the IWA UARL range (3000 connections, 20 per km, 25 m pressure): indicative only" style="font-size:0.65rem; font-weight:400; color:rgba(var(--accent-1-rgb), 0.45);">indicative</span>
             {% endif %}
           {% else %}
-            <span style="color:rgba(232,244,255,0.35);">—</span>
+            <span style="color:rgba(var(--accent-1-rgb), 0.35);">—</span>
           {% endif %}
         </div>
       </div>
@@ -192,17 +192,17 @@
     </div>
     <div style="display:flex; gap:16px; margin-top:10px;">
       <div>
-        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Service area</div>
-        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.covered_area_km2 }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">km²</span></div>
+        <div style="font-size:9px; color:rgba(var(--accent-1-rgb), 0.45); text-transform:uppercase; letter-spacing:0.1em;">Service area</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.covered_area_km2 }} <span style="font-size:0.7rem; color:rgba(var(--accent-1-rgb), 0.45);">km²</span></div>
       </div>
       <div>
-        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Urban area without network</div>
+        <div style="font-size:9px; color:rgba(var(--accent-1-rgb), 0.45); text-transform:uppercase; letter-spacing:0.1em;">Urban area without network</div>
         <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">
           {% if indicators.uncovered_urban_km2 != None %}
             <span style="color:{% if indicators.uncovered_urban_pct > 10 %}#ef4444{% elif indicators.uncovered_urban_pct > 0 %}#f59e0b{% else %}#22c55e{% endif %};">{{ indicators.uncovered_urban_km2 }}</span>
-            <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">km² ({{ indicators.uncovered_urban_pct }}% of {{ indicators.urban_area_km2 }} km²)</span>
+            <span style="font-size:0.7rem; color:rgba(var(--accent-1-rgb), 0.45);">km² ({{ indicators.uncovered_urban_pct }}% of {{ indicators.urban_area_km2 }} km²)</span>
           {% else %}
-            <span style="color:rgba(232,244,255,0.35);">— no land cover</span>
+            <span style="color:rgba(var(--accent-1-rgb), 0.35);">— no land cover</span>
           {% endif %}
         </div>
       </div>
@@ -226,12 +226,12 @@
          title="Rain {{ indicators.recharge_rain_mm_yr }} mm in {{ indicators.recharge_year }}: recharge {{ indicators.recharge_mm_yr }} · runoff {{ indicators.recharge_runoff_mm_yr }} · evapotranspiration {{ indicators.recharge_et_mm_yr }} mm">
       <div class="bar-fill" style="width:{{ indicators.recharge_pct|unlocalize }}%; background:#38bdf8; border-radius:0;"></div>
       <div class="bar-fill" style="width:{{ indicators.recharge_runoff_pct|unlocalize }}%; background:#f59e0b; border-radius:0;"></div>
-      <div class="bar-fill" style="width:{{ indicators.recharge_et_pct|unlocalize }}%; background:rgba(232,244,255,0.25); border-radius:0;"></div>
+      <div class="bar-fill" style="width:{{ indicators.recharge_et_pct|unlocalize }}%; background:rgba(var(--accent-1-rgb), 0.25); border-radius:0;"></div>
     </div>
-    <div style="display:flex; flex-wrap:wrap; gap:4px 12px; margin-top:6px; font-size:0.72rem; color:rgba(232,244,255,0.6);">
+    <div style="display:flex; flex-wrap:wrap; gap:4px 12px; margin-top:6px; font-size:0.72rem; color:rgba(var(--accent-1-rgb), 0.6);">
       <span><b style="color:#38bdf8;">■</b> Recharge {{ indicators.recharge_pct }}%</span>
       <span><b style="color:#f59e0b;">■</b> Runoff {{ indicators.recharge_runoff_mm_yr }} mm</span>
-      <span><b style="color:rgba(232,244,255,0.4);">■</b> ET {{ indicators.recharge_et_mm_yr }} mm</span>
+      <span><b style="color:rgba(var(--accent-1-rgb), 0.4);">■</b> ET {{ indicators.recharge_et_mm_yr }} mm</span>
       <span>of {{ indicators.recharge_rain_mm_yr }} mm rain · KNMI {{ indicators.recharge_station }} {{ indicators.recharge_year }}{% if indicators.climate.active %} in KNMI'23 {{ indicators.climate.short }} (delta-change){% endif %}</span>
     </div>
     {% else %}
@@ -243,21 +243,21 @@
     {% endif %}
     <div style="display:flex; flex-wrap:wrap; gap:10px 16px; margin-top:10px;">
       <div title="Single rain event of the Rain Event slider (SCS Curve Number)">
-        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Event {{ indicators.rain_mm|floatformat:0 }} mm · CN {{ indicators.curve_number }}</div>
-        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.event_runoff_mm }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">mm runoff · {{ indicators.infiltration_pct }}% infiltrates</span></div>
+        <div style="font-size:9px; color:rgba(var(--accent-1-rgb), 0.45); text-transform:uppercase; letter-spacing:0.1em;">Event {{ indicators.rain_mm|floatformat:0 }} mm · CN {{ indicators.curve_number }}</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.event_runoff_mm }} <span style="font-size:0.7rem; color:rgba(var(--accent-1-rgb), 0.45);">mm runoff · {{ indicators.infiltration_pct }}% infiltrates</span></div>
       </div>
       <div>
-        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Event runoff</div>
-        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.runoff_m3|floatformat:"0g" }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">m³</span></div>
+        <div style="font-size:9px; color:rgba(var(--accent-1-rgb), 0.45); text-transform:uppercase; letter-spacing:0.1em;">Event runoff</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.runoff_m3|floatformat:"0g" }} <span style="font-size:0.7rem; color:rgba(var(--accent-1-rgb), 0.45);">m³</span></div>
       </div>
       <div>
-        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Area</div>
-        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.infiltration_classified_km2 }} <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">km²{% if indicators.infiltration_unclassified_km2 %} (+{{ indicators.infiltration_unclassified_km2 }} unclassified){% endif %}</span></div>
+        <div style="font-size:9px; color:rgba(var(--accent-1-rgb), 0.45); text-transform:uppercase; letter-spacing:0.1em;">Area</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.infiltration_classified_km2 }} <span style="font-size:0.7rem; color:rgba(var(--accent-1-rgb), 0.45);">km²{% if indicators.infiltration_unclassified_km2 %} (+{{ indicators.infiltration_unclassified_km2 }} unclassified){% endif %}</span></div>
       </div>
       {% if indicators.shallow_groundwater_pct or indicators.drained_shallow_pct %}
       <div title="Groundwater ({{ indicators.groundwater_statistic }}) within 60 cm of the surface: undrained land counts as soil group D (NEH 630); drained built-up and paved land keeps its texture group">
-        <div style="font-size:9px; color:rgba(232,244,255,0.45); text-transform:uppercase; letter-spacing:0.1em;">Shallow GW · {{ indicators.groundwater_statistic }}</div>
-        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.shallow_groundwater_pct }}% <span style="font-size:0.7rem; color:rgba(232,244,255,0.45);">→ D{% if indicators.drained_shallow_pct %} · {{ indicators.drained_shallow_pct }}% drained{% endif %}</span></div>
+        <div style="font-size:9px; color:rgba(var(--accent-1-rgb), 0.45); text-transform:uppercase; letter-spacing:0.1em;">Shallow GW · {{ indicators.groundwater_statistic }}</div>
+        <div style="font-family:var(--font-base); font-size:0.9rem; font-weight:600;">{{ indicators.shallow_groundwater_pct }}% <span style="font-size:0.7rem; color:rgba(var(--accent-1-rgb), 0.45);">→ D{% if indicators.drained_shallow_pct %} · {{ indicators.drained_shallow_pct }}% drained{% endif %}</span></div>
       </div>
       {% endif %}
     </div>
@@ -265,9 +265,9 @@
     <div class="card-unit" style="margin-top:6px;">No soil map x land cover here yet — import the Soil Map (BIS Nederland) and Land Cover (BRT Bodemgebruik).</div>
     {% endif %}
     {% if indicators.soil_groups %}
-    <div style="display:flex; flex-wrap:wrap; gap:6px 14px; margin-top:10px; font-size:0.72rem; color:rgba(232,244,255,0.6);">
+    <div style="display:flex; flex-wrap:wrap; gap:6px 14px; margin-top:10px; font-size:0.72rem; color:rgba(var(--accent-1-rgb), 0.6);">
       {% for sg in indicators.soil_groups %}
-      <span title="{{ sg.texture }}"><b style="color:rgba(232,244,255,0.9);">{{ sg.group }}</b> {{ sg.pct }}% · {% if sg.max_mm_h != None %}{{ sg.min_mm_h }}–{{ sg.max_mm_h }}{% else %}&gt; {{ sg.min_mm_h }}{% endif %} mm/h</span>
+      <span title="{{ sg.texture }}"><b style="color:rgba(var(--accent-1-rgb), 0.9);">{{ sg.group }}</b> {{ sg.pct }}% · {% if sg.max_mm_h != None %}{{ sg.min_mm_h }}–{{ sg.max_mm_h }}{% else %}&gt; {{ sg.min_mm_h }}{% endif %} mm/h</span>
       {% endfor %}
     </div>
     {% endif %}

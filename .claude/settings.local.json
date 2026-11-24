@@ -15,14 +15,15 @@
       "PowerShell($f = \".venv\\\\Lib\\\\site-packages\\\\solweig_gpu\\\\preprocessor.py\"; \\(Get-Content $f\\)[1340..1402] -join \"`n\"; \"-----\"; \\(Get-Content $f\\)[1430..1500] -join \"`n\")"
     ]
   },
-  "skillOverrides": {
-    "anthropic-skills:clear-science-storyteller-style": "off",
-    "anthropic-skills:docs": "off",
-    "graphify": "user-invocable-only"
-  },
-  "outputStyle": "Concise",
   "enabledMcpjsonServers": [
     "context7",
     "postgres"
-  ]
+  ],
+  "skillOverrides": {
+    "anthropic-skills:clear-science-storyteller-style": "off",
+    "anthropic-skills:docs": "off",
+    "graphify": "user-invocable-only",
+    "architectureDesigner": "off"
+  },
+  "outputStyle": "Concise"
 }
