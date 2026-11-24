@@ -48,6 +48,19 @@ DEFAULT_SEASON = 'wet'
 DRAINED_LAND_COVER = ("urban fabric", "industrial", "commercial", "road", "rail", "port area", "airport")
 
 
+# The BIS soil map leaves built-up land blank. physicalEnv/calculations/
+# urban_soil.py stores those gaps as SoilArea rows of one SoilType, "Urban
+# land", so soil_landcover_composition() finds a soil under every built-up
+# piece. Its group is an assumption, not a measurement: built-up ground in the
+# Netherlands is mostly raised sandy fill, compacted by construction and
+# traffic, so it is taken as group C (between sand A and clay D). The sealed
+# share of these pieces still comes from their land cover
+# (IMPERVIOUS_FRACTIONS); the group only sets how the unsealed rest drains.
+URBAN_SOIL_CODE = 'URBAN'
+URBAN_SOIL_NAME = 'Urban land (no soil map data)'
+URBAN_SOIL_GROUP = 'C'
+
+
 def _matches(name, keywords):
     """Any keyword at a word start of `name`: "road" must not match "broad-leaved forest"."""
     return any(re.search(r"\b" + re.escape(k), name) for k in keywords)

@@ -90,6 +90,13 @@
     --error-rgb:   239, 68, 68;
     --info-rgb:    59, 130, 246;
     --error-text:  #fca5a5;
+    /* Readable text tones for status badges/alerts (flip to dark tones in light mode) */
+    --success-text: #6ee7b7;
+    --warning-text: #fcd34d;
+    --info-text:    #7dd3fc;
+    --violet:       #8b5cf6;
+    --violet-rgb:   139, 92, 246;
+    --violet-text:  #c4b5fd;
 
     /* Shadow — flat by default */
     --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3);
@@ -137,6 +144,10 @@
     --accent-muted: rgba(11, 11, 12, 0.06);
 
     --error-text:  #b91c1c;
+    --success-text: #047857;
+    --warning-text: #92400e;
+    --info-text:    #0369a1;
+    --violet-text:  #6d28d9;
     --shadow-soft: 0 1px 2px rgba(11, 11, 12, 0.08), 0 4px 12px rgba(11, 11, 12, 0.06);
 
     --surface:        rgba(11, 11, 12, 0.03);
@@ -850,6 +861,98 @@ code {
 .ct-text-success   { color: var(--success); }
 .ct-text-warning   { color: var(--warning); }
 .ct-text-error     { color: var(--error); }
+.ct-text-success-soft { color: var(--success-text); }
+.ct-text-warning-soft { color: var(--warning-text); }
+.ct-text-error-soft   { color: var(--error-text); }
+.ct-text-info-soft    { color: var(--info-text); }
+.ct-text-violet-soft  { color: var(--violet-text); }
+
+/* Status badges — tinted from the status tokens, readable in both themes */
+.ct-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 6px;
+    border-radius: var(--r-sm);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    background: var(--surface-hover);
+    border: 1px solid var(--border);
+}
+.ct-badge--warning { color: var(--warning-text); background: rgba(var(--warning-rgb), 0.15); border-color: rgba(var(--warning-rgb), 0.35); }
+.ct-badge--error   { color: var(--error-text);   background: rgba(var(--error-rgb), 0.12);   border-color: rgba(var(--error-rgb), 0.35); }
+.ct-badge--success { color: var(--success-text); background: rgba(var(--success-rgb), 0.14); border-color: rgba(var(--success-rgb), 0.35); }
+.ct-badge--info    { color: var(--info-text);    background: rgba(var(--info-rgb), 0.14);    border-color: rgba(var(--info-rgb), 0.35); }
+.ct-badge--violet  { color: var(--violet-text);  background: rgba(var(--violet-rgb), 0.14); border-color: rgba(var(--violet-rgb), 0.35); }
+
+/* Inline notices (same tint family as badges) */
+.ct-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: var(--r-card);
+    font-size: 11px;
+    line-height: 1.5;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+}
+.ct-alert--warning { color: var(--warning-text); background: rgba(var(--warning-rgb), 0.10); border-color: rgba(var(--warning-rgb), 0.40); }
+.ct-alert--error   { color: var(--error-text);   background: rgba(var(--error-rgb), 0.10);   border-color: rgba(var(--error-rgb), 0.40); }
+.ct-alert--accent  { color: var(--text-primary); background: rgba(var(--accent-rgb), 0.10); border-color: rgba(var(--accent-rgb), 0.35); font-size: var(--fs-small); }
+
+/* Square icon tile used in panel headers */
+.ct-icon-tile {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--r-card);
+    color: var(--tile-text, var(--accent));
+    background: rgba(var(--tile-rgb, var(--accent-rgb)), 0.15);
+    border: 1px solid rgba(var(--tile-rgb, var(--accent-rgb)), 0.30);
+}
+.ct-icon-tile--violet  { --tile-rgb: var(--violet-rgb);  --tile-text: var(--violet-text); }
+.ct-icon-tile--warning { --tile-rgb: var(--warning-rgb); --tile-text: var(--warning-text); }
+.ct-icon-tile--info    { --tile-rgb: var(--info-rgb);    --tile-text: var(--info-text); }
+
+/* Form controls */
+.ct-input {
+    width: 100%;
+    border-radius: var(--r-card);
+    border: 1px solid var(--border);
+    background: var(--surface-strong);
+    color: var(--text-secondary);
+    padding: 8px 12px;
+    font-size: 14px;
+}
+.ct-input::placeholder { color: var(--text-dim); }
+.ct-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.5); }
+.ct-input--auto { width: auto; }
+.ct-check { accent-color: var(--accent); cursor: pointer; }
+.ct-chip-btn {
+    padding: 4px 10px;
+    border-radius: var(--r-card);
+    font-size: 11px;
+    font-weight: 500;
+    border: 1px solid var(--border);
+    background: var(--surface-strong);
+    color: var(--text-secondary);
+    transition: border-color var(--dur-fast), color var(--dur-fast);
+}
+.ct-chip-btn:hover { border-color: var(--accent); }
+.ct-code { padding: 1px 4px; border-radius: var(--r-sm); background: var(--surface-hover); color: var(--text-tertiary); }
+.ct-row-hover:hover { background: var(--surface); }
+.ct-map-overlay {
+    background: var(--bg-overlay);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    box-shadow: var(--shadow-soft);
+}
 
 /* Backgrounds */
 .ct-bg-0  { background-color: var(--bg-0); }
@@ -937,3 +1040,15 @@ code {
 .heat-weather-row input[type="range"]:active::-webkit-slider-thumb,
 .pop-row input[type="range"]:active::-webkit-slider-thumb,
 .year-slider:active::-webkit-slider-thumb { cursor: grabbing; }
+
+/* Importer: active states + result rows */
+.ct-chip-btn.is-active { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.5); }
+.ct-seg-active { background: var(--surface-hover); }
+.ct-result { border-left: 4px solid var(--result-c); background: rgba(var(--result-rgb), 0.10); }
+.ct-result--success { --result-c: var(--success); --result-rgb: var(--success-rgb); --result-text: var(--success-text); }
+.ct-result--error   { --result-c: var(--error);   --result-rgb: var(--error-rgb);   --result-text: var(--error-text); }
+.ct-result--warning { --result-c: var(--warning); --result-rgb: var(--warning-rgb); --result-text: var(--warning-text); }
+.ct-result-text { color: var(--result-text); }
+.ct-result-badge { color: var(--result-text); background: rgba(var(--result-rgb), 0.18); border: 1px solid rgba(var(--result-rgb), 0.4); }
+.ct-divide > * + * { border-top: 1px solid var(--border); }
+.ct-bg-accent { background-color: var(--accent); }

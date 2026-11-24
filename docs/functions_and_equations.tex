@@ -269,6 +269,15 @@ with $C = V_0$ for a tree (its whole old crown) and $C = V_0 \setminus V$ for a 
 
 Source: \code{physicalEnv/calculations/soil.py}, \code{physicalEnv/hilucs.py}, \code{physicalEnv/models.py}. Soil polygons come from the Dutch soil map 1:50\,000 (\textit{Bodemkaart}, 2025 edition) and groundwater depths from the groundwater-level grids of BIS Nederland \cite{BISNederland}; land cover is the CORINE-classified BRT \textit{Bodemgebruik} layer \cite{CORINE}. Together they implement the \texttt{LandCover} $\to$ \texttt{Infiltration} and \texttt{Soil\_Type} $\to$ \texttt{Infiltration} edges with the SCS Curve Number method \cite{TR55,NEH630ch7,NEH630ch10}. Everything except the spatial composition query (\S\ref{sec:soil-composition}) is pure Python, so the dashboard re-evaluates the equations for any rain depth without querying the database.
 
+\subsection{Urban land --- \code{fill\_urban\_soil\_gaps()}}
+\textbf{Location:} \code{physicalEnv/calculations/urban\_soil.py}, \code{soil.py} (\code{URBAN\_SOIL\_GROUP})
+
+The soil map has no polygon under most built-up land, so those pieces would have no soil and drop out of the infiltration. The importer therefore stores the gap as soil areas of one soil type, \textit{Urban land}. With $L_u$ the built-up land cover of the latest year (the drained classes of \code{DRAINED\_LAND\_COVER}) and $S$ the union of the soil map polygons,
+\begin{equation}
+  U = L_u \setminus S
+\end{equation}
+(gaps under $1\,\mathrm{m^2}$ are dropped). Each polygon of $U$ becomes a soil area with the group $G_U = \mathrm{C}$. This is an assumption, not a measurement: built-up ground is mostly raised sandy fill, compacted by construction and traffic, so it is placed between sand (A) and clay (D). The sealed share of these pieces still comes from the land cover (\S\ref{sec:soil-composition}), so $G_U$ only sets how the unsealed remainder drains, and the curve number follows from the land-cover class and $G_U$ as for any other soil. The soil-map polygons are never altered, and a rerun replaces the urban areas of the region.
+
 \subsection{Hydrologic soil group --- \code{classify\_soil\_group()}, \code{SoilType.save()}}
 \textbf{Location:} \code{physicalEnv/calculations/soil.py:82}, \code{physicalEnv/models.py:61}
 

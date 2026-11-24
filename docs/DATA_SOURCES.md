@@ -95,7 +95,7 @@ Dutch soil data maintained by Wageningen Environmental Research. Open WFS data, 
 |---|---|---|---|---|
 | `bodemdata_ghg` | Groundwater Depth, wet season (GHG, BIS Nederland) | Elevation & Terrain | `physicalEnv.GroundwaterDepth` | https://maps.bodemdata.nl/geoserver/ows (`bodem__ghg-mediaan`) |
 | `bodemdata_glg` | Groundwater Depth, dry season (GLG, BIS Nederland) | Elevation & Terrain | `physicalEnv.GroundwaterDepth` | https://maps.bodemdata.nl/geoserver/ows (`bodem__glg-mediaan`) |
-| `bodemdata_soil_map` | Soil Map 1:50 000 (Bodemkaart, BIS Nederland) | Elevation & Terrain | `physicalEnv.SoilArea` | https://maps.bodemdata.nl/geoserver/bodem/ows (`bodem:Bodemkaart50000_v2025`) |
+| `bodemdata_soil_map` | Soil Map 1:50 000 (Bodemkaart, BIS Nederland) | Elevation & Terrain | `physicalEnv.SoilArea` | https://maps.bodemdata.nl/geoserver/bodem/ows (`bodem:Bodemkaart50000`) |
 
 ### OpenStreetMap (Overpass API)
 
