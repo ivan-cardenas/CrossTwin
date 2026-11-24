@@ -48,6 +48,8 @@
       hour: document.getElementById('solweig-hour'),
       resolution: document.getElementById('solweig-resolution'),
       source: document.getElementById('solweig-source'),
+      live: document.getElementById('solweig-live'),
+      more: document.getElementById('solweig-more'),
       fetch: document.getElementById('solweig-fetch'),
       metInfo: document.getElementById('solweig-met-info'),
       info: document.getElementById('solweig-view-info'),
@@ -420,7 +422,27 @@
       if (svfDot) svfDot.hidden = !stale.svf.length;
       if (thermalDot) thermalDot.hidden = !stale.thermal.length;
       if (menuDot) menuDot.hidden = !(stale.svf.length || stale.thermal.length);
+      reportAdvisors();
       refreshButton();
+    }
+
+    // The stale marks are also listed in the advisor tray (Advisors.js), each with the way to the tool
+    function reportAdvisors() {
+      if (!window.Advisors) return;
+      const entries = [
+        ['stale-svf', stale.svf, 'Sky view factor', 'svf'],
+        ['stale-thermal', stale.thermal, 'Thermal comfort', 'solweig'],
+      ];
+      entries.forEach(([id, rows, label, tool]) => {
+        if (!rows.length) { window.Advisors.clear(id); return; }
+        window.Advisors.set(id, {
+          severity: 'warn',
+          title: `${label} is out of date`,
+          detail: 'Buildings changed in this view since it was calculated.',
+          actionLabel: 'Recalculate',
+          action: { lens: 'temperature', tab: 'calculate', tool },
+        });
+      });
     }
 
     async function refreshStale() {
@@ -477,7 +499,15 @@
 
     // ---- weather ---------------------------------------------------------
 
+    // "Use live weather" is the short form of the weather source: ticked = a fetched source
+    let liveSource = 'knmi';
+    function syncLive() {
+      if (el.source.value !== 'manual') liveSource = el.source.value;
+      el.live.checked = el.source.value !== 'manual';
+    }
+
     async function fetchMet() {
+      syncLive();
       if (el.source.value === 'manual') {
         metLabel = 'manual';
         el.metInfo.textContent = 'Manual values.';
@@ -638,11 +668,17 @@
     el.calculate.addEventListener('click', calculate);
     el.fetch.addEventListener('click', fetchMet);
     el.source.addEventListener('change', fetchMet);
+    el.live.addEventListener('change', () => {
+      el.source.value = el.live.checked ? liveSource : 'manual';
+      if (!el.live.checked) el.more.open = true;     // the values to type are in More options
+      fetchMet();
+    });
     // Values typed by hand are the user's own, whatever was fetched before.
     MET_FIELDS.forEach(f => met[f].addEventListener('input', () => {
       if (metLabel !== 'manual') {
         metLabel = 'manual';
         el.source.value = 'manual';
+        syncLive();
         el.metInfo.textContent = 'Manual values (edited).';
       }
       clearTimeout(refreshScenario.timer);

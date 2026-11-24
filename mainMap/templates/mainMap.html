@@ -18,6 +18,7 @@
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.33.0/mapbox-gl.js"></script>
 {% comment %} CrossTwin JS {% endcomment %}
 <script src="{% static 'js/Config.js' %}"></script>
+<script src="{% static 'js/Advisors.js' %}"></script>
 <script src="{% static 'js/CityName.js' %}"></script>
 <script src="{% static 'js/Draggable.js' %}"></script>
 <script src="{% static 'js/MapUI.js' %}"></script>
@@ -329,6 +330,16 @@
             <label>Hour
               <select id="solweig-hour"></select>
             </label>
+            <label class="lst-check solweig-live" title="Weather of the nearest KNMI station for this date and hour; untick to type your own values">
+              <input type="checkbox" id="solweig-live" checked> Use live weather
+            </label>
+          </div>
+          <div class="lst-view-info" id="solweig-met-info"></div>
+          <!-- More options: cell size, the weather source and its values, and the person
+               (SolweigTool.js opens it when the weather is typed by hand). -->
+          <details class="card-more" id="solweig-more">
+            <summary>More options</summary>
+            <div class="lst-card-fields">
             <label>Cell
               <select id="solweig-resolution">
                 <option value="1" selected>1 m</option>
@@ -336,7 +347,7 @@
                 <option value="5">5 m</option>
               </select>
             </label>
-          </div>
+            </div>
           <div class="lst-card-fields met-source">
             <label>Weather
               <select id="solweig-source">
@@ -361,7 +372,6 @@
             <label>Day Kdown W/m² <input type="number" id="solweig-kdown_day_wm2" step="1" min="0"></label>
             <label>Day wind m/s <input type="number" id="solweig-wind_day_ms" step="0.1" min="0"></label>
           </div>
-          <div class="lst-view-info" id="solweig-met-info"></div>
           <!-- PERSON PILL — who the PET is felt by: body, activity and clothing; clo is
                the sum of the garments (urban_heat/calculations/person.py via
                urban_heat/solweig/person/). The run stores the person; the heat
@@ -421,6 +431,7 @@
               <div class="person-derived" id="solweig-person-derived"></div>
             </div>
           </div>
+          </details>
           <!-- Shown while a KNMI'23 scenario is selected (Scenarios panel / year): the
                weather above moved into it; Calculate then stores a scenario run. -->
           <div class="lst-view-info solweig-scenario" id="solweig-scenario" hidden
@@ -461,69 +472,77 @@
         <div class="lst-card-title">NEIGHBOURHOOD GENERATOR</div>
         <button class="lst-card-close" id="generator-card-close" aria-label="Close neighbourhood generator">✕</button>
       </div>
-      <p class="lst-card-hint">Draw an outline or pick a housing project. Streets are laid out first; plots and buildings fill the blocks they leave. Protected nature (Natura 2000, NNN) is left unbuilt. Empty fields use the style's defaults (shown greyed).</p>
+      <p class="lst-card-hint">Draw an outline or pick a housing project. Streets are laid out first; plots and buildings fill the blocks they leave. Protected nature (Natura 2000, NNN) is left unbuilt. Empty fields use the style's defaults (shown greyed in More options).</p>
       <div class="lst-card-fields">
         <label class="generator-half">Project
           <select id="generator-project"><option value="">New outline (draw it)</option></select>
         </label>
         <button class="lst-btn" id="generator-draw" type="button">Draw outline</button>
-        <label class="generator-half">Style
-          <select id="generator-style">
-            <option value="plain" selected>Plain (straight grid)</option>
-            <option value="vinex">Vinex (row houses, curved streets)</option>
-            <option value="garden_city">Garden city (detached, curved)</option>
-            <option value="urban_block">Urban block (perimeter, chamfered corners)</option>
-            <option value="modernist">Modernist (slabs and towers)</option>
+        <div class="generator-wide generator-style-field">
+          <span class="generator-field-label" id="generator-style-label">Style</span>
+          <!-- GeneratorTool.js draws a card per option; the select stays the source of truth -->
+          <div class="generator-style-cards" id="generator-style-cards" role="radiogroup" aria-labelledby="generator-style-label"></div>
+          <select id="generator-style" class="generator-style-select" aria-labelledby="generator-style-label">
+            <option value="plain" selected>Plain: straight grid</option>
+            <option value="vinex">Vinex: row houses, curved streets</option>
+            <option value="garden_city">Garden city: detached, curved</option>
+            <option value="urban_block">Urban block: perimeter, chamfered corners</option>
+            <option value="modernist">Modernist: slabs and towers</option>
           </select>
-        </label>
-        <label>Street pattern
-          <select id="generator-street_pattern">
-            <option value="" selected>Style default</option>
-            <option value="grid">Grid</option>
-            <option value="curved">Curved</option>
-            <option value="radial">Radial</option>
-          </select>
-        </label>
-        <label>Variation <span id="generator-variation-value">50 %</span>
-          <input type="range" min="0" max="100" step="5" value="50" id="generator-variation">
-        </label>
-        <label>Seed
-          <span class="generator-seed-row">
-            <input type="number" min="1" step="1" value="1" id="generator-seed">
-            <button class="lst-btn" id="generator-shuffle" type="button" title="Draw a new variation">Shuffle</button>
-          </span>
-        </label>
-        <label>Typology
-          <select id="generator-typology">
-            <option value="row" selected>Row houses</option>
-            <option value="semi">Semi-detached</option>
-            <option value="detached">Detached</option>
-            <option value="perimeter">Perimeter blocks</option>
-            <option value="slab">Slabs</option>
-          </select>
-        </label>
+        </div>
         <label>Target dwellings <input type="number" min="1" step="1" id="generator-target_units"></label>
-        <label class="generator-half">Dwellings per building
-          <select id="generator-dwelling_mode">
-            <option value="auto" selected>Auto (houses up to 2 floors, flats above)</option>
-            <option value="single">One home per building</option>
-            <option value="stacked">Flats by floor area</option>
-          </select>
-        </label>
-        <label>Dwelling size (m² gross) <input type="number" min="41" step="5" id="generator-unit_gfa_m2"></label>
-        <label>Street width (m) <input type="number" min="3" max="40" step="0.5" id="generator-street_width"></label>
-        <label class="generator-half lst-check"><input type="checkbox" id="generator-ring" checked> Ring street along the outline</label>
-        <label>Block length (m) <input type="number" min="20" step="5" id="generator-block_length"></label>
-        <label>Block depth (m) <input type="number" min="20" step="5" id="generator-block_depth"></label>
-        <label>Plot width (m) <input type="number" min="3" step="0.1" id="generator-plot_width"></label>
-        <label>Plot depth (m) <input type="number" min="8" step="1" id="generator-plot_depth"></label>
-        <label>Building depth (m) <input type="number" min="5" step="0.5" id="generator-building_depth"></label>
-        <label>Front setback (m) <input type="number" min="0" step="0.5" id="generator-front_setback"></label>
         <label>Floors <input type="number" min="1" max="20" step="1" id="generator-floors"></label>
-        <label>Grid angle (°) <input type="number" min="-90" max="90" step="1" id="generator-angle_deg"></label>
-        <label class="generator-half">Project name <input type="text" maxlength="100" id="generator-name"></label>
-        <label>Completion year <input type="number" min="1900" max="2200" step="1" id="generator-year"></label>
       </div>
+      <details class="card-more" id="generator-more">
+        <summary>More options</summary>
+        <div class="lst-card-fields">
+          <label>Street pattern
+            <select id="generator-street_pattern">
+              <option value="" selected>Style default</option>
+              <option value="grid">Grid</option>
+              <option value="curved">Curved</option>
+              <option value="radial">Radial</option>
+            </select>
+          </label>
+          <label>Variation <span id="generator-variation-value">50 %</span>
+            <input type="range" min="0" max="100" step="5" value="50" id="generator-variation">
+          </label>
+          <label>Seed
+            <span class="generator-seed-row">
+              <input type="number" min="1" step="1" value="1" id="generator-seed">
+              <button class="lst-btn" id="generator-shuffle" type="button" title="Draw a new variation">Shuffle</button>
+            </span>
+          </label>
+          <label>Typology
+            <select id="generator-typology">
+              <option value="row" selected>Row houses</option>
+              <option value="semi">Semi-detached</option>
+              <option value="detached">Detached</option>
+              <option value="perimeter">Perimeter blocks</option>
+              <option value="slab">Slabs</option>
+            </select>
+          </label>
+          <label class="generator-half">Dwellings per building
+            <select id="generator-dwelling_mode">
+              <option value="auto" selected>Auto (houses up to 2 floors, flats above)</option>
+              <option value="single">One home per building</option>
+              <option value="stacked">Flats by floor area</option>
+            </select>
+          </label>
+          <label>Dwelling size (m² gross) <input type="number" min="41" step="5" id="generator-unit_gfa_m2"></label>
+          <label>Street width (m) <input type="number" min="3" max="40" step="0.5" id="generator-street_width"></label>
+          <label class="generator-half lst-check"><input type="checkbox" id="generator-ring" checked> Ring street along the outline</label>
+          <label>Block length (m) <input type="number" min="20" step="5" id="generator-block_length"></label>
+          <label>Block depth (m) <input type="number" min="20" step="5" id="generator-block_depth"></label>
+          <label>Plot width (m) <input type="number" min="3" step="0.1" id="generator-plot_width"></label>
+          <label>Plot depth (m) <input type="number" min="8" step="1" id="generator-plot_depth"></label>
+          <label>Building depth (m) <input type="number" min="5" step="0.5" id="generator-building_depth"></label>
+          <label>Front setback (m) <input type="number" min="0" step="0.5" id="generator-front_setback"></label>
+          <label>Grid angle (°) <input type="number" min="-90" max="90" step="1" id="generator-angle_deg"></label>
+          <label class="generator-half">Project name <input type="text" maxlength="100" id="generator-name"></label>
+          <label>Completion year <input type="number" min="1900" max="2200" step="1" id="generator-year"></label>
+        </div>
+      </details>
       <div class="generator-findings" id="generator-site" role="status"></div>
       <div class="generator-findings" id="generator-rules"></div>
       <div class="lst-view-info" id="generator-metrics"></div>
@@ -621,6 +640,19 @@
         <button type="button" class="weather-pill-radar" id="weather-pill-radar" hidden
                 aria-pressed="false" title="Show the KNMI rain radar">🌧 Radar</button>
       </div>
+      <!-- Advisor flag (core/static/js/Advisors.js): hidden until something needs attention -->
+      <button type="button" class="advisor-flag" id="advisor-flag" hidden
+              aria-haspopup="dialog" aria-expanded="false" aria-controls="advisor-tray">
+        <span class="bi bi-flag-fill" aria-hidden="true"></span>
+        <span class="advisor-count" id="advisor-count">0</span>
+      </button>
+    </div>
+
+    <!-- ADVISOR TRAY: stale results, homes without water, site warnings and
+         extrapolated years in one list; each entry opens the place to act. -->
+    <div class="advisor-tray" id="advisor-tray" role="dialog" aria-label="Needs attention">
+      <div class="advisor-tray-title">Needs attention</div>
+      <ul class="advisor-list" id="advisor-list"></ul>
     </div>
 
     <!-- TIME MENU: opened from the time chip. Year, climate pathway (decades

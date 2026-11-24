@@ -3182,3 +3182,116 @@ body[data-map-mode="edit"] #side-panel .summary-more { display: none; }
 .pop-row select:focus-visible { outline: 1px solid var(--accent); }
 .pop-reset { font-family: var(--font-mono); transition: border-color var(--dur) ease, color var(--dur) ease; }
 .pop-reset:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ============================================================
+   ADVISOR TRAY (Map simplification step 6; core/static/js/Advisors.js)
+   A flag at the end of the status strip with the count, and a drop-down list
+   of what needs attention, each entry with the place to act.
+   ============================================================ */
+.advisor-flag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 0 999px 999px 0;
+    background: transparent;
+    color: #f5a623;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+}
+.advisor-flag[hidden] { display: none; }
+.advisor-flag[data-severity="block"] { color: #ef4444; }
+.advisor-flag[data-severity="info"] { color: #7dd3fc; }
+.advisor-flag:hover,
+.advisor-flag.active { background: var(--bg-raised); }
+
+.advisor-tray {
+    position: absolute;
+    width: 340px;
+    max-width: calc(100% - 16px);
+    max-height: 60%;
+    overflow-y: auto;
+    padding: 10px 12px;
+    background: var(--overlay-bg);
+    backdrop-filter: var(--overlay-blur);
+    -webkit-backdrop-filter: var(--overlay-blur);
+    box-shadow: var(--overlay-shadow);
+    border: 1px solid var(--border-ui);
+    border-radius: 10px;
+    z-index: 14;
+    display: none;
+}
+.advisor-tray.visible { display: block; }
+.advisor-tray-title { font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+.advisor-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.advisor-item {
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: start;
+    padding: 8px 0;
+    border-top: 1px solid var(--border-ui);
+    font-size: 12px;
+    color: var(--text-main);
+}
+.advisor-item:first-child { border-top: 0; }
+.advisor-item .bi { color: #f5a623; margin-top: 1px; }
+.advisor-item.is-block .bi { color: #ef4444; }
+.advisor-item.is-info .bi { color: #7dd3fc; }
+.advisor-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.advisor-text span { color: var(--text-secondary); font-size: 11px; }
+.advisor-action {
+    border: 1px solid var(--border-ui);
+    border-radius: 6px;
+    background: var(--bg-raised);
+    color: var(--text-main);
+    font: inherit;
+    font-size: 11px;
+    padding: 3px 8px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.advisor-action:hover { border-color: var(--border-ui-strong); }
+
+/* "More options": expert fields behind a summary (generator, thermal comfort) */
+.card-more { margin-top: 8px; border-top: 1px solid var(--border-ui); padding-top: 6px; }
+.card-more > summary {
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    padding: 4px 0;
+    list-style: none;
+}
+.card-more > summary::-webkit-details-marker { display: none; }
+.card-more > summary::before { content: "▸"; display: inline-block; width: 14px; transition: transform 0.15s ease; }
+.card-more[open] > summary::before { transform: rotate(90deg); }
+.card-more > .lst-card-fields,
+.card-more > .solweig-person { margin-top: 6px; }
+.solweig-live { align-self: flex-end; }
+
+/* Generator style cards: the select stays in the DOM as the source of truth */
+.generator-style-select { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.generator-style-field { position: relative; display: flex; flex-direction: column; gap: 4px; }
+.generator-field-label { font-size: 11px; color: var(--text-secondary); }
+.generator-style-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 6px; }
+.generator-style-card {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    text-align: left;
+    padding: 6px 8px;
+    border: 1px solid var(--border-ui);
+    border-radius: 6px;
+    background: var(--bg-raised);
+    color: var(--text-main);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+.generator-style-card span { font-size: 11px; color: var(--text-secondary); }
+.generator-style-card.is-selected { border-color: var(--border-ui-strong); box-shadow: inset 0 0 0 1px var(--border-ui-strong); }

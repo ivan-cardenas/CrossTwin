@@ -129,6 +129,18 @@ function renderTime() {
   const scenario = (window.CLIMATE_SCENARIO || 'current') !== 'current';
   document.getElementById('time-chip-year').textContent = String(year);
   document.getElementById('time-chip-climate').textContent = climateChipLabel();
+  // Years beyond the CBS projection use a trend extrapolation: one advisor entry instead of per-card notes
+  if (year > POPULATION_PROJECTION_END) {
+    window.Advisors?.set('extrapolated-year', {
+      severity: 'info',
+      title: `Population ${year} is a trend extrapolation`,
+      detail: `The CBS projection ends in ${POPULATION_PROJECTION_END}; later years continue its compound annual growth.`,
+      actionLabel: 'Change year',
+      action: { time: true },
+    });
+  } else {
+    window.Advisors?.clear('extrapolated-year');
+  }
   timeChip?.classList.toggle('is-scenario', scenario);
   // Edit mode works on the stored baseline: no year or scenario what-ifs
   if (timeChip) {

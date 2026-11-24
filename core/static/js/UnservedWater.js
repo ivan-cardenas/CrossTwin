@@ -179,6 +179,20 @@
     ensureLayers();
     map.getSource(SOURCE)?.setData(data);
     updateLegend();
+    reportAdvisor();
+  }
+
+  // The count in view also goes to the advisor tray (Advisors.js)
+  function reportAdvisor() {
+    if (!window.Advisors) return;
+    const homes = active ? lastData.features.length : 0;
+    if (!homes) { window.Advisors.clear('unserved-water'); return; }
+    const people = Math.round(lastData.features.reduce((s, f) => s + (Number(f.properties.residents) || 0), 0));
+    window.Advisors.set('unserved-water', {
+      severity: 'warn',
+      title: `${homes.toLocaleString()} homes without water supply in view`,
+      detail: `About ${people.toLocaleString()} residents live more than the service buffer from a pipe. Click a drop for details.`,
+    });
   }
 
   async function reload() {
@@ -270,6 +284,7 @@
       setVisible(false);
     }
     updateLegend();
+    reportAdvisor();
   }
 
   function syncWithToolbar() {

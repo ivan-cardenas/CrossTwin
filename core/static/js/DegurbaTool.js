@@ -81,10 +81,19 @@
         el.cities.appendChild(row);
       });
       if (data.stale_year) {
+        window.Advisors?.set('degurba-year', {
+          severity: 'warn',
+          title: 'Degree of urbanisation misses this population year',
+          detail: `The neighbourhoods now hold ${data.population_year} population.`,
+          actionLabel: 'Rebuild',
+          action: { lens: 'builtup', tab: 'calculate', tool: 'degurba' },
+        });
         setStatus(`The neighborhoods now hold ${data.population_year} population: rebuild to add that year.`, 'warn');
       } else if (!canCalculate) {
+        window.Advisors?.clear('degurba-year');
         setStatus('Kept current automatically. Recalculating needs a staff login.', '');
       } else {
+        window.Advisors?.clear('degurba-year');
         setStatus('Kept current automatically when people, dwellings, buildings or land cover change.');
       }
     }
