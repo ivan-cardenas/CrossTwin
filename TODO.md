@@ -66,7 +66,8 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 - [ ] No `Accessibility` model exists — `Facilities/Streets/Green_Area -> Accessibility -> Property` unimplemented (`Building.connectivity` is the closest analog, itself an open TODO)
 - [ ] `Zoning_Status -> Property` — `Property` has no `save()` logic
 - [ ] `Property -> House_Price_Index/Mortgage` — `Mortgage`/`HousePriceIndex` `calculations.py` functions only average pre-existing stored values
-- [ ] `Rent/Mortgage/Water_Tariff_Afford -> Income_Expenses -> Affordability_Stress` — `HousingAffordability.save()` computes `affordabilityIndex` only from its own stored fields, never pulls from `Mortgage`, `Rentals`, or watersupply tariffs
+- [ ] `Rent/Mortgage/Water_Tariff_Afford -> Income_Expenses` — `HousingAffordability.medianRent`/`medianMortgage`/`medianIncome` are typed inputs, never pulled from `Mortgage`, `Rentals`, or watersupply tariffs (the stress level itself is now derived: `Income_Expenses`/`Social_Profile -> Affordability_Stress`)
+- [ ] Validate the affordability-stress parameters (`housing/calculations/chain.py`): 30/40 % bands on gross income (Eurostat uses disposable income) and the `SES_WEIGHT` = 10 %/SD, which is a calibration assumption without a published coefficient; run a sensitivity check
 - [ ] `Credit_Supply -> Mortgage` — unimplemented
 - [ ] No `NumberUsers` model — `NumberUsers -> Water_Tariff_Afford` unimplemented (`MeteredResidential.userAffordability_PCT` is a flat input)
 - [ ] `Zoning_Status -> New_Units` — `calculate_new_units()` (`housing/calculations/indicators.py`) sums `HousingProject.project_units` and never reads `ZoningArea` / zoning status

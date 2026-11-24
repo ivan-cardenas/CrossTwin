@@ -11,6 +11,19 @@ A dated log of every change to the DPSIR causal graph: what changed, why, and wh
 - **Lagged edge** `[lag=1, style=dashed]`. The cause acts one planning step later (a feedback). It is left out of the acyclicity check and never implemented by a receiver, because a receiver would close the loop within one save. Each lagged edge is argued here and listed in `core/test_dag.py::LAGGED_EDGES`.
 - **Counting.** Distinct `source -> target` pairs, legend excluded. `core/test_dag.py::parse_dag` is the reference parser.
 
+## 2026-11-24: `Social_Profile -> Affordability_Stress` added
+
+A node `Social_Profile` (State, housing) is added: the CBS socio-economic status score (`ses_woa`, standardised, Klimaateffectatlas) stored per neighborhood in `housing.NeighborhoodSocialProfile`. The graph had no way to say that the same housing-cost burden weighs more on a neighborhood with less welfare, education and work. The node is measurable (a stored field), so it meets the node convention.
+
+`HousingAffordability.save()` derives `affordabilityStressLevel`, formerly a typed value with TODO thresholds: burden = 12 x (rent / mortgage weighted by the share of rental homes) / median annual income; the burden is multiplied by 1 + 0.10 per SD of below-average status (clamped at 2 SD) and cut at 30 % (moderate) and 40 % (high). The inputs used (burden, SES score, modifier, method string) are stored on the row.
+
+| Change | Edge | Status |
+|---|---|---|
+| added | `Social_Profile -> Affordability_Stress` | implemented (`HousingAffordability.save()` -> `chain.ses_modifier`; receiver `social_profile_changed`) |
+| re-rated | `Income_Expenses -> Affordability_Stress` | gap -> partial (the level is derived from the row's own income and rent/mortgage; those are still typed) |
+
+**Consequences.** Acyclicity is unaffected: `Social_Profile` has no incoming edge. The 30/40 % bands follow Eurostat's housing-cost overburden threshold and the common 30 % rule, applied to gross income. The 10 %/SD weight is a calibration assumption, not a published coefficient. Coverage: 106 edges, 64 implemented (60 %), 7 partial, 35 gaps.
+
 ## 2026-11-16: `Climate_Change -> Meteorology` implemented as stored scenario runs (graph unchanged)
 
 No edge is added or removed. The edge was partial (a what-if of the Scenarios panel). It is now also stored: `weather.ClimateScenarioRun` is the Climate_Change node, and the receivers of watersupply, housing and urban_heat store their scenario results (recharge per source, demand and supply security, homes needed, SOLWEIG Tmrt/UTCI/PET + WBGT). Coverage: 63 implemented, 6 partial, 36 gaps.

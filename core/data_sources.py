@@ -131,6 +131,11 @@ REFERENCES = [
      "urban_heat/calculations/person.py::body_surface_area"),
     ("NEH 630", "USDA NRCS, *National Engineering Handbook* Part 630 Hydrology (SCS curve number, hydrologic soil groups).",
      "physicalEnv/calculations/soil.py"),
+    ("Eurostat housing cost overburden", "Eurostat, EU-SILC *housing cost overburden rate*: share of the population in "
+     "households spending 40 % or more of disposable income on housing; with the common 30 % affordability rule of thumb "
+     "it sets the moderate/high bands of the affordability stress level. The SES weight (10 % of the burden per SD of the "
+     "CBS socio-economic status score) is a modelling assumption, not a cited coefficient.",
+     "housing/calculations/chain.py::BURDEN_MODERATE, BURDEN_HIGH, SES_WEIGHT"),
     ("Eurostat DEGURBA 2021", "Eurostat (2021). *Applying the Degree of Urbanisation: a methodological manual*.",
      "builtup/calculations/degurba.py"),
 ]

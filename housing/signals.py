@@ -36,7 +36,10 @@ from builtup.models import Property
 from builtup.signals import residents_changed
 from core.cache import bump_layer_version
 
-from .models import HouseholdSize, HousingProject, HousingSupplyDemand, ResidentialProperty
+from .models import (
+    HouseholdSize, HousingAffordability, HousingProject, HousingSupplyDemand,
+    NeighborhoodSocialProfile, ResidentialProperty,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -104,38 +107,53 @@ def _refresh_city_housing(city_id):
     _set_city_residents(city_id)
 
 
+def _refresh_neighborhood_affordability(neighborhood_id):
+    """Re-save the neighborhood's affordability records so their stress level is derived again."""
+    pending = getattr(_deferred, "neighborhoods", None)
+    if pending is not None:
+        pending.add(neighborhood_id)
+        return
+    _resave(HousingAffordability.objects.filter(neighborhood_id=neighborhood_id))
+
+
 @contextmanager
 def deferred_housing_refresh():
     """
     Postpone the housing refresh until the block ends, then run it once per
-    affected city. A CBS forecast import saves ~84 projection rows per city and a
-    property import thousands of dwellings; without this each would redo the
-    city's demand and the whole city's residents. Nested uses defer to the
-    outermost one.
+    affected city (and once per neighborhood whose social profile changed: the
+    Klimaateffectatlas import fills it layer by layer). A CBS forecast import
+    saves ~84 projection rows per city and a property import thousands of
+    dwellings; without this each would redo the city's demand and the whole
+    city's residents. Nested uses defer to the outermost one.
     """
     if getattr(_deferred, "pending", None) is not None:
         yield
         return
 
     _deferred.pending = set()
+    _deferred.neighborhoods = set()
     try:
         yield
     except BaseException:
         pending, _deferred.pending = _deferred.pending, None
+        neighborhoods, _deferred.neighborhoods = _deferred.neighborhoods, None
         try:
-            _flush_housing_refresh(pending)
+            _flush_housing_refresh(pending, neighborhoods)
         except Exception:
             # e.g. the transaction is already broken; don't mask the original error
             logger.exception("Deferred housing refresh failed after an aborted block")
         raise
     else:
         pending, _deferred.pending = _deferred.pending, None
-        _flush_housing_refresh(pending)
+        neighborhoods, _deferred.neighborhoods = _deferred.neighborhoods, None
+        _flush_housing_refresh(pending, neighborhoods)
 
 
-def _flush_housing_refresh(city_ids):
+def _flush_housing_refresh(city_ids, neighborhood_ids=()):
     for city_id in city_ids:
         _refresh_city_housing(city_id)
+    for neighborhood_id in neighborhood_ids:
+        _refresh_neighborhood_affordability(neighborhood_id)
 
 
 # ── population -> housing demand ─────────────────────────────────────
@@ -184,6 +202,22 @@ def household_size_changed(sender, instance, raw=False, **kwargs):
     """
     if not raw:
         _refresh_city_housing(instance.city_id)
+
+
+# ── socio-economic status -> affordability stress ────────────────────
+
+@receiver(post_save, sender=NeighborhoodSocialProfile, dispatch_uid="housing_social_profile_saved")
+@receiver(post_delete, sender=NeighborhoodSocialProfile, dispatch_uid="housing_social_profile_deleted")
+def social_profile_changed(sender, instance, raw=False, **kwargs):
+    """
+    The stress level of every year of the neighborhood is scaled by its CBS
+    socio-economic status and weighted by its rental share, so a changed (or
+    deleted) profile re-derives them.
+
+    DAG edge: Social_Profile -> Affordability_Stress
+    """
+    if not raw:
+        _refresh_neighborhood_affordability(instance.neighborhood_id)
 
 
 # ── a dwelling is saved -> its residents ─────────────────────────────
