@@ -434,8 +434,9 @@ document.addEventListener('climate-run-deleted', function (evt) {
 
 // ── Lens panel tabs (Map simplification step 4) ─────────────────────────
 // A lens's indicator panel (#panel-body holding .lens-panel) gets three tabs:
-// Summary (headline cards), What-if (sliders + every card) and Calculate
-// (the lens's tools, Config.js::LENSES[].tools, in #panel-calculate). The
+// Summary (headline cards), What-if (sliders + every card; Plan mode only,
+// Modes.js) and Calculate (the lens's tools, Config.js::LENSES[].tools, in
+// #panel-calculate). The
 // tab is kept while the panel re-renders (unit click, year) and reset to
 // Summary when another lens opens (Events.js). Any other content in the
 // side panel (Scenarios, Dashboard, an edit form) hides the tabs.
@@ -459,13 +460,17 @@ function syncPanelTabs() {
 
   const tools = lensToolIds();
   const lensPanel = !!body.querySelector('.lens-panel');
+  // What-if is Plan mode only (Modes.js); Explore and Edit show the baseline
+  const planning = (window.MAP_MODE || 'explore') === 'plan';
   let tab = lensPanel ? panelTab : null;
   if (tab === 'calculate' && !tools.length) tab = 'summary';
+  if (tab === 'whatif' && !planning) tab = 'summary';
 
   tabs.hidden = !lensPanel;
   tabs.querySelectorAll('.panel-tab').forEach(btn => {
     btn.setAttribute('aria-selected', String(btn.dataset.tab === tab));
     if (btn.dataset.tab === 'calculate') btn.hidden = !tools.length;
+    if (btn.dataset.tab === 'whatif') btn.hidden = !planning;
   });
   if (tab) side.dataset.tab = tab; else delete side.dataset.tab;
   body.hidden = tab === 'calculate';

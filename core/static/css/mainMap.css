@@ -75,70 +75,7 @@
     overflow: hidden;
 }
 
-/* ============================================================
-   ACTIONS MENU
-   Drop-up opened from the bottom bar's Actions button (data import +
-   year selector). It is a sibling of .bottom-bar rather than a child: the
-   bar is its own stacking context (z-index 9), below the side panel and
-   the population dock, so a menu nested in it could never rise above
-   them. mainMap.js anchors it to the button; left/bottom here are only
-   the fallback.
-   ============================================================ */
-
-.actions-menu {
-    position: absolute;
-    left: 12px;
-    bottom: var(--bottom-clear); /* above the bottom bar */
-    width: 320px;
-    max-width: calc(100% - 16px);
-    padding: 10px;
-    background: var(--overlay-bg);
-    backdrop-filter: var(--overlay-blur);
-    -webkit-backdrop-filter: var(--overlay-blur);
-    box-shadow: var(--overlay-shadow);
-    border-radius: 10px;
-    border: 1px solid var(--border-ui);
-    z-index: 13;
-    display: none;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.actions-menu.visible { display: flex; }
-
-.actions-menu-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
-}
-
-/* "Calculate for this view": every tool in one two-column grid; an odd last tool spans both columns */
-.actions-menu-grid .action-panel-btn:last-child:nth-child(odd) { grid-column: 1 / -1; }
-
-.actions-menu-caret {
-    display: inline-block;
-    transition: transform 0.12s ease;
-}
-
-#actions-menu-btn[aria-expanded="true"] .actions-menu-caret { transform: rotate(180deg); }
-
-.actions-header {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding-bottom: 8px;
-    margin-bottom: 2px;
-    border-bottom: 1px solid var(--border-ui);
-}
-
-.actions-title {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: var(--text-tertiary);
-    font-weight: 600;
-}
-
+/* Tool buttons of the lens panel's Calculate tab (#panel-calculate) */
 .action-panel-btn {
     display: flex;
     flex-direction: column;
@@ -419,7 +356,7 @@
 .layers-panel {
     position: absolute;
     left: 84px;
-    top: 44px;
+    top: calc(44px + var(--mode-banner-h, 0px));
     width: 264px;
     max-height: calc(100vh - 144px);
     background: var(--overlay-bg);
@@ -794,7 +731,7 @@
 .side-panel {
     position: absolute;
     right: 12px;
-    top: 12px;
+    top: calc(12px + var(--mode-banner-h, 0px));
     bottom: var(--bottom-clear); /* stops above the bottom bar's Dashboard / Scenarios buttons */
     width: 460px;
     max-width: 76vw;
@@ -1578,7 +1515,7 @@
 .map-loader-wrap.busy .map-loader { display: flex; }
 
 /* Below the status strip, which owns the top centre */
-.map-loader-wrap { top: 60px; }
+.map-loader-wrap { top: calc(60px + var(--mode-banner-h, 0px)); }
 
 /* Server console lines (core/console.py) under the loader while it works */
 .map-loader-log {
@@ -1618,7 +1555,7 @@
 
 .status-strip {
     position: absolute;
-    top: 12px;
+    top: calc(12px + var(--mode-banner-h, 0px));
     left: 50%;   /* always centred on the map, whether or not a side panel is open */
     transform: translateX(-50%);
     z-index: 10;
@@ -1790,7 +1727,8 @@
 /* ============================================================
    WEATHER PILL (inside the status strip; WeatherPill.js)
    Live weather at the map centre; a click opens the Urban Heat panel,
-   whose weather sliders turn it into a what-if (amber border + badge).
+   whose weather sliders turn it into a what-if (amber border; the Plan
+   banner names it).
    ============================================================ */
 
 /* The wrapper holds the pill and, while it rains, the radar toggle beside it
@@ -1852,17 +1790,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     font-variant-numeric: tabular-nums;
-}
-.weather-pill-badge {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    padding: 2px 6px;
-    border-radius: 999px;
-    color: #f59e0b;
-    border: 1px solid rgba(245, 158, 11, 0.5);
-    background: rgba(245, 158, 11, 0.1);
 }
 .weather-pill.is-whatif { border-color: rgba(245, 158, 11, 0.6); }
 .weather-pill.is-error .weather-pill-meta { color: var(--text-tertiary); }
@@ -2220,7 +2147,7 @@
 
 
     .toolbar {
-        top: 12px;
+        top: calc(12px + var(--mode-banner-h, 0px));
         transform: none;
         flex-direction: row;
         width: auto;
@@ -2255,7 +2182,7 @@
 
     .onboarding-hint {
         left: 12px;
-        top: 64px;
+        top: calc(64px + var(--mode-banner-h, 0px));
         transform: none;
         max-width: calc(100% - 80px);
     }
@@ -2668,10 +2595,10 @@
 .settings-card {
     left: auto;
     right: 12px;
-    top: 12px;
+    top: calc(12px + var(--mode-banner-h, 0px));
     bottom: auto;
     width: 380px;
-    max-height: min(680px, calc(100% - 80px));
+    max-height: min(680px, calc(100% - 80px - var(--mode-banner-h, 0px)));
     z-index: 14;
 }
 .settings-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border-ui); }
@@ -2803,7 +2730,7 @@
    scroll; long selects take two slots; site check and building-rule findings below */
 #generator-card {
     width: 520px;
-    max-height: min(760px, calc(100% - 80px));
+    max-height: min(760px, calc(100% - var(--bottom-clear) - var(--mode-banner-h, 0px) - 12px));
     overflow-x: hidden;
 }
 #generator-card > * { min-width: 0; overflow-wrap: anywhere; }
@@ -2856,3 +2783,180 @@
 .generator-finding.excluded .generator-finding-icon { color: #e5484d; }
 .generator-finding.block .generator-finding-icon,
 .generator-finding.block { color: #e5484d; }
+
+/* ============================================================
+   MODES — Explore / Plan / Edit (Map simplification step 5; Modes.js)
+   body[data-map-mode] is the mode. The mode switch sits in the middle of
+   the bottom bar; Plan and Edit show #mode-banner across the top of the
+   map, and the top overlays move down by --mode-banner-h (Modes.js
+   measures it).
+   ============================================================ */
+
+.mode-switch {
+    display: inline-flex;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 999px;
+    background: var(--overlay-bg);
+    backdrop-filter: var(--overlay-blur);
+    -webkit-backdrop-filter: var(--overlay-blur);
+    box-shadow: var(--overlay-shadow);
+    border: 1px solid var(--border-ui);
+}
+.mode-switch-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 12px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+.mode-switch-btn:hover { color: var(--text-main); }
+.mode-switch-btn[aria-checked="true"] {
+    color: var(--text-main);
+    background: rgba(var(--accent-rgb), 0.16);
+    border-color: rgba(var(--accent-rgb), 0.4);
+}
+/* Plan wears the what-if amber, Edit the warning red: both differ from Explore at a glance */
+.mode-switch-btn[data-mode="plan"][aria-checked="true"] {
+    background: rgba(245, 158, 11, 0.14);
+    border-color: rgba(245, 158, 11, 0.5);
+}
+.mode-switch-btn[data-mode="edit"][aria-checked="true"] {
+    background: rgba(239, 68, 68, 0.14);
+    border-color: rgba(239, 68, 68, 0.5);
+}
+.mode-switch-btn:focus-visible { outline: 2px solid var(--border-ui-strong); outline-offset: 1px; }
+
+.mode-banner {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 11;
+    padding: 5px 12px;
+    background: rgba(17, 17, 17, 0.9);
+    backdrop-filter: var(--overlay-blur);
+    -webkit-backdrop-filter: var(--overlay-blur);
+    border-bottom: 2px solid rgba(245, 158, 11, 0.6);
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+.mode-banner[hidden] { display: none; }
+body[data-map-mode="edit"] .mode-banner { border-bottom-color: rgba(239, 68, 68, 0.6); }
+.mode-banner-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 6px 10px;
+}
+.mode-banner-row[hidden] { display: none; }
+.mode-banner-tag {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 999px;
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, 0.5);
+    background: rgba(245, 158, 11, 0.1);
+}
+.mode-banner-tag.is-edit {
+    color: #f87171;
+    border-color: rgba(239, 68, 68, 0.5);
+    background: rgba(239, 68, 68, 0.1);
+}
+.mode-banner-items { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.mode-banner-items:empty { display: none; }
+.mode-banner-item {
+    padding: 1px 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    color: var(--text-main);
+    font-variant-numeric: tabular-nums;
+}
+.mode-banner-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border-ui);
+    background: var(--bg-raised);
+    color: var(--text-main);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+.mode-banner-btn:hover:not(:disabled) { border-color: var(--border-ui-strong); }
+.mode-banner-btn:disabled { opacity: 0.45; cursor: default; }
+.mode-banner-btn[aria-expanded="true"] { border-color: rgba(var(--accent-rgb), 0.5); }
+/* The restore point inline in the Edit banner */
+.mode-banner .edit-backup {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    padding: 2px 4px 2px 10px;
+    border-radius: 999px;
+}
+.mode-banner .edit-backup-actions,
+.mode-banner .edit-backup-confirm { margin-top: 0; }
+.mode-banner .edit-backup-msg { margin-top: 0; }
+
+/* Explore and Edit show the stored baseline: no what-if controls */
+body:not([data-map-mode="plan"]) #side-panel .lens-panel .whatif-only,
+body:not([data-map-mode="plan"]) .pop-controls { display: none; }
+body[data-map-mode="edit"] #side-panel .summary-more { display: none; }
+/* In Plan the banner says what is a what-if; no badge on each card */
+#side-panel .whatif-badge { display: none; }
+.time-chip:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* Mapbox controls (the editor's drawing tools) clear the banner */
+.map-wrapper .mapboxgl-ctrl-top-left,
+.map-wrapper .mapboxgl-ctrl-top-right { top: var(--mode-banner-h, 0px); }
+
+/* Header Data menu (staff) */
+.header-menu { position: relative; }
+.header-menu-list {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    z-index: 60;
+    min-width: 210px;
+    display: flex;
+    flex-direction: column;
+    padding: 4px;
+    background: var(--bg-1);
+    border: 1px solid var(--border-ui);
+    border-radius: 6px;
+    box-shadow: var(--overlay-shadow);
+}
+.header-menu-list[hidden] { display: none; }
+.header-menu-list a {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    text-decoration: none;
+}
+.header-menu-list a:hover { background: var(--bg-raised); color: var(--text-main); }
+
+@media (max-width: 768px) {
+    .mode-switch { align-self: center; }
+    .mode-switch-btn { padding: 4px 10px; }
+    .mode-banner-text { display: none; }
+}

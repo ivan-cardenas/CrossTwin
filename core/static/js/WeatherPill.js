@@ -7,7 +7,7 @@
 // and every REFRESH_MS. A click opens the Urban Heat panel, whose weather
 // sliders adjust it: heat.js sends 'crosstwin:heat-weather' after every
 // recalculation, and while those values are a what-if the pill shows them
-// with a "What-if" badge. Closing the panel (or Reset there) returns the
+// with an amber border (the Plan mode banner names the what-if, Modes.js). Closing the panel (or Reset there) returns the
 // pill to the live values.
 //
 // Precipitation: Mapbox has no rain radar outside Japan, only a screen-wide
@@ -159,9 +159,6 @@
       if (live.description) parts.push(live.description);
     }
     el('weather-pill-meta').textContent = parts.join(' · ');
-    el('weather-pill-badge').hidden = !whatif;
-    // A KNMI'23 scenario of the Scenarios panel names itself in the badge
-    el('weather-pill-badge').textContent = (whatif && whatif.climate) ? whatif.climate : 'What-if';
     const when = live ? timeLabel(live.time) : '';
     pill.title = whatif
       ? 'Weather what-if from the Urban Heat panel — click to adjust, Reset there to return to live'

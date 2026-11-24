@@ -12,7 +12,7 @@
       {% info_help "heat.weather" %}
     </div>
     <div class="heat-weather-source">
-      {% if indicators.weather_whatif %}<span class="threshold-tag warn">What-if</span>{% endif %}
+      {% if indicators.weather_whatif %}<span class="threshold-tag warn whatif-badge">What-if</span>{% endif %}
       {% if indicators.weather_source %}{{ indicators.weather_source }}{% if indicators.weather_description %} · {{ indicators.weather_description }}{% endif %}{% if indicators.weather_time %} · {{ indicators.weather_time }}{% endif %}{% else %}No weather data{% endif %}
     </div>
     {% if indicators.climate.active and indicators.climate_delta %}

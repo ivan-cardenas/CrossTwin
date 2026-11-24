@@ -103,7 +103,7 @@ const BASEMAPS = {
 //   panel  (level, location) => indicator panel URL, follows the selected
 //          unit (mainMap.js::ADMIN_PANEL_TOOLS);  or intro: static panel HTML
 //   tools  ids of the "Calculate for this view" tools that belong to the lens
-//          (Actions menu buttons <id>ToolBtn); step 4 moves them into the panel.
+//          (buttons <id>ToolBtn in the panel's Calculate tab, #panel-calculate).
 const LENS_GROUPS = [
   { id: 'systems',     label: 'City systems' },
   { id: 'people',      label: 'People' },
@@ -240,9 +240,9 @@ const TOUR_STEPS = [
   },
   {
     num: 5,
-    title: "⑤ Import Data",
-    desc: "Open the Actions menu in the bottom bar. Upload your own GeoJSON or Shapefile with 'Upload Data', or pull live datasets from PDOK, CBS, Sentinel-2, and Google Earth Engine via 'Retrieve Data from APIs'.",
-    target: "#actions-menu-btn",
+    title: "⑤ Explore, Plan, Edit",
+    desc: "The switch in the bottom bar sets the mode. Explore shows the stored data. Plan unlocks the what-if sliders and climate scenarios; a banner names every change from the stored baseline, and nothing is stored. Edit (staff) changes the data, draws new neighbourhoods and holds the restore point; staff import data from Data in the header.",
+    target: "#mode-switch",
   },
   {
     num: 6,

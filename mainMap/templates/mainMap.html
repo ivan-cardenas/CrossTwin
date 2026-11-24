@@ -34,14 +34,23 @@
 <script src="{% static 'js/UnservedWater.js' %}"></script>
 <script src="{% static 'js/info_popover.js' %}"></script>
 <script src="{% static 'js/MapSettings.js' %}"></script>
+<script src="{% static 'js/Modes.js' %}"></script>
 <script src="{% static 'js/Events.js' %}"></script>
 <script src="{% static 'js/Map_init.js' %}"></script>
 {% endblock %} {% block header_actions %}
 {% if user.is_staff %}
-<button type="button" class="header-btn" id="map-settings-btn"
-        aria-controls="settings-card" aria-expanded="false">
-  <i class="bi bi-gear"></i> Map settings
-</button>
+<!-- DATA MENU (staff; Map simplification step 5): upload and retrieve data,
+     moved here from the removed Actions menu. Opened by Modes.js. -->
+<div class="header-menu">
+  <button type="button" class="header-btn" id="data-menu-btn"
+          aria-haspopup="true" aria-expanded="false" aria-controls="data-menu">
+    <i class="bi bi-database"></i> Data <i class="bi bi-chevron-down" aria-hidden="true"></i>
+  </button>
+  <div class="header-menu-list" id="data-menu" hidden>
+    <a href="{% url 'importer:upload_geodata' %}"><i class="bi bi-cloud-upload"></i> Upload data</a>
+    <a href="{% url 'importer:external_data' %}"><i class="bi bi-cloud-download"></i> Retrieve data from APIs</a>
+  </div>
+</div>
 {% endif %}
 {% endblock %}
 {% block content_section_class %}{% endblock %}
@@ -400,8 +409,6 @@
           <button class="lst-btn lst-btn-primary" id="solweig-calculate" disabled>Calculate thermal comfort</button>
           <div class="lst-status" id="solweig-status" role="status"></div>
         </div>
-
-        {% if user.is_staff %}
       </div>
       <div class="side-panel-tagline">CROSSTWIN · URBAN DIGITAL TWIN</div>
     </div>
@@ -416,10 +423,12 @@
       <div class="population-panel-body" id="population-panel-body"></div>
     </div>
 
+    {% if user.is_staff %}
     <!-- NEIGHBOURHOOD GENERATOR — outline -> streets, plots, buildings
          (core/static/js/GeneratorTool.js, builtup/views_generator.py,
-         builtup/calculations/generative.py). Preview is a what-if; Store
-         completes a housing project (DAG New_Units -> Buildings). -->
+         builtup/calculations/generative.py). Edit mode › New neighbourhood.
+         Preview is a what-if; Store completes a housing project
+         (DAG New_Units -> Buildings). -->
     <div class="lst-card" id="generator-card"
          data-projects-url="{% url 'builtup:generator_projects' %}"
          data-preview-url="{% url 'builtup:generator_preview' %}"
@@ -503,8 +512,8 @@
     </div>
 
     <!-- MAP SETTINGS — editable layers and styles (staff; core/static/js/MapSettings.js,
-         mainMap/settings_views.py). Opened from the header's Map settings button;
-         reuses the LST card's lst-* look. -->
+         mainMap/settings_views.py). Opened from the Edit mode banner's Map settings
+         button; reuses the LST card's lst-* look. -->
     <div class="lst-card settings-card" id="settings-card" data-url="{% url 'map:map_settings' %}">
       <div class="lst-card-header">
         <div class="lst-card-title">MAP SETTINGS</div>
@@ -527,6 +536,38 @@
           alt="GHG legend"
         />
       </div>
+    </div>
+
+    <!-- MODE BANNER (Map simplification step 5; core/static/js/Modes.js): across
+         the top of the map in Plan and Edit, hidden in Explore. Plan: the one
+         "What-if" notice, naming what differs from the stored baseline, with
+         Back to baseline (replaces the per-card badges). Edit (staff): the
+         restore point, the generator and the map settings. -->
+    <div class="mode-banner" id="mode-banner" hidden>
+      <div class="mode-banner-row" data-banner="plan" role="status" aria-live="polite">
+        <span class="mode-banner-tag">What-if</span>
+        <span class="mode-banner-text" id="plan-banner-text"></span>
+        <span class="mode-banner-items" id="plan-banner-items"></span>
+        <button type="button" class="mode-banner-btn" id="plan-reset">
+          <span class="bi bi-arrow-counterclockwise" aria-hidden="true"></span> Back to baseline
+        </button>
+      </div>
+      {% if user.is_staff %}
+      <div class="mode-banner-row" data-banner="edit">
+        <span class="mode-banner-tag is-edit">Edit</span>
+        <span class="mode-banner-text">Changes are stored. Click an object › Edit, or ＋ in Layers to draw one.</span>
+        <!-- Restore point (core/editing.py::backup); Create/Restore/Discard re-render it in place -->
+        <div id="edit-backup-bar" class="edit-backup-bar" hx-get="{% url 'map:edit_backup' %}"
+             hx-trigger="load, feature-saved from:body" hx-swap="innerHTML"></div>
+        <button type="button" class="mode-banner-btn" id="generatorToolBtn" aria-controls="generator-card">
+          <span class="bi bi-grid-3x3" aria-hidden="true"></span> New neighbourhood
+        </button>
+        <button type="button" class="mode-banner-btn" id="map-settings-btn"
+                aria-controls="settings-card" aria-expanded="false">
+          <span class="bi bi-gear" aria-hidden="true"></span> Map settings
+        </button>
+      </div>
+      {% endif %}
     </div>
 
     <!-- STATUS STRIP (top centre; Map simplification step 3): the place and its
@@ -555,7 +596,6 @@
           <span class="weather-pill-icon" id="weather-pill-icon">🌡️</span>
           <span class="weather-pill-temp" id="weather-pill-temp">–</span>
           <span class="weather-pill-meta" id="weather-pill-meta"></span>
-          <span class="weather-pill-badge" id="weather-pill-badge" hidden>What-if</span>
         </button>
         <button type="button" class="weather-pill-radar" id="weather-pill-radar" hidden
                 aria-pressed="false" title="Show the KNMI rain radar">🌧 Radar</button>
@@ -635,11 +675,26 @@
           <span class="bi bi-layers" aria-hidden="true"></span> Layers
         </button>
 
-        <button class="mode-btn" id="actions-menu-btn"
-                aria-haspopup="true" aria-expanded="false" aria-controls="actions-menu">
-          <span class="bi bi-sliders"></span> Actions
-          <span class="actions-menu-caret">▴</span>
+      </div>
+
+      <!-- MODE SWITCH (Map simplification step 5; Modes.js::setMapMode).
+           Explore: the stored data, read-only (default). Plan: what-ifs and
+           climate scenarios, nothing stored. Edit (staff): change the data. -->
+      <div class="mode-switch" id="mode-switch" role="radiogroup" aria-label="Mode">
+        <button type="button" role="radio" class="mode-switch-btn" data-mode="explore" aria-checked="true"
+                title="Explore: the stored data, read-only">
+          <span class="bi bi-eye" aria-hidden="true"></span> Explore
         </button>
+        <button type="button" role="radio" class="mode-switch-btn" data-mode="plan" aria-checked="false"
+                title="Plan: what-ifs and climate scenarios; nothing is stored">
+          <span class="bi bi-sliders" aria-hidden="true"></span> Plan
+        </button>
+        {% if user.is_staff %}
+        <button type="button" role="radio" class="mode-switch-btn" data-mode="edit" aria-checked="false"
+                title="Edit: change the stored data, draw neighbourhoods, map settings (staff)">
+          <span class="bi bi-pencil-square" aria-hidden="true"></span> Edit
+        </button>
+        {% endif %}
       </div>
 
       <div class="bottom-right">
@@ -649,37 +704,6 @@
       </div>
     </div>
 
-    <!-- ACTIONS MENU — drop-up opened from the bottom bar's Actions button.
-         A sibling of .bottom-bar (not a child) so it can stack above the
-         side panel and population dock; mainMap.js anchors it to the button. -->
-    <div class="actions-menu" id="actions-menu">
-      <div class="actions-header">
-        <span class="actions-title">ACTIONS</span>
-      </div>
-      <div class="actions-menu-row">
-        <button class="action-panel-btn" id="importDataBtn">
-          <span class="bi bi-cloud-upload"></span>
-          <span class="action-btn-text">Upload Data</span>
-        </button>
-        <button class="action-panel-btn" id="getDataBtn">
-          <span class="bi bi-cloud-download"></span>
-          <span class="action-btn-text">Retrieve Data from APIs</span>
-        </button>
-      </div>
-
-      <!-- Calculations run over the area in view -->
-      <div class="actions-divider"></div>
-      <div class="actions-header">
-        <span class="actions-title">CALCULATE FOR THIS VIEW</span>
-      </div>
-      <div class="actions-menu-row actions-menu-grid">
-        <button class="action-panel-btn" id="generatorToolBtn">
-          <span class="bi bi-grid-3x3"></span>
-          <span class="action-btn-text">Neighbourhood generator</span>
-        </button>
-      </div>
-
-    </div>
   </div>
 </div>
 

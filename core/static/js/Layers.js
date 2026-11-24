@@ -1285,8 +1285,9 @@ function _popupHead(properties, layerName, titleKey, layerKey = null) {
   </div>`;
 }
 
-/** "Edit" button for staff on editable layers (the catalog marks them, see core/editing.py). */
+/** "Edit" button for staff on editable layers (the catalog marks them, see core/editing.py), in Edit mode (Modes.js). */
 function _popupEditButton(properties, layerKey) {
+  if (window.MAP_MODE !== 'edit') return '';
   if (!layerKey || properties.id === null || properties.id === undefined) return '';
   if (typeof startEdit !== 'function' || !availableLayers.find(l => l.key === layerKey)?.editable) return '';
   // preventDefault: inside a multi-feature popup the head sits in a <summary>

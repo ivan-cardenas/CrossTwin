@@ -1,5 +1,6 @@
 // ============================================================
-// GeneratorTool.js — Neighbourhood generator card (Actions menu, #generatorToolBtn).
+// GeneratorTool.js — Neighbourhood generator card (Edit mode banner › New
+// neighbourhood, #generatorToolBtn; staff only, Modes.js).
 // Draw an outline (or pick a housing project), choose a typology and a few
 // sizes, and see the generated streets, plots and buildings live
 // (POST builtup/generator/preview/, a what-if: nothing is stored). Staff can
@@ -405,7 +406,6 @@
       }
       ['lst-card', 'svf-card', 'solweig-card', 'degurba-card'].forEach(id => $(id)?.classList.remove('visible'));
       card.classList.add('visible');
-      if (typeof setActionsMenuOpen === 'function') setActionsMenuOpen(false);
       loadProjects().then(updateButtons);
       if (!outline) setStatus('Draw an outline or pick a housing project.');
     }

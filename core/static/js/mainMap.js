@@ -1,10 +1,10 @@
 // ============================================================
-// mainMap.js — page-level wiring for mainMap.html: map init, the bottom
-// Actions menu (import buttons + tools), the time chip (year + climate
-// scenario, setTime), guided tour, and the
+// mainMap.js — page-level wiring for mainMap.html: map init, the time chip
+// (year + climate scenario, setTime), guided tour, and the
 // admin-unit-driven panel registry (ADMIN_PANEL_TOOLS / syncPanelBtns / refreshActivePanel).
-// Depends on: config.js, map_init.js (and window.MAPBOX_ACCESS_TOKEN, set
-// inline by mainMap.html before this file loads).
+// The Explore / Plan / Edit modes are Modes.js.
+// Depends on: config.js, map_init.js, Modes.js (and window.MAPBOX_ACCESS_TOKEN,
+// set inline by mainMap.html before this file loads).
 // ============================================================
 
 // Initialize the Urban Twin map — only pass server-side values here;
@@ -13,13 +13,6 @@ document.addEventListener("DOMContentLoaded", () => {
   initializeUrbanTwinMap({ mapboxToken: window.MAPBOX_ACCESS_TOKEN });
 });
 
-
-// ── ACTIONS MENU ───────────────────────────────────────────────────────────
-// Drop-up opened from the bottom bar's Actions button; holds the import
-// buttons and the "Calculate for this view" tools. The menu is a sibling of .bottom-bar (see
-// mainMap.css for why), so it is anchored to its button here.
-const actionsMenuBtn = document.getElementById('actions-menu-btn');
-const actionsMenu = document.getElementById('actions-menu');
 
 // Overlays (side panel, population dock, tool cards, legends) stop at
 // --bottom-clear so they never cover the bottom bar's Dashboard button. The bar wraps to two rows on phones, so measure it.
@@ -33,72 +26,6 @@ if (window.ResizeObserver) {
   const bar = document.querySelector('.bottom-bar');
   if (bar) new ResizeObserver(syncBottomClear).observe(bar);
 }
-
-function positionActionsMenu() {
-  const wrap = actionsMenu.offsetParent;   // .map-wrapper; null while the menu is hidden
-  if (!wrap) return;
-  const w = wrap.getBoundingClientRect();
-  const b = actionsMenuBtn.getBoundingClientRect();
-  const left = b.left - w.left - wrap.clientLeft;
-  const maxLeft = wrap.clientWidth - actionsMenu.offsetWidth - 8;
-  actionsMenu.style.left = `${Math.max(8, Math.min(left, maxLeft))}px`;
-  actionsMenu.style.bottom = `${wrap.clientHeight - (b.top - w.top - wrap.clientTop) + 8}px`;
-}
-
-function setActionsMenuOpen(open) {
-  actionsMenu.classList.toggle('visible', open);
-  actionsMenuBtn.classList.toggle('active', open);
-  actionsMenuBtn.setAttribute('aria-expanded', open);
-  if (open) positionActionsMenu();
-}
-
-if (actionsMenuBtn && actionsMenu) {
-  actionsMenuBtn.addEventListener('click', () => {
-    setActionsMenuOpen(!actionsMenu.classList.contains('visible'));
-  });
-  // Close on a click anywhere else (the map included) and on Escape.
-  document.addEventListener('click', (evt) => {
-    if (!actionsMenu.contains(evt.target) && !actionsMenuBtn.contains(evt.target)) {
-      setActionsMenuOpen(false);
-    }
-  });
-  document.addEventListener('keydown', (evt) => {
-    if (evt.key === 'Escape') setActionsMenuOpen(false);
-  });
-  window.addEventListener('resize', positionActionsMenu);
-  // The button shifts when the controls beside it change width, so
-  // re-anchor an open menu then too.
-  if (typeof ResizeObserver !== 'undefined') {
-    new ResizeObserver(positionActionsMenu).observe(actionsMenuBtn.parentElement);
-  }
-}
-
-document.getElementById('importDataBtn')?.addEventListener('click', () => {
-  console.log('Import Data clicked');
-  // Redirect to import page or open modal
-  window.location.href = '/importer/';
-});
-
-document.getElementById('getDataBtn')?.addEventListener('click', () => {
-  console.log('Import Data clicked');
-  // Redirect to import page or open modal
-  window.location.href = '/importer/external/';
-});
-
-document.getElementById('scenario1Btn')?.addEventListener('click', () => {
-  console.log('Scenario 1 clicked');
-  // Toggle scenario 1
-});
-
-document.getElementById('calculateBtn')?.addEventListener('click', () => {
-  console.log('Calculate Results clicked');
-  // Trigger calculation
-});
-
-document.getElementById('settingsBtn')?.addEventListener('click', () => {
-  console.log('Settings clicked');
-  // Open settings panel
-});
 
 // ── TIME: year + climate scenario, one state (Map simplification step 3) ──
 // The time chip in the status strip is the one place to set them; the
@@ -161,6 +88,10 @@ function setTime({ year, pathway, heat } = {}, { refreshPanel = true } = {}) {
   renderTime();
   if (!yearChanged && !climateChanged) return;
 
+  // A what-if year or climate is Plan (Modes.js): Explore shows the baseline only
+  if (window.MAP_MODE === 'explore' && !isBaselineTime()) setMapMode('plan');
+  if (typeof renderModeBanner === 'function') renderModeBanner();
+
   syncPanelBtns();
   if (climateChanged) {
     // Tools that follow the scenario (SolweigTool.js) listen to this
@@ -199,6 +130,13 @@ function renderTime() {
   document.getElementById('time-chip-year').textContent = String(year);
   document.getElementById('time-chip-climate').textContent = climateChipLabel();
   timeChip?.classList.toggle('is-scenario', scenario);
+  // Edit mode works on the stored baseline: no year or scenario what-ifs
+  if (timeChip) {
+    const locked = window.MAP_MODE === 'edit';
+    timeChip.disabled = locked;
+    timeChip.title = locked ? 'Year and climate are fixed to today in Edit mode' : 'Year and climate scenario';
+    if (locked && timeMenu) setTimeMenuOpen(false);
+  }
   showYearInPicker(year);
   document.querySelectorAll('.time-pathway').forEach(btn => {
     btn.setAttribute('aria-pressed', String(btn.dataset.pathway === window.CLIMATE_PATHWAY));
@@ -289,6 +227,7 @@ if (timeChip && timeMenu) {
     setTime({ heat: evt.target.value }));
   document.getElementById('time-compare')?.addEventListener('click', () => {
     setTimeMenuOpen(false);
+    setMapMode('plan');   // scenarios are a what-if (Modes.js)
     showScenarios();
   });
 }

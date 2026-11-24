@@ -23,13 +23,11 @@ function renderLayerList() {
     groups[layer.app_label].push(layer);
   });
 
-  // Backup / restore point for what-if edits (staff only: only then does the
-  // catalog mark layers editable). Rendered by core/editing.py::backup;
-  // its own Create/Restore/Discard responses re-render it in place.
-  let html = availableLayers.some(l => l.editable)
-    ? `<div id="edit-backup-bar" class="edit-backup-bar" hx-get="/api/editing/backup/"
-         hx-trigger="load, feature-saved from:body" hx-swap="innerHTML"></div>`
-    : '';
+  // The restore point (backup bar) lives in the Edit mode banner (mainMap.html).
+  // ＋ (draw a new object) only in Edit mode (Modes.js); the catalog marks
+  // layers editable for staff only.
+  const editing = window.MAP_MODE === 'edit';
+  let html = '';
 
   for (const [appLabel, layers] of Object.entries(groups)) {
     html += `<div class="app-group">
@@ -51,7 +49,7 @@ function renderLayerList() {
             <span class="layer-count"${layer.count_estimated ? ' title="Estimate (planner statistics)"' : ''}>${layer.count_estimated ? '~' : ''}${layer.count}</span>
           </div>
           <div class="layer-actions">
-            ${layer.editable ? `<button onclick="startCreate('${layer.key}')" title="Draw a new object">＋</button>` : ''}
+            ${editing && layer.editable ? `<button onclick="startCreate('${layer.key}')" title="Draw a new object">＋</button>` : ''}
             <button onclick="zoomToLayer('${layer.key}')" title="Zoom to layer">🔍</button>
           </div>
         </div>`;
@@ -61,7 +59,6 @@ function renderLayerList() {
   }
 
   container.innerHTML = html;
-  if (typeof htmx !== 'undefined') htmx.process(container);   // wire up the backup bar
   filterLayersByLens(activeTool);   // the open lens's layers only, rest in the drawer
 }
 

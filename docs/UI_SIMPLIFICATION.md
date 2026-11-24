@@ -198,3 +198,36 @@ rule would not exclude them either). The heat cards now pass the exact raster ro
 was read from (`_raster_stats_sql` returns its `id`, `views._build_indicators` → `map_raster`);
 no raster behind the number, no button. Pinned by
 `test_show_on_map_gets_the_observed_raster_behind_the_number` and `core/tests/test_show_on_map.py`.
+
+## Step 5 — Explore, Plan and Edit (done 24 Nov 2026)
+
+Choices (asked): Explore hides the What-if tab (Summary + Calculate only); picking a
+scenario in Explore switches to Plan; Upload / Retrieve go to a staff-only header *Data*
+menu and the Actions menu is removed.
+
+- **Mode switch** in the middle of the bottom bar (`#mode-switch`, `core/static/js/Modes.js::setMapMode`,
+  state `window.MAP_MODE` + `body[data-map-mode]`). Edit is rendered for staff only.
+- **Explore** (default): the stored baseline. No What-if tab, no `.whatif-only` sliders, no
+  population what-if in the dock. A non-baseline year or climate (time chip, *Compare
+  scenarios*) and the Summary tab's "All indicators and what-ifs" switch to Plan.
+- **Plan**: the What-if tab, sliders and population what-if. One banner across the top of
+  the map (`#mode-banner`) says what differs from the stored baseline (year · pathway,
+  population variant/growth, the panel's moved sliders) with *Back to baseline*. The
+  per-card badges are hidden in the side panel (`.whatif-badge`; the standalone dashboards
+  keep them) and the weather pill's badge is gone (also fixes the duplicate scenario badge
+  seen in step 3). Leaving Plan returns everything to the baseline.
+- **Edit** (staff): banner with the restore point (moved out of the layers panel), *New
+  neighbourhood* (the generator, moved out of the Actions menu) and *Map settings* (moved
+  out of the header). Popup *Edit* and the layers panel's ＋ show only here; the time chip
+  is locked to today. Leaving Edit drops an open edit form and closes the generator and
+  settings cards.
+- **Bottom bar:** camera, Layers, mode switch, Dashboard. Header: *Data* (staff).
+- Not changed: the Calculate tab is in every mode (calculating stays staff only); the
+  Scenarios panel's *Calculate effects* (staff, stores a run) stays in Plan.
+- Tour step 5 now points at the mode switch (the tour is replaced in step 7).
+
+Fixed on the way: since step 4 the staff-only `{% if %}` started inside the Calculate tab, so
+for visitors the side panel never closed and the population dock was missing (legends,
+status strip and bottom bar ended up inside the hidden tab). The block now starts at the
+generator card; `mainMap/tests/test_modes.py` checks the nesting for visitors and staff.
+Checked in a browser logged out and as staff.

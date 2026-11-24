@@ -121,7 +121,7 @@
     </div>
     <div style="display:flex; align-items:baseline; gap:10px; margin-top:4px;">
       <div style="font-family:var(--font-base); font-size:1.05rem; font-weight:700; color:{{ d.color }};">{{ d.label }}</div>
-      {% if d.whatif %}<span class="threshold-tag warn">What-if {{ d.year }}</span>{% endif %}
+      {% if d.whatif %}<span class="threshold-tag warn whatif-badge">What-if {{ d.year }}</span>{% endif %}
       {% if d.original_label and not d.whatif %}<span style="font-size:9px; color:rgba(232,244,255,0.45);">1 km original: {{ d.original_label }}</span>{% endif %}
     </div>
     <div class="bar-track" style="height:10px; display:flex; margin-top:8px;">

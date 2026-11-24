@@ -389,7 +389,6 @@
       // Same corner as the LST and SVF cards: show one at a time.
       ['lst-card', 'svf-card', 'degurba-card', 'generator-card'].forEach(id => document.getElementById(id)?.classList.remove('visible'));
       card.classList.add('visible');
-      if (typeof setActionsMenuOpen === 'function') setActionsMenuOpen(false);
       loadInfo();
       if (metLabel === 'manual' && el.source.value !== 'manual') fetchMet();
       else refreshScenario();
