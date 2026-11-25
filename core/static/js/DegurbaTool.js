@@ -1,5 +1,5 @@
 // ============================================================
-// DegurbaTool.js — Degree of Urbanisation card (Actions menu, #degurbaToolBtn).
+// DegurbaTool.js — Degree of Urbanisation card (Built-up lens › Calculate tab, #degurbaToolBtn).
 // Shows the stored grid (GET builtup/degurba/info/): population year, cells
 // and classes at 100 m (CrossTwin's local variant) and 1 km (the original
 // method on the same data), the cities' class and urbanisation rate. Staff can
@@ -81,10 +81,19 @@
         el.cities.appendChild(row);
       });
       if (data.stale_year) {
+        window.Advisors?.set('degurba-year', {
+          severity: 'warn',
+          title: 'Degree of urbanisation misses this population year',
+          detail: `The neighbourhoods now hold ${data.population_year} population.`,
+          actionLabel: 'Rebuild',
+          action: { lens: 'builtup', tab: 'calculate', tool: 'degurba' },
+        });
         setStatus(`The neighborhoods now hold ${data.population_year} population: rebuild to add that year.`, 'warn');
       } else if (!canCalculate) {
+        window.Advisors?.clear('degurba-year');
         setStatus('Kept current automatically. Recalculating needs a staff login.', '');
       } else {
+        window.Advisors?.clear('degurba-year');
         setStatus('Kept current automatically when people, dwellings, buildings or land cover change.');
       }
     }
@@ -114,7 +123,6 @@
     function open() {
       ['lst-card', 'svf-card', 'solweig-card', 'generator-card'].forEach(id => document.getElementById(id)?.classList.remove('visible'));
       card.classList.add('visible');
-      if (typeof setActionsMenuOpen === 'function') setActionsMenuOpen(false);
       loadInfo();
     }
 
@@ -183,9 +191,6 @@
     }
     ['feature-saved', 'backup-restored'].forEach(name => document.body.addEventListener(name, afterEdit));
 
-    if (typeof makeDraggable === 'function' && window.matchMedia('(min-width: 769px)').matches) {
-      makeDraggable(card, '.lst-card-header');
-    }
   }
 
   document.addEventListener('DOMContentLoaded', init);

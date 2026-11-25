@@ -1,5 +1,6 @@
 // ============================================================
-// GeneratorTool.js — Neighbourhood generator card (Actions menu, #generatorToolBtn).
+// GeneratorTool.js — Neighbourhood generator card (Edit mode banner › New
+// neighbourhood, #generatorToolBtn; staff only, Modes.js).
 // Draw an outline (or pick a housing project), choose a typology and a few
 // sizes, and see the generated streets, plots and buildings live
 // (POST builtup/generator/preview/, a what-if: nothing is stored). Staff can
@@ -240,6 +241,54 @@
       container.replaceChildren(head, ...rows);
     }
 
+    // The site check's warnings and blocks also go to the advisor tray (Advisors.js)
+    function reportAdvisor(data) {
+      const findings = (data?.site?.findings || []).filter(f => f.severity === 'warn' || f.severity === 'block' || f.severity === 'excluded');
+      if (!findings.length || !window.Advisors) { window.Advisors?.clear('generator-site'); return; }
+      const blocking = findings.some(f => f.severity === 'block');
+      window.Advisors.set('generator-site', {
+        severity: blocking ? 'block' : 'warn',
+        title: `${findings.length} site ${findings.length === 1 ? 'finding' : 'findings'} for the new neighbourhood`,
+        detail: findings.map(f => f.message).slice(0, 2).join(' '),
+        actionLabel: 'Show findings',
+        action: () => el.site.scrollIntoView({ block: 'nearest', behavior: 'smooth' }),
+      });
+    }
+
+    // One card per style; the select stays the source of truth
+    function buildStyleCards() {
+      const host = $('generator-style-cards');
+      if (!host) return;
+      host.replaceChildren(...[...el.style.options].map(option => {
+        const [name, note] = option.text.split(': ');
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'generator-style-card';
+        btn.dataset.value = option.value;
+        btn.setAttribute('role', 'radio');
+        const title = document.createElement('strong');
+        title.textContent = name;
+        const sub = document.createElement('span');
+        sub.textContent = note || '';
+        btn.append(title, sub);
+        btn.addEventListener('click', () => {
+          if (el.style.value === option.value) return;
+          el.style.value = option.value;
+          el.style.dispatchEvent(new Event('change'));
+        });
+        return btn;
+      }));
+      syncStyleCards();
+    }
+
+    function syncStyleCards() {
+      document.querySelectorAll('#generator-style-cards .generator-style-card').forEach(btn => {
+        const on = btn.dataset.value === el.style.value;
+        btn.classList.toggle('is-selected', on);
+        btn.setAttribute('aria-checked', String(on));
+      });
+    }
+
     function blockingReason(data) {
       const blocks = [...(data.site?.findings || []), ...(data.regulations || [])].filter(f => f.severity === 'block');
       return blocks.map(f => f.message).join(' ');
@@ -274,6 +323,7 @@
         showDefaults(data.params);
         renderFindings(el.site, 'Site check', data.site?.findings);
         renderFindings(el.rules, 'Building rules (indicative)', data.regulations);
+        reportAdvisor(data);
         blocked = blockingReason(data);
         setStatus(blocked ? `Cannot be stored: ${blocked}` : 'Preview only: nothing is stored until you press Store.',
           blocked ? 'error' : '');
@@ -305,6 +355,9 @@
       if (!project) { startDraw(); return; }
       const saved = project.params || {};
       if (saved.style) el.style.value = saved.style;
+      syncStyleCards();
+      // a stored project with sizes or a typology of its own shows them
+      if (Object.keys(saved).some(key => key !== 'style')) $('generator-more').open = true;
       if (saved.typology) el.typology.value = saved.typology;
       el.pattern.value = saved.street_pattern || '';
       el.dwelling.value = saved.dwelling_mode || 'auto';
@@ -405,7 +458,6 @@
       }
       ['lst-card', 'svf-card', 'solweig-card', 'degurba-card'].forEach(id => $(id)?.classList.remove('visible'));
       card.classList.add('visible');
-      if (typeof setActionsMenuOpen === 'function') setActionsMenuOpen(false);
       loadProjects().then(updateButtons);
       if (!outline) setStatus('Draw an outline or pick a housing project.');
     }
@@ -413,6 +465,7 @@
     function close() {
       card.classList.remove('visible');
       blocked = '';
+      window.Advisors?.clear('generator-site');
       el.site.replaceChildren();
       el.rules.replaceChildren();
       clearTimeout(timer);
@@ -422,6 +475,7 @@
       outline = null;
     }
 
+    buildStyleCards();
     openBtn.addEventListener('click', open);
     el.close.addEventListener('click', close);
     el.draw.addEventListener('click', startDraw);
@@ -436,6 +490,7 @@
       el.pattern.value = '';
       variationTouched = false;
       resetTypologyFields();
+      syncStyleCards();
       schedulePreview();
     });
     el.pattern.addEventListener('change', schedulePreview);

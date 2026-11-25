@@ -148,8 +148,14 @@ def _display_field(related_model):
 
 def map_view(request):
     """Display the map page."""
+    from weather.calculations import climate
+
     context = {
         'mapbox_access_token': settings.MAPBOX_ACCESS_TOKEN,
+        # The time menu's choices (Map simplification step 3), from the
+        # same tables the Scenarios panel uses
+        'climate_pathways': climate.PATHWAYS,
+        'climate_heat_modes': climate.HEAT_MODES,
     }
     return render(request, 'mainMap.html', context)
 

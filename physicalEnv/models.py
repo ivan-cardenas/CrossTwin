@@ -91,8 +91,9 @@ class SoilType(models.Model):
     infiltrationMax_mm_h = models.FloatField(null=True, blank=True, help_text="Upper bound of the final infiltration rate of the soil group, mm/h (empty for group A: no upper bound)")
 
     def save(self, *args, **kwargs):
-        from .calculations.soil import SOIL_GROUPS, classify_soil_group
-        self.soilGroup = classify_soil_group(self.name)
+        from .calculations.soil import SOIL_GROUPS, URBAN_SOIL_CODE, URBAN_SOIL_GROUP, classify_soil_group
+        # the stand-in for built-up land the soil map leaves blank has no texture to read
+        self.soilGroup = URBAN_SOIL_GROUP if self.code == URBAN_SOIL_CODE else classify_soil_group(self.name)
         rates = SOIL_GROUPS.get(self.soilGroup, {})
         self.infiltrationMin_mm_h = rates.get('min_mm_h')
         self.infiltrationMax_mm_h = rates.get('max_mm_h')

@@ -88,6 +88,27 @@ def _grid_json(grid):
     return {"width": grid.width, "height": grid.height, "resolution": grid.resolution}
 
 
+def _coverage_warning(bbox_wgs84, grid):
+    """Warn when the NDVI coverage (hence the grid) is only part of the map view."""
+    from django.contrib.gis.geos import Polygon
+
+    from .pipeline import _view_polygon
+
+    if bbox_wgs84 is None:
+        return None
+    view = _view_polygon(bbox_wgs84)
+    box = Polygon.from_bbox(grid.extent)
+    box.srid = grid.srid
+    share = view.intersection(box).area / view.area if view.area else 1.0
+    if share >= 0.95:
+        return None
+    return (
+        f"NDVI covers only part of this view: LST will be calculated for about "
+        f"{share * 100:.0f} % of it. Import NDVI for the whole area from Retrieve Data "
+        f"from APIs to cover it."
+    )
+
+
 def _ndvi_json(layer):
     return {
         "id": layer.pk,
@@ -128,6 +149,7 @@ def lst_scenes(request):
             "window": {"from": date_from.isoformat(), "to": date_to.isoformat()},
             "ndvi": [_ndvi_json(layer) for layer in layers],
             "grid": _grid_json(grid),
+            "warning": _coverage_warning(p["bbox_wgs84"], grid),
             "scenes": [_scene_json(s) for s in scenes],
             "can_calculate": request.user.is_staff,
         })
@@ -159,6 +181,7 @@ def lst_calculate(request):
             "scene": _scene_json(result.scene),
             "ndvi": [_ndvi_json(layer) for layer in result.ndvi_layers],
             "grid": _grid_json(result.grid),
+            "warning": _coverage_warning(p["bbox_wgs84"], result.grid),
             "stats": result.stats(),
             "valid_fraction": result.valid_fraction,
             "tpw_source": result.tpw_source,

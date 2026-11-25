@@ -153,7 +153,24 @@ def _finalize_landcover(rows):
     _mark_heat_input("land cover")       # replays urban_heat/signals.py
 
 
+def _fill_urban_soil(rows):
+    """Stores the built-up land the soil map leaves blank as "Urban land" soil areas (physicalEnv/calculations/urban_soil.py)."""
+    from django.contrib.gis.geos import GeometryCollection
+
+    from physicalEnv.calculations.urban_soil import fill_urban_soil_gaps
+
+    geoms = [row.geom for row in rows if getattr(row, "geom", None) is not None]
+    if not geoms:
+        return
+    try:
+        fill_urban_soil_gaps(GeometryCollection(*geoms, srid=geoms[0].srid).envelope, refresh=False)
+    except Exception:
+        # never fail a soil import over the urban fill; the soil map itself is stored
+        logger.exception("Urban land soil areas failed; built-up land keeps no soil")
+
+
 def _finalize_soil(rows):
+    _fill_urban_soil(rows)
     _refresh_freshwater_over(rows)       # replays watersupply/signals.py
     _mark_heat_input("soil")             # replays urban_heat/signals.py
 

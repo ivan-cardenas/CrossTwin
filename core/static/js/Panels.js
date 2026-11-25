@@ -45,7 +45,7 @@ function showDashboardSummary() {
   const visibleLayers = Object.values(layerVisibility).filter(Boolean).length;
   const loadedCount   = Object.keys(loadedLayers).length;
 
-  if (panelTitle) panelTitle.textContent = 'DASHBOARD';
+  if (panelTitle) panelTitle.textContent = 'Dashboard';
   if (panelBody) {
     panelBody.innerHTML = `
       <div class="dashboard-grid">
@@ -241,11 +241,12 @@ function initPopulationHover() {
 
 /**
  * Scenarios panel: the KNMI'23 climate scenarios of the Klimaateffectatlas,
- * rendered by the server (weather/views.py::climate_panel). The chosen one is
- * kept in window.CLIMATE_SCENARIO, the heat mode ('average' = observed
- * season | 'winter' … 'autumn' | 'warmest' = heat-wave day) in window.CLIMATE_HEAT; both go to the Urban Heat and Water
- * Supply panels (climateParam / syncPanelBtns in mainMap.js). The map centre
- * picks the station marked nearest in the panel's heat table.
+ * rendered by the server (weather/views.py::climate_panel), opened by the
+ * time menu's Compare button. It shows the scenario of the time state
+ * (mainMap.js::setTime: window.CLIMATE_SCENARIO, CLIMATE_HEAT = 'average'
+ * observed season | 'winter' … 'autumn' | 'warmest' heat-wave day), and a
+ * choice in it goes back through setTime. The map centre picks the station
+ * marked nearest in the panel's heat table.
  */
 function showScenarios() {
   const sidePanel = document.getElementById('side-panel');
@@ -259,46 +260,30 @@ function showScenarios() {
   htmx.ajax('GET', `/weather/climate/panel/?climate=${key}&heat=${heat}${loc}${unit}`, {
     target: '#panel-body',
     swap: 'innerHTML',
-    source: document.getElementById('btn-scenarios'),
+    source: document.getElementById('time-compare'),
   });
   sidePanel?.classList.add('visible');
   document.getElementById('layers-panel')?.classList.remove('visible');
 }
 
-/** Show the active scenario on the Scenarios button ("2050 High, dry"). */
-function renderClimateBadge(label) {
-  const btn = document.getElementById('btn-scenarios');
-  if (!btn) return;
-  let badge = btn.querySelector('.climate-active-badge');
-  if (!label) { badge?.remove(); return; }
-  if (!badge) {
-    badge = document.createElement('span');
-    badge.className = 'climate-active-badge';
-    btn.appendChild(badge);
-  }
-  badge.textContent = label;
-}
-
-// After the panel is swapped in, adopt its scenario: every panel URL gets
-// ?climate= from now on. Choosing a scenario only changes the what-if, and
-// moves the population year with it (current -> 2025, 2050 / 2100 -> that
-// year, data-climate-year). If effects were shown, they are recalculated.
+// After the panel is swapped in, its scenario becomes the time state
+// (mainMap.js::setTime): the year is the scenario's population year
+// (current -> 2025, a horizon -> that year, data-climate-year), the pathway
+// the key's suffix. The panel is the caller, so it is not refreshed again.
+// If effects were shown, they are recalculated.
 document.addEventListener('htmx:afterSwap', function (evt) {
   const panel = evt.detail.target?.querySelector?.('#climate-panel');
   if (!panel) return;
   const key = panel.dataset.climate || 'current';
   const heat = panel.dataset.climateHeat || 'average';
   const changed = key !== (window.CLIMATE_SCENARIO || 'current') || heat !== (window.CLIMATE_HEAT || 'average');
-  const keyChanged = key !== (window.CLIMATE_SCENARIO || 'current');
   if (changed) {
-    window.CLIMATE_SCENARIO = key;
-    window.CLIMATE_HEAT = heat;
-    renderClimateBadge(panel.dataset.climateLabel);
-    if (typeof syncPanelBtns === 'function') syncPanelBtns();
-    // Tools that follow the scenario (SolweigTool.js) listen to this
-    window.dispatchEvent(new CustomEvent('crosstwin:climate-changed', { detail: { key, heat } }));
+    setTime({
+      year: panel.dataset.climateYear,
+      pathway: key.includes('_') ? key.split('_')[1] : undefined,
+      heat,
+    }, { refreshPanel: false });
   }
-  if (keyChanged && typeof setActiveYear === 'function') setActiveYear(panel.dataset.climateYear, {refreshPanel: false});
   if (changed && window.CLIMATE_EFFECTS_SHOWN) loadClimateEffects();
 });
 
@@ -445,4 +430,72 @@ document.addEventListener('climate-run-deleted', function (evt) {
   (evt.detail?.layers || []).forEach(key => {
     if (key && typeof removeLayer === 'function') removeLayer(key);
   });
+});
+
+// ── Lens panel tabs (Map simplification step 4) ─────────────────────────
+// A lens's indicator panel (#panel-body holding .lens-panel) gets three tabs:
+// Summary (headline cards), What-if (sliders + every card; Plan mode only,
+// Modes.js) and Calculate (the lens's tools, Config.js::LENSES[].tools, in
+// #panel-calculate). The
+// tab is kept while the panel re-renders (unit click, year) and reset to
+// Summary when another lens opens (Events.js). Any other content in the
+// side panel (Scenarios, Dashboard, an edit form) hides the tabs.
+let panelTab = 'summary';
+
+function lensToolIds() {
+  return (typeof LENSES !== 'undefined' && LENSES[activeTool]?.tools) || [];
+}
+
+function setPanelTab(tab) {
+  panelTab = tab;
+  syncPanelTabs();
+}
+
+function syncPanelTabs() {
+  const side = document.getElementById('side-panel');
+  const tabs = document.getElementById('panel-tabs');
+  const body = document.getElementById('panel-body');
+  const calc = document.getElementById('panel-calculate');
+  if (!side || !tabs || !body || !calc) return;
+
+  const tools = lensToolIds();
+  const lensPanel = !!body.querySelector('.lens-panel');
+  // What-if is Plan mode only (Modes.js); Explore and Edit show the baseline
+  const planning = (window.MAP_MODE || 'explore') === 'plan';
+  let tab = lensPanel ? panelTab : null;
+  if (tab === 'calculate' && !tools.length) tab = 'summary';
+  if (tab === 'whatif' && !planning) tab = 'summary';
+
+  tabs.hidden = !lensPanel;
+  tabs.querySelectorAll('.panel-tab').forEach(btn => {
+    btn.setAttribute('aria-selected', String(btn.dataset.tab === tab));
+    if (btn.dataset.tab === 'calculate') btn.hidden = !tools.length;
+    if (btn.dataset.tab === 'whatif') btn.hidden = !planning;
+  });
+  if (tab) side.dataset.tab = tab; else delete side.dataset.tab;
+  body.hidden = tab === 'calculate';
+  calc.hidden = tab !== 'calculate';
+
+  // Only this lens's tools; a card of another lens's tool closes
+  const shown = [...calc.querySelectorAll('.calc-tool-btn')].filter(btn => {
+    btn.hidden = !tools.includes(btn.dataset.calcTool);
+    btn.classList.remove('is-wide');
+    return !btn.hidden;
+  });
+  if (shown.length % 2) shown[shown.length - 1].classList.add('is-wide');
+  calc.querySelectorAll('.lst-card').forEach(card => {
+    if (!tools.includes(card.id.replace(/-card$/, ''))) card.classList.remove('visible');
+  });
+}
+
+document.addEventListener('click', (evt) => {
+  const tab = evt.target.closest?.('.panel-tab, [data-panel-tab]');
+  if (tab) setPanelTab(tab.dataset.tab || tab.dataset.panelTab);
+});
+
+// Whatever replaces the panel's content (htmx swap, intro, edit form)
+document.addEventListener('DOMContentLoaded', () => {
+  const body = document.getElementById('panel-body');
+  if (body) new MutationObserver(syncPanelTabs).observe(body, { childList: true });
+  syncPanelTabs();
 });

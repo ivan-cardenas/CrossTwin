@@ -209,9 +209,9 @@ and the card polls its status.
 
 PET comes from the `pet-adjusted` package (`pipeline.urban_pet`,
 `pet_adjusted.urban_pet_from_rasters`). It solves the steady-state PET model
-of `pythermalcomfort` (Höppe 1999, corrected by Walther & Goestchel 2018;
-standard person 35 years, 1.75 m, 75 kg, 0.9 clo, 1.37 met) for every cell at
-once, on CuPy when a CUDA GPU is available, otherwise NumPy. Two inputs vary
+of `pythermalcomfort` (Höppe 1999, corrected by Walther & Goestchel 2018) for
+every cell at once, for the person chosen in the tool (see *7a*; the default
+is Höppe's reference person: 35 years, 1.75 m, 75 kg, 0.9 clo, 1.37 met, seated), on CuPy when a CUDA GPU is available, otherwise NumPy. Two inputs vary
 per cell, following Koopmans et al. (2020):
 
 - **Air temperature** = the met record's + the urban heat island. The daily
@@ -242,6 +242,80 @@ PET runs on NumPy unless CuPy is installed, since the `solweig` extra does not
 include `pet-adjusted[cuda]`. On the CPU it took ~35 s per 250 000 cells (a
 500 m view at 1 m), which is small next to SOLWEIG itself.
 
+### 7a. The person PET is felt by
+
+PET is the air temperature of a reference room at which *this* person would
+have the same skin and core temperature as outdoors. A PET map therefore holds
+for one person only: a child in shorts and an older person in a coat read
+different values at the same spot. UTCI and Tmrt do not depend on the person.
+
+The **person pill** in the Thermal Comfort card (`#solweig-person-btn`) opens a
+panel that sets the person. Code: `urban_heat/calculations/person.py` (pure, no
+ORM), `GET /urban_heat/solweig/person/`, `core/static/js/PersonFigure.js` and
+`SolweigTool.js`.
+
+**What the user sets**
+
+| Input | Effect on PET | Accepted range |
+|---|---|---|
+| Preset | fills all other fields (see below) | 6 presets |
+| Sex | body model and the drawn figure | male, female |
+| Age | PET's age term | 5 – 100 years |
+| Height, weight | body surface area (DuBois & DuBois 1916); BMI | 1.0 – 2.2 m, 20 – 200 kg |
+| Activity | metabolic rate (met) and posture | 0.8 – 4.0 met (1 met = 58.15 W/m²) |
+| Garments | clothing insulation (clo) | 0 – 3 clo |
+
+Activities (ISO 8996 / ASHRAE 55 Table 5.2.1.2): seated 1.0 met, standing 1.2,
+light activity (PET reference, 80 W) 1.37, walking 3.2 km/h 2.0, 4.3 km/h 2.6,
+6.4 km/h 3.8. Each also sets the posture (sitting or standing).
+
+**Clothing** is the sum of the garments' insulation, Icl = Σ Iclu,i (ASHRAE
+55-2020 Table 5.2.2.2B; ISO 7730:2005 Table C.2 for the outdoor coats), which
+both standards give to about ±20 %. Garments are grouped as underwear, tops,
+legs, dresses, layers, outdoor and feet. When garments are chosen they set the
+clo and win over a typed clo; without garments the given clo is used (the PET
+reference's 0.9). Unknown garments, out-of-range values and unknown presets
+are rejected with a message (`PersonError`).
+
+**Presets:** PET reference person (Höppe 1999), summer walker, office worker in
+summer, older person on a bench, child playing, winter walker. Editing any
+field afterwards turns the label into *Custom person*.
+
+**The figure.** `PersonFigure.js` draws a male or female figure from the
+person: height and weight scale the body, the posture sets sitting or standing
+(legs and arms swing while walking), and each chosen garment is drawn on the
+body in its group. Clicking a region (tops, legs, feet, underwear) opens that
+group's garments. The form fields stay the source of truth; the figure only
+shows them.
+
+**What the panel shows.** Clo and met totals, body surface area, BMI, the
+metabolic heat (met × 58.15 W/m² × area) and a one-line description such as
+"35 y male · walking 3.2 km/h · 0.90 clo" (`person.describe`).
+
+**How it reaches the result**
+
+1. The tool sends the choice as `person_*` fields (`preset`, `activity`, `met`,
+   `position`, `garments`, `clo`, `age`, `sex`, `weight`, `height`) with the
+   calculate request. The view resolves them (`person.resolve`), so the server
+   never trusts the displayed values.
+2. `pipeline.urban_pet` passes `met, clo, age, sex, weight, height, position`
+   to the PET solver (`person.pet_kwargs`).
+3. `ThermalComfortRun.person` stores the resolved person. An empty value means
+   the PET reference person, which is what every run made before persons could
+   be chosen used, so older results keep their meaning.
+4. The heat dashboard's PET card shows who it is for ("For: …").
+
+**Climate scenarios.** A scenario run asks for the person first and stores it in
+`ClimateScenarioRun.parameters["person"]`. `scenario.find_baseline` only
+compares a scenario with an observed run made for the *same* person (equal
+`pet_kwargs`), because PET differences between two people are not climate
+effects. If no such run exists, run the hour for that person first.
+
+**Reproducibility.** The person is part of the result: it is stored with the
+run, the resolver is deterministic, and the clo, met and body-area values come
+from the cited tables, not from free input. Changing one garment changes clo
+by its tabulated Iclu.
+
 ### 8. Storage
 
 One `MeanRadiantTemperature`, one `UTCI` and one `PET` row (°C, nodata −9999,
@@ -257,6 +331,7 @@ earlier rows inside the view; other hours are kept.
 The `ThermalComfortRun` row records:
 - the area;
 - the met values;
+- the person PET is felt by (`person`; empty = the PET reference person);
 - the inputs: DSM id, ground source, building cells, land cover, grid, halo,
   timezone, sun position;
 - the device and statistics.
@@ -288,6 +363,10 @@ The Scenarios panel's *Calculate effects* (staff) stores a `weather.ClimateScena
   50 m halo: the source areas are truncated at its edge, so the heat island of
   a small view is underestimated. Frontal areas are exact only for N/E/S/W
   winds (pet-adjusted's shortcut).
+- PET is for one person per run. The garment sum is accurate to about ±20 %,
+  clothing is not adjusted for wind or wetness, and the PET equations were
+  fitted to adults, so values for children (accepted from 5 years) are
+  indicative.
 - Land-cover classes are mapped by name keywords; urban fabric counts as paved.
 - One hour per run; a diurnal cycle would be 24 runs (the cached sky view
   factors make each additional hour cheaper).
@@ -296,7 +375,7 @@ The Scenarios panel's *Calculate effects* (staff) stores a `weather.ClimateScena
 ## Installation
 
 ```bash
-uv sync --extra solweig          # solweig-gpu, torch (CUDA 12.8 wheels), pet-adjusted
+uv sync --inexact --extra solweig          # solweig-gpu, torch (CUDA 12.8 wheels), pet-adjusted
 uv run python -c "import torch; print(torch.cuda.is_available())"
 ```
 
@@ -310,8 +389,9 @@ bindings (`osgeo`) matching the system libgdal.
 |---|---|
 | `GET /urban_heat/solweig/info/?bbox=&datetime=&resolution=` | DSM, grid, cell count and limit, sun position, device, estimated time, stale results |
 | `GET /urban_heat/solweig/met/?bbox=&datetime=&source=knmi\|era5` | Met values to prefill the card (and the station) |
-| `POST /urban_heat/solweig/calculate/` | Start a run (staff): `bbox`, `datetime`, `resolution`, `ta_c`, `rh_pct`, `wind_ms`, `wind_dir_deg`, `kdown_wm2`, `pressure_kpa`, `source`; optional `tmax_c`, `tmin_c`, `kdown_day_wm2`, `wind_day_ms` (heat island in PET) |
+| `POST /urban_heat/solweig/calculate/` | Start a run (staff): `bbox`, `datetime`, `resolution`, `ta_c`, `rh_pct`, `wind_ms`, `wind_dir_deg`, `kdown_wm2`, `pressure_kpa`, `source`; optional `tmax_c`, `tmin_c`, `kdown_day_wm2`, `wind_day_ms` (heat island in PET), optional `person_*` fields (who PET is felt by) |
 | `GET /urban_heat/solweig/runs/<id>/` | Run status; when done, the three layers |
+| `GET /urban_heat/solweig/person/?person_preset=&person_age=&…` | The person pill: presets, activities, garments with their clo, the limits, the resolved person and its derived values (clo, met, body area, BMI, metabolic heat). Bad values return the validation message |
 | `GET /urban_heat/solweig/stale/?bbox=` | SVF and thermal-comfort results made stale by building edits |
 
 ## References
@@ -325,5 +405,8 @@ bindings (`osgeo`) matching the system libgdal.
 - Walther, E., & Goestchel, Q. (2018). The P.E.T. comfort index: Questioning the model. *Building and Environment*, 137, 1–10.
 - Reda, I., & Andreas, A. (2004). Solar position algorithm for solar radiation applications. *Solar Energy*, 76(5), 577–589.
 - Hersbach, H., et al. (2020). The ERA5 global reanalysis. *Quarterly Journal of the Royal Meteorological Society*, 146(730), 1999–2049.
+- ASHRAE (2020). *ANSI/ASHRAE Standard 55-2020: Thermal environmental conditions for human occupancy*. Tables 5.2.1.2 (metabolic rates) and 5.2.2.2B (garment insulation).
+- ISO 8996:2021. *Ergonomics of the thermal environment: determination of metabolic rate*. ISO 7730:2005, Annex C (clothing insulation).
+- DuBois, D., & DuBois, E. F. (1916). A formula to estimate the approximate surface area if height and weight be known. *Archives of Internal Medicine*, 17, 863–871.
 - Alduchov, O. A., & Eskridge, R. E. (1996). Improved Magnus form approximation of saturation vapor pressure. *Journal of Applied Meteorology*, 35(4), 601–609.
 - KNMI. Uurgegevens van het weer in Nederland. https://www.daggegevens.knmi.nl/klimatologie/uurgegevens

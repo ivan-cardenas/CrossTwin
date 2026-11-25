@@ -1,0 +1,13 @@
+{% comment %}
+"Show on map" on an indicator card (Map simplification step 4): shows the
+layers behind the number, and of the lens's data only those (the
+administrative units stay); pressed again, the lens's own layers return.
+Layers.js::focusCardLayers.
+  layers        comma-separated "app_label.ModelName" (vector layers; a raster
+                model given this way shows its newest row)
+  raster_model  + raster: the exact raster row the number was read from
+                (e.g. urban_heat views' map_raster), so a climate scenario map
+                never stands in for an observed number; no raster, no button
+Hidden on the standalone dashboards, which have no map (indicators.css).
+{% endcomment %}{% if layers or raster %}<button type="button" class="show-on-map" data-layers="{% if raster %}{{ raster_model }}{% else %}{{ layers }}{% endif %}"{% if raster %} data-raster-id="{{ raster }}"{% endif %} aria-pressed="false"
+        title="Show on map" aria-label="Show {{ label }} on the map"><span class="bi bi-geo-alt" aria-hidden="true"></span><span class="show-on-map__text">On map</span></button>{% endif %}

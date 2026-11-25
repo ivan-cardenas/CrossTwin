@@ -14,9 +14,9 @@
     <!-- Header Section -->
     <div class="flex flex-cols gap-4">
         <div class="space-y-2">
-            <p class="text-[11px] uppercase tracking-[0.28em] text-cyan-100/80">External Sources</p>
-            <h1 class="text-2xl md:text-3xl font-semibold text-slate-50">Import Public Data</h1>
-            <p class="text-slate-400 max-w-2xl">
+            <p class="text-[11px] uppercase tracking-[0.28em] ct-text-accent">External Sources</p>
+            <h1 class="text-2xl md:text-3xl font-semibold ct-text-primary">Import Public Data</h1>
+            <p class="ct-text-tertiary max-w-2xl">
                 Select datasets from PDOK, CBS, Sentinel-2, or Google Earth Engine to import directly into the database.
             </p>
         </div>
@@ -24,8 +24,8 @@
     {% if messages %}
     <div class="space-y-2">
         {% for m in messages %}
-        <div class="flex items-start gap-3 rounded-xl border border-cyan-500/35 bg-cyan-500/10 px-4 py-3 text-cyan-50">
-            <span class="mt-1 h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_10px_rgba(94,234,212,0.6)]"></span>
+        <div class="ct-alert ct-alert--accent">
+            <span class="mt-1 h-2 w-2 rounded-full ct-bg-accent"></span>
             <p>{{ m }}</p>
         </div>
         {% endfor %}
@@ -34,13 +34,13 @@
 
     <!-- Results panel (shown after import) -->
     <div id="results-panel" class="hidden glass rounded-xl overflow-hidden">
-        <div class="px-5 py-3 border-b border-white/5">
-            <h3 class="text-sm font-medium text-slate-400 uppercase tracking-wide">Import Results</h3>
+        <div class="px-5 py-3 border-b ct-border-soft">
+            <h3 class="text-sm font-medium ct-text-tertiary uppercase tracking-wide">Import Results</h3>
         </div>
-        <div id="results-list" class="divide-y divide-white/5">
+        <div id="results-list" class="ct-divide">
             <!-- Populated dynamically -->
         </div>
-        <div class="px-5 py-3 border-t border-white/5 flex justify-end">
+        <div class="px-5 py-3 border-t ct-border-soft flex justify-end">
             <a href="{% url 'map:map' %}" class="btn-primary">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 17l-5-5m0 0l5-5m-5 5h12"></path>
@@ -53,13 +53,13 @@
     <!-- Selection toolbar -->
     <div class="w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 glass rounded-xl px-5 py-4">
         <div class="flex items-center gap-4">
-            <span id="selection-count" class="text-sm text-slate-400">
-                <span class="font-semibold text-cyan-300" id="count-number">0</span> datasets selected
+            <span id="selection-count" class="text-sm ct-text-tertiary">
+                <span class="font-semibold ct-text-accent" id="count-number">0</span> datasets selected
             </span>
-            <button type="button" id="select-all-btn" class="text-xs text-slate-400 hover:text-cyan-300 transition-colors underline underline-offset-2">
+            <button type="button" id="select-all-btn" class="text-xs ct-text-tertiary hover:ct-text-accent transition-colors underline underline-offset-2">
                 Select all enabled
             </button>
-            <button type="button" id="deselect-all-btn" class="text-xs text-slate-400 hover:text-cyan-300 transition-colors underline underline-offset-2">
+            <button type="button" id="deselect-all-btn" class="text-xs ct-text-tertiary hover:ct-text-accent transition-colors underline underline-offset-2">
                 Clear selection
             </button>
         </div>
@@ -76,26 +76,26 @@
     <div class="w-full flex flex-col gap-3 glass rounded-xl px-5 py-4">
         <div>
             <div class="flex items-center gap-2">
-                <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-4 h-4 ct-text-tertiary flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z"/>
                 </svg>
                 <input type="search" id="dataset-search" placeholder="Search datasets…"
-                       class="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 focus:outline-none">
+                       class="ct-input">
             </div>
-            <span id="visible-count" class="block mt-1.5 ml-6 text-xs text-slate-250"></span>
+            <span id="visible-count" class="block mt-1.5 ml-6 text-xs ct-text-secondary"></span>
         </div>
         <div class="flex flex-wrap items-center gap-2">
             <div id="source-filter-chips" class="flex flex-wrap items-center gap-1.5">
                 {% for s in all_sources %}
-                <button type="button" class="source-chip px-2.5 py-1 rounded-lg text-[11px] font-medium border border-white/10 bg-white/5 text-slate-300 hover:border-cyan-500/40 transition-colors"
+                <button type="button" class="source-chip ct-chip-btn"
                         data-source-key="{{ s.key }}">
                     {{ s.info.name }}
                 </button>
                 {% endfor %}
             </div>
-            <label class="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer select-none ml-2">
+            <label class="flex items-center gap-1.5 text-xs ct-text-tertiary cursor-pointer select-none ml-2">
                 <input type="checkbox" id="hide-slow-toggle"
-                       class="h-3.5 w-3.5 rounded border-white/20 bg-white/5 text-rose-500 focus:ring-rose-500/50 focus:ring-offset-0 cursor-pointer">
+                       class="h-3.5 w-3.5 ct-check">
                 Hide slow imports
             </label>
         </div>
@@ -108,59 +108,59 @@
 
     <!-- Sentinel-2 openEO Credentials Panel (shown when an openEO dataset is selected) -->
     <div id="sentinel-token-panel" class="hidden flex-1 min-w-[280px] glass rounded-xl overflow-hidden">
-        <div class="px-5 py-3 border-b border-white/5 flex items-center gap-3">
-            <div class="flex-shrink-0 h-7 w-7 rounded-lg bg-sky-500/15 border border-sky-500/25 flex items-center justify-center">
-                <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div class="px-5 py-3 border-b ct-border-soft flex items-center gap-3">
+            <div class="ct-icon-tile ct-icon-tile--info">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
                 </svg>
             </div>
             <div>
-                <h3 class="text-sm font-medium text-slate-400">Copernicus Data Space (openEO) Credentials</h3>
-                <p class="text-xs text-slate-400">Optional — Sentinel-2 index/true color datasets try the server's default credentials first; fill this in only if that fails</p>
+                <h3 class="text-sm font-medium ct-text-tertiary">Copernicus Data Space (openEO) Credentials</h3>
+                <p class="text-xs ct-text-tertiary">Optional — Sentinel-2 index/true color datasets try the server's default credentials first; fill this in only if that fails</p>
             </div>
         </div>
         <div class="px-5 py-4 space-y-3">
-            <p id="sentinel-token-panel-notice" class="hidden text-xs text-rose-300 bg-rose-500/10 border border-rose-500/25 rounded-lg px-3 py-2"></p>
+            <p id="sentinel-token-panel-notice" class="hidden ct-alert ct-alert--error"></p>
             <input type="text" id="openeo-client-id-input" autocomplete="off"
                    placeholder="Client ID (leave blank to use the server default)"
-                   class="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200 placeholder-sky-300/50 font-mono focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/50 focus:outline-none">
+                   class="ct-input font-mono">
             <input type="password" id="openeo-client-secret-input" autocomplete="new-password"
                    placeholder="Client Secret (leave blank to use the server default)"
-                   class="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200 placeholder-sky-300/50 font-mono focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/50 focus:outline-none">
-            <p class="text-xs text-slate-250">
+                   class="ct-input font-mono">
+            <p class="text-xs ct-text-secondary">
                 <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
-                Register your own OAuth client at <span class="text-sky-300">shapps.dataspace.copernicus.eu/dashboard</span> (client-credentials grant) if the default account runs out of quota or stops working.
+                Register your own OAuth client at <span class="ct-text-info-soft">shapps.dataspace.copernicus.eu/dashboard</span> (client-credentials grant) if the default account runs out of quota or stops working.
             </p>
         </div>
     </div>
 
     <!-- Date Range Panel (shown when temporal datasets selected) -->
     <div id="date-range-panel" class="hidden flex-1 min-w-[280px] glass rounded-xl overflow-hidden">
-        <div class="px-5 py-3 border-b border-white/5 flex items-center gap-3">
-            <div class="flex-shrink-0 h-7 w-7 rounded-lg bg-violet-500/15 border border-violet-500/25 flex items-center justify-center">
-                <svg class="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div class="px-5 py-3 border-b ct-border-soft flex items-center gap-3">
+            <div class="ct-icon-tile ct-icon-tile--violet">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
                 </svg>
             </div>
             <div>
-                <h3 class="text-sm font-medium text-slate-400">Date Range</h3>
-                <p class="text-xs text-slate-400">Specify the time period for temporal datasets</p>
+                <h3 class="text-sm font-medium ct-text-tertiary">Date Range</h3>
+                <p class="text-xs ct-text-tertiary">Specify the time period for temporal datasets</p>
             </div>
         </div>
         <div class="px-5 py-4 flex flex-wrap items-center gap-4">
             <div class="flex items-center gap-2">
-                <label for="date-from" class="text-sm text-slate-400">From:</label>
+                <label for="date-from" class="text-sm ct-text-tertiary">From:</label>
                 <input type="date" id="date-from"
-                       class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-400 focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/50 focus:outline-none">
+                       class="ct-input ct-input--auto">
             </div>
             <div class="flex items-center gap-2">
-                <label for="date-to" class="text-sm text-slate-400">To:</label>
+                <label for="date-to" class="text-sm ct-text-tertiary">To:</label>
                 <input type="date" id="date-to"
-                       class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-400 focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/50 focus:outline-none">
+                       class="ct-input ct-input--auto">
             </div>
-            <p class="text-xs text-slate-250 w-full">
+            <p class="text-xs ct-text-secondary w-full">
                 <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
@@ -171,25 +171,25 @@
 
     <!-- City selector map panel (shown when any bbox-requiring dataset is selected) -->
     <div id="bbox-panel" class="hidden w-full h-[600px] glass rounded-xl overflow-hidden flex flex-col">
-        <div class="px-5 py-3 border-b border-white/5 flex items-center gap-3">
-            <div class="flex-shrink-0 h-7 w-7 rounded-lg bg-amber-500/15 border border-amber-500/25 flex items-center justify-center">
-                <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div class="px-5 py-3 border-b ct-border-soft flex items-center gap-3">
+            <div class="ct-icon-tile ct-icon-tile--warning">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
                 </svg>
             </div>
             <div class="flex-1">
-                <h3 class="text-sm font-medium text-slate-400">Area of Interest</h3>
-                <p id="bbox-subtitle" class="text-xs text-slate-400">Click one or more neighborhoods on the map to define the import area</p>
+                <h3 class="text-sm font-medium ct-text-tertiary">Area of Interest</h3>
+                <p id="bbox-subtitle" class="text-xs ct-text-tertiary">Click one or more neighborhoods on the map to define the import area</p>
             </div>
             <!-- Shown after at least one neighborhood is selected -->
             <div id="city-selected-info" class="hidden flex items-center gap-3">
-                <svg class="w-4 h-4 text-emerald-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-4 h-4 ct-text-success-soft flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
                 </svg>
-                <span class="text-sm font-medium text-emerald-300" id="selected-city-name"></span>
+                <span class="text-sm font-medium ct-text-success-soft" id="selected-city-name"></span>
                 <button type="button" id="bbox-clear-btn"
-                        class="text-xs px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:text-slate-300 transition-colors cursor-pointer">
+                        class="ct-chip-btn cursor-pointer">
                     Clear
                 </button>
             </div>
@@ -197,17 +197,17 @@
         <div class="relative flex-1 overflow-hidden">
             <div id="bbox-map" class="h-full w-full min-h-0"></div>
             <!-- Instruction hint -->
-            <div id="bbox-hint" class="absolute top-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-lg bg-slate-800/90 border border-white/10 text-xs text-slate-300 shadow-lg z-10 pointer-events-none">
+            <div id="bbox-hint" class="absolute top-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-lg ct-map-overlay text-xs z-10 pointer-events-none">
                 Click a neighborhood to select it as part of the area of interest — click again to deselect
             </div>
             <!-- Draw mode toolbar — hidden until pdok_cities is selected -->
-            <div class="hidden absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-1.5 rounded-lg bg-slate-900/90 border border-white/10 shadow-lg z-10">
+            <div class="hidden absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-1.5 rounded-lg ct-map-overlay z-10">
                 <button id="mode-city-btn" type="button"
-                        class="px-3 py-1 rounded-md text-xs font-medium transition-colors bg-white/10 text-slate-200">
+                        class="px-3 py-1 rounded-md text-xs font-medium transition-colors ct-seg-active ct-text-secondary">
                     Click neighborhood
                 </button>
                 <button id="mode-draw-btn" type="button"
-                        class="px-3 py-1 rounded-md text-xs font-medium transition-colors text-slate-400 hover:text-slate-200">
+                        class="px-3 py-1 rounded-md text-xs font-medium transition-colors ct-text-tertiary hover:ct-text-secondary">
                     Draw rectangle
                 </button>
             </div>
@@ -222,19 +222,19 @@
     <div class="category-block" data-category="{{ category.name|lower }}">
         <!-- Category header (click to expand/collapse) -->
         <div class="category-toggle flex items-center gap-3 mb-4 cursor-pointer select-none">
-            <svg class="category-chevron w-4 h-4 text-slate-400 transition-transform flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="category-chevron w-4 h-4 ct-text-tertiary transition-transform flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
             </svg>
-            <h2 class="text-lg font-semibold text-slate-50">{{ category.name }}</h2>
-            <span class="ml-auto text-xs text-slate-250 tabular-nums">{{ category.dataset_count }} dataset{{ category.dataset_count|pluralize }}</span>
+            <h2 class="text-lg font-semibold ct-text-primary">{{ category.name }}</h2>
+            <span class="ml-auto text-xs ct-text-secondary tabular-nums">{{ category.dataset_count }} dataset{{ category.dataset_count|pluralize }}</span>
         </div>
 
         <!-- Datasets (flat — source shown per-row below, not as a grouping level) -->
         <div class="category-body hidden">
             <div class="glass rounded-xl overflow-hidden">
-            <div class="divide-y divide-white/5">
+            <div class="ct-divide">
                 {% for ds in category.datasets %}
-                <label class="dataset-row flex items-start gap-4 px-5 py-4 cursor-pointer hover:bg-white/[0.03] transition-colors {% if not ds.enabled %}opacity-50{% endif %}"
+                <label class="dataset-row flex items-start gap-4 px-5 py-4 cursor-pointer ct-row-hover transition-colors {% if not ds.enabled %}opacity-50{% endif %}"
                        data-key="{{ ds.key }}"
                        data-source="{{ ds.source }}"
                        data-enabled="{{ ds.enabled|yesno:'true,false' }}"
@@ -248,33 +248,33 @@
                                name="datasets"
                                value="{{ ds.key }}"
                                {% if not ds.enabled %}disabled{% endif %}
-                               class="dataset-checkbox h-4 w-4 rounded border-white/20 bg-white/5 text-cyan-500 focus:ring-cyan-500/50 focus:ring-offset-0 cursor-pointer disabled:cursor-not-allowed">
+                               class="dataset-checkbox h-4 w-4 ct-check disabled:cursor-not-allowed">
                     </div>
                     <div class="flex-1 min-w-0 space-y-1">
                         <div class="flex items-center gap-2 flex-wrap">
-                            <span class="text-sm font-medium text-slate-100">{{ ds.name }}</span>
+                            <span class="text-sm font-medium ct-text-primary">{{ ds.name }}</span>
                             {% if ds.requires_bbox %}
-                            <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 text-[10px] font-semibold uppercase tracking-wider">bbox</span>
+                            <span class="ct-badge ct-badge--warning">bbox</span>
                             {% endif %}
                             {% if ds.requires_auth %}
-                            <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-300 text-[10px] font-semibold uppercase tracking-wider">auth</span>
+                            <span class="ct-badge ct-badge--error">auth</span>
                             {% endif %}
                             {% if ds.requires_date_range %}
-                            <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300 text-[10px] font-semibold uppercase tracking-wider">temporal</span>
+                            <span class="ct-badge ct-badge--violet">temporal</span>
                             {% endif %}
                             <!-- Format badges -->
                             {% if ds.format == "wms" %}
-                            <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 text-[10px] font-semibold uppercase tracking-wider">WMS</span>
+                            <span class="ct-badge ct-badge--info">WMS</span>
                             {% elif ds.format == "wfs" %}
-                            <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300 text-[10px] font-semibold uppercase tracking-wider">WFS</span>
+                            <span class="ct-badge ct-badge--info">WFS</span>
                             {% elif ds.format == "wcs" or ds.format == "atom" or ds.format == "openeo" or ds.format == "raster" %}
-                            <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 text-[10px] font-semibold uppercase tracking-wider">raster</span>
-                            <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-500/15 text-slate-400 text-[10px] font-semibold uppercase tracking-wider">tiff</span>
+                            <span class="ct-badge ct-badge--success">raster</span>
+                            <span class="ct-badge">tiff</span>
                             {% endif %}
                         </div>
-                        <p class="text-xs text-slate-400 leading-relaxed">{{ ds.description }}</p>
+                        <p class="text-xs ct-text-tertiary leading-relaxed">{{ ds.description }}</p>
                         {% if ds.slow %}
-                        <div class="flex items-start gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/40 text-red-300 text-[11px] leading-relaxed">
+                        <div class="ct-alert ct-alert--error">
                             <svg class="w-3.5 h-3.5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
                             </svg>
@@ -282,38 +282,38 @@
                         </div>
                         {% endif %}
                         {% if ds.import_first_missing %}
-                        <div class="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/40 text-amber-300 text-[11px] leading-relaxed">
+                        <div class="ct-alert ct-alert--warning">
                             <svg class="w-3.5 h-3.5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                             </svg>
                             <span><strong class="font-semibold">Import first:</strong> {{ ds.import_first.reason }}</span>
                         </div>
                         {% endif %}
-                        <div class="flex items-center gap-3 text-[11px] text-slate-250">
+                        <div class="flex items-center gap-3 text-[11px] ct-text-secondary">
                             <span>Source: {{ ds.source_label }}</span>
-                            <span>Target: <code class="px-1 py-0.5 rounded bg-white/5 text-slate-400">{{ ds.target_model }}</code></span>
+                            <span>Target: <code class="ct-code">{{ ds.target_model }}</code></span>
                         </div>
                     </div>
                     <!-- Status indicator (for import progress) -->
                     <div class="import-status hidden flex-shrink-0" data-key="{{ ds.key }}">
                         <div class="status-pending hidden">
-                            <svg class="w-5 h-5 text-slate-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <svg class="w-5 h-5 ct-text-tertiary animate-spin" fill="none" viewBox="0 0 24 24">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                             </svg>
                         </div>
                         <div class="status-success hidden">
-                            <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg class="w-5 h-5 ct-text-success-soft" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
                             </svg>
                         </div>
                         <div class="status-skipped hidden">
-                            <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg class="w-5 h-5 ct-text-warning-soft" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
                             </svg>
                         </div>
                         <div class="status-error hidden">
-                            <svg class="w-5 h-5 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg class="w-5 h-5 ct-text-error-soft" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                             </svg>
                         </div>
@@ -456,12 +456,12 @@ document.addEventListener('DOMContentLoaded', function () {
         drawMode = active;
         drawStart = null;
 
-        modeCityBtn.classList.toggle('bg-white/10',  !active);
-        modeCityBtn.classList.toggle('text-slate-200', !active);
-        modeCityBtn.classList.toggle('text-slate-400',  active);
-        modeDrawBtn.classList.toggle('bg-white/10',   active);
-        modeDrawBtn.classList.toggle('text-slate-200',  active);
-        modeDrawBtn.classList.toggle('text-slate-400', !active);
+        modeCityBtn.classList.toggle('ct-seg-active',  !active);
+        modeCityBtn.classList.toggle('ct-text-secondary', !active);
+        modeCityBtn.classList.toggle('ct-text-tertiary',  active);
+        modeDrawBtn.classList.toggle('ct-seg-active',   active);
+        modeDrawBtn.classList.toggle('ct-text-secondary',  active);
+        modeDrawBtn.classList.toggle('ct-text-tertiary', !active);
 
         if (!bboxMapReady) return;
 
@@ -710,8 +710,7 @@ document.addEventListener('DOMContentLoaded', function () {
         // Uses `ring` (box-shadow) rather than another `border-*`/`bg-*`
         // utility so it never competes with the chip's base border/background
         // classes for the same CSS property — those stay constant either way.
-        chip.classList.toggle('ring-1', active);
-        chip.classList.toggle('ring-cyan-500/50', active);
+        chip.classList.toggle('is-active', active);
         chip.classList.toggle('opacity-40', !active);
     }
 
@@ -928,34 +927,32 @@ document.addEventListener('DOMContentLoaded', function () {
                 // anything else (skipped, warning, pending) gets amber
 
                 const rowClasses = isSuccess
-                    ? 'border-l-4 border-emerald-500 bg-emerald-500/10'
+                    ? 'ct-result ct-result--success'
                     : isError
-                        ? 'border-l-4 border-rose-500 bg-rose-500/10'
-                        : 'border-l-4 border-amber-500 bg-amber-500/10';
-
-                const dotColor = isSuccess ? 'bg-emerald-400' : isError ? 'bg-rose-400' : 'bg-amber-400';
+                        ? 'ct-result ct-result--error'
+                        : 'ct-result ct-result--warning';
 
                 const badgeClasses = isSuccess
-                    ? 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/40'
+                    ? 'ct-result-badge'
                     : isError
-                        ? 'bg-rose-500/20 text-rose-300 ring-1 ring-rose-500/40'
-                        : 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-500/40';
+                        ? 'ct-result-badge'
+                        : 'ct-result-badge';
                 const badgeLabel = isSuccess ? 'SUCCESS' : isError ? 'ERROR' : 'WARNING';
 
-                const msgColor = isSuccess ? 'text-emerald-200' : isError ? 'text-rose-200' : 'text-amber-200';
+                const msgColor = 'ct-result-text';
 
                 const icon = isSuccess
-                    ? `<svg class="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>`
+                    ? `<svg class="w-4 h-4 ct-result-text shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>`
                     : isError
-                        ? `<svg class="w-4 h-4 text-rose-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>`
-                        : `<svg class="w-4 h-4 text-amber-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>`;
+                        ? `<svg class="w-4 h-4 ct-result-text shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>`
+                        : `<svg class="w-4 h-4 ct-result-text shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>`;
 
                 let extraInfo = '';
                 if (result.records_created) {
-                    extraInfo = `<span class="ml-1 text-slate-400">(${result.records_created} records)</span>`;
+                    extraInfo = `<span class="ml-1 ct-text-tertiary">(${result.records_created} records)</span>`;
                 }
                 if (result.file_path) {
-                    extraInfo += `<span class="ml-1 text-slate-500">→ ${result.file_path.split('/').pop()}</span>`;
+                    extraInfo += `<span class="ml-1 ct-text-tertiary">→ ${result.file_path.split('/').pop()}</span>`;
                 }
 
                 resultsList.innerHTML += `
@@ -963,7 +960,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         ${icon}
                         <div class="min-w-0 flex-1">
                             <div class="flex items-center gap-2 mb-0.5">
-                                <p class="text-sm font-semibold text-slate-200">${name}</p>
+                                <p class="text-sm font-semibold ct-text-secondary">${name}</p>
                                 <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${badgeClasses}">${badgeLabel}</span>
                             </div>
                             <p class="text-xs ${msgColor}">${result.message}${extraInfo}</p>

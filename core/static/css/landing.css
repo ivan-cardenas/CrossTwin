@@ -5,10 +5,10 @@
    ========================================================================== */
 
 .landing {
-    --cyan-light: #7fb6cb;
+    --cyan-light: var(--accent-strong);
     --zoning-brick: #B5674A;
     --survey-ochre: #C99A3E;
-    --panel-bg: rgba(8, 8, 8, 0.88);
+    --panel-bg: color-mix(in srgb, var(--bg-0) 88%, transparent);
     --section-height: 220svh;
     overflow-x: clip;
 }
@@ -62,21 +62,27 @@
 }
 .landing-header a { pointer-events: auto; }
 .wordmark {
-    font: 700 1.02rem var(--font-base);
+    font: 600 1.45rem/1 var(--font-display);
     color: var(--text-primary);
     text-decoration: none;
-    letter-spacing: 0.01em;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
 }
 .header-link {
     font: 500 0.75rem var(--font-mono);
     color: var(--text-primary);
     text-decoration: none;
-    padding: 0.5rem 0.75rem;
+    padding: 0.45rem 1rem;
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
     border: 1px solid var(--border-strong);
-    border-radius: 4px;
+    border-radius: var(--r-pill);
     background: var(--panel-bg);
+    transition: border-color var(--dur) ease;
 }
-.header-link:hover { border-color: var(--cyan-light); }
+.header-link::after { content: " 92"; display: inline-block; transition: transform var(--dur) var(--ease-out); }
+.header-link:hover { border-color: var(--accent); }
+.header-link:hover::after { transform: translateX(4px); }
 
 .hud {
     position: fixed;
@@ -154,7 +160,9 @@ main { position: relative; z-index: 1; }
     max-width: 27rem;
     padding: 1.4rem 1.5rem 1.5rem;
     background: var(--panel-bg);
-    border-left: 2px solid var(--accent);
+    border: 1px solid var(--border);
+    border-top: 1px solid var(--accent);
+    border-radius: var(--r-card);
     color: var(--text-secondary);
     font-size: 0.95rem;
     line-height: 1.6;
@@ -169,17 +177,19 @@ main { position: relative; z-index: 1; }
     color: var(--cyan-light);
 }
 .panel .eyebrow { margin-bottom: 0.6rem; }
+.panel .eyebrow::before { content: "4  "; color: var(--accent); }
 
 .panel h1, .panel h2 {
     margin: 0 0 0.75rem;
-    font-family: var(--font-base);
+    font-family: var(--font-display);
     font-weight: 600;
     color: var(--text-primary);
-    line-height: 1.14;
-    letter-spacing: -0.01em;
+    line-height: 0.98;
+    letter-spacing: var(--tracking-display);
+    text-transform: uppercase;
 }
-.panel h1 { font-size: clamp(2.6rem, 5vw, 3.9rem); font-weight: 700; }
-.panel h2 { font-size: clamp(1.5rem, 2.6vw, 2.05rem); }
+.panel h1 { font-size: clamp(3.4rem, 7vw, 5.6rem); }
+.panel h2 { font-size: clamp(2rem, 3.6vw, 2.9rem); }
 .lede { font: 500 1.12rem/1.4 var(--font-base); color: var(--text-primary); }
 
 .datum { font: 400 0.72rem var(--font-mono); color: var(--survey-ochre); }
@@ -266,8 +276,8 @@ main { position: relative; z-index: 1; }
         line-height: 1.5;
         background: rgba(8, 8, 8, 0.93);
     }
-    .panel h1 { font-size: 2.3rem; }
-    .panel h2 { font-size: 1.28rem; margin-bottom: 0.5rem; }
+    .panel h1 { font-size: 3rem; }
+    .panel h2 { font-size: 1.8rem; margin-bottom: 0.5rem; }
     .lede { font-size: 1rem; }
     .actions .btn-primary, .actions .btn-secondary { width: auto; flex: 1 1 auto; }
     .rail { top: 3.6rem; transform: none; right: 0.35rem; }

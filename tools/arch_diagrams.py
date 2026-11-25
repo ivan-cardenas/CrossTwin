@@ -487,7 +487,7 @@ def infiltration():
                 h=900)
     # sources
     d.group(40, 120, 320, 580, "Sources", "external")
-    d.box(60, 170, 280, 240, "BIS · soil map (WFS)", ["bodem:Bodemkaart50000_v2025", "soilcode · soil name (Dutch)", "1:50 000 · 48 025 polygons", "", "bodemdata_soil_map"], "external")
+    d.box(60, 170, 280, 240, "BIS · soil map (WFS)", ["bodem:Bodemkaart50000", "soilcode · soil name (Dutch)", "1:50 000 · 48 025 polygons", "", "bodemdata_soil_map"], "external")
     d.box(60, 430, 280, 110, "BIS · groundwater (WCS)", ["bodem__ghg / glg-mediaan", "50 m · cm below ground", "254 = deeper · 255 = nodata"], "external")
     d.box(60, 560, 280, 110, "PDOK · BRT land cover", ["lc:landcoverunit (WFS)", "CORINE class names"], "external")
     # models

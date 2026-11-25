@@ -1,24 +1,28 @@
 {% load static %}
 
-<div style="padding: 0 4px;">
+<div class="lens-panel" style="padding: 0 4px;">
 
   <!-- Header -->
   <div style="margin-bottom:16px;">
-    <div style="font-size:10px; letter-spacing:0.14em; text-transform:uppercase;
-                color:rgba(232,244,255,0.45); margin-bottom:4px;">
+    <div class="ind-kicker">
       Urban Heat Indicators
     </div>
-    <div style="font-family:var(--font-base); font-size:1.1rem; font-weight:700;">
+    <div class="ind-unit">
       {{ location }}
     </div>
   </div>
 
-  {% include 'urban_heat/partials/whatif_controls.html' %}
+  <div class="whatif-only">{% include 'urban_heat/partials/whatif_controls.html' %}</div>
 
   <!-- Cards — swap target -->
   <div id="indicators-grid">
     {% include 'urban_heat/partials/indicators_grid.html' %}
   </div>
+
+  <!-- Summary tab: headline cards only; the rest with the what-ifs (Panels.js::setPanelTab) -->
+  <button type="button" class="summary-more" data-panel-tab="whatif">
+    All indicators and what-ifs <span class="bi bi-arrow-right" aria-hidden="true"></span>
+  </button>
 
 </div>
 

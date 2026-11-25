@@ -347,7 +347,7 @@ def _backup_bar(request, message=None, status=200):
 @require_http_methods(['GET', 'POST'])
 def backup(request):
     """
-    GET: the backup bar shown above the Layers panel's layer list.
+    GET: the backup bar shown in the map's Edit mode banner.
     POST: create the restore point (refused while one exists).
     URL: /api/editing/backup/
     """

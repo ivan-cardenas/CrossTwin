@@ -1216,7 +1216,7 @@ class SoilMapImportTests(TestCase):
     def test_catalog_entry_targets_the_soil_layer(self):
         dataset = CATALOG_BY_KEY["bodemdata_soil_map"]
         self.assertEqual((dataset["source"], dataset["format"], dataset["layer"]),
-                         ("bodemdata", "wfs", "bodem:Bodemkaart50000_v2025"))
+                         ("bodemdata", "wfs", "bodem:Bodemkaart50000"))
         with mock.patch("importer.external_data.PDOKImporter.fetch_wfs") as fetch:
             from importer.external_data import import_dataset
             import_dataset("bodemdata_soil_map", AMS_BBOX)

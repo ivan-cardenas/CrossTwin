@@ -269,6 +269,15 @@ with $C = V_0$ for a tree (its whole old crown) and $C = V_0 \setminus V$ for a 
 
 Source: \code{physicalEnv/calculations/soil.py}, \code{physicalEnv/hilucs.py}, \code{physicalEnv/models.py}. Soil polygons come from the Dutch soil map 1:50\,000 (\textit{Bodemkaart}, 2025 edition) and groundwater depths from the groundwater-level grids of BIS Nederland \cite{BISNederland}; land cover is the CORINE-classified BRT \textit{Bodemgebruik} layer \cite{CORINE}. Together they implement the \texttt{LandCover} $\to$ \texttt{Infiltration} and \texttt{Soil\_Type} $\to$ \texttt{Infiltration} edges with the SCS Curve Number method \cite{TR55,NEH630ch7,NEH630ch10}. Everything except the spatial composition query (\S\ref{sec:soil-composition}) is pure Python, so the dashboard re-evaluates the equations for any rain depth without querying the database.
 
+\subsection{Urban land --- \code{fill\_urban\_soil\_gaps()}}
+\textbf{Location:} \code{physicalEnv/calculations/urban\_soil.py}, \code{soil.py} (\code{URBAN\_SOIL\_GROUP})
+
+The soil map has no polygon under most built-up land, so those pieces would have no soil and drop out of the infiltration. The importer therefore stores the gap as soil areas of one soil type, \textit{Urban land}. With $L_u$ the built-up land cover of the latest year (the drained classes of \code{DRAINED\_LAND\_COVER}) and $S$ the union of the soil map polygons,
+\begin{equation}
+  U = L_u \setminus S
+\end{equation}
+(gaps under $1\,\mathrm{m^2}$ are dropped). Each polygon of $U$ becomes a soil area with the group $G_U = \mathrm{C}$. This is an assumption, not a measurement: built-up ground is mostly raised sandy fill, compacted by construction and traffic, so it is placed between sand (A) and clay (D). The sealed share of these pieces still comes from the land cover (\S\ref{sec:soil-composition}), so $G_U$ only sets how the unsealed remainder drains, and the curve number follows from the land-cover class and $G_U$ as for any other soil. The soil-map polygons are never altered, and a rerun replaces the urban areas of the region.
+
 \subsection{Hydrologic soil group --- \code{classify\_soil\_group()}, \code{SoilType.save()}}
 \textbf{Location:} \code{physicalEnv/calculations/soil.py:82}, \code{physicalEnv/models.py:61}
 
@@ -712,13 +721,18 @@ plus province-level policy fields (\code{interest\_rate}, \code{LTV\_limit}, \co
 \end{equation}
 \textbf{DAG edges:} \dagedge{Housing\_Demand $\rightarrow$ House\_Price\_Index}, \dagedge{Property $\rightarrow$ House\_Price\_Index} --- \statusgap{} (\code{HousePriceIndex} has no \code{save()}; \code{index\_value} is a flat stored field, and this function only averages it)
 
-\subsection{Affordability index --- \code{HousingAffordability.save()}}
-\textbf{Location:} \code{housing/models.py:150}
+\subsection{Affordability index and stress level --- \code{HousingAffordability.save()}}
+\textbf{Location:} \code{housing/models.py} (\code{HousingAffordability.save()}), \code{housing/calculations/chain.py::monthly\_housing\_cost}, \code{housing\_cost\_burden}, \code{ses\_modifier}, \code{affordability\_stress\_level}
 \begin{align}
-  \text{AI} &= \frac{\texttt{medianHousePrice}}{\texttt{medianIncome}} \\
-  \text{Income}_{\text{disposable}} &= \texttt{medianIncome} - \texttt{medianExpenditure}
+  \text{AI} &= \frac{\texttt{medianHousePrice}}{\texttt{medianIncome}} \
+  \text{Income}_{\text{disposable}} &= \texttt{medianIncome} - \texttt{medianExpenditure} \
+  c &= s_r\,\texttt{medianRent} + (1 - s_r)\,\texttt{medianMortgage} \
+  b &= \frac{12\,c}{\texttt{medianIncome}} \
+  m &= 1 + 0.10\,\operatorname{clamp}(-\text{SES},\,-2,\,2) \
+  \text{stress} &= \begin{cases} \text{high} & b\,m \ge 0.40 \ \text{moderate} & 0.30 \le b\,m < 0.40 \ \text{low} & b\,m < 0.30 \end{cases}
 \end{align}
-The house-price-to-income ratio formulation is the standard affordability metric used in comparative housing-affordability studies (e.g.\ Demographia's Median Multiple) \cite{Demographia}. \textbf{DAG edges:} \dagedge{Property $\rightarrow$ Affordability\_Stress}, \dagedge{Income\_Expenses $\rightarrow$ Affordability\_Stress}, \dagedge{Mortgage $\rightarrow$ Affordability\_Stress}, \dagedge{Water\_Tariff\_Afford $\rightarrow$ Income\_Expenses}, \dagedge{Rent $\rightarrow$ Income\_Expenses}, \dagedge{Mortgage $\rightarrow$ Income\_Expenses} --- \statusgap{} (computed only from this model's own stored fields; never reads \code{Mortgage}, \code{Rentals}, or watersupply tariff data --- an open TODO in \code{housing/models.py} also questions whether disposable income should replace median income in the numerator's denominator)
+The house-price-to-income ratio is the standard affordability metric of comparative studies (Demographia's Median Multiple) \cite{Demographia}. $s_r$ is the share of rental dwellings of the neighborhood (\code{NeighborhoodSocialProfile.rentalHousing\_pct}; 0.5 when unknown, and the one input that exists when only rent or only mortgage is given); rent and mortgage are monthly, income is annual. SES is the standardised CBS socio-economic status score (\code{ses\_woa}; negative = below average), so a poorer neighborhood carries the same housing cost with less reserve. The 30\,\% and 40\,\% bands follow the common affordability rule and Eurostat's housing-cost overburden threshold (which uses disposable income; the stored burden uses gross median income and so understates it). The weight of 10\,\% per SD is a modelling assumption without a published coefficient: a calibration parameter for a sensitivity run. Without a usable income or cost the stored level is kept. The row stores the burden, the SES score and modifier used, and the method string (\code{STRESS\_METHOD}).
+\textbf{DAG edges:} \dagedge{Income\_Expenses $\rightarrow$ Affordability\_Stress} --- \statuspartial{} (the level is derived from this row's own income and rent/mortgage, which are typed inputs); \dagedge{Social\_Profile $\rightarrow$ Affordability\_Stress} --- \statusdone{} (receiver \code{social\_profile\_changed}); \dagedge{Property $\rightarrow$ Affordability\_Stress}, \dagedge{Mortgage $\rightarrow$ Affordability\_Stress}, \dagedge{Water\_Tariff\_Afford $\rightarrow$ Income\_Expenses}, \dagedge{Rent $\rightarrow$ Income\_Expenses}, \dagedge{Mortgage $\rightarrow$ Income\_Expenses} --- \statusgap{} (never read from \code{Mortgage}, \code{Rentals} or watersupply tariffs)
 
 \subsection{Zoning composition --- \code{calculate\_zoning()}}
 \textbf{Location:} \code{housing/calculations/indicators.py:297}; groups \code{ZONING\_GROUPS} (\code{:289})
@@ -844,6 +858,8 @@ with $g$ the ground as above. The land cover of the latest year is mapped to SOL
 (Magnus form of \cite{Alduchov1996Magnus}; $\theta$ is the direction the wind blows from). The record is written as a UMEP met file for the hour before and the analysed hour, in local time at the view centre.
 
 \textbf{SOLWEIG.} \code{solweig-gpu} \cite{SolweigGPU} (PyTorch; CUDA when available) computes wall heights and aspects, the sky view factors and shadow matrices (cached per input hash), and SOLWEIG 2022a's radiant fluxes, mean radiant temperature $T_{mrt}$ and UTCI \cite{Lindberg2008SOLWEIG, Blazejczyk2013UTCI}. The solar position comes from the centre of the input grid and its timezone on that date (SPA), so it follows the view. The analysed hour is band~2; the halo is cropped off.
+
+\textbf{PET person.} PET holds for one person, set in the tool's person pill (\code{urban\_heat/calculations/person.py}). Clothing insulation is the sum of the garments' values, $I_{cl} = \sum_i I_{clu,i}$ (ASHRAE 55-2020, Table 5.2.2.2B; ISO 7730:2005, Annex C), the activity gives the metabolic rate $M = \text{met} \cdot 58.15\,\si{W/m^2}$ (ISO 8996), and the body surface is $A_{Du} = 0.203\, W^{0.425} H^{0.725}$ \cite{DuBois1916} with $W$ in \si{kg} and $H$ in \si{m}. The default is the reference person of \cite{Hoppe1999PET}: 35 years, \SI{1.75}{m}, \SI{75}{kg}, 0.9\,clo, 1.37\,met, seated; runs without a stored person use it. A scenario run is compared only with an observed run for the same person.
 
 \textbf{PET.} \code{pipeline.urban\_pet} calls the \code{pet-adjusted} package (\code{urban\_pet\_from\_rasters}) on the SOLWEIG window, before the halo is cropped. It solves the steady-state model of \cite{Hoppe1999PET} as corrected by \cite{Walther2018PET} (a vectorised port of \code{pythermalcomfort.pet\_steady}; standard person: 35 years, \SI{1.75}{m}, \SI{75}{kg}, 0.9\,clo, 1.37\,met) per cell, with air temperature and wind adjusted to the street after \cite{Koopmans2020PET}:
 \begin{align}
@@ -1108,6 +1124,7 @@ Beyond the CBS 85173NED forecasts used for the \texttt{Population\_Growth} $\to$
 \bibitem{Koopmans2020PET} Koopmans, S., Heusinkveld, B. G., \& Steeneveld, G. J. (2020). A standardized Physical Equivalent Temperature urban heat map at 1-m spatial resolution to facilitate climate stress tests in the Netherlands. \textit{Building and Environment}, 181, 106984.
 \bibitem{Hoppe1999PET} Höppe, P. (1999). The physiological equivalent temperature -- a universal index for the biometeorological assessment of the thermal environment. \textit{International Journal of Biometeorology}, 43(2), 71--75.
 
+\bibitem{DuBois1916} DuBois, D., \& DuBois, E. F. (1916). A formula to estimate the approximate surface area if height and weight be known. \textit{Archives of Internal Medicine}, 17, 863--871.
 \bibitem{Walther2018PET} Walther, E., \& Goestchel, Q. (2018). The P.E.T. comfort index: Questioning the model. \textit{Building and Environment}, 137, 1--10.
 
 \bibitem{Hersbach2020ERA5} Hersbach, H., Bell, B., Berrisford, P., et al. (2020). The ERA5 global reanalysis. \textit{Quarterly Journal of the Royal Meteorological Society}, 146(730), 1999--2049.

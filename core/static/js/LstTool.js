@@ -1,6 +1,6 @@
 // ============================================================
 // LstTool.js — Land Surface Temperature for the area in view.
-// Opened from the Actions menu (#lstToolBtn). Lists the Landsat scenes over
+// Opened from the Heat lens's Calculate tab (#lstToolBtn). Lists the Landsat scenes over
 // the view (GET urban_heat/lst/scenes/), then computes and stores one LST
 // raster (POST urban_heat/lst/calculate/) and shows it as a map layer.
 // Recalculating the same scene over the same (or a larger) view replaces the
@@ -97,7 +97,6 @@
       document.getElementById('degurba-card')?.classList.remove('visible');
       document.getElementById('generator-card')?.classList.remove('visible');
       card.classList.add('visible');
-      if (typeof setActionsMenuOpen === 'function') setActionsMenuOpen(false);
       if (!canCalculate) {
         setStatus('Viewing scenes works for everyone; calculating needs a staff login (Log in, top right).', 'warn');
       }
@@ -145,7 +144,8 @@
         el.info.textContent = `NDVI ${ndvi} · grid ${data.grid.width}×${data.grid.height} @ ${data.grid.resolution} m`;
         renderScenes(data.scenes);
         setBusy(false);
-        setStatus(data.scenes.length ? `${data.scenes.length} scene(s), clearest over this view first.` : '');
+        setStatus(data.warning || (data.scenes.length ? `${data.scenes.length} scene(s), clearest over this view first.` : ''),
+          data.warning ? 'warn' : '');
       } catch (error) {
         setBusy(false);
         setStatus(error.message, 'error');
@@ -189,6 +189,7 @@
           `${pct(data.valid_fraction)} of the area clear (water vapour: ${data.tpw_source}).${replaced}`,
           'ok'
         );
+        if (data.warning) setStatus(`${el.status.textContent} ⚠ ${data.warning}`, 'warn');
         await showResult(data);
       } catch (error) {
         setBusy(false);
@@ -223,9 +224,6 @@
     };
     openBtn.addEventListener('click', watchView);
 
-    if (typeof makeDraggable === 'function' && window.matchMedia('(min-width: 769px)').matches) {
-      makeDraggable(card, '.lst-card-header');
-    }
   }
 
   document.addEventListener('DOMContentLoaded', init);

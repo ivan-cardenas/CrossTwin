@@ -314,9 +314,13 @@ HELP = {
     "housing.stress": {
         "title": "Affordability Stress",
         "what": "How many neighborhoods are under low, moderate or high housing-cost stress.",
-        "how": "Count of neighborhoods per recorded stress level (HousingAffordability). Median income is the average of the neighborhoods' median incomes for the year.",
-        "eq": ["Disposable income = median income − median expenditure"],
-        "note": "The stress thresholds are still to be validated against the literature.",
+        "how": "Count of neighborhoods per stress level (HousingAffordability). Each level comes from the housing cost (rent and mortgage, weighted by the share of rental homes) as a share of median income, raised by 10 % per standard deviation of below-average socio-economic status (CBS). Median income is the average of the neighborhoods' median incomes for the year.",
+        "eq": [
+            "Burden = {12 × monthly housing cost | median annual income}",
+            "Adjusted burden = burden × (1 + 0.10 × −status score)",
+            "Low < 30 %, moderate 30–40 %, high ≥ 40 % of the adjusted burden",
+        ],
+        "note": "The 30 % and 40 % bands follow the common affordability rule and Eurostat's overburden threshold (on gross, not disposable, income). The 10 % per status point is an assumption still to be tested.",
     },
     "housing.zoning": {
         "title": "Zoning & Land Value",

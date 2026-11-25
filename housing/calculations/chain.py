@@ -25,6 +25,84 @@ DAG edges: Total_Population, Household_Size -> Housing_Demand
 SIZE_MIN = 1.0
 SIZE_MAX = 4.0
 
+# ── Affordability stress ─────────────────────────────────────────────
+#
+#   cost    = tenure-weighted monthly housing cost (rent / mortgage)
+#   burden  = 12 x cost / annual median income
+#   adjusted = burden x (1 + SES_WEIGHT x clamp(-SES, -SES_CLAMP, SES_CLAMP))
+#   level   = low (< 30 %), moderate (30-40 %), high (>= 40 %) of `adjusted`
+#
+# A neighborhood with a below-average socio-economic status (negative CBS score)
+# has less reserve to absorb the same housing cost, so its burden counts for more.
+
+# Housing-cost burden bands, share of income. 40 % is the Eurostat "housing cost
+# overburden" threshold (EU-SILC, share of disposable income); 30 % is the common
+# affordability rule of thumb (Nibud / OECD). Both are applied to gross median
+# income, which understates the burden against Eurostat's disposable income.
+BURDEN_MODERATE = 0.30
+BURDEN_HIGH = 0.40
+
+# SES modifier: +/- 10 % of the burden per standard deviation of the CBS status
+# score, clamped at +/- 2 SD. A modelling assumption (no published coefficient):
+# a calibration parameter to test in a sensitivity run, not a measured value.
+SES_WEIGHT = 0.10
+SES_CLAMP = 2.0
+
+STRESS_METHOD = "cost-burden 30/40 % x SES 10 %/SD (v1)"   # stored with every derived row
+
+
+def monthly_housing_cost(rent, mortgage, rental_share_pct=None):
+    """
+    Monthly housing cost of a neighborhood in EUR; None without a usable input.
+
+    Both rent and mortgage given: weighted by the share of rental dwellings
+    (`rental_share_pct`, 0-100), the plain mean when that share is unknown. Only
+    one given: that one. Values <= 0 count as missing.
+    """
+    rent = rent if rent and rent > 0 else None
+    mortgage = mortgage if mortgage and mortgage > 0 else None
+    if rent is None or mortgage is None:
+        return rent if mortgage is None else mortgage
+    share = 0.5 if rental_share_pct is None else min(max(rental_share_pct, 0.0), 100.0) / 100.0
+    return share * rent + (1.0 - share) * mortgage
+
+
+def housing_cost_burden(monthly_cost, annual_income):
+    """Share of the annual income spent on housing (None without both inputs)."""
+    if not monthly_cost or not annual_income or annual_income <= 0:
+        return None
+    return 12.0 * monthly_cost / annual_income
+
+
+def ses_modifier(socio_economic_status):
+    """
+    Factor on the cost burden for the neighborhood's CBS socio-economic status
+    score (standardised, negative = below average). 1.0 without a score.
+
+    DAG edge: Social_Profile -> Affordability_Stress
+    """
+    if socio_economic_status is None:
+        return 1.0
+    return 1.0 + SES_WEIGHT * max(-SES_CLAMP, min(SES_CLAMP, -socio_economic_status))
+
+
+def affordability_stress_level(burden, socio_economic_status=None):
+    """
+    'low' | 'moderate' | 'high' for a housing-cost burden, after the SES modifier;
+    None without a burden (the caller keeps the stored level).
+
+    DAG edges: Income_Expenses -> Affordability_Stress
+               Social_Profile  -> Affordability_Stress
+    """
+    if burden is None:
+        return None
+    adjusted = burden * ses_modifier(socio_economic_status)
+    if adjusted >= BURDEN_HIGH:
+        return "high"
+    if adjusted >= BURDEN_MODERATE:
+        return "moderate"
+    return "low"
+
 
 def baseline_population(city, year):
     """

@@ -88,54 +88,100 @@ const BASEMAPS = {
   outdoors:  'mapbox://styles/mapbox/outdoors-v12'
 };
 
-// 'administrative' (Province/City/District/Neighborhood) is included in
-// every tool's categories so the administrative boundaries used to select a
-// unit for the indicator panels stay clickable no matter which tool is active.
-const TOOL_CATEGORIES = {
-  overview:      ['administrative', 'urban_heat', 'watersupply', 'physicalEnv', 'weather', 'builtup', 'Energy', 'housing', 'nature', 'groundwater'],
-  administrative:['administrative'],
-  temperature:   ['administrative', 'temperature', 'weather', 'urban_heat'],
-  builtup:       ['administrative', 'builtup'],
-  energy:        ['administrative', 'Energy'],
-  housing:       ['administrative', 'housing'],
-  green:         ['administrative', 'nature', 'green', 'vegetation', 'trees', 'GreenSpaces', 'LandCover'],
-  physicalEnv:   ['administrative', 'physicalEnv'],
-  water:         ['administrative', 'watersupply'],
-  // groundwater:   ['administrative', 'groundwater'],
-  satellite:     null,
-};
+// ── LENSES (Map simplification step 2) ───────────────────────────────────
+// A topic is a lens: picking it shows only its layers and their legends,
+// greys the basemap (Map_init.js::syncLensDim) and opens its panel. Overview
+// is "no lens" and restores the layers that were on before the first lens
+// (Layers.js::openLens / closeLens). MapUI.js::renderLensRail draws the left
+// rail from this table, grouped by LENS_GROUPS in this order.
+//
+// Per lens (the key is the button's data-tool, which other code still reads:
+// ADMIN_PANEL_TOOLS, BUILDING_COLOR_BY_TOOL, TOOLS_WITHOUT_BASEMAP_TREES, the tour):
+//   group  LENS_GROUPS id;  label  rail text;  title  panel/layers title;  icon  Bootstrap Icon
+//   apps   app_labels whose catalog layers the lens shows. 'administrative'
+//          is in every lens so the units that drive the panels stay clickable.
+//   panel  (level, location) => indicator panel URL, follows the selected
+//          unit (mainMap.js::ADMIN_PANEL_TOOLS);  or intro: static panel HTML
+//   tools  ids of the "Calculate for this view" tools that belong to the lens
+//          (buttons <id>ToolBtn in the panel's Calculate tab, #panel-calculate).
+const LENS_GROUPS = [
+  { id: 'systems',     label: 'City systems' },
+  { id: 'people',      label: 'People' },
+  { id: 'environment', label: 'Environment' },
+];
 
-const TOOL_CONTENT = {
-  overview: {
-    title: 'OVERVIEW',
-    body: `
-      <p>Welcome to the Urban Digital Twin. Use camera tools to explore the 3D city.</p>
-      <p>Click the <strong>📑 Layers</strong> button to manage database layers, or select thematic views from the toolbar.</p>
-    `
+const LENSES = {
+  water: {
+    group: 'systems', label: 'Water', title: 'Water supply', icon: 'bi-droplet',
+    apps: ['administrative', 'watersupply'],
+    panel: (level, location) =>
+      `/watersupply/indicators/${level}/${location}/${window.ACTIVE_YEAR}/${populationQuery()}&${climateParam()}`,
+    tools: [],
+  },
+  energy: {
+    group: 'systems', label: 'Energy', title: 'Energy', icon: 'bi-lightning-charge',
+    apps: ['administrative', 'Energy'],
+    intro: `
+      <p class="no-indicators">No indicators yet.</p>
+      <p>Its map layers are on; open <strong>Layers</strong> in the bottom bar to switch them.</p>`,
+    tools: [],
+  },
+  housing: {
+    group: 'people', label: 'Housing', title: 'Housing', icon: 'bi-house-door',
+    apps: ['administrative', 'housing'],
+    // Same URL shape as water: housing/urls.py is indicators/<level>/<location>/<year>/.
+    panel: (level, location) =>
+      `/housing/indicators/${level}/${location}/${window.ACTIVE_YEAR}/${populationQuery()}`,
+    tools: [],
+  },
+  builtup: {
+    group: 'people', label: 'Built-up', title: 'Built-up', icon: 'bi-buildings',
+    apps: ['administrative', 'builtup'],
+    // The building stock has no year; year + population only drive the per-capita cards.
+    panel: (level, location) =>
+      `/builtup/indicators/${level}/${location}/${window.ACTIVE_YEAR}/${populationQuery()}`,
+    tools: ['degurba'],
+  },
+  administrative: {
+    group: 'people', label: 'Population', title: 'Population', icon: 'bi-people',
+    apps: ['administrative'],
+    intro: `
+      <p>Click a city, district or neighbourhood on the map: every topic then reports on that area.</p>
+      <p>The population forecast and its what-if controls are in the dock at the bottom.</p>`,
+    opensPopulationDock: true,
+    tools: [],
   },
   temperature: {
-    title: 'URBAN HEAT',
-    body: `
-      <p>Visualize heat stress hotspots by overlaying land surface temperature data.</p>
-      <p>Use this view for metrics like average heat index, exposed population, and priority cooling areas.</p>
-    `
+    group: 'environment', label: 'Heat', title: 'Urban heat', icon: 'bi-thermometer-sun',
+    apps: ['administrative', 'temperature', 'weather', 'urban_heat'],
+    // Urban heat has no year and does not depend on population.
+    panel: (level, location) =>
+      `/urban_heat/indicators/${level}/${location}/?${climateParam()}`,
+    tools: ['lst', 'svf', 'solweig'],
   },
   green: {
-    title: 'GREEN INFRASTRUCTURE',
-    body: `<p>View parks, trees, and green spaces. Combine with heat indicators to locate greening priorities.</p>`
+    group: 'environment', label: 'Green', title: 'Green and blue space', icon: 'bi-tree',
+    apps: ['administrative', 'nature', 'green', 'vegetation', 'trees', 'GreenSpaces', 'LandCover'],
+    intro: `
+      <p class="no-indicators">No indicators yet.</p>
+      <p>Parks, trees, green spaces and water bodies are on the map. Combine them with Heat to find where greening helps most.</p>`,
+    tools: [],
   },
-  water: {
-    title: 'WATER INFRASTRUCTURE',
-    body: `<p>Display water pipes, wells, and supply network. Relate demand to housing and population forecasts.</p>`
+  physicalEnv: {
+    group: 'environment', label: 'Ground', title: 'Ground: soil, terrain and land cover', icon: 'bi-layers-half',
+    apps: ['administrative', 'physicalEnv'],
+    intro: `
+      <p class="no-indicators">No indicators yet.</p>
+      <p>Soil, terrain (DEM, DSM) and land cover are on the map. Soil and groundwater feed the Water topic's recharge card.</p>`,
+    tools: [],
   },
-  groundwater: {
-    title: 'GROUNDWATER LEVELS',
-    body: `
-      <p>Groundwater depth measurements from the Dutch national registry (BRO).</p>
-      <p>GHG = Average Highest Groundwater Level (Gemiddeld Hoogste Grondwaterstand)</p>
-    `
-  }
 };
+
+// The basemap under an open lens: a cool slate wash drawn above the basemap
+// and below the lens's layers, so their colours carry the map.
+const LENS_DIM_COLOR = '#1c2529';
+const LENS_DIM_OPACITY = 0.42;
+const LENS_DIM_FADE_MS = 350;
 
 const LOADER_SHOW_DELAY_MS = 8000;  // only surface it for genuinely slow loads
 
@@ -158,7 +204,7 @@ const BASEMAP_BUILDING_OPACITY = 0.25;
 // A colour, or a list of shades: each Mapbox building then takes one shade
 // picked by its feature id (Map_init.js::buildingColorForTool), so the city
 // looks less uniform and a building keeps its shade on every pan and reload.
-const BUILDING_COLOR_DEFAULT = ['#bd643b', '#7c4d37', '#69351d'];
+const BUILDING_COLOR_DEFAULT = ['#bd643b']; // '#7c4d37', '#69351d'
 const BUILDING_COLOR_BY_TOOL = {
   water:       '#cde5fa',
   // temperature: '#c0504d',
@@ -166,37 +212,86 @@ const BUILDING_COLOR_BY_TOOL = {
   groundwater: '#b4e7e3',
 };
 
-// ── GUIDED TOUR ────────────────────────────────────────────────────────────
+// ── TASK STARTS (Tasks.js) ─────────────────────────────────────────────────
+// Three questions people come with. Each step does something on the live map
+// when it opens (run) and points at the next control (target).
+const TASKS = {
+  heat: {
+    title: 'How hot does my neighbourhood get in 2050?',
+    steps: [
+      { text: 'The Heat topic is open: its layers and legend are on and the rest of the map is greyed.',
+        run: () => openLensFromRail('temperature'), target: '[data-tool="temperature"]' },
+      { text: 'The time chip now reads 2050 with a heat-and-drought climate. Change the year or pathway here.',
+        run: () => window.setTime && window.setTime({ year: 2050 }), target: '#time-chip' },
+      { text: 'Click your neighbourhood on the map. The panel gives the PET and heat-stress days for 2050; "Show on map" draws where they come from.',
+        target: '#panel-body' },
+    ],
+  },
+  water: {
+    title: 'Which homes have no water supply?',
+    steps: [
+      { text: 'The Water topic is open. Zoom in to your city: homes that no pipe reaches get a drop with a red ring.',
+        run: () => openLensFromRail('water'), target: '[data-tool="water"]' },
+      { text: 'The flag counts them and gives the number of residents in view. Click a drop for one home.',
+        target: '#advisor-flag' },
+    ],
+  },
+  sketch: {
+    title: 'Sketch 300 homes on this field.',
+    steps: [
+      { text: 'Edit mode is on: changes can be stored.',
+        run: () => window.setMapMode && window.setMapMode('edit'), target: '#mode-switch' },
+      { text: 'The generator is open with 300 dwellings as the target. Pick a style.',
+        run: () => openGenerator(300), target: '#generator-style-cards' },
+      { text: 'Press Draw outline, click the corners of the field and double-click to finish.',
+        target: '#generator-draw' },
+      { text: 'Check the site findings and the metrics; nothing is stored until you press Store.',
+        target: '#generator-commit' },
+    ],
+  },
+};
+
+function openLensFromRail(tool) {
+  document.querySelector(`#toolbar .tool-button[data-tool="${tool}"]`)?.click();
+}
+
+function openGenerator(units) {
+  document.getElementById('generatorToolBtn')?.click();
+  const input = document.getElementById('generator-target_units');
+  if (input) { input.value = String(units); input.dispatchEvent(new Event('input', { bubbles: true })); }
+}
+
+// ── GUIDED TOUR (classic) ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 const TOUR_STEPS = [
   {
     num: 1,
     title: "① Select Topic",
-    desc: "Start by picking a thematic domain from the left toolbar — Housing, Energy, Heat, Water Supply, and more. Each icon switches the data context for the entire platform.",
+    desc: "Pick a topic on the left: City systems, People or Environment. A topic shows only its own layers and legends and greys the rest of the map; Overview brings your own layers back.",
     target: ".toolbar",
   },
   {
     num: 2,
     title: "② Explore Current Data",
-    desc: "Click the 📑 Administrative Data icon to open the Database Layers panel. Browse all available spatial datasets, toggle individual layers on/off, and choose a basemap style.",
+    desc: "Population shows the cities, districts and neighbourhoods: click one to make it the area every topic reports on. Layers in the bottom bar lists the topic's layers, with All layers for every dataset and the basemap style.",
     target: '[data-tool="administrative"]',
   },
   {
     num: 3,
     title: "③ Explore Indicators",
-    desc: "Select a thematic tool like 🚰 Water Supply or 🌡️ Heat to load live KPI dashboards in the right panel. Indicators are calculated directly from the spatial database.",
+    desc: "Pick a topic like Water or Heat to load its indicators in the right panel. Indicators are calculated directly from the spatial database.",
     target: ".side-panel",
   },
   {
     num: 4,
     title: "④ Select Scenarios",
-    desc: "Use the Dashboard and Scenarios buttons at the bottom-right. Adjust sliders and input overrides (e.g. consumption, interest rate) to model what-if futures and compare years.",
-    target: ".bottom-right",
+    desc: "The time chip at the top sets the year and the climate scenario for every panel. Compare scenarios opens the KNMI'23 scenarios; the sliders in a panel (e.g. consumption, interest rate) are what-ifs on top.",
+    target: "#time-chip",
   },
   {
     num: 5,
-    title: "⑤ Import Data",
-    desc: "Open the Actions menu in the bottom bar. Upload your own GeoJSON or Shapefile with 'Upload Data', or pull live datasets from PDOK, CBS, Sentinel-2, and Google Earth Engine via 'Retrieve Data from APIs'.",
-    target: "#actions-menu-btn",
+    title: "⑤ Explore, Plan, Edit",
+    desc: "The switch in the bottom bar sets the mode. Explore shows the stored data. Plan unlocks the what-if sliders and climate scenarios; a banner names every change from the stored baseline, and nothing is stored. Edit (staff) changes the data, draws new neighbourhoods and holds the restore point; staff import data from Data in the header.",
+    target: "#mode-switch",
   },
   {
     num: 6,
@@ -207,7 +302,7 @@ const TOUR_STEPS = [
   {
     num: 7,
     title: "⑦ View Results",
-    desc: "Results populate the side panel as charts, KPI cards, and new map layers. Use the year selector in the Actions menu to compare the current baseline against future scenario projections.",
+    desc: "Results populate the side panel as charts, KPI cards, and new map layers. Use the time chip at the top to compare the current baseline against future scenario projections.",
     target: "#panel-body",
   },
   {

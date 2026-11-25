@@ -18,6 +18,7 @@
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.33.0/mapbox-gl.js"></script>
 {% comment %} CrossTwin JS {% endcomment %}
 <script src="{% static 'js/Config.js' %}"></script>
+<script src="{% static 'js/Advisors.js' %}"></script>
 <script src="{% static 'js/CityName.js' %}"></script>
 <script src="{% static 'js/Draggable.js' %}"></script>
 <script src="{% static 'js/MapUI.js' %}"></script>
@@ -27,6 +28,7 @@
 <script src="{% static 'js/Editing.js' %}"></script>
 <script src="{% static 'js/LstTool.js' %}"></script>
 <script src="{% static 'js/SvfTool.js' %}"></script>
+<script src="{% static 'js/PersonFigure.js' %}"></script>
 <script src="{% static 'js/SolweigTool.js' %}"></script>
 <script src="{% static 'js/DegurbaTool.js' %}"></script>
 <script src="{% static 'js/GeneratorTool.js' %}"></script>
@@ -34,14 +36,24 @@
 <script src="{% static 'js/UnservedWater.js' %}"></script>
 <script src="{% static 'js/info_popover.js' %}"></script>
 <script src="{% static 'js/MapSettings.js' %}"></script>
+<script src="{% static 'js/Modes.js' %}"></script>
+<script src="{% static 'js/Tasks.js' %}"></script>
 <script src="{% static 'js/Events.js' %}"></script>
 <script src="{% static 'js/Map_init.js' %}"></script>
 {% endblock %} {% block header_actions %}
 {% if user.is_staff %}
-<button type="button" class="header-btn" id="map-settings-btn"
-        aria-controls="settings-card" aria-expanded="false">
-  <i class="bi bi-gear"></i> Map settings
-</button>
+<!-- DATA MENU (staff; Map simplification step 5): upload and retrieve data,
+     moved here from the removed Actions menu. Opened by Modes.js. -->
+<div class="header-menu">
+  <button type="button" class="header-btn" id="data-menu-btn"
+          aria-haspopup="true" aria-expanded="false" aria-controls="data-menu">
+    <i class="bi bi-database"></i> Data <i class="bi bi-chevron-down" aria-hidden="true"></i>
+  </button>
+  <div class="header-menu-list" id="data-menu" hidden>
+    <a href="{% url 'importer:upload_geodata' %}"><i class="bi bi-cloud-upload"></i> Upload data</a>
+    <a href="{% url 'importer:external_data' %}"><i class="bi bi-cloud-download"></i> Retrieve data from APIs</a>
+  </div>
+</div>
 {% endif %}
 {% endblock %}
 {% block content_section_class %}{% endblock %}
@@ -52,80 +64,38 @@
     <div id="map"></div>
 
     <!-- LEFT TOOLBAR -->
-    <div class="toolbar" id="toolbar">
+    <!-- Lens rail: drawn by MapUI.js::renderLensRail from Config.js::LENSES -->
+    <nav class="toolbar" id="toolbar" aria-label="Topics">
       <div class="toolbar-grip" title="Drag to move">⠿</div>
-      <button class="tool-button active" data-tool="overview">
-        <span>👁️</span>
-        <div class="tool-tooltip">Overview</div>
-      </button>
-      <button class="tool-button" data-tool="administrative">
-        <span>📑</span>
-        <div class="tool-tooltip">Administrative Data</div>
-      </button>
-
-      <button class="tool-button" data-tool="builtup"
-        data-panel-title="BUILT-UP"
-        hx-get="{% url 'builtup:builtup_indicators' level='province' location='Demo' year=2025 %}"
-        hx-target="#panel-body"
-        hx-indicator="#map-loader"
-        hx-swap="innerHTML">
-        <span>🏗️</span>
-        <div class="tool-tooltip">Built-up</div>
-      </button>
-      <button class="tool-button" data-tool="housing"
-        data-panel-title="HOUSING"
-        hx-get="{% url 'housing:housing_indicators' level='province' location='Demo' year=2025 %}"
-        hx-target="#panel-body"
-        hx-indicator="#map-loader"
-        hx-swap="innerHTML">
-        <span>🏘️</span>
-        <div class="tool-tooltip">Housing</div>
-      </button>
-
-      <button class="tool-button" data-tool="energy">
-        <span>⚡</span>
-        <div class="tool-tooltip">Energy</div>
-      </button>
-
-      <button class="tool-button" data-tool="temperature"
-        data-panel-title="URBAN HEAT"
-        hx-get="{% url 'urban_heat:heat_indicators' level='province' location='Demo'%}"
-        hx-target="#panel-body"
-        hx-indicator="#map-loader"
-        hx-swap="innerHTML">
-        <span>🌡️</span>
-        <div class="tool-tooltip">Heat</div>
-      </button>
-      <button class="tool-button" data-tool="green">
-        <span style="font-size: 1em;">🌳</span>
-        <div class="tool-tooltip">Green and Blue Space</div>
-      </button>
-      <button class="tool-button" data-tool="water"
-        data-panel-title="WATER SUPPLY"
-        hx-get="{% url 'watersupply:water_indicators' level='province' location='Demo' year=2025 %}"
-        hx-target="#panel-body"
-        hx-indicator="#map-loader"
-        hx-swap="innerHTML">
-  <span>🚰</span>
-  <div class="tool-tooltip">Water Supply</div>
-</button>
-      <button class="tool-button" data-tool="physicalEnv">
-        <spanstyle="font-size: 1em;">🪨</span>
-        <div class="tool-tooltip">Physical Environment</div>
-      </button>
-      {% comment %}
-      <button class="tool-button" data-tool="satellite">
-        <span>🛰️</span>
-        <div class="tool-tooltip">Satellite</div>
-      </button>
-      {% endcomment %}
-    </div>
+      <div class="lens-rail" id="lens-rail"></div>
+    </nav>
 
     <!-- ONBOARDING HINT / TOUR TRIGGER -->
     <div class="onboarding-hint" id="onboarding-hint">
       <strong>Start here</strong>
-      <p>New to CrossTwin? Follow the 8-step guided tour to explore the platform.</p>
-      <button class="onboarding-tour-btn" id="start-tour-btn">▶ Start Guided Tour</button>
+      <p>Pick a question. Each one runs on the live map and points at the next control.</p>
+      <!-- Task starts (core/static/js/Tasks.js, steps in Config.js::TASKS) -->
+      <button type="button" class="onboarding-task" data-task="heat">How hot does my neighbourhood get in 2050?</button>
+      <button type="button" class="onboarding-task" data-task="water">Which homes have no water supply?</button>
+      {% if user.is_staff %}<button type="button" class="onboarding-task" data-task="sketch">Sketch 300 homes on this field.</button>{% endif %}
+      <button class="onboarding-tour-btn" id="start-tour-btn">Classic guided tour</button>
+      <label class="onboarding-classic" title="Start the 8-step text tour on a first visit, as before">
+        <input type="checkbox" id="classic-tour-pref"> Classic tour on first visit
+      </label>
+    </div>
+
+    <!-- TASK GUIDE: one step of the running task start (Tasks.js) -->
+    <div class="task-guide" id="task-guide" role="status" aria-live="polite" hidden>
+      <div class="task-guide-head">
+        <strong id="task-guide-title"></strong>
+        <span id="task-guide-count"></span>
+        <button type="button" class="task-guide-close" id="task-guide-close" aria-label="End this task">✕</button>
+      </div>
+      <p id="task-guide-text"></p>
+      <div class="task-guide-nav">
+        <button type="button" class="tour-btn tour-btn-secondary" id="task-guide-prev">← Back</button>
+        <button type="button" class="tour-btn tour-btn-primary" id="task-guide-next">Next →</button>
+      </div>
     </div>
 
     <!-- DEMO TOUR CARD -->
@@ -161,7 +131,7 @@
     <div class="layers-panel" id="layers-panel">
       <div class="layers-panel-header">
         <div class="layers-panel-title">
-          <i class="bi bi-layers"></i> Database Layers
+          <i class="bi bi-layers"></i> Layers
         </div>
         <button class="layers-panel-close" id="layers-panel-close">✕</button>
       </div>
@@ -172,6 +142,10 @@
           <p>Loading layers...</p>
         </div>
       </div>
+
+      <!-- Under a lens: opens the All layers drawer (Layers.js::toggleLayersDrawer) -->
+      <button type="button" class="layers-drawer-btn" id="btn-all-layers"
+              aria-controls="layer-list" aria-expanded="false"></button>
 
       <div class="basemap-selector">
         <label for="basemap-select">Basemap</label>
@@ -184,6 +158,11 @@
           <option value="outdoors">Outdoors</option>
         </select>
       </div>
+
+      <p class="layers-stats" aria-live="polite">
+        <span id="visible-count">0</span> of <span id="layers-count">0</span> layers shown,
+        <span id="features-count">0</span> features loaded
+      </p>
 
       <div class="layers-panel-footer">
         <button
@@ -216,11 +195,274 @@
         <div class="side-panel-title" id="panel-title">OVERVIEW</div>
         <button class="side-panel-close" id="panel-close">✕</button>
       </div>
+      <!-- Lens panel tabs (Map simplification step 4; Panels.js::setPanelTab):
+           shown while #panel-body holds a lens's indicator panel (.lens-panel).
+           Summary = headline cards, What-if = sliders + every card, Calculate =
+           #panel-calculate. Calculate only for lenses with tools (Config.js::LENSES). -->
+      <div class="panel-tabs" id="panel-tabs" role="tablist" aria-label="Panel views" hidden>
+        <button type="button" role="tab" class="panel-tab" data-tab="summary" aria-selected="true">Summary</button>
+        <button type="button" role="tab" class="panel-tab" data-tab="whatif" aria-selected="false">What-if</button>
+        <button type="button" role="tab" class="panel-tab" data-tab="calculate" aria-selected="false">Calculate</button>
+      </div>
       <div class="side-panel-body" id="panel-body">
         <p>Use the tool icons on the left to switch between thematic layers.</p>
         <p>
           Click the 📑 Layers button to manage all database layers individually.
         </p>
+      </div>
+      <!-- CALCULATE TAB: the open lens's tools and their cards. Outside
+           #panel-body, so the htmx swaps of a unit click or a slider never
+           reset a running calculation. -->
+      <div class="side-panel-body panel-calculate" id="panel-calculate" role="tabpanel" hidden>
+        <p class="calc-intro">Runs over the area in view. Results are stored with the inputs they used.</p>
+        <div class="calc-tools">
+          <button type="button" class="action-panel-btn calc-tool-btn" data-calc-tool="lst" id="lstToolBtn">
+            <span class="bi bi-thermometer-sun"></span>
+            <span class="action-btn-text">Land Surface Temperature</span>
+          </button>
+          <button type="button" class="action-panel-btn calc-tool-btn" data-calc-tool="svf" id="svfToolBtn">
+            <span class="bi bi-brightness-high"></span>
+            <span class="action-btn-text">Sky View Factor</span>
+            <span class="stale-dot" hidden title="Buildings changed here since the SVF was calculated: run it again"></span>
+          </button>
+          <button type="button" class="action-panel-btn calc-tool-btn" data-calc-tool="solweig" id="solweigToolBtn">
+            <span class="bi bi-person-walking"></span>
+            <span class="action-btn-text">Thermal Comfort (SOLWEIG)</span>
+            <span class="stale-dot" hidden title="Buildings changed here since thermal comfort was calculated: run it again"></span>
+          </button>
+          <button type="button" class="action-panel-btn calc-tool-btn" data-calc-tool="degurba" id="degurbaToolBtn">
+            <span class="bi bi-buildings"></span>
+            <span class="action-btn-text">Degree of Urbanisation</span>
+          </button>
+    </div>
+
+        <!-- LST TOOL — Land Surface Temperature for the area in view
+             (core/static/js/LstTool.js, urban_heat/lst/views.py). -->
+        <div class="lst-card" id="lst-card"
+             data-scenes-url="{% url 'urban_heat:lst_scenes' %}"
+             data-calculate-url="{% url 'urban_heat:lst_calculate' %}"
+             data-can-calculate="{{ user.is_staff|yesno:'1,0' }}">
+          {% csrf_token %}
+          <div class="lst-card-header">
+            <div class="lst-card-title">LAND SURFACE TEMPERATURE</div>
+            <button class="lst-card-close" id="lst-card-close" aria-label="Close LST tool">✕</button>
+          </div>
+          <p class="lst-card-hint">Landsat 9 thermal band and the NDVI layer (Statistical Mono-Window), for the area in view.</p>
+          <div class="lst-card-fields">
+            <label>From <input type="date" id="lst-from"></label>
+            <label>To <input type="date" id="lst-to"></label>
+            <label>Cell
+              <select id="lst-resolution">
+                <option value="30" selected>30 m</option>
+                <option value="60">60 m</option>
+                <option value="100">100 m</option>
+              </select>
+            </label>
+          </div>
+          <label class="lst-check"><input type="checkbox" id="lst-use-ndvi" checked> Emissivity from the NDVI layer</label>
+          <button class="lst-btn" id="lst-find">Find scenes for this view</button>
+          <div class="lst-view-info" id="lst-view-info"></div>
+          <div class="lst-scenes" id="lst-scenes" role="radiogroup" aria-label="Landsat scenes"></div>
+          <button class="lst-btn lst-btn-primary" id="lst-calculate" disabled>Calculate LST for this view</button>
+          <div class="lst-status" id="lst-status" role="status"></div>
+        </div>
+
+        <!-- SVF TOOL — Sky-view factor from the DSM for the area in view
+             (core/static/js/SvfTool.js, physicalEnv/views.py). Same look as the
+             LST card, so it reuses its lst-* classes. -->
+        <div class="lst-card" id="svf-card"
+             data-info-url="{% url 'physicalEnv:svf_info' %}"
+             data-calculate-url="{% url 'physicalEnv:svf_calculate' %}"
+             data-can-calculate="{{ user.is_staff|yesno:'1,0' }}">
+          {% csrf_token %}
+          <div class="lst-card-header">
+            <div class="lst-card-title">SKY VIEW FACTOR</div>
+            <button class="lst-card-close" id="svf-card-close" aria-label="Close SVF tool">✕</button>
+          </div>
+          <p class="lst-card-hint">Horizon search over the Digital Surface Model, for the area in view only (plus one search radius around it).</p>
+          <div class="lst-card-fields">
+            <label>Radius
+              <select id="svf-radius">
+                <option value="25">25 m</option>
+                <option value="50" selected>50 m</option>
+                <option value="100">100 m</option>
+                <option value="200">200 m</option>
+              </select>
+            </label>
+            <label>Cell
+              <select id="svf-resolution">
+                <option value="" selected>DSM</option>
+                <option value="1">1 m</option>
+                <option value="2">2 m</option>
+                <option value="5">5 m</option>
+              </select>
+            </label>
+          </div>
+          <div class="lst-view-info" id="svf-view-info"></div>
+          <button class="lst-btn lst-btn-primary" id="svf-calculate" disabled>Calculate SVF for this view</button>
+          <div class="lst-status" id="svf-status" role="status"></div>
+        </div>
+
+        <!-- DEGREE OF URBANISATION — GHSL/Eurostat classes on 100 m cells (local
+             variant) and 1 km cells (original method) from neighborhood population
+             spread over residential properties (core/static/js/DegurbaTool.js,
+             builtup/views_degurba.py, docs/DEGREE_OF_URBANISATION.md). -->
+        <div class="lst-card" id="degurba-card"
+             data-info-url="{% url 'builtup:degurba_info' %}"
+             data-calculate-url="{% url 'builtup:degurba_calculate' %}"
+             data-can-calculate="{{ user.is_staff|yesno:'1,0' }}">
+          {% csrf_token %}
+          <div class="lst-card-header">
+            <div class="lst-card-title">DEGREE OF URBANISATION</div>
+            <button class="lst-card-close" id="degurba-card-close" aria-label="Close Degree of Urbanisation tool">✕</button>
+          </div>
+          <p class="lst-card-hint">Neighborhood population spread over residential properties, classified with the GHSL rules. 100 m uses a 300 m window over settlement land so city edges stay sharp; 1 km is the original method on the same data.</p>
+          <div class="lst-card-fields">
+            <label>Grid
+              <select id="degurba-resolution">
+                <option value="100" selected>100 m (local)</option>
+                <option value="1000">1 km (original)</option>
+              </select>
+            </label>
+          </div>
+          <div class="lst-view-info" id="degurba-view-info"></div>
+          <div class="lst-view-info" id="degurba-cities"></div>
+          <button class="lst-btn lst-btn-primary" id="degurba-calculate" disabled>Build the grid</button>
+          <div class="lst-status" id="degurba-status" role="status"></div>
+        </div>
+
+        <!-- THERMAL COMFORT TOOL — SOLWEIG Tmrt, UTCI and PET for the area in view
+             and one hour (core/static/js/SolweigTool.js, urban_heat/solweig/,
+             docs/THERMAL_COMFORT.md). Reuses the LST card's lst-* classes. -->
+        <div class="lst-card" id="solweig-card"
+             data-info-url="{% url 'urban_heat:solweig_info' %}"
+             data-met-url="{% url 'urban_heat:solweig_met' %}"
+             data-calculate-url="{% url 'urban_heat:solweig_calculate' %}"
+             data-run-url="{% url 'urban_heat:solweig_run' 0 %}"
+             data-stale-url="{% url 'urban_heat:solweig_stale' %}"
+             data-can-calculate="{{ user.is_staff|yesno:'1,0' }}">
+          {% csrf_token %}
+          <div class="lst-card-header">
+            <div class="lst-card-title">THERMAL COMFORT (SOLWEIG)</div>
+            <button class="lst-card-close" id="solweig-card-close" aria-label="Close thermal comfort tool">✕</button>
+          </div>
+          <p class="lst-card-hint">Mean radiant temperature, UTCI and PET for the area in view at one hour. The sun position follows the view.</p>
+          <div class="lst-card-fields">
+            <label>Date <input type="date" id="solweig-date"></label>
+            <label>Hour
+              <select id="solweig-hour"></select>
+            </label>
+            <label class="lst-check solweig-live" title="Weather of the nearest KNMI station for this date and hour; untick to type your own values">
+              <input type="checkbox" id="solweig-live" checked> Use live weather
+            </label>
+          </div>
+          <div class="lst-view-info" id="solweig-met-info"></div>
+          <!-- More options: cell size, the weather source and its values, and the person
+               (SolweigTool.js opens it when the weather is typed by hand). -->
+          <details class="card-more" id="solweig-more">
+            <summary>More options</summary>
+            <div class="lst-card-fields">
+            <label>Cell
+              <select id="solweig-resolution">
+                <option value="1" selected>1 m</option>
+                <option value="2">2 m</option>
+                <option value="5">5 m</option>
+              </select>
+            </label>
+            </div>
+          <div class="lst-card-fields met-source">
+            <label>Weather
+              <select id="solweig-source">
+                <option value="manual">Manual</option>
+                <option value="knmi" selected>Nearest KNMI station</option>
+                <option value="era5">ERA5</option>
+              </select>
+            </label>
+            <button class="lst-btn" id="solweig-fetch" type="button">Fetch</button>
+          </div>
+          <div class="lst-card-fields met-values">
+            <label>Air temp. °C <input type="number" id="solweig-ta_c" step="0.1" value="25"></label>
+            <label>RH % <input type="number" id="solweig-rh_pct" step="1" min="0" max="100" value="50"></label>
+            <label>Wind m/s <input type="number" id="solweig-wind_ms" step="0.1" min="0" value="2"></label>
+            <label>Wind dir. ° <input type="number" id="solweig-wind_dir_deg" step="1" min="0" max="360" value="240"></label>
+            <label>Kdown W/m² <input type="number" id="solweig-kdown_wm2" step="1" min="0" value="600"></label>
+            <label>Pressure kPa <input type="number" id="solweig-pressure_kpa" step="0.01" value="101.3"></label>
+          </div>
+          <div class="lst-card-fields met-values" title="The day's values for the urban heat island in PET; leave blank for PET without it">
+            <label>Day Tmax °C <input type="number" id="solweig-tmax_c" step="0.1"></label>
+            <label>Day Tmin °C <input type="number" id="solweig-tmin_c" step="0.1"></label>
+            <label>Day Kdown W/m² <input type="number" id="solweig-kdown_day_wm2" step="1" min="0"></label>
+            <label>Day wind m/s <input type="number" id="solweig-wind_day_ms" step="0.1" min="0"></label>
+          </div>
+          <!-- PERSON PILL — who the PET is felt by: body, activity and clothing; clo is
+               the sum of the garments (urban_heat/calculations/person.py via
+               urban_heat/solweig/person/). The run stores the person; the heat
+               dashboard's PET card names it. -->
+          <div class="solweig-person">
+            <button type="button" class="person-pill" id="solweig-person-btn"
+                    aria-expanded="false" aria-controls="solweig-person-panel"
+                    title="Who the PET is felt by: body, activity and clothing">
+              <span class="person-pill-icon" aria-hidden="true">🧍</span>
+              <span class="person-pill-text" id="solweig-person-summary">PET reference person · 0.90 clo</span>
+              <span class="person-pill-edit">Person ▾</span>
+            </button>
+            <div class="person-panel" id="solweig-person-panel" hidden
+                 data-person-url="{% url 'urban_heat:solweig_person' %}">
+              <!-- The selects are the source of truth (SolweigTool.js); the segmented
+                   buttons, chips and figure below drive them. -->
+              <div hidden>
+                <select id="solweig-person-preset"></select>
+                <select id="solweig-person-sex"></select>
+                <select id="solweig-person-activity"></select>
+                <select id="solweig-person-position"></select>
+              </div>
+              <div class="person-presets" id="solweig-person-presets" role="group" aria-label="Ready-made people"></div>
+              <div class="person-stage">
+                <div class="person-figure" id="solweig-person-figure"></div>
+                <div class="person-side">
+                  <div class="person-seg" id="solweig-person-sex-seg" role="group" aria-label="Sex"></div>
+                  <div class="person-seg" id="solweig-person-position-seg" role="group" aria-label="Posture"></div>
+                  <label class="person-slider">
+                    <span>Age <output id="solweig-person-age-out"></output></span>
+                    <input type="range" id="solweig-person-age" step="1">
+                  </label>
+                  <label class="person-slider">
+                    <span>Height <output id="solweig-person-height-out"></output></span>
+                    <input type="range" id="solweig-person-height" step="0.01">
+                  </label>
+                  <label class="person-slider">
+                    <span>Weight <output id="solweig-person-weight-out"></output></span>
+                    <input type="range" id="solweig-person-weight" step="1">
+                  </label>
+                </div>
+              </div>
+              <div class="person-seg person-activity-seg" id="solweig-person-activity-seg" role="group" aria-label="Activity"></div>
+              <div class="person-clothing">
+                <div class="person-clothing-head">
+                  <span>Clothing · tap the figure or a group</span>
+                  <label class="person-clo" title="Icl = Σ Iclu of the chosen garments (ASHRAE 55). Without garments, type the clo.">
+                    clo <input type="number" id="solweig-person-clo" step="0.01" min="0" max="3">
+                  </label>
+                </div>
+                <div class="person-clo-gauge" id="solweig-person-clo-gauge" aria-hidden="true">
+                  <i></i><span>0</span><span>0.5</span><span>1</span><span>1.5</span><span>2+</span>
+                </div>
+                <div class="person-tabs" id="solweig-person-tabs" role="group" aria-label="Garment group"></div>
+                <div class="person-garments" id="solweig-person-garments"></div>
+              </div>
+              <div class="person-derived" id="solweig-person-derived"></div>
+            </div>
+          </div>
+          </details>
+          <!-- Shown while a KNMI'23 scenario is selected (Scenarios panel / year): the
+               weather above moved into it; Calculate then stores a scenario run. -->
+          <div class="lst-view-info solweig-scenario" id="solweig-scenario" hidden
+               data-scenario-met-url="{% url 'urban_heat:solweig_scenario_met' %}"
+               data-runs-url="{% url 'map:climate_runs' %}"></div>
+          <div class="lst-view-info" id="solweig-view-info"></div>
+          <button class="lst-btn lst-btn-primary" id="solweig-calculate" disabled>Calculate thermal comfort</button>
+          <div class="lst-status" id="solweig-status" role="status"></div>
+        </div>
       </div>
       <div class="side-panel-tagline">CROSSTWIN · URBAN DIGITAL TWIN</div>
     </div>
@@ -235,105 +477,12 @@
       <div class="population-panel-body" id="population-panel-body"></div>
     </div>
 
-    <!-- LST TOOL — Land Surface Temperature for the area in view
-         (core/static/js/LstTool.js, urban_heat/lst/views.py). -->
-    <div class="lst-card" id="lst-card"
-         data-scenes-url="{% url 'urban_heat:lst_scenes' %}"
-         data-calculate-url="{% url 'urban_heat:lst_calculate' %}"
-         data-can-calculate="{{ user.is_staff|yesno:'1,0' }}">
-      {% csrf_token %}
-      <div class="lst-card-header">
-        <div class="lst-card-title">LAND SURFACE TEMPERATURE</div>
-        <button class="lst-card-close" id="lst-card-close" aria-label="Close LST tool">✕</button>
-      </div>
-      <p class="lst-card-hint">Landsat 9 thermal band and the NDVI layer (Statistical Mono-Window), for the area in view.</p>
-      <div class="lst-card-fields">
-        <label>From <input type="date" id="lst-from"></label>
-        <label>To <input type="date" id="lst-to"></label>
-        <label>Cell
-          <select id="lst-resolution">
-            <option value="30" selected>30 m</option>
-            <option value="60">60 m</option>
-            <option value="100">100 m</option>
-          </select>
-        </label>
-      </div>
-      <label class="lst-check"><input type="checkbox" id="lst-use-ndvi" checked> Emissivity from the NDVI layer</label>
-      <button class="lst-btn" id="lst-find">Find scenes for this view</button>
-      <div class="lst-view-info" id="lst-view-info"></div>
-      <div class="lst-scenes" id="lst-scenes" role="radiogroup" aria-label="Landsat scenes"></div>
-      <button class="lst-btn lst-btn-primary" id="lst-calculate" disabled>Calculate LST for this view</button>
-      <div class="lst-status" id="lst-status" role="status"></div>
-    </div>
-
-    <!-- SVF TOOL — Sky-view factor from the DSM for the area in view
-         (core/static/js/SvfTool.js, physicalEnv/views.py). Same look as the
-         LST card, so it reuses its lst-* classes. -->
-    <div class="lst-card" id="svf-card"
-         data-info-url="{% url 'physicalEnv:svf_info' %}"
-         data-calculate-url="{% url 'physicalEnv:svf_calculate' %}"
-         data-can-calculate="{{ user.is_staff|yesno:'1,0' }}">
-      {% csrf_token %}
-      <div class="lst-card-header">
-        <div class="lst-card-title">SKY VIEW FACTOR</div>
-        <button class="lst-card-close" id="svf-card-close" aria-label="Close SVF tool">✕</button>
-      </div>
-      <p class="lst-card-hint">Horizon search over the Digital Surface Model, for the area in view only (plus one search radius around it).</p>
-      <div class="lst-card-fields">
-        <label>Radius
-          <select id="svf-radius">
-            <option value="25">25 m</option>
-            <option value="50" selected>50 m</option>
-            <option value="100">100 m</option>
-            <option value="200">200 m</option>
-          </select>
-        </label>
-        <label>Cell
-          <select id="svf-resolution">
-            <option value="" selected>DSM</option>
-            <option value="1">1 m</option>
-            <option value="2">2 m</option>
-            <option value="5">5 m</option>
-          </select>
-        </label>
-      </div>
-      <div class="lst-view-info" id="svf-view-info"></div>
-      <button class="lst-btn lst-btn-primary" id="svf-calculate" disabled>Calculate SVF for this view</button>
-      <div class="lst-status" id="svf-status" role="status"></div>
-    </div>
-
-    <!-- DEGREE OF URBANISATION — GHSL/Eurostat classes on 100 m cells (local
-         variant) and 1 km cells (original method) from neighborhood population
-         spread over residential properties (core/static/js/DegurbaTool.js,
-         builtup/views_degurba.py, docs/DEGREE_OF_URBANISATION.md). -->
-    <div class="lst-card" id="degurba-card"
-         data-info-url="{% url 'builtup:degurba_info' %}"
-         data-calculate-url="{% url 'builtup:degurba_calculate' %}"
-         data-can-calculate="{{ user.is_staff|yesno:'1,0' }}">
-      {% csrf_token %}
-      <div class="lst-card-header">
-        <div class="lst-card-title">DEGREE OF URBANISATION</div>
-        <button class="lst-card-close" id="degurba-card-close" aria-label="Close Degree of Urbanisation tool">✕</button>
-      </div>
-      <p class="lst-card-hint">Neighborhood population spread over residential properties, classified with the GHSL rules. 100 m uses a 300 m window over settlement land so city edges stay sharp; 1 km is the original method on the same data.</p>
-      <div class="lst-card-fields">
-        <label>Grid
-          <select id="degurba-resolution">
-            <option value="100" selected>100 m (local)</option>
-            <option value="1000">1 km (original)</option>
-          </select>
-        </label>
-      </div>
-      <div class="lst-view-info" id="degurba-view-info"></div>
-      <div class="lst-view-info" id="degurba-cities"></div>
-      <button class="lst-btn lst-btn-primary" id="degurba-calculate" disabled>Build the grid</button>
-      <div class="lst-status" id="degurba-status" role="status"></div>
-    </div>
-
+    {% if user.is_staff %}
     <!-- NEIGHBOURHOOD GENERATOR — outline -> streets, plots, buildings
          (core/static/js/GeneratorTool.js, builtup/views_generator.py,
-         builtup/calculations/generative.py). Preview is a what-if; Store
-         completes a housing project (DAG New_Units -> Buildings). -->
+         builtup/calculations/generative.py). Edit mode › New neighbourhood.
+         Preview is a what-if; Store completes a housing project
+         (DAG New_Units -> Buildings). -->
     <div class="lst-card" id="generator-card"
          data-projects-url="{% url 'builtup:generator_projects' %}"
          data-preview-url="{% url 'builtup:generator_preview' %}"
@@ -345,69 +494,77 @@
         <div class="lst-card-title">NEIGHBOURHOOD GENERATOR</div>
         <button class="lst-card-close" id="generator-card-close" aria-label="Close neighbourhood generator">✕</button>
       </div>
-      <p class="lst-card-hint">Draw an outline or pick a housing project. Streets are laid out first; plots and buildings fill the blocks they leave. Protected nature (Natura 2000, NNN) is left unbuilt. Empty fields use the style's defaults (shown greyed).</p>
+      <p class="lst-card-hint">Draw an outline or pick a housing project. Streets are laid out first; plots and buildings fill the blocks they leave. Protected nature (Natura 2000, NNN) is left unbuilt. Empty fields use the style's defaults (shown greyed in More options).</p>
       <div class="lst-card-fields">
         <label class="generator-half">Project
           <select id="generator-project"><option value="">New outline (draw it)</option></select>
         </label>
         <button class="lst-btn" id="generator-draw" type="button">Draw outline</button>
-        <label class="generator-half">Style
-          <select id="generator-style">
-            <option value="plain" selected>Plain (straight grid)</option>
-            <option value="vinex">Vinex (row houses, curved streets)</option>
-            <option value="garden_city">Garden city (detached, curved)</option>
-            <option value="urban_block">Urban block (perimeter, chamfered corners)</option>
-            <option value="modernist">Modernist (slabs and towers)</option>
+        <div class="generator-wide generator-style-field">
+          <span class="generator-field-label" id="generator-style-label">Style</span>
+          <!-- GeneratorTool.js draws a card per option; the select stays the source of truth -->
+          <div class="generator-style-cards" id="generator-style-cards" role="radiogroup" aria-labelledby="generator-style-label"></div>
+          <select id="generator-style" class="generator-style-select" aria-labelledby="generator-style-label">
+            <option value="plain" selected>Plain: straight grid</option>
+            <option value="vinex">Vinex: row houses, curved streets</option>
+            <option value="garden_city">Garden city: detached, curved</option>
+            <option value="urban_block">Urban block: perimeter, chamfered corners</option>
+            <option value="modernist">Modernist: slabs and towers</option>
           </select>
-        </label>
-        <label>Street pattern
-          <select id="generator-street_pattern">
-            <option value="" selected>Style default</option>
-            <option value="grid">Grid</option>
-            <option value="curved">Curved</option>
-            <option value="radial">Radial</option>
-          </select>
-        </label>
-        <label>Variation <span id="generator-variation-value">50 %</span>
-          <input type="range" min="0" max="100" step="5" value="50" id="generator-variation">
-        </label>
-        <label>Seed
-          <span class="generator-seed-row">
-            <input type="number" min="1" step="1" value="1" id="generator-seed">
-            <button class="lst-btn" id="generator-shuffle" type="button" title="Draw a new variation">Shuffle</button>
-          </span>
-        </label>
-        <label>Typology
-          <select id="generator-typology">
-            <option value="row" selected>Row houses</option>
-            <option value="semi">Semi-detached</option>
-            <option value="detached">Detached</option>
-            <option value="perimeter">Perimeter blocks</option>
-            <option value="slab">Slabs</option>
-          </select>
-        </label>
+        </div>
         <label>Target dwellings <input type="number" min="1" step="1" id="generator-target_units"></label>
-        <label class="generator-half">Dwellings per building
-          <select id="generator-dwelling_mode">
-            <option value="auto" selected>Auto (houses up to 2 floors, flats above)</option>
-            <option value="single">One home per building</option>
-            <option value="stacked">Flats by floor area</option>
-          </select>
-        </label>
-        <label>Dwelling size (m² gross) <input type="number" min="41" step="5" id="generator-unit_gfa_m2"></label>
-        <label>Street width (m) <input type="number" min="3" max="40" step="0.5" id="generator-street_width"></label>
-        <label class="generator-half lst-check"><input type="checkbox" id="generator-ring" checked> Ring street along the outline</label>
-        <label>Block length (m) <input type="number" min="20" step="5" id="generator-block_length"></label>
-        <label>Block depth (m) <input type="number" min="20" step="5" id="generator-block_depth"></label>
-        <label>Plot width (m) <input type="number" min="3" step="0.1" id="generator-plot_width"></label>
-        <label>Plot depth (m) <input type="number" min="8" step="1" id="generator-plot_depth"></label>
-        <label>Building depth (m) <input type="number" min="5" step="0.5" id="generator-building_depth"></label>
-        <label>Front setback (m) <input type="number" min="0" step="0.5" id="generator-front_setback"></label>
         <label>Floors <input type="number" min="1" max="20" step="1" id="generator-floors"></label>
-        <label>Grid angle (°) <input type="number" min="-90" max="90" step="1" id="generator-angle_deg"></label>
-        <label class="generator-half">Project name <input type="text" maxlength="100" id="generator-name"></label>
-        <label>Completion year <input type="number" min="1900" max="2200" step="1" id="generator-year"></label>
       </div>
+      <details class="card-more" id="generator-more">
+        <summary>More options</summary>
+        <div class="lst-card-fields">
+          <label>Street pattern
+            <select id="generator-street_pattern">
+              <option value="" selected>Style default</option>
+              <option value="grid">Grid</option>
+              <option value="curved">Curved</option>
+              <option value="radial">Radial</option>
+            </select>
+          </label>
+          <label>Variation <span id="generator-variation-value">50 %</span>
+            <input type="range" min="0" max="100" step="5" value="50" id="generator-variation">
+          </label>
+          <label>Seed
+            <span class="generator-seed-row">
+              <input type="number" min="1" step="1" value="1" id="generator-seed">
+              <button class="lst-btn" id="generator-shuffle" type="button" title="Draw a new variation">Shuffle</button>
+            </span>
+          </label>
+          <label>Typology
+            <select id="generator-typology">
+              <option value="row" selected>Row houses</option>
+              <option value="semi">Semi-detached</option>
+              <option value="detached">Detached</option>
+              <option value="perimeter">Perimeter blocks</option>
+              <option value="slab">Slabs</option>
+            </select>
+          </label>
+          <label class="generator-half">Dwellings per building
+            <select id="generator-dwelling_mode">
+              <option value="auto" selected>Auto (houses up to 2 floors, flats above)</option>
+              <option value="single">One home per building</option>
+              <option value="stacked">Flats by floor area</option>
+            </select>
+          </label>
+          <label>Dwelling size (m² gross) <input type="number" min="41" step="5" id="generator-unit_gfa_m2"></label>
+          <label>Street width (m) <input type="number" min="3" max="40" step="0.5" id="generator-street_width"></label>
+          <label class="generator-half lst-check"><input type="checkbox" id="generator-ring" checked> Ring street along the outline</label>
+          <label>Block length (m) <input type="number" min="20" step="5" id="generator-block_length"></label>
+          <label>Block depth (m) <input type="number" min="20" step="5" id="generator-block_depth"></label>
+          <label>Plot width (m) <input type="number" min="3" step="0.1" id="generator-plot_width"></label>
+          <label>Plot depth (m) <input type="number" min="8" step="1" id="generator-plot_depth"></label>
+          <label>Building depth (m) <input type="number" min="5" step="0.5" id="generator-building_depth"></label>
+          <label>Front setback (m) <input type="number" min="0" step="0.5" id="generator-front_setback"></label>
+          <label>Grid angle (°) <input type="number" min="-90" max="90" step="1" id="generator-angle_deg"></label>
+          <label class="generator-half">Project name <input type="text" maxlength="100" id="generator-name"></label>
+          <label>Completion year <input type="number" min="1900" max="2200" step="1" id="generator-year"></label>
+        </div>
+      </details>
       <div class="generator-findings" id="generator-site" role="status"></div>
       <div class="generator-findings" id="generator-rules"></div>
       <div class="lst-view-info" id="generator-metrics"></div>
@@ -416,113 +573,9 @@
       <div class="lst-status" id="generator-status" role="status"></div>
     </div>
 
-    <!-- THERMAL COMFORT TOOL — SOLWEIG Tmrt, UTCI and PET for the area in view
-         and one hour (core/static/js/SolweigTool.js, urban_heat/solweig/,
-         docs/THERMAL_COMFORT.md). Reuses the LST card's lst-* classes. -->
-    <div class="lst-card" id="solweig-card"
-         data-info-url="{% url 'urban_heat:solweig_info' %}"
-         data-met-url="{% url 'urban_heat:solweig_met' %}"
-         data-calculate-url="{% url 'urban_heat:solweig_calculate' %}"
-         data-run-url="{% url 'urban_heat:solweig_run' 0 %}"
-         data-stale-url="{% url 'urban_heat:solweig_stale' %}"
-         data-can-calculate="{{ user.is_staff|yesno:'1,0' }}">
-      {% csrf_token %}
-      <div class="lst-card-header">
-        <div class="lst-card-title">THERMAL COMFORT (SOLWEIG)</div>
-        <button class="lst-card-close" id="solweig-card-close" aria-label="Close thermal comfort tool">✕</button>
-      </div>
-      <p class="lst-card-hint">Mean radiant temperature, UTCI and PET for the area in view at one hour. The sun position follows the view.</p>
-      <div class="lst-card-fields">
-        <label>Date <input type="date" id="solweig-date"></label>
-        <label>Hour
-          <select id="solweig-hour"></select>
-        </label>
-        <label>Cell
-          <select id="solweig-resolution">
-            <option value="1" selected>1 m</option>
-            <option value="2">2 m</option>
-            <option value="5">5 m</option>
-          </select>
-        </label>
-      </div>
-      <div class="lst-card-fields met-source">
-        <label>Weather
-          <select id="solweig-source">
-            <option value="manual">Manual</option>
-            <option value="knmi" selected>Nearest KNMI station</option>
-            <option value="era5">ERA5</option>
-          </select>
-        </label>
-        <button class="lst-btn" id="solweig-fetch" type="button">Fetch</button>
-      </div>
-      <div class="lst-card-fields met-values">
-        <label>Air temp. °C <input type="number" id="solweig-ta_c" step="0.1" value="25"></label>
-        <label>RH % <input type="number" id="solweig-rh_pct" step="1" min="0" max="100" value="50"></label>
-        <label>Wind m/s <input type="number" id="solweig-wind_ms" step="0.1" min="0" value="2"></label>
-        <label>Wind dir. ° <input type="number" id="solweig-wind_dir_deg" step="1" min="0" max="360" value="240"></label>
-        <label>Kdown W/m² <input type="number" id="solweig-kdown_wm2" step="1" min="0" value="600"></label>
-        <label>Pressure kPa <input type="number" id="solweig-pressure_kpa" step="0.01" value="101.3"></label>
-      </div>
-      <div class="lst-card-fields met-values" title="The day's values for the urban heat island in PET; leave blank for PET without it">
-        <label>Day Tmax °C <input type="number" id="solweig-tmax_c" step="0.1"></label>
-        <label>Day Tmin °C <input type="number" id="solweig-tmin_c" step="0.1"></label>
-        <label>Day Kdown W/m² <input type="number" id="solweig-kdown_day_wm2" step="1" min="0"></label>
-        <label>Day wind m/s <input type="number" id="solweig-wind_day_ms" step="0.1" min="0"></label>
-      </div>
-      <div class="lst-view-info" id="solweig-met-info"></div>
-      <!-- PERSON PILL — who the PET is felt by: body, activity and clothing; clo is
-           the sum of the garments (urban_heat/calculations/person.py via
-           urban_heat/solweig/person/). The run stores the person; the heat
-           dashboard's PET card names it. -->
-      <div class="solweig-person">
-        <button type="button" class="person-pill" id="solweig-person-btn"
-                aria-expanded="false" aria-controls="solweig-person-panel"
-                title="Who the PET is felt by: body, activity and clothing">
-          <span class="person-pill-icon" aria-hidden="true">🧍</span>
-          <span class="person-pill-text" id="solweig-person-summary">PET reference person · 0.90 clo</span>
-          <span class="person-pill-edit">Person ▾</span>
-        </button>
-        <div class="person-panel" id="solweig-person-panel" hidden
-             data-person-url="{% url 'urban_heat:solweig_person' %}">
-          <div class="lst-card-fields person-row">
-            <label>Person <select id="solweig-person-preset"></select></label>
-          </div>
-          <div class="lst-card-fields person-row">
-            <label>Age y <input type="number" id="solweig-person-age" step="1"></label>
-            <label>Sex <select id="solweig-person-sex"></select></label>
-            <label>Weight kg <input type="number" id="solweig-person-weight" step="1"></label>
-            <label>Height m <input type="number" id="solweig-person-height" step="0.01"></label>
-          </div>
-          <div class="lst-card-fields person-row person-activity">
-            <label>Activity <select id="solweig-person-activity"></select></label>
-            <label>Posture <select id="solweig-person-position"></select></label>
-          </div>
-          <div class="person-clothing">
-            <div class="person-clothing-head">
-              <span>Clothing</span>
-              <label class="person-clo" title="Icl = Σ Iclu of the ticked garments (ASHRAE 55). Without garments, type the clo.">
-                clo <input type="number" id="solweig-person-clo" step="0.01" min="0" max="3">
-              </label>
-            </div>
-            <div class="person-garments" id="solweig-person-garments"></div>
-          </div>
-          <div class="lst-view-info person-derived" id="solweig-person-derived"></div>
-        </div>
-      </div>
-      <!-- Shown while a KNMI'23 scenario is selected (Scenarios panel / year): the
-           weather above moved into it; Calculate then stores a scenario run. -->
-      <div class="lst-view-info solweig-scenario" id="solweig-scenario" hidden
-           data-scenario-met-url="{% url 'urban_heat:solweig_scenario_met' %}"
-           data-runs-url="{% url 'map:climate_runs' %}"></div>
-      <div class="lst-view-info" id="solweig-view-info"></div>
-      <button class="lst-btn lst-btn-primary" id="solweig-calculate" disabled>Calculate thermal comfort</button>
-      <div class="lst-status" id="solweig-status" role="status"></div>
-    </div>
-
-    {% if user.is_staff %}
     <!-- MAP SETTINGS — editable layers and styles (staff; core/static/js/MapSettings.js,
-         mainMap/settings_views.py). Opened from the header's Map settings button;
-         reuses the LST card's lst-* look. -->
+         mainMap/settings_views.py). Opened from the Edit mode banner's Map settings
+         button; reuses the LST card's lst-* look. -->
     <div class="lst-card settings-card" id="settings-card" data-url="{% url 'map:map_settings' %}">
       <div class="lst-card-header">
         <div class="lst-card-title">MAP SETTINGS</div>
@@ -547,19 +600,126 @@
       </div>
     </div>
 
-    <!-- WEATHER PILL (top centre): live weather at the map centre; a click opens
-         the Urban Heat panel, whose weather sliders adjust it (WeatherPill.js). -->
-    <div class="weather-pill-wrap" id="weather-pill-wrap">
-      <button type="button" class="weather-pill" id="weather-pill" hidden
-              data-live-url="{% url 'weather:live_weather' %}"
-              aria-label="Weather at the map centre">
-        <span class="weather-pill-icon" id="weather-pill-icon">🌡️</span>
-        <span class="weather-pill-temp" id="weather-pill-temp">–</span>
-        <span class="weather-pill-meta" id="weather-pill-meta"></span>
-        <span class="weather-pill-badge" id="weather-pill-badge" hidden>What-if</span>
+    <!-- MODE BANNER (Map simplification step 5; core/static/js/Modes.js): across
+         the top of the map in Plan and Edit, hidden in Explore. Plan: the one
+         "What-if" notice, naming what differs from the stored baseline, with
+         Back to baseline (replaces the per-card badges). Edit (staff): the
+         restore point, the generator and the map settings. -->
+    <div class="mode-banner" id="mode-banner" hidden>
+      <div class="mode-banner-row" data-banner="plan" role="status" aria-live="polite">
+        <span class="mode-banner-tag">What-if</span>
+        <span class="mode-banner-text" id="plan-banner-text"></span>
+        <span class="mode-banner-items" id="plan-banner-items"></span>
+        <button type="button" class="mode-banner-btn" id="plan-reset">
+          <span class="bi bi-arrow-counterclockwise" aria-hidden="true"></span> Back to baseline
+        </button>
+      </div>
+      {% if user.is_staff %}
+      <div class="mode-banner-row" data-banner="edit">
+        <span class="mode-banner-tag is-edit">Edit</span>
+        <span class="mode-banner-text">Changes are stored. Click an object › Edit, or ＋ in Layers to draw one.</span>
+        <!-- Restore point (core/editing.py::backup); Create/Restore/Discard re-render it in place -->
+        <div id="edit-backup-bar" class="edit-backup-bar" hx-get="{% url 'map:edit_backup' %}"
+             hx-trigger="load, feature-saved from:body" hx-swap="innerHTML"></div>
+        <button type="button" class="mode-banner-btn" id="generatorToolBtn" aria-controls="generator-card">
+          <span class="bi bi-grid-3x3" aria-hidden="true"></span> New neighbourhood
+        </button>
+        <button type="button" class="mode-banner-btn" id="map-settings-btn"
+                aria-controls="settings-card" aria-expanded="false">
+          <span class="bi bi-gear" aria-hidden="true"></span> Map settings
+        </button>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- STATUS STRIP (top centre; Map simplification step 3): the place and its
+         population (opens the dock), the time chip = the one place to set the
+         year and the KNMI'23 climate scenario (mainMap.js::setTime), and the
+         live weather (WeatherPill.js; a click opens the Urban Heat lens). -->
+    <div class="status-strip" id="status-strip">
+      <div class="strip-place">
+        <span class="city-name">{{ city_name|default:"Enschede" }}</span>
+        <button type="button" class="strip-population" data-indicator="population"
+                aria-controls="population-panel" title="Population forecast">
+          <span class="bi bi-people" aria-hidden="true"></span>
+          <span id="population-count">0</span>
+        </button>
+      </div>
+      <button type="button" class="time-chip" id="time-chip"
+              aria-haspopup="dialog" aria-expanded="false" aria-controls="time-menu">
+        <span class="time-chip-year" id="time-chip-year">2025</span>
+        <span class="time-chip-climate" id="time-chip-climate">Current climate</span>
+        <span class="bi bi-chevron-down time-chip-caret" aria-hidden="true"></span>
       </button>
-      <button type="button" class="weather-pill-radar" id="weather-pill-radar" hidden
-              aria-pressed="false" title="Show the KNMI rain radar">🌧 Radar</button>
+      <div class="weather-pill-wrap" id="weather-pill-wrap">
+        <button type="button" class="weather-pill" id="weather-pill" hidden
+                data-live-url="{% url 'weather:live_weather' %}"
+                aria-label="Weather at the map centre">
+          <span class="weather-pill-icon" id="weather-pill-icon">🌡️</span>
+          <span class="weather-pill-temp" id="weather-pill-temp">–</span>
+          <span class="weather-pill-meta" id="weather-pill-meta"></span>
+        </button>
+        <button type="button" class="weather-pill-radar" id="weather-pill-radar" hidden
+                aria-pressed="false" title="Show the KNMI rain radar">🌧 Radar</button>
+      </div>
+      <!-- Advisor flag (core/static/js/Advisors.js): hidden until something needs attention -->
+      <button type="button" class="advisor-flag" id="advisor-flag" hidden
+              aria-haspopup="dialog" aria-expanded="false" aria-controls="advisor-tray">
+        <span class="bi bi-flag-fill" aria-hidden="true"></span>
+        <span class="advisor-count" id="advisor-count">0</span>
+      </button>
+    </div>
+
+    <!-- ADVISOR TRAY: stale results, homes without water, site warnings and
+         extrapolated years in one list; each entry opens the place to act. -->
+    <div class="advisor-tray" id="advisor-tray" role="dialog" aria-label="Needs attention">
+      <div class="advisor-tray-title">Needs attention</div>
+      <ul class="advisor-list" id="advisor-list"></ul>
+    </div>
+
+    <!-- TIME MENU: opened from the time chip. Year, climate pathway (decades
+         2030-2100) and heat day, read by every panel; Compare opens the
+         Scenarios panel. Pathways and heat days: weather/calculations/climate.py. -->
+    <div class="time-menu" id="time-menu" role="dialog" aria-label="Year and climate scenario">
+      <!-- Year picker (mainMap.js: initYearPicker). The slider snaps to these
+           years; dragging only moves the readout, releasing applies the year. -->
+      <div class="year-picker" id="year-picker"
+           data-years="2025,2026,2027,2030,2040,2050,2060,2070,2080,2090,2100"
+           data-ticks="2025,2050,2100">
+        <div class="year-readout">
+          <button type="button" class="year-step" data-step="-1" aria-label="Previous year"><span class="bi bi-chevron-left"></span></button>
+          <output class="year-value" id="year-value" for="year-slider" aria-live="polite">2025</output>
+          <button type="button" class="year-step" data-step="1" aria-label="Next year"><span class="bi bi-chevron-right"></span></button>
+        </div>
+        <p class="year-status" id="year-status">Current population, current climate</p>
+        <input type="range" class="year-slider" id="year-slider" min="0" max="10" step="1" value="0"
+               aria-label="Year" aria-valuetext="2025">
+        <div class="year-ticks" id="year-ticks" aria-hidden="true"></div>
+      </div>
+
+      <div class="time-menu-section" role="group" aria-labelledby="time-pathway-label">
+        <span class="time-menu-label" id="time-pathway-label">Climate pathway</span>
+        <div class="time-pathways">
+          {% for code, info in climate_pathways.items %}
+          <button type="button" class="time-pathway is-{{ info.variant }}" data-pathway="{{ code }}"
+                  aria-pressed="false" title="{{ info.emissions|capfirst }} emissions, {{ info.variant }} variant">{{ info.label }}</button>
+          {% endfor %}
+        </div>
+        <p class="time-menu-hint" id="time-pathway-hint">Pathways apply from 2030; earlier years use today's climate.</p>
+      </div>
+
+      <div class="time-menu-section">
+        <label class="time-menu-label" for="time-heat">Heat day</label>
+        <select id="time-heat" class="time-heat">
+          {% for mode, label in climate_heat_modes.items %}
+          <option value="{{ mode }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <button type="button" class="time-compare" id="time-compare" data-panel-title="Scenarios">
+        <span class="bi bi-layout-split" aria-hidden="true"></span> Compare scenarios
+      </button>
     </div>
 
     <!-- MAP LOADER + the server's console lines while it works (ConsoleFeed.js) -->
@@ -586,128 +746,39 @@
           </button>
         </div>
 
-        <div class="indicator-pill" data-indicator="layers">
-          <div class="indicator-icon">📍</div>
-          <div class="indicator-meta">
-            <span class="indicator-label">Layers</span>
-            <span class="indicator-value" id="layers-count">0</span>
-          </div>
-        </div>
-
-        <div class="indicator-pill" data-indicator="features">
-          <div class="indicator-icon">🔷</div>
-          <div class="indicator-meta">
-            <span class="indicator-label">Features</span>
-            <span class="indicator-value" id="features-count">0</span>
-          </div>
-        </div>
-
-        <div class="indicator-pill" data-indicator="visible">
-          <div class="indicator-icon">👁️</div>
-          <div class="indicator-meta">
-            <span class="indicator-label">Visible</span>
-            <span class="indicator-value" id="visible-count">0</span>
-          </div>
-        </div>
-
-        <div class="indicator-pill" data-indicator="population">
-          <div class="indicator-icon">👤</div>
-          <div class="indicator-meta">
-            <span class="indicator-label">Population</span>
-            <span class="indicator-value" id="population-count">0</span>
-          </div>
-        </div>
-
-        <button class="mode-btn" id="actions-menu-btn"
-                aria-haspopup="true" aria-expanded="false" aria-controls="actions-menu">
-          <span class="bi bi-sliders"></span> Actions ·
-          <span id="actions-menu-year">2025</span>
-          <span class="actions-menu-caret">▴</span>
-          <span class="stale-dot" hidden title="Buildings changed in this view: recalculate SVF / thermal comfort"></span>
+        <button class="mode-btn" id="btn-layers" aria-controls="layers-panel" title="Show or hide the layers panel">
+          <span class="bi bi-layers" aria-hidden="true"></span> Layers
         </button>
+
       </div>
 
-      <div class="city-name">{{ city_name|default:"Enschede" }}</div>
+      <!-- MODE SWITCH (Map simplification step 5; Modes.js::setMapMode).
+           Explore: the stored data, read-only (default). Plan: what-ifs and
+           climate scenarios, nothing stored. Edit (staff): change the data. -->
+      <div class="mode-switch" id="mode-switch" role="radiogroup" aria-label="Mode">
+        <button type="button" role="radio" class="mode-switch-btn" data-mode="explore" aria-checked="true"
+                title="Explore: the stored data, read-only">
+          <span class="bi bi-eye" aria-hidden="true"></span> Explore
+        </button>
+        <button type="button" role="radio" class="mode-switch-btn" data-mode="plan" aria-checked="false"
+                title="Plan: what-ifs and climate scenarios; nothing is stored">
+          <span class="bi bi-sliders" aria-hidden="true"></span> Plan
+        </button>
+        {% if user.is_staff %}
+        <button type="button" role="radio" class="mode-switch-btn" data-mode="edit" aria-checked="false"
+                title="Edit: change the stored data, draw neighbourhoods, map settings (staff)">
+          <span class="bi bi-pencil-square" aria-hidden="true"></span> Edit
+        </button>
+        {% endif %}
+      </div>
 
       <div class="bottom-right">
         <button class="mode-btn" id="btn-dashboard">
-          <span>📊</span> Dashboard
-        </button>
-        <button class="mode-btn" id="btn-scenarios">
-          <span>🧩</span> Scenarios
+          <span class="bi bi-bar-chart" aria-hidden="true"></span> Dashboard
         </button>
       </div>
     </div>
 
-    <!-- ACTIONS MENU — drop-up opened from the bottom bar's Actions button.
-         A sibling of .bottom-bar (not a child) so it can stack above the
-         side panel and population dock; mainMap.js anchors it to the button. -->
-    <div class="actions-menu" id="actions-menu">
-      <div class="actions-header">
-        <span class="actions-title">ACTIONS</span>
-      </div>
-      <div class="actions-menu-row">
-        <button class="action-panel-btn" id="importDataBtn">
-          <span class="bi bi-cloud-upload"></span>
-          <span class="action-btn-text">Upload Data</span>
-        </button>
-        <button class="action-panel-btn" id="getDataBtn">
-          <span class="bi bi-cloud-download"></span>
-          <span class="action-btn-text">Retrieve Data from APIs</span>
-        </button>
-      </div>
-
-      <!-- Calculations run over the area in view -->
-      <div class="actions-divider"></div>
-      <div class="actions-header">
-        <span class="actions-title">CALCULATE FOR THIS VIEW</span>
-      </div>
-      <div class="actions-menu-row actions-menu-grid">
-        <button class="action-panel-btn" id="lstToolBtn">
-          <span class="bi bi-thermometer-sun"></span>
-          <span class="action-btn-text">Land Surface Temperature</span>
-        </button>
-        <button class="action-panel-btn" id="svfToolBtn">
-          <span class="bi bi-brightness-high"></span>
-          <span class="action-btn-text">Sky View Factor</span>
-          <span class="stale-dot" hidden title="Buildings changed here since the SVF was calculated: run it again"></span>
-        </button>
-        <button class="action-panel-btn" id="solweigToolBtn">
-          <span class="bi bi-person-walking"></span>
-          <span class="action-btn-text">Thermal Comfort (SOLWEIG)</span>
-          <span class="stale-dot" hidden title="Buildings changed here since thermal comfort was calculated: run it again"></span>
-        </button>
-        <button class="action-panel-btn" id="degurbaToolBtn">
-          <span class="bi bi-buildings"></span>
-          <span class="action-btn-text">Degree of Urbanisation</span>
-        </button>
-        <button class="action-panel-btn" id="generatorToolBtn">
-          <span class="bi bi-grid-3x3"></span>
-          <span class="action-btn-text">Neighbourhood generator</span>
-        </button>
-      </div>
-
-      <!-- Year selector -->
-      <div class="actions-divider"></div>
-      <div class="actions-header">
-        <span class="actions-title">SELECT YEAR</span>
-      </div>
-      <!-- Year picker (mainMap.js: initYearPicker). The slider snaps to these
-           years; dragging only moves the readout, releasing applies the year. -->
-      <div class="year-picker" id="year-picker"
-           data-years="2025,2026,2027,2030,2040,2050,2060,2070,2080,2090,2100"
-           data-ticks="2025,2050,2100">
-        <div class="year-readout">
-          <button type="button" class="year-step" data-step="-1" aria-label="Previous year"><span class="bi bi-chevron-left"></span></button>
-          <output class="year-value" id="year-value" for="year-slider" aria-live="polite">2025</output>
-          <button type="button" class="year-step" data-step="1" aria-label="Next year"><span class="bi bi-chevron-right"></span></button>
-        </div>
-        <p class="year-status" id="year-status">Current population · current climate</p>
-        <input type="range" class="year-slider" id="year-slider" min="0" max="10" step="1" value="0"
-               aria-label="Year" aria-valuetext="2025">
-        <div class="year-ticks" id="year-ticks" aria-hidden="true"></div>
-      </div>
-    </div>
   </div>
 </div>
 

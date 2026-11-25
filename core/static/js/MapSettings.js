@@ -1,6 +1,7 @@
 // ============================================================
 // MapSettings.js — the map's settings panel (staff only).
-// Opened from the header's "Map settings" button (#map-settings-btn); the
+// Opened from the Edit mode banner's "Map settings" button (#map-settings-btn,
+// Modes.js); the
 // body is an HTMX partial from mainMap/settings_views.py with two tabs:
 // which layers are editable, and the layer styles. A save answers with an
 // HX-Trigger, which this file turns into a map update without a reload:

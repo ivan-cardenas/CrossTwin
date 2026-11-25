@@ -14,42 +14,49 @@ function initializeUI() {
   const panelBody  = document.getElementById('panel-body');
   const hint       = document.getElementById('onboarding-hint');
 
-  // ---- Toolbar clicks ---------------------------------------------------
+  // ---- Lens rail --------------------------------------------------------
+  renderLensRail();
+
+  // A lens's indicator panel arrives through the button's own hx-get; a lens
+  // with an intro shows it here; Overview closes the panel.
   toolbar?.addEventListener('click', (evt) => {
     const btn = evt.target.closest('.tool-button');
     if (!btn) return;
 
     const tool = btn.dataset.tool;
+    const lens = LENSES[tool];
 
-    toolbar.querySelectorAll('.tool-button').forEach(b =>
-      b.classList.toggle('active', b === btn)
-    );
+    markActiveLens(tool);
     sync3DBuildingColor();
     syncBasemapTrees();     // 'green' shows only the database's trees
 
     if (hint) hint.remove();
 
-    // Basemap switch
-    changeBasemap(tool === 'satellite' ? 'satellite' : 'DigitalTwin');
-
     // Groundwater WMS toggle
     if (tool === 'groundwater') toggleGroundwaterLayer();
 
-    // Filter & activate layers for the tool
-    filterLayersByTool(tool);
-    if (tool !== 'overview' && tool !== 'layers' && tool !== 'satellite') {
-      activateToolLayers(tool);
-    }
+    panelTab = 'summary';   // a new lens starts on its Summary tab (Panels.js)
+    if (lens) openLens(tool); else closeLens();
 
-    layersPanel?.classList.add('visible');
-
-    // Side panel info
-    const content = TOOL_CONTENT[tool];
-    if (content && panelTitle && panelBody) {
-      panelTitle.textContent = content.title;
-      panelBody.innerHTML = content.body;
+    if (!lens) {
+      sidePanel?.classList.remove('visible');
+    } else if (lens.intro && panelTitle && panelBody) {
+      panelTitle.textContent = lens.title;
+      panelBody.innerHTML = lens.intro;
       sidePanel?.classList.add('visible');
     }
+    if (lens?.opensPopulationDock
+        && !document.getElementById('population-panel')?.classList.contains('visible')) {
+      togglePopulationPanel();
+    }
+  });
+
+  document.getElementById('btn-all-layers')?.addEventListener('click', toggleLayersDrawer);
+
+  // "Show on map" on an indicator card (Layers.js::focusCardLayers)
+  document.addEventListener('click', (evt) => {
+    const btn = evt.target.closest?.('.show-on-map');
+    if (btn) focusCardLayers(btn);
   });
 
   // ---- Panel close buttons ----------------------------------------------
@@ -87,10 +94,10 @@ function initializeUI() {
     changeBasemap(e.target.value);
   });
 
-  // ---- Dashboard & Scenarios buttons ------------------------------------
+  // ---- Dashboard button -------------------------------------------------
+  // (Scenarios open from the time menu's Compare button, mainMap.js)
   const dashboardBtn = document.getElementById('btn-dashboard');
   dashboardBtn?.addEventListener('click', toggleDashboard);
-  document.getElementById('btn-scenarios')?.addEventListener('click', showScenarios);
 
   // Keep the Dashboard button's "active" state equal to "side panel is open",
   // whichever control opened or closed it (✕, layer pills, toolbar, htmx swap).
@@ -104,7 +111,7 @@ function initializeUI() {
 
   // ---- Population dock --------------------------------------------------
   const populationPanel = document.getElementById('population-panel');
-  const populationPill = document.querySelector('.indicator-pill[data-indicator="population"]');
+  const populationPill = document.querySelector('.strip-population');
   document.getElementById('population-panel-close')?.addEventListener('click', () => {
     populationPanel?.classList.remove('visible');
   });
@@ -116,19 +123,28 @@ function initializeUI() {
     syncPopulationPill();
   }
 
-  // ---- Indicator pills --------------------------------------------------
-  document.querySelectorAll('.indicator-pill').forEach(pill => {
-    pill.addEventListener('click', () => {
-      const type = pill.dataset.indicator;
-      if (type === 'layers' || type === 'visible') {
-        layersPanel?.classList.toggle('visible');
-        sidePanel?.classList.remove('visible');
-      }
-      // The population dock is independent of the side panel: an indicator
-      // panel stays open while it is shown.
-      if (type === 'population') togglePopulationPanel();
-    });
+  // ---- Layers button ----------------------------------------------------
+  // Opens/closes the layers panel (the layer/feature/visible counts live in
+  // its footer now, MapUI.js::updateIndicators).
+  const layersBtn = document.getElementById('btn-layers');
+  layersBtn?.addEventListener('click', () => {
+    layersPanel?.classList.toggle('visible');
   });
+  if (layersPanel && layersBtn) {
+    const syncLayersBtn = () => {
+      const open = layersPanel.classList.contains('visible');
+      layersBtn.classList.toggle('active', open);
+      layersBtn.setAttribute('aria-expanded', String(open));
+    };
+    new MutationObserver(syncLayersBtn)
+      .observe(layersPanel, { attributes: true, attributeFilter: ['class'] });
+    syncLayersBtn();
+  }
+
+  // ---- Population (status strip) ----------------------------------------
+  // The population dock is independent of the side panel: an indicator
+  // panel stays open while it is shown.
+  populationPill?.addEventListener('click', togglePopulationPanel);
 
   // ---- Legend stack repositioning ---------------------------------------
   // The legend stack (bottom-right) must dodge the side panel and the

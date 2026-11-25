@@ -847,7 +847,7 @@ EXTERNAL_DATA_CATALOG = [
         "description": "Soil polygons of the Dutch soil map (2025 edition) with soil code and name; each soil type gets an SCS hydrologic soil group (A-D) and infiltration rate. Feeds the infiltration indicator of the water dashboard together with land cover.",
         "target_model": "physicalEnv.SoilArea",
         "url": "https://maps.bodemdata.nl/geoserver/bodem/ows",
-        "layer": "bodem:Bodemkaart50000_v2025",
+        "layer": "bodem:Bodemkaart50000",
         "format": "wfs",
         "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "requires_bbox": True,

@@ -76,9 +76,11 @@ async function loadLayerCatalog(appLabels) {
   // background fetch) re-includes 'administrative' layers already loaded, and
   // must not clobber their loadedLayers/visibility state.
   const existingKeys = new Set(availableLayers.map(l => l.key));
+  const added = [];
   for (const layer of data.layers) {
     if (!existingKeys.has(layer.key)) {
       availableLayers.push(layer);
+      added.push(layer);
       // is_active is only set on WMS layers; a slow-loading one (e.g. the
       // KNMI radar) can be flagged inactive so it starts unchecked instead
       // of auto-loading when its panel opens.
@@ -87,6 +89,7 @@ async function loadLayerCatalog(appLabels) {
   }
 
   renderLayerList();
+  applyLensToNewLayers(added);
   updateIndicators();
 }
 
@@ -895,6 +898,13 @@ async function zoomToLayer(key) {
   if (!loadedLayers[key]) return;
   const { geojson, viewport, config } = loadedLayers[key];
 
+  // Rasters hold no features: fit to the extent of their tile source.
+  if (config?.layer_type === 'raster') {
+    const b = map.getSource(`raster-source-${config.model_name}-${config.raster_id}`)?.bounds;
+    if (b) safeFitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 50, duration: 800 });
+    return;
+  }
+
   // A viewport-loaded layer only holds what is on screen; ask the server
   // for the extent of the whole layer instead.
   if (viewport) {
@@ -964,45 +974,190 @@ function toggleGroundwaterLayer() {
   repositionDynamicLegends();
 }
 
-// ---- Tool-based filtering ---------------------------------------------
+// ---- Lenses (Config.js::LENSES) ----------------------------------------
 
-function filterLayersByTool(toolId) {
-  activeTool = toolId;
-  const categories = TOOL_CATEGORIES[toolId] || [];
+// Layers shown before the first lens opened; Overview puts them back.
+// null while no lens is open. Switching from one lens to another keeps it.
+let lensRestoreKeys = null;
 
-  availableLayers.forEach(layer => {
-    const layerEl = document.getElementById(`layer-item-${layer.key}`);
-    const matches = categories.includes(layer.app_label);
-    if (layerEl) layerEl.style.display = matches ? '' : 'none';
-  });
-
-  document.querySelectorAll('.app-group').forEach(group => {
-    const visibleItems = group.querySelectorAll('.layer-item:not([style*="display: none"])');
-    group.style.display = visibleItems.length > 0 ? '' : 'none';
-  });
-
-  const panelTitle = document.querySelector('.layers-panel-title');
-  if (panelTitle) {
-    const toolNames = {
-      overview: 'All Layers',
-      temperature: 'Urban Heat Layers', green: 'Green and Park Layers',
-      water: 'Water supply Layers', groundwater: 'Groundwater Layers',
-    };
-    panelTitle.innerHTML = `<i class="bi bi-layers"></i> ${toolNames[toolId] || 'Layers'}`;
-  }
+function lensApps(toolId) {
+  return LENSES[toolId]?.apps || null;
 }
 
-function activateToolLayers(toolId) {
-  const categories = TOOL_CATEGORIES[toolId];
-  if (!categories) return;
+/** Show or hide one catalog layer and keep its checkbox in step. */
+function setLayerShown(key, shown) {
+  toggleLayerVisibility(key, shown);
+  const cb = document.getElementById(`toggle-${key}`);
+  if (cb) cb.checked = shown;
+}
 
+function shownLayerKeys() {
+  return new Set(Object.keys(loadedLayers).filter(key => layerVisibility[key] !== false));
+}
+
+function layerModelKey(layer) {
+  return `${layer.app_label}.${layer.model_name}`;
+}
+
+/**
+ * Whether an open lens shows a catalog layer. A lens with indicator cards
+ * (a `panel`) opens with its vector layers only: its rasters come one at a
+ * time with a card's "Show on map" (focusCardLayers). A lens without cards
+ * shows all of its layers.
+ */
+function lensShows(layer, toolId) {
+  const lens = LENSES[toolId];
+  if (!lens || !lens.apps.includes(layer.app_label)) return false;
+  return !(lens.panel && (layer.layer_type === 'raster' || layer.layer_type === 'wms'));
+}
+
+// "Show on map" (Templates/partials/_show_on_map.html): the pressed card
+// button's focus key (showOnMapKey), or null. Reset when a lens opens or closes.
+let cardFocus = null;
+
+function showOnMapKey(btn) {
+  return `${btn.dataset.layers}#${btn.dataset.rasterId || ''}`;
+}
+
+function syncShowOnMapButtons() {
+  document.querySelectorAll('.show-on-map').forEach(btn =>
+    btn.setAttribute('aria-pressed', String(showOnMapKey(btn) === cardFocus)));
+}
+
+/**
+ * Show the layers behind a card's number, and of the data only those (the
+ * administrative units stay, they select the unit). With a raster id (the
+ * heat cards) exactly that raster row; a raster model without one shows its
+ * newest row (highest raster_id). Pressing the same card again returns to
+ * the lens's own layers.
+ */
+function focusCardLayers(btn) {
+  const spec = btn?.dataset.layers;
+  const rasterId = btn?.dataset.rasterId ? Number(btn.dataset.rasterId) : null;
+  const key = btn ? showOnMapKey(btn) : null;
+  if (!spec || key === cardFocus) {
+    cardFocus = null;
+    if (LENSES[activeTool]) {
+      availableLayers.forEach(layer => {
+        if (!isWeatherPillLayer(layer)) setLayerShown(layer.key, lensShows(layer, activeTool));
+      });
+    }
+    syncShowOnMapButtons();
+    return;
+  }
+  cardFocus = key;
+  const models = spec.split(',');
+  const newest = {};
+  availableLayers.forEach(layer => {
+    const model = layerModelKey(layer);
+    if (layer.layer_type !== 'raster' || !models.includes(model)) return;
+    if (rasterId !== null) {
+      if (layer.raster_id === rasterId) newest[model] = layer;
+    } else if (!newest[model] || (layer.raster_id || 0) > (newest[model].raster_id || 0)) {
+      newest[model] = layer;
+    }
+  });
   availableLayers.forEach(layer => {
     if (isWeatherPillLayer(layer)) return;
-    const matches = categories.includes(layer.app_label);
-    toggleLayerVisibility(layer.key, matches);
-    const cb = document.getElementById(`toggle-${layer.key}`);
-    if (cb) cb.checked = matches;
+    const model = layerModelKey(layer);
+    const shown = layer.app_label === 'administrative'
+      || (models.includes(model) && (layer.layer_type !== 'raster' || newest[model] === layer));
+    setLayerShown(layer.key, shown);
   });
+  syncShowOnMapButtons();
+}
+
+// The grids re-render on every slider move: keep the pressed card pressed.
+document.addEventListener('htmx:afterSwap', syncShowOnMapButtons);
+
+/**
+ * Open a lens: only its layers on (their legends follow toggleLayerVisibility),
+ * the layers panel filtered to them, the basemap greyed.
+ */
+function openLens(toolId) {
+  const apps = lensApps(toolId);
+  if (!apps) return closeLens();
+  if (lensRestoreKeys === null) lensRestoreKeys = shownLayerKeys();
+  activeTool = toolId;
+  cardFocus = null;
+  availableLayers.forEach(layer => {
+    if (isWeatherPillLayer(layer)) return;
+    setLayerShown(layer.key, lensShows(layer, toolId));
+  });
+  filterLayersByLens(toolId);
+  syncLensDim();
+}
+
+/** Back to Overview (no lens): the layers shown before the first lens return. */
+function closeLens() {
+  activeTool = 'overview';
+  cardFocus = null;
+  if (lensRestoreKeys !== null) {
+    const restore = lensRestoreKeys;
+    lensRestoreKeys = null;
+    availableLayers.forEach(layer => {
+      if (isWeatherPillLayer(layer)) return;
+      const shown = restore.has(layer.key);
+      if (shown || loadedLayers[layer.key]) setLayerShown(layer.key, shown);
+    });
+  }
+  filterLayersByLens('overview');
+  syncLensDim();
+}
+
+/**
+ * Catalog layers that arrive while a lens is open (the background catalog
+ * fetch, Layers.js::loadLayerCatalog) follow the lens like the others.
+ */
+function applyLensToNewLayers(layers) {
+  if (!lensApps(activeTool) || cardFocus) return;
+  layers.forEach(layer => {
+    if (!isWeatherPillLayer(layer)) setLayerShown(layer.key, lensShows(layer, activeTool));
+  });
+}
+
+/**
+ * Layers panel under a lens: "<lens> layers" only, with an All layers drawer
+ * for the rest (and the counts). Under Overview it lists every layer.
+ * Re-run by MapUI.js::renderLayerList, which rebuilds the list.
+ */
+function filterLayersByLens(toolId) {
+  const lens = LENSES[toolId];
+  const apps = lens?.apps || null;
+
+  availableLayers.forEach(layer => {
+    document.getElementById(`layer-item-${layer.key}`)
+      ?.classList.toggle('outside-lens', !!apps && !apps.includes(layer.app_label));
+  });
+  document.querySelectorAll('#layer-list .app-group').forEach(group => {
+    group.classList.toggle('outside-lens', !group.querySelector('.layer-item:not(.outside-lens)'));
+  });
+
+  const panel = document.getElementById('layers-panel');
+  panel?.classList.toggle('lens-filtered', !!apps);
+  if (!apps) panel?.classList.remove('show-all');
+
+  const title = document.querySelector('.layers-panel-title');
+  if (title) title.innerHTML = `<i class="bi bi-layers"></i> ${apps ? `${lens.label} layers` : 'All layers'}`;
+  syncLayersDrawer();
+}
+
+/** Text and state of the All layers drawer button. */
+function syncLayersDrawer() {
+  const panel = document.getElementById('layers-panel');
+  const btn = document.getElementById('btn-all-layers');
+  if (!panel || !btn) return;
+  const open = panel.classList.contains('show-all');
+  const lens = LENSES[activeTool];
+  btn.setAttribute('aria-expanded', String(open));
+  btn.innerHTML = open
+    ? `<i class="bi bi-chevron-up"></i> Only ${lens ? lens.label : ''} layers`
+    : `<i class="bi bi-chevron-down"></i> All layers (${availableLayers.filter(l => !isWeatherPillLayer(l)).length})`;
+}
+
+function toggleLayersDrawer() {
+  document.getElementById('layers-panel')?.classList.toggle('show-all');
+  syncLayersDrawer();
 }
 
 // ---- Helpers ----------------------------------------------------------
@@ -1137,8 +1292,9 @@ function _popupHead(properties, layerName, titleKey, layerKey = null) {
   </div>`;
 }
 
-/** "Edit" button for staff on editable layers (the catalog marks them, see core/editing.py). */
+/** "Edit" button for staff on editable layers (the catalog marks them, see core/editing.py), in Edit mode (Modes.js). */
 function _popupEditButton(properties, layerKey) {
+  if (window.MAP_MODE !== 'edit') return '';
   if (!layerKey || properties.id === null || properties.id === undefined) return '';
   if (typeof startEdit !== 'function' || !availableLayers.find(l => l.key === layerKey)?.editable) return '';
   // preventDefault: inside a multi-feature popup the head sits in a <summary>

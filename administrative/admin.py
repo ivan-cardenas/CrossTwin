@@ -1,5 +1,10 @@
 from django.contrib import admin
-from .models import Province, City, Neighborhood
+from .models import Province, City, Neighborhood, District
+
+class DistrictAdmin(admin.ModelAdmin):
+    model = District
+    list_display = ['districtName', 'currentPopulation']
+    search_fields = ['districtName']
 
 class ProvinceAdmin(admin.ModelAdmin):
     model = Province
@@ -19,4 +24,5 @@ class NeighborhoodAdmin(admin.ModelAdmin):
 # Register your models here.
 admin.site.register(Province, ProvinceAdmin)
 admin.site.register(City, CityAdmin)
+admin.site.register(District, DistrictAdmin)
 admin.site.register(Neighborhood, NeighborhoodAdmin)

@@ -23,13 +23,11 @@ function renderLayerList() {
     groups[layer.app_label].push(layer);
   });
 
-  // Backup / restore point for what-if edits (staff only: only then does the
-  // catalog mark layers editable). Rendered by core/editing.py::backup;
-  // its own Create/Restore/Discard responses re-render it in place.
-  let html = availableLayers.some(l => l.editable)
-    ? `<div id="edit-backup-bar" class="edit-backup-bar" hx-get="/api/editing/backup/"
-         hx-trigger="load, feature-saved from:body" hx-swap="innerHTML"></div>`
-    : '';
+  // The restore point (backup bar) lives in the Edit mode banner (mainMap.html).
+  // ＋ (draw a new object) only in Edit mode (Modes.js); the catalog marks
+  // layers editable for staff only.
+  const editing = window.MAP_MODE === 'edit';
+  let html = '';
 
   for (const [appLabel, layers] of Object.entries(groups)) {
     html += `<div class="app-group">
@@ -51,7 +49,7 @@ function renderLayerList() {
             <span class="layer-count"${layer.count_estimated ? ' title="Estimate (planner statistics)"' : ''}>${layer.count_estimated ? '~' : ''}${layer.count}</span>
           </div>
           <div class="layer-actions">
-            ${layer.editable ? `<button onclick="startCreate('${layer.key}')" title="Draw a new object">＋</button>` : ''}
+            ${editing && layer.editable ? `<button onclick="startCreate('${layer.key}')" title="Draw a new object">＋</button>` : ''}
             <button onclick="zoomToLayer('${layer.key}')" title="Zoom to layer">🔍</button>
           </div>
         </div>`;
@@ -61,7 +59,7 @@ function renderLayerList() {
   }
 
   container.innerHTML = html;
-  if (typeof htmx !== 'undefined') htmx.process(container);   // wire up the backup bar
+  filterLayersByLens(activeTool);   // the open lens's layers only, rest in the drawer
 }
 
 /**
@@ -108,4 +106,45 @@ function updateIndicators() {
     }
     visibleEl.textContent = count;
   }
+}
+
+/**
+ * Draw the left rail from Config.js::LENSES: Overview (no lens), then one
+ * labelled group per LENS_GROUPS entry. Lenses with an indicator panel get
+ * their htmx attributes here and their URL from mainMap.js::syncPanelBtns.
+ */
+function renderLensRail() {
+  const rail = document.getElementById('lens-rail');
+  if (!rail) return;
+
+  const button = (id, { label, title, icon, panel, tools }) => `
+    <button type="button" class="tool-button" data-tool="${id}" title="${title}" aria-label="${title}"
+            aria-pressed="false"${panel ? `
+            data-panel-title="${title}" hx-target="#panel-body" hx-indicator="#map-loader" hx-swap="innerHTML"` : ''}>
+      <span class="bi ${icon}" aria-hidden="true"></span>
+      <span class="tool-label">${label}</span>${tools && tools.length ? `
+      <span class="stale-dot" hidden title="Buildings changed in this view: recalculate in the Calculate tab"></span>` : ''}
+    </button>`;
+
+  let html = button('overview', { label: 'Overview', title: 'Overview: no topic, all your layers', icon: 'bi-map' });
+  for (const group of LENS_GROUPS) {
+    const lenses = Object.entries(LENSES).filter(([, lens]) => lens.group === group.id);
+    if (!lenses.length) continue;
+    html += `<div class="lens-group" role="group" aria-labelledby="lens-group-${group.id}">
+      <span class="lens-group-label" id="lens-group-${group.id}">${group.label}</span>
+      ${lenses.map(([id, lens]) => button(id, lens)).join('')}
+    </div>`;
+  }
+  rail.innerHTML = html;
+  markActiveLens(activeTool);
+  if (typeof syncPanelBtns === 'function') syncPanelBtns();   // sets hx-get + htmx.process
+}
+
+/** Highlight the rail button of the open lens (Overview when none). */
+function markActiveLens(toolId) {
+  document.querySelectorAll('#toolbar .tool-button').forEach(btn => {
+    const active = btn.dataset.tool === toolId;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-pressed', String(active));
+  });
 }

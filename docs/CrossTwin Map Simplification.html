@@ -1,0 +1,390 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>CrossTwin Map Simplification</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+/* Layout: a planning sheet. Left-aligned reading column (~68ch), wide figures break out to 1080px.
+   Mockups are drawn as schematic map frames on an RD-style 1 km grid. */
+:root {
+  --ground: #eef2f3;      /* page */
+  --sheet: #ffffff;       /* figures, tables */
+  --ink: #17262c;         /* text */
+  --ink-2: #4b5d64;       /* secondary text */
+  --rule: #cdd8dc;        /* lines */
+  --grid: #dde6e9;        /* map grid */
+  --polder: #2f7d5b;      /* accent: lens / proposed */
+  --polder-soft: #dcefe5;
+  --dike: #b5651d;        /* problem / current */
+  --dike-soft: #f6e6d6;
+  --map: #c9d6da;         /* map fill in mockups */
+  --chrome: #2a3a40;      /* UI chrome in mockups */
+  --chrome-fg: #eef5f7;
+  --font-display: "Barlow Semi Condensed", "Arial Narrow", Arial, sans-serif;
+  --font-body: "Source Sans 3", "Segoe UI", Roboto, Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --ground: #111a1d; --sheet: #172327; --ink: #e3ecee; --ink-2: #9fb2b8; --rule: #2c3c42; --grid: #22323a;
+  --polder: #5cc196; --polder-soft: #183a2c; --dike: #e39a5a; --dike-soft: #3d2a19;
+  --map: #263840; --chrome: #0c1417; --chrome-fg: #e3ecee; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --ground: #111a1d; --sheet: #172327; --ink: #e3ecee; --ink-2: #9fb2b8; --rule: #2c3c42; --grid: #22323a;
+  --polder: #5cc196; --polder-soft: #183a2c; --dike: #e39a5a; --dike-soft: #3d2a19;
+  --map: #263840; --chrome: #0c1417; --chrome-fg: #e3ecee; color-scheme: dark }
+
+body { background: var(--ground); color: var(--ink); font: 17px/1.6 var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+main { max-width: 1080px; margin: 0 auto; padding-block: 48px 80px; display: flex; flex-direction: column; gap: 56px; }
+.col { max-width: 68ch; }
+h1, h2, h3 { font-family: var(--font-display); line-height: 1.15; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.2rem, 5vw, 3.4rem); font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 1.9rem; font-weight: 600; margin-bottom: 12px; }
+h3 { font-size: 1.3rem; font-weight: 600; }
+p { margin: 0 0 12px; }
+a { color: var(--polder); }
+a:focus-visible, button:focus-visible { outline: 3px solid var(--polder); outline-offset: 2px; }
+.lede { font-size: 1.2rem; color: var(--ink-2); max-width: 62ch; }
+.meta { color: var(--ink-2); font-size: 0.95rem; margin-top: 12px; }
+section { display: flex; flex-direction: column; gap: 16px; }
+
+/* Header band with the RD grid */
+header { display: flex; flex-direction: column; gap: 16px; padding-bottom: 32px; border-bottom: 2px solid var(--ink);
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 48px 48px; background-position: -1px -1px; }
+header .stats { display: flex; flex-wrap: wrap; gap: 8px 28px; margin-top: 8px; }
+header .stats div { display: flex; flex-direction: column; }
+header .stats b { font-family: var(--font-display); font-size: 2rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
+header .stats span { font-size: 0.9rem; color: var(--ink-2); }
+.arrow { color: var(--polder); }
+
+/* Mockup frames */
+.figs { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 860px) { .figs { grid-template-columns: 1fr; } }
+figure { margin: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+figcaption { font-size: 0.95rem; color: var(--ink-2); }
+figcaption b { color: var(--ink); }
+.scroll { overflow-x: auto; }
+.frame { position: relative; min-width: 460px; aspect-ratio: 16 / 10; border-radius: 6px; overflow: hidden;
+  background-color: var(--map);
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 28px 28px; border: 1px solid var(--rule); font-size: 11px; line-height: 1.25; }
+.frame.before { outline: 3px solid var(--dike); outline-offset: -3px; }
+.frame.after { outline: 3px solid var(--polder); outline-offset: -3px; }
+.ui { position: absolute; background: var(--chrome); color: var(--chrome-fg); border-radius: 4px; padding: 4px 6px; opacity: 0.94; }
+.ui small { display: block; opacity: 0.7; font-size: 10px; }
+.ui.hot { box-shadow: 0 0 0 2px var(--dike); }
+.ui.lens { box-shadow: 0 0 0 2px var(--polder); }
+.dots { letter-spacing: 2px; }
+.heat { position: absolute; border-radius: 50%; filter: blur(10px); opacity: 0.75; }
+.dim { position: absolute; inset: 0; background: color-mix(in srgb, var(--chrome) 35%, transparent); }
+
+/* Game cards */
+.games { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; border-top: 2px solid var(--ink); }
+@media (max-width: 760px) { .games { grid-template-columns: minmax(0, 1fr); } }
+.game { padding: 20px 20px 20px 0; border-bottom: 1px solid var(--rule); display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.games .game:nth-child(even) { padding-left: 20px; border-left: 1px solid var(--rule); }
+@media (max-width: 760px) { .games .game:nth-child(even) { padding-left: 0; border-left: 0; } }
+.game .yr { font-family: var(--font-display); color: var(--ink-2); font-size: 1rem; }
+.game ul { margin: 0; padding-left: 1.1em; }
+.game li { margin-bottom: 6px; }
+.take { background: var(--polder-soft); padding: 8px 12px; border-radius: 4px; font-size: 0.97rem; }
+.take b { color: var(--polder); }
+
+/* Diagnosis list */
+.issues { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.issue { border-left: 4px solid var(--dike); padding: 4px 0 4px 14px; min-width: 0; }
+.issue h3 { font-size: 1.15rem; margin-bottom: 4px; }
+.issue p { font-size: 0.97rem; color: var(--ink-2); margin: 0; }
+
+/* Principles */
+.principles { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px 32px; }
+.principle { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.principle .from { font-size: 0.88rem; color: var(--polder); font-weight: 600; }
+.principle p { margin: 0; font-size: 0.98rem; }
+
+/* Tables */
+.tbl { overflow-x: auto; background: var(--sheet); border: 1px solid var(--rule); border-radius: 6px; }
+table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 0.95rem; }
+th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font-family: var(--font-display); font-weight: 600; font-size: 1.02rem; background: color-mix(in srgb, var(--rule) 35%, var(--sheet)); }
+tr:last-child td { border-bottom: 0; }
+td.cur { color: var(--ink-2); }
+.tag { display: inline-block; font-size: 0.82rem; padding: 1px 8px; border-radius: 10px; font-weight: 600; white-space: nowrap; }
+.tag.cut { background: var(--dike-soft); color: var(--dike); }
+.tag.move { background: var(--polder-soft); color: var(--polder); }
+.tag.keep { background: color-mix(in srgb, var(--rule) 60%, transparent); color: var(--ink-2); }
+
+/* Phases: a real sequence */
+.phases { display: flex; flex-direction: column; border-top: 2px solid var(--ink); }
+.phase { display: grid; grid-template-columns: 70px minmax(0, 1fr) minmax(0, 0.9fr); gap: 8px 24px; padding: 20px 0; border-bottom: 1px solid var(--rule); }
+@media (max-width: 760px) { .phase { grid-template-columns: 48px minmax(0, 1fr); } .phase .files { grid-column: 2; } }
+.phase .n { font-family: var(--font-display); font-size: 2.4rem; font-weight: 700; line-height: 1; color: var(--polder); }
+.phase h3 { margin-bottom: 6px; }
+.phase ul { margin: 0; padding-left: 1.1em; font-size: 0.97rem; }
+.phase li { margin-bottom: 4px; }
+.files { font-size: 0.9rem; color: var(--ink-2); }
+.files code { font-size: 0.85rem; word-break: break-word; }
+.files .eff { display: block; margin-top: 6px; color: var(--ink); font-weight: 600; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9em; background: color-mix(in srgb, var(--rule) 45%, transparent); padding: 0 4px; border-radius: 3px; }
+
+.tasks { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.task { background: var(--sheet); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; }
+.task q { font-family: var(--font-display); font-size: 1.15rem; font-weight: 600; quotes: "\201C" "\201D"; }
+.task .clicks { font-variant-numeric: tabular-nums; font-size: 0.95rem; color: var(--ink-2); }
+.task .clicks b { color: var(--ink); }
+
+.dont li { margin-bottom: 6px; }
+.sources { font-size: 0.9rem; color: var(--ink-2); columns: 2 320px; column-gap: 32px; padding-left: 1.1em; }
+.sources li { margin-bottom: 4px; break-inside: avoid; }
+</style>
+
+<main>
+<header>
+  <h1>CrossTwin Map Simplification</h1>
+  <p class="lede">A plan to make the map screen easier to use. It borrows from SimCity 4, SimCity (2013) and Cities: Skylines 1 and 2: one topic at a time, data drawn on the map, and expert controls kept out of the way until someone asks for them.</p>
+  <div class="stats">
+    <div><b>17 → 6</b><span>panels and overlays that can be open at once</span></div>
+    <div><b>9 → 3</b><span>topic groups on the left rail</span></div>
+    <div><b>2 → 1</b><span>places to set the year and climate scenario</span></div>
+    <div><b>21 → 4</b><span>neighbourhood generator fields shown before "More options"</span></div>
+  </div>
+  <p class="meta">Based on <code>mainMap.html</code>, <code>mainMap.css</code> and the tool scripts on <code>main</code> at 06729b8 · 21 Nov 2026</p>
+</header>
+
+<section>
+  <h2>Before and after</h2>
+  <div class="figs">
+    <figure>
+      <div class="scroll"><div class="frame before" aria-label="Schematic of the current map screen">
+        <div class="ui hot" style="left:6px;top:30px;width:22px;height:200px;text-align:center"><span class="dots">⠿</span><br>👁<br>📑<br>🏗<br>🏘<br>⚡<br>🌡<br>🌳<br>🚰<br>🪨</div>
+        <div class="ui" style="left:34px;top:30px;width:110px;height:118px">Layers panel<small>every layer of every topic, basemap, select all / none / fit</small></div>
+        <div class="ui" style="right:6px;top:30px;width:150px;height:160px">Side panel<small>indicator cards, sliders, "?" help</small></div>
+        <div class="ui hot" style="left:150px;top:36px;width:118px;height:120px">Tool card<small>LST, SVF, Thermal comfort, Degree of urbanisation, Generator or Settings: up to 21 fields</small></div>
+        <div class="ui" style="left:50%;top:6px;transform:translateX(-50%)">🌡 18° · Radar</div>
+        <div class="ui" style="right:162px;top:150px;width:92px">Population dock</div>
+        <div class="ui" style="left:34px;top:156px;width:86px">Legend stack</div>
+        <div class="ui" style="left:126px;top:162px;width:92px">Guided tour</div>
+        <div class="ui hot" style="left:6px;right:6px;bottom:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">⤢ ⟳ <span>Layers 12</span><span>Features 48 210</span><span>Visible 9</span><span>Population</span><b>Actions · 2025 ▴</b><span style="margin-left:auto">Enschede</span><span>Dashboard</span><b>Scenarios</b></div>
+      </div></div>
+      <figcaption><b>Now.</b> Topics, layers, calculations and time live in separate places. Labels show only on hover, and the year is set both in the Actions menu and in Scenarios.</figcaption>
+    </figure>
+    <figure>
+      <div class="scroll"><div class="frame after" aria-label="Schematic of the proposed map screen">
+        <div class="heat" style="left:170px;top:70px;width:120px;height:90px;background:#e4572e"></div>
+        <div class="heat" style="left:230px;top:120px;width:80px;height:60px;background:#f3a712"></div>
+        <div class="ui lens" style="left:6px;top:36px;width:92px;height:190px">
+          <b>City systems</b><small>Water · Energy</small><br>
+          <b>People</b><small>Housing · Built-up · Population</small><br>
+          <b style="color:var(--polder)">Environment</b><small>▸ Heat ◂ · Green and blue · Ground</small></div>
+        <div class="ui" style="left:6px;right:6px;top:6px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>Enschede</b><span>161 400 people</span><span class="ui lens" style="position:static;padding:1px 6px">2050 · High-dry</span><span style="margin-left:auto">🌡 18° Rain</span><span>⚑ 2</span></div>
+        <div class="ui lens" style="right:6px;top:36px;width:150px;height:170px"><b>Heat</b><small>Summary · What-if · Calculate</small><br>PET 2050: 41 °C<small>"Show on map"</small><br>Heat-stress days: 24<small>"Show on map"</small></div>
+        <div class="ui" style="right:162px;bottom:44px;width:96px">Legend: PET °C<br>▮▮▮▮▮</div>
+        <div class="ui" style="left:50%;bottom:6px;transform:translateX(-50%);display:flex;gap:2px"><span class="ui lens" style="position:static">Explore</span><span style="padding:0 6px">Plan</span><span style="padding:0 6px">Edit</span></div>
+      </div></div>
+      <figcaption><b>Proposed.</b> Picking <i>Heat</i> turns on its layers and legend, greys the basemap, and opens its panel. Its calculations sit in the panel's <i>Calculate</i> tab. A single chip sets year and climate together.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <h2>What makes the screen hard today</h2>
+  <div class="issues">
+    <div class="issue"><h3>Topics and layers are separate</h3><p>Clicking a topic button opens its indicators, but its map layers have to be found in the Layers panel, which lists every layer of every app.</p></div>
+    <div class="issue"><h3>Icons without words</h3><p>The nine topic buttons are emoji with hover-only tooltips. Energy and Green and Blue Space open no panel; Physical Environment's 🪨 is hard to guess.</p></div>
+    <div class="issue"><h3>System counters in prime space</h3><p>The bottom bar's Layers, Features and Visible counts describe the software, not the city.</p></div>
+    <div class="issue"><h3>Time is set in two places</h3><p>The year slider sits in the Actions menu and the climate scenario in the Scenarios panel. Each one changes the other.</p></div>
+    <div class="issue"><h3>Calculations live in a generic menu</h3><p>LST, SVF and Thermal comfort belong to heat, Degree of urbanisation to built-up. They hide under "Actions" next to file upload.</p></div>
+    <div class="issue"><h3>Expert forms open in full</h3><p>The generator shows 21 inputs at once; Thermal comfort shows 14 weather fields and a 9-field person panel.</p></div>
+    <div class="issue"><h3>Signals are scattered</h3><p>Stale-result dots, homes without water, site warnings, "trend extrapolation" and the what-if badge each use their own marker in a different place.</p></div>
+    <div class="issue"><h3>Looking and changing are mixed</h3><p>Editing, the generator and the backup bar share the screen with read-only exploring, so a visitor meets staff tools they cannot use.</p></div>
+  </div>
+</section>
+
+<section>
+  <h2>What the city builders do</h2>
+  <p class="col">The four games manage the same problem: a city with dozens of interlocking systems, shown to people who are not engineers. Each solved part of it. The green line under each game is what CrossTwin takes from it.</p>
+  <div class="games">
+    <div class="game">
+      <span class="yr">2003 · Maxis</span><h3>SimCity 4</h3>
+      <ul>
+        <li>Three separate modes: shaping the land, running the city as mayor, and following individual residents. Tools only appear in the mode they belong to.</li>
+        <li>The most important information sits in one rounded control cluster in the lower left.</li>
+        <li>Data views recolour the buildings themselves; graphs sit in a separate tab.</li>
+        <li>Advisors explain problems and suggest responses, and a news ticker raises issues as they occur.</li>
+      </ul>
+      <p class="take"><b>Take:</b> separate Explore, Plan and Edit modes; one advisor tray for all warnings.</p>
+    </div>
+    <div class="game">
+      <span class="yr">2013 · Maxis</span><h3>SimCity</h3>
+      <ul>
+        <li>The interface was modelled on Google Maps and infographics, to make information clearer than in earlier games.</li>
+        <li>Data that used to sit in tables and pop-ups is projected onto the 3D city as data layers.</li>
+        <li>Each building menu has an Info tab (key figures) and a Data Maps tab (its layers), so the numbers and their map are one click apart.</li>
+        <li>The designers aimed to let players read the city from a layer instead of a large spreadsheet.</li>
+      </ul>
+      <p class="take"><b>Take:</b> every indicator card gets "Show on map"; each topic panel has the same tabs.</p>
+    </div>
+    <div class="game">
+      <span class="yr">2015 · Colossal Order</span><h3>Cities: Skylines</h3>
+      <ul>
+        <li>19 info views, which the developers describe in three groups: city services, citizens, and city and map.</li>
+        <li>An info view greys the city and colours only what the view is about.</li>
+        <li>Build categories sit in one bottom toolbar; choosing a building tool can open its info view automatically.</li>
+        <li>Players could toggle info views with a single key.</li>
+      </ul>
+      <p class="take"><b>Take:</b> three topic groups; a topic opens its layers and greys the basemap.</p>
+    </div>
+    <div class="game">
+      <span class="yr">2023–2026 · Colossal Order, then Iceflake</span><h3>Cities: Skylines II</h3>
+      <ul>
+        <li>33 info views behind one icon in the top-left; build menus open the matching info view.</li>
+        <li>Reviewers called the launch interface often confusing, and criticised tutorials delivered as text instead of shown.</li>
+        <li>2026 patches resized and redrew toolbar icons for clearer meaning, added UI scale and transparency settings, and reworked onboarding.</li>
+        <li>Larger changes ship with a legacy toggle so players can keep the old layout.</li>
+      </ul>
+      <p class="take"><b>Take:</b> label every icon; task-based onboarding; a "classic layout" switch during the change.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Principles</h2>
+  <div class="principles">
+    <div class="principle"><span class="from">Cities: Skylines, SimCity (2013)</span><h3>A topic is a lens</h3><p>Choosing a topic shows its layers, its legend and its panel, and dims everything else. Leaving it restores the previous map.</p></div>
+    <div class="principle"><span class="from">SimCity (2013)</span><h3>Numbers point at the map</h3><p>Each indicator card can show where its value comes from. The side panel holds a few key numbers, not a spreadsheet.</p></div>
+    <div class="principle"><span class="from">SimCity 4</span><h3>One mode at a time</h3><p>Explore is read-only. Plan holds what-ifs and scenarios and writes nothing. Edit (staff) holds the editor, the generator and the restore point.</p></div>
+    <div class="principle"><span class="from">Cities: Skylines</span><h3>Few groups, clear words</h3><p>Three topic groups with labelled icons replace nine emoji. Names follow what people look for, not the app names.</p></div>
+    <div class="principle"><span class="from">All four</span><h3>Time is the city clock</h3><p>Year and climate scenario are one control at the top, like a game's date. Every panel reads it.</p></div>
+    <div class="principle"><span class="from">Cities: Skylines II, as a warning</span><h3>Show, then expand</h3><p>Expert tools open with a preset and three or four fields. "More options" reveals the rest, with the defaults as placeholders.</p></div>
+  </div>
+</section>
+
+<section>
+  <h2>Where each element goes</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Current element</th><th>Proposed home</th><th>Change</th></tr></thead>
+    <tbody>
+      <tr><td class="cur">Left toolbar, 9 emoji topics</td><td>Lens rail with 3 labelled groups: <i>City systems</i> (Water, Energy), <i>People</i> (Housing, Built-up, Population), <i>Environment</i> (Heat, Green and blue, Ground). Overview stays as "no lens".</td><td><span class="tag move">Regroup</span></td></tr>
+      <tr><td class="cur">Layers panel (all layers)</td><td>Inside each lens panel as "Layers in this view"; the full catalogue moves to an <i>All layers</i> drawer for experts.</td><td><span class="tag move">Move</span></td></tr>
+      <tr><td class="cur">Side panel per topic</td><td>Lens panel with the same three tabs everywhere: <i>Summary</i>, <i>What-if</i>, <i>Calculate</i>.</td><td><span class="tag move">Restructure</span></td></tr>
+      <tr><td class="cur">LST, SVF, Thermal comfort cards</td><td>Heat lens › Calculate tab.</td><td><span class="tag move">Move</span></td></tr>
+      <tr><td class="cur">Degree of urbanisation card</td><td>People lens › Built-up › Calculate tab.</td><td><span class="tag move">Move</span></td></tr>
+      <tr><td class="cur">Neighbourhood generator card</td><td>Edit mode › New neighbourhood, with style presets first.</td><td><span class="tag move">Move</span></td></tr>
+      <tr><td class="cur">Upload / Retrieve data</td><td>Header › Data (staff only).</td><td><span class="tag move">Move</span></td></tr>
+      <tr><td class="cur">Year slider (Actions) + Scenarios button</td><td>One time chip in the top status strip: year, pathway, heat mode. <i>Compare</i> opens the scenario panel.</td><td><span class="tag move">Merge</span></td></tr>
+      <tr><td class="cur">Layers / Features / Visible counters</td><td>Removed from the bar; kept in the <i>All layers</i> drawer footer and in DEBUG.</td><td><span class="tag cut">Remove</span></td></tr>
+      <tr><td class="cur">Population pill + population dock</td><td>Population figure in the status strip; the dock opens from it.</td><td><span class="tag move">Move</span></td></tr>
+      <tr><td class="cur">Stale dots, unserved homes notice, extrapolation and what-if badges</td><td>Advisor tray (⚑ with a count) in the status strip; each item links to the place to act.</td><td><span class="tag move">Unify</span></td></tr>
+      <tr><td class="cur">Weather pill + radar button</td><td>Stays in the status strip.</td><td><span class="tag keep">Keep</span></td></tr>
+      <tr><td class="cur">Guided tour (text steps)</td><td>Three task starts on first visit; each runs the task on the live map.</td><td><span class="tag move">Replace</span></td></tr>
+      <tr><td class="cur">Tilt / reset buttons</td><td>Map controls in the lower right with the Mapbox zoom.</td><td><span class="tag keep">Keep</span></td></tr>
+      <tr><td class="cur">Map settings, backup bar, editor</td><td>Edit mode only.</td><td><span class="tag move">Move</span></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2>Steps</h2>
+  <p class="col">Each step ships on its own and leaves the map working. Steps 1 and 2 give most of the gain; 6 and 7 can wait for user feedback.</p>
+  <div class="phases">
+    <div class="phase"><div class="n">0</div><div><h3>Measure the starting point</h3><ul>
+      <li>Time the three tasks below with 3–5 people who have not used CrossTwin (planners, students). Record clicks and where they get stuck.</li>
+      <li>Count overlays open at the end of each task.</li></ul></div>
+      <div class="files">No code. A short note in <code>docs/UI_SIMPLIFICATION.md</code>.<span class="eff">½ day</span></div></div>
+
+    <div class="phase"><div class="n">1</div><div><h3>Declutter without moving anything</h3><ul>
+      <li>Replace the emoji with Bootstrap Icons (already loaded) and always-visible short labels.</li>
+      <li>Remove the Layers / Features / Visible counters from the bottom bar.</li>
+      <li>Sentence-case panel titles ("Water supply", not "WATER SUPPLY").</li>
+      <li>Hide topics that open nothing (Energy, Green and blue) until they have a panel, or give them a "No indicators yet" panel with their layers.</li></ul></div>
+      <div class="files"><code>mainMap/templates/mainMap.html</code>, <code>core/static/css/mainMap.css</code>, <code>core/static/js/Events.js</code><span class="eff">1–2 days</span></div></div>
+
+    <div class="phase"><div class="n">2</div><div><h3>Topics become lenses</h3><ul>
+      <li>Add a <code>LENSES</code> table in <code>Config.js</code>: per lens its group, label, icon, layer keys, panel URL and tools.</li>
+      <li>Opening a lens loads its layers, shows only their legends in <code>#legend-stack</code>, and dims the basemap; closing restores the layers the user had on.</li>
+      <li>Group the rail into City systems, People and Environment.</li>
+      <li>Layers panel becomes "Layers in this view" plus an <i>All layers</i> drawer.</li></ul></div>
+      <div class="files"><code>core/static/js/Config.js</code>, <code>Layers.js</code>, <code>Panels.js</code>, <code>Map_init.js</code><span class="eff">3–4 days</span></div></div>
+
+    <div class="phase"><div class="n">3</div><div><h3>One clock and a status strip</h3><ul>
+      <li>Move city name, population, year/scenario chip, weather pill and the advisor flag into one strip at the top of the map.</li>
+      <li>Merge the year picker and scenario choice into the chip; drop the two-way sync between Actions and Scenarios.</li>
+      <li>The bottom bar keeps only the mode switch.</li></ul></div>
+      <div class="files"><code>mainMap.js</code> (<code>setActiveYear</code>, <code>syncClimateToYear</code>), <code>Panels.js::showScenarios</code>, <code>WeatherPill.js</code><span class="eff">2–3 days</span></div></div>
+
+    <div class="phase"><div class="n">4</div><div><h3>Same tabs in every lens panel</h3><ul>
+      <li>Summary (3–5 headline cards), What-if (sliders), Calculate (the tools that belong to this lens).</li>
+      <li>Each card gets "Show on map", which switches on the layer behind the number.</li>
+      <li>Move the LST, SVF, Thermal comfort and Degree of urbanisation cards into the Calculate tabs; the standalone dashboards render the same partials.</li></ul></div>
+      <div class="files"><code>&lt;app&gt;/partials/indicators_panel.html</code>, <code>Templates/indicators_base.html</code>, <code>core/static/js/indicators/*.js</code>, the four tool scripts<span class="eff">4–6 days</span></div></div>
+
+    <div class="phase"><div class="n">5</div><div><h3>Explore, Plan and Edit modes</h3><ul>
+      <li>Explore: read-only, the default for visitors.</li>
+      <li>Plan: what-if sliders and scenarios unlock, with one "What-if" banner across the screen instead of per-card badges.</li>
+      <li>Edit (staff): editor, generator, map settings and the restore point.</li></ul></div>
+      <div class="files"><code>mainMap.js</code>, <code>Editing.js</code>, <code>GeneratorTool.js</code>, <code>MapSettings.js</code><span class="eff">3–4 days</span></div></div>
+
+    <div class="phase"><div class="n">6</div><div><h3>Advisor tray and short forms</h3><ul>
+      <li>One tray collects stale results, homes without water, site warnings and extrapolated years; each entry opens the place to fix it.</li>
+      <li>Generator opens with style cards, target dwellings and floors; the other 17 fields go under "More options".</li>
+      <li>Thermal comfort opens with date, hour and "Use live weather"; manual weather and the person panel collapse.</li></ul></div>
+      <div class="files">New <code>core/static/js/Advisors.js</code>; <code>SolweigTool.js</code>, <code>UnservedWater.js</code>, <code>GeneratorTool.js</code>
+      </div>
+    </div>
+
+    <div class="phase"><div class="n">7</div><div><h3>Task-based onboarding and the classic switch</h3><ul>
+      <li>Replace the text tour with the three task starts below; each one opens the right lens and points at the next control.</li>
+      <li>Keep the old layout behind a "Classic layout" setting for one release, then remove it.</li>
+      <li>Repeat the step-0 test and compare.</li></ul></div>
+      <div class="files"><code>mainMap.js</code> (tour), <code>mainMap.html</code><span class="eff">2–3 days</span></div></div>
+  </div>
+</section>
+
+<section>
+  <h2>How to tell it worked</h2>
+  <p class="col">The same three tasks are run before step 1 and after step 7. The click counts are today's minimum path through the current screen.</p>
+  <div class="tasks">
+    <div class="task"><q>How hot does my neighbourhood get in 2050?</q><span class="clicks">Now: <b>6 clicks</b>, across the toolbar, Actions menu and Scenarios. Target: <b>3</b>.</span></div>
+    <div class="task"><q>Which homes have no water supply?</q><span class="clicks">Now: <b>2 clicks</b>, but the drops only explain themselves through the legend. Target: <b>2</b>, with the advisor tray naming the count.</span></div>
+    <div class="task"><q>Sketch 300 homes on this field.</q><span class="clicks">Now: <b>4 clicks</b> plus a 21-field form. Target: <b>4</b> with a 4-field form.</span></div>
+  </div>
+</section>
+
+<section class="col">
+  <h2>What not to copy</h2>
+  <ul class="dont">
+    <li>A flat list of 30+ views behind one icon (Cities: Skylines II). Groups first, then views.</li>
+    <li>Text-only tutorials. Show the step on the map.</li>
+    <li>Game styling for its own sake. CrossTwin results are cited in research: units, sources and the "?" help stay one click away.</li>
+    <li>Hiding what-ifs. Plan mode must always show that numbers are a deviation from the stored baseline.</li>
+  </ul>
+  <p>Project rules still apply: JavaScript stays in <code>core/static/js/</code> with no inline scripts, the side panel and the standalone dashboards keep sharing one partial and one script, new legends go in <code>#legend-stack</code>, and all text stays in English.</p>
+</section>
+
+<section>
+  <h2>Sources</h2>
+  <ol class="sources">
+    <li><a href="https://www.gamespot.com/articles/simcity-4-updated-preview/1100-2901579/">GameSpot, SimCity 4 updated preview</a></li>
+    <li><a href="https://strategywiki.org/wiki/SimCity_4/Walkthrough">StrategyWiki, SimCity 4 walkthrough</a></li>
+    <li><a href="https://www.gamingnexus.com/Article/Simcity-4/Item171.aspx">Gaming Nexus, SimCity 4 review</a></li>
+    <li><a href="https://en.wikipedia.org/wiki/SimCity_4">Wikipedia, SimCity 4</a></li>
+    <li><a href="https://www.wikiwand.com/en/articles/SimCity_(2013)">Wikipedia, SimCity (2013)</a></li>
+    <li><a href="https://pcgamer.com/simcity-hands-on-clever-beautiful-and-terribly-terribly-addictive">PC Gamer, SimCity hands-on</a></li>
+    <li><a href="https://primagames.com/eguides/simcity-eguide/essentials/getting-started">Prima Games, SimCity guide: getting started</a></li>
+    <li><a href="https://bldgblog.com/2013/05/sim-city-an-interview-with-stone-librande/">BLDG Blog, interview with Stone Librande</a></li>
+    <li><a href="https://www.gamedeveloper.com/design/pushing-the-limits-in-simulating-a-city-one-page-at-a-time">Game Developer, Simulating a City, One Page at a Time</a></li>
+    <li><a href="https://beyondsims.com/2015/02/skylines-dev-diary-9-info-views/">Cities: Skylines Dev Diary 9, Info Views</a></li>
+    <li><a href="https://github.com/CitiesSkylinesMods/TMPE/wiki/Overlays">TM:PE wiki, overlays</a></li>
+    <li><a href="https://steamcommunity.com/sharedfiles/filedetails/comments/409338401">Toggle It! mod (automatic info views)</a></li>
+    <li><a href="https://gameplay.tips/guides/cities-skylines-ii-info-views-guide.html">Cities: Skylines II info views guide</a></li>
+    <li><a href="https://www.pcgamer.com/games/city-builder/cities-skylines-2s-new-developer-breaks-cover-on-its-plans-for-the-sequels-future-revealing-a-patch-that-will-include-changes-players-have-been-requesting-for-a-long-time/">PC Gamer, Cities: Skylines II new developer plans</a></li>
+    <li><a href="https://www.pcgamesn.com/cities-skylines-2/update-new-developer-changes">PCGamesN, legacy toggles</a></li>
+    <li><a href="https://www.inverse.com/gaming/cities-skylines-2-review">Inverse, Cities: Skylines II review</a></li>
+    <li><a href="https://techradar.com/gaming/consoles-pc/cities-skylines-2-review-road-to-success">TechRadar, Cities: Skylines II review</a></li>
+    <li><a href="https://www.paradoxinteractive.com/games/cities-skylines-ii/news/patch-notes-spring-cleaning">Paradox, patch 1.5.7f1 Spring Cleaning</a></li>
+    <li><a href="https://steamdb.info/patchnotes/25127643/">SteamDB, patch 1.6.2f1 Autumn Breeze</a></li>
+  </ol>
+</section>
+</main>
+
+</body></html>

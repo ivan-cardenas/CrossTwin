@@ -81,7 +81,9 @@ digraph CrossTwin {
     node [fillcolor="#00897B", fontcolor="white", color="#00695C"];
     RS_Imagery          [label="RS Imagery"];
     Meteorology         [label="Meteorology"];
-    
+    // CBS socio-economic status score of a neighborhood (housing.NeighborhoodSocialProfile).
+    Social_Profile      [label="Socio-economic\nStatus"];
+
     // Stored as nature.GreenSpaces (parks = type 'park'; the former
     // builtup.Park was merged into it on 2026-11-11) + green land cover.
     Green_Area          [label="Green Area"];
@@ -251,6 +253,7 @@ digraph CrossTwin {
 
     Income_Expenses     -> Affordability_Stress;
     Mortgage            -> Affordability_Stress;
+    Social_Profile      -> Affordability_Stress;
     Mortgage            -> Income_Expenses;
     Rent                -> Income_Expenses;
 

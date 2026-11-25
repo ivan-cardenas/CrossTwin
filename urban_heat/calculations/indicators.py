@@ -237,6 +237,8 @@ def _raster_stats_sql(table, raster_col, geom_wkt, srid, pk=None):
     (climate scenario rows left out) that intersects the geometry.
     `coverage_pct` = valid cells x cell area / unit area x 100: the share of
     the unit the statistics describe (cell area in the storage CRS's units).
+    `id` is the raster row read, so the card's "Show on map" shows exactly
+    the map behind its number (never a climate scenario row).
     """
     observed = "AND r.climate_run_id IS NULL" if table in SCENARIO_RASTER_TABLES else ""
     pick = "AND r.id = %s" if pk is not None else ""
@@ -247,9 +249,10 @@ def _raster_stats_sql(table, raster_col, geom_wkt, srid, pk=None):
             (stats).mean,
             (stats).stddev,
             (stats).count,
-            (stats).count * cell_area / NULLIF(ST_Area(ST_GeomFromText(%s, %s)), 0) * 100
+            (stats).count * cell_area / NULLIF(ST_Area(ST_GeomFromText(%s, %s)), 0) * 100,
+            rid
         FROM (
-            SELECT ST_SummaryStats(
+            SELECT r.id AS rid, ST_SummaryStats(
                 ST_Clip(r.{raster_col}, ST_GeomFromText(%s, %s))
             ) AS stats,
             ABS(ST_ScaleX(r.{raster_col}) * ST_ScaleY(r.{raster_col})) AS cell_area
@@ -273,6 +276,7 @@ def _raster_stats_sql(table, raster_col, geom_wkt, srid, pk=None):
             'stddev': round(row[3], 2),
             'count': row[4],
             'coverage_pct': round(min(row[5], 100), 1) if row[5] is not None else None,
+            'id': row[6],
         }
     return None
 

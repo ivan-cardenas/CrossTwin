@@ -293,22 +293,50 @@ class HousingAffordability(models.Model):
     id = models.AutoField(primary_key=True)
     neighborhood = models.ForeignKey("administrative.Neighborhood", verbose_name="Neighborhood", on_delete=models.DO_NOTHING)
     year = models.IntegerField(help_text="Year of the housing affordability data")
-    medianIncome = models.FloatField(help_text="Median household income in EUR")
+    medianIncome = models.FloatField(help_text="Median annual household income in EUR")
     medianExpenditure = models.FloatField(help_text="Median household expenditure in EUR") #TODO: check how to connect with the expenditure data from the water and electricity models
-    medianRent = models.FloatField(help_text="Median rent in EUR")
-    medianMortgage = models.FloatField(help_text="Median mortgage in EUR")
+    medianRent = models.FloatField(help_text="Median monthly rent in EUR")
+    medianMortgage = models.FloatField(help_text="Median monthly mortgage payment in EUR")
     medianHousePrice = models.FloatField(help_text="Median house price in EUR")
     medianDisposableIncome = models.FloatField(help_text="Median disposable income in EUR")
     affordabilityIndex = models.FloatField(help_text="Affordability index (median house price divided by median income)")
-    affordabilityStressLevel = models.CharField(max_length=50, choices=AFFORDABILITY_STRESS_LEVELS, help_text="Affordability stress level (e.g., low, moderate, high)")
+    affordabilityStressLevel = models.CharField(max_length=50, blank=True, choices=AFFORDABILITY_STRESS_LEVELS, help_text="Affordability stress level: derived in save() from the housing-cost burden and the neighborhood's socio-economic status; a typed value is kept only while the inputs are missing")
+    housingCostBurden_pct = models.FloatField(null=True, blank=True, editable=False, help_text="Housing cost (tenure-weighted rent / mortgage x 12) as % of the median annual income; derived")
+    sesUsed = models.FloatField(null=True, blank=True, editable=False, help_text="CBS socio-economic status score used for the stress level (None: no social profile); derived")
+    sesModifier = models.FloatField(null=True, blank=True, editable=False, help_text="Factor the SES score put on the cost burden; derived")
+    stressMethod = models.CharField(max_length=100, blank=True, editable=False, help_text="Method and parameters that produced the stress level (housing/calculations/chain.py::STRESS_METHOD)")
     last_updated = models.DateTimeField(default=timezone.now)
-    
+
     def __str__(self):
         return f"Housing Affordability {self.year} for {self.neighborhood}"
-    
+
     def save(self, *args, **kwargs):
+        """
+        Derives the affordability index, the disposable income and the stress level.
+
+        The stress level is the housing-cost burden (rent / mortgage weighted by
+        the neighborhood's share of rental homes, over the median income) scaled
+        by the CBS socio-economic status of its NeighborhoodSocialProfile
+        (housing/calculations/chain.py). Without a usable income or cost the
+        stored level is kept.
+
+        DAG edges: Income_Expenses -> Affordability_Stress
+                   Social_Profile  -> Affordability_Stress
+        """
         self.affordabilityIndex = self.medianHousePrice / self.medianIncome if self.medianIncome != 0 else 0 #TODO: check if this is the right way to calculate the affordability index, or if we should use median disposable income instead of median income
         self.medianDisposableIncome = self.medianIncome - self.medianExpenditure
+        profile = NeighborhoodSocialProfile.objects.filter(neighborhood_id=self.neighborhood_id).first()
+        ses = profile.socioEconomicStatus if profile else None
+        share = profile.rentalHousing_pct if profile else None
+        burden = chain.housing_cost_burden(
+            chain.monthly_housing_cost(self.medianRent, self.medianMortgage, share), self.medianIncome)
+        level = chain.affordability_stress_level(burden, ses)
+        if level is not None:
+            self.housingCostBurden_pct = round(burden * 100, 2)
+            self.sesUsed = ses
+            self.sesModifier = chain.ses_modifier(ses)
+            self.stressMethod = chain.STRESS_METHOD
+            self.affordabilityStressLevel = level
         super().save(*args, **kwargs)
     
     class Meta:

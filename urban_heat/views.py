@@ -334,6 +334,14 @@ def _build_indicators(data, weather_override=None, climate_key=climate.CURRENT,
         'suhii_min':  suhii_stats['min'] if suhii_stats else None,
         'suhii_max':  suhii_stats['max'] if suhii_stats else None,
 
+        # The raster row behind each number, for the card's "Show on map"
+        # (None without a raster, e.g. MOCK_DATA: the button is then left out)
+        'map_raster': {
+            name: (s or {}).get('id')
+            for name, s in (('lst', lst_stats), ('pet', pet_stats), ('utci', utci_stats),
+                            ('wbgt', wbgt_stats), ('svf', svf_stats), ('suhii', suhii_stats))
+        },
+
         # The SOLWEIG run behind Tmrt/PET/UTCI (one run, same hour and extent)
         'thermal_run':          thermal.get('run'),
         'tmrt_coverage_pct':    tmrt_stats.get('coverage_pct') if tmrt_stats else None,

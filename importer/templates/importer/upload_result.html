@@ -6,14 +6,14 @@
     <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div class="space-y-2">
             <p class="text-[11px] uppercase tracking-[0.28em] text-cyan-100/80">Import Complete</p>
-            <h1 class="text-2xl md:text-3xl font-semibold text-slate-50">
+            <h1 class="text-2xl md:text-3xl font-semibold ct-text-primary">
                 {% if dry_run %}Dry Run Results{% else %}Import Results{% endif %}
             </h1>
-            <p class="text-slate-300 max-w-2xl">
+            <p class="ct-text-secondary max-w-2xl">
                 {% if dry_run %}
                 Validation completed. No data was saved to the database.
                 {% else %}
-                Data has been successfully imported to <code class="px-2 py-0.5 rounded bg-white/10 text-cyan-300 text-sm">{{ report.target }}</code>.
+                Data has been successfully imported to <code class="px-2 py-0.5 rounded bg-white/10 ct-text-accent text-sm">{{ report.target }}</code>.
                 {% endif %}
             </p>
         </div>
@@ -57,20 +57,20 @@
         <!-- Total Rows -->
         <div class="glass rounded-xl p-5 space-y-2">
             <div class="flex items-center justify-between">
-                <span class="text-sm text-slate-400">Total Rows</span>
+                <span class="text-sm ct-text-tertiary">Total Rows</span>
                 <div class="h-8 w-8 rounded-lg bg-slate-500/20 flex items-center justify-center">
-                    <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-4 h-4 ct-text-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path>
                     </svg>
                 </div>
             </div>
-            <p class="text-3xl font-bold text-slate-100">{{ report.total_rows }}</p>
+            <p class="text-3xl font-bold ct-text-primary">{{ report.total_rows }}</p>
         </div>
 
         <!-- Created -->
         <div class="glass rounded-xl p-5 space-y-2">
             <div class="flex items-center justify-between">
-                <span class="text-sm text-slate-400">Created</span>
+                <span class="text-sm ct-text-tertiary">Created</span>
                 <div class="h-8 w-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
                     <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
@@ -83,7 +83,7 @@
         <!-- Updated -->
         <div class="glass rounded-xl p-5 space-y-2">
             <div class="flex items-center justify-between">
-                <span class="text-sm text-slate-400">Updated</span>
+                <span class="text-sm ct-text-tertiary">Updated</span>
                 <div class="h-8 w-8 rounded-lg bg-sky-500/20 flex items-center justify-center">
                     <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
@@ -96,14 +96,14 @@
         <!-- Skipped -->
         <div class="glass rounded-xl p-5 space-y-2">
             <div class="flex items-center justify-between">
-                <span class="text-sm text-slate-400">Skipped</span>
+                <span class="text-sm ct-text-tertiary">Skipped</span>
                 <div class="h-8 w-8 rounded-lg bg-slate-500/20 flex items-center justify-center">
-                    <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-4 h-4 ct-text-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path>
                     </svg>
                 </div>
             </div>
-            <p class="text-3xl font-bold text-slate-400">{{ report.skipped }}</p>
+            <p class="text-3xl font-bold ct-text-tertiary">{{ report.skipped }}</p>
         </div>
     </div>
 
@@ -121,7 +121,7 @@
         
         {% if report.sample_errors %}
         <div class="space-y-2">
-            <p class="text-sm text-slate-400">Showing first {{ report.sample_errors|length }} errors:</p>
+            <p class="text-sm ct-text-tertiary">Showing first {{ report.sample_errors|length }} errors:</p>
             <ul class="space-y-2">
                 {% for error in report.sample_errors %}
                 <li class="flex items-start gap-2 text-sm">
@@ -137,20 +137,20 @@
 
     <!-- Summary Details -->
     <div class="glass rounded-xl p-6 space-y-4">
-        <h3 class="text-lg font-semibold text-slate-100 flex items-center gap-2">
-            <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <h3 class="text-lg font-semibold ct-text-primary flex items-center gap-2">
+            <svg class="w-5 h-5 ct-text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
             </svg>
             Import Summary
         </h3>
         <div class="grid gap-4 sm:grid-cols-2">
             <div class="space-y-1">
-                <span class="text-sm text-slate-400">Target Model</span>
-                <p class="text-slate-100 font-medium">{{ report.target }}</p>
+                <span class="text-sm ct-text-tertiary">Target Model</span>
+                <p class="ct-text-primary font-medium">{{ report.target }}</p>
             </div>
             <div class="space-y-1">
-                <span class="text-sm text-slate-400">Mode</span>
-                <p class="text-slate-100 font-medium">{% if dry_run %}Dry Run (Validation Only){% else %}Live Import{% endif %}</p>
+                <span class="text-sm ct-text-tertiary">Mode</span>
+                <p class="ct-text-primary font-medium">{% if dry_run %}Dry Run (Validation Only){% else %}Live Import{% endif %}</p>
             </div>
         </div>
     </div>
@@ -180,4 +180,4 @@
         </a>
     </div>
 </div>
-{% endblock content %}
+{% endblock content %}
