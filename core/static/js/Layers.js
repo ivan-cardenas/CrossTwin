@@ -898,6 +898,13 @@ async function zoomToLayer(key) {
   if (!loadedLayers[key]) return;
   const { geojson, viewport, config } = loadedLayers[key];
 
+  // Rasters hold no features: fit to the extent of their tile source.
+  if (config?.layer_type === 'raster') {
+    const b = map.getSource(`raster-source-${config.model_name}-${config.raster_id}`)?.bounds;
+    if (b) safeFitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 50, duration: 800 });
+    return;
+  }
+
   // A viewport-loaded layer only holds what is on screen; ask the server
   // for the extent of the whole layer instead.
   if (viewport) {

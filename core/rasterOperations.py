@@ -143,6 +143,19 @@ def _cog_filename(instance):
     return "_".join(safe_parts) + ".tif"
 
 
+def cog_overview_level(path, cap=6, tile=16):
+    """Overview levels for a COG: at most `cap`, and none that would shrink the
+    smaller side below `tile` px. Small rasters (a city-wide LST of 31x28 px)
+    otherwise ask GDAL for 1x1 overviews and the export fails."""
+    import math
+
+    import rasterio
+
+    with rasterio.open(path) as src:
+        side = min(src.width, src.height)
+    return max(0, min(cap, int(math.log2(side / tile))) if side >= tile else 0)
+
+
 def _reproject_and_cog(source_tiff_path, instance):
     """
     Reproject a local GeoTIFF to COG_CRS and convert it to a COG on disk,
@@ -204,7 +217,7 @@ def _reproject_and_cog(source_tiff_path, instance):
         source=temp_reprojected.name,
         dst_path=cog_path,
         dst_kwargs=output_profile,
-        overview_level=6,
+        overview_level=cog_overview_level(temp_reprojected.name),
         overview_resampling="nearest",
         use_cog_driver=True,
     )

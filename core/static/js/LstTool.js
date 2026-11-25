@@ -144,7 +144,8 @@
         el.info.textContent = `NDVI ${ndvi} · grid ${data.grid.width}×${data.grid.height} @ ${data.grid.resolution} m`;
         renderScenes(data.scenes);
         setBusy(false);
-        setStatus(data.scenes.length ? `${data.scenes.length} scene(s), clearest over this view first.` : '');
+        setStatus(data.warning || (data.scenes.length ? `${data.scenes.length} scene(s), clearest over this view first.` : ''),
+          data.warning ? 'warn' : '');
       } catch (error) {
         setBusy(false);
         setStatus(error.message, 'error');
@@ -188,6 +189,7 @@
           `${pct(data.valid_fraction)} of the area clear (water vapour: ${data.tpw_source}).${replaced}`,
           'ok'
         );
+        if (data.warning) setStatus(`${el.status.textContent} ⚠ ${data.warning}`, 'warn');
         await showResult(data);
       } catch (error) {
         setBusy(false);

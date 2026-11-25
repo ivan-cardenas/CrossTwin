@@ -126,6 +126,8 @@ def refresh_edited_cog(dsm):
     """
     from django.db.models import Max
 
+    from core.rasterOperations import cog_overview_level
+
     from . import svf
     from ..models import DigitalSurfaceModel, DSMEdit
 
@@ -199,7 +201,7 @@ def write_edited_cog(dsm, areas, base_path):
         profile = cog_profiles.get("DEFLATE")
         profile.update(NUM_THREADS="ALL_CPUS")   # multithreaded compression
         with rasterio.Env(GDAL_NUM_THREADS="ALL_CPUS"):
-            cog_translate(work, new, profile, overview_level=6,
+            cog_translate(work, new, profile, overview_level=cog_overview_level(work),
                           overview_resampling="nearest", use_cog_driver=True, quiet=True)
         return new
     finally:

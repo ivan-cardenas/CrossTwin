@@ -54,11 +54,6 @@
         <div class="heat-weather-label">Feels like (sun)</div>
         <div class="heat-weather-value">{{ indicators.weather_stress.apparent_sun_c }} <span>°C</span></div>
       </div>
-      <div>
-        <div class="heat-weather-label">WBGT estimate</div>
-        <div class="heat-weather-value" style="color:{{ indicators.weather_wbgt_color }};">{{ indicators.weather_stress.wbgt_estimate_c }} <span>°C</span></div>
-        <div class="heat-weather-label">{{ indicators.weather_wbgt_category }}</div>
-      </div>
     </div>
     {% endif %}
     {% localize off %}
@@ -221,6 +216,15 @@
                 color:{{ indicators.wbgt_color }};
                 background:rgba(var(--accent-1-rgb), 0.05); border:1px solid rgba(var(--accent-1-rgb), 0.1);">
       {{ indicators.wbgt_category }}
+    </div>
+    {% endif %}
+    {% if indicators.weather_stress %}
+    <div class="heat-weather-values heat-weather-stress">
+      <div>
+        <div class="heat-weather-label">Current weather estimate</div>
+        <div class="heat-weather-value" style="color:{{ indicators.weather_wbgt_color }};">{{ indicators.weather_stress.wbgt_estimate_c }} <span>°C</span></div>
+        <div class="heat-weather-label">{{ indicators.weather_wbgt_category }}</div>
+      </div>
     </div>
     {% endif %}
   </div>
