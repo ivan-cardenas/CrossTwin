@@ -45,6 +45,9 @@ dependencies = [
     "earthengine-api>=1.7.18",
     "openeo>=0.51.0",
     "pydot>=4.0.1",
+    # Hedonic price model (housing/calculations/price_model.py) and NVM report PDFs (importer/nvm_reports.py)
+    "statsmodels>=0.14.4",
+    "pdfplumber>=0.11.4",
 ]
 
 [project.optional-dependencies]
@@ -56,6 +59,10 @@ solweig = [
     # PET with urban air temperature and 1.2 m wind (brings pythermalcomfort). Not its own
     # [solweig] extra: that pins gdal from PyPI, which has no Windows wheel.
     "pet-adjusted>=0.1.5",
+]
+# Network accessibility (builtup/calculations/accessibility.py): uv sync --inexact --extra access
+access = [
+    "pandana>=0.8.1",
 ]
 # Graphify: uv sync --inexact --extra graphify
 graphify = [

@@ -16,9 +16,12 @@ share one equation. The side heights and facade gap come from
 builtup/calculations/canyon.py::street_inputs.
 
 DAG edges: Buildings -> Canyon_Aspect, Streets -> Canyon_Aspect.
+(The accessibility equations at the end of this module carry their own edges.)
 """
 
-DEFAULT_WIDTH_M = {"residential": 8.0, "secondary": 12.0, "primary": 20.0}
+import math
+
+DEFAULT_WIDTH_M ={"residential": 8.0, "secondary": 12.0, "primary": 20.0}
 FALLBACK_WIDTH_M = 10.0
 
 
@@ -139,3 +142,105 @@ def layout_metrics(site_m2, footprints_m2, floors, units, street_m2, street_leng
         "single_family": sum(1 for u in units if u == 1),
         "multi_family": sum(1 for u in units if u > 1),
     }
+
+
+# ── Network accessibility (DAG node Accessibility) ───────────────────────
+#
+# Per building and travel mode, from the network distance d (m) to the k
+# nearest amenities of each category c (pandana nearest_pois over the OSM
+# walk / bike graph, builtup/calculations/accessibility.py):
+#
+#   f(d)  = 1                          d <= D0     (full value close by)
+#           exp(-lambda (d - D0))      D0 < d <= D_max
+#           0                          d > D_max   (not reachable)
+#   lambda = -ln(F_AT_CUTOFF) / (D_max - D0)       so f(D_max) = F_AT_CUTOFF
+#   a_c   = sum_k omega_k f(d_ck) / sum_k omega_k     category value, 0..1
+#   score = 100 sum_c w_c a_c / sum_c w_c             0..100
+#
+# A new amenity can only shorten a distance, so f and hence the score never
+# fall when an amenity is added (monotone), which is what drives the price
+# edge Accessibility -> Property. The shape (full value inside a short walk,
+# smooth decay to a cut-off, diminishing weight on further amenities of one
+# category) follows the Walk Score methodology (Walk Score 2011) and the
+# 15-minute-city catchments (Moreno et al. 2021, Smart Cities 4(1)); the
+# numbers are named v1 choices, not estimates, and are stored with the result
+# (ACCESS_METHOD).
+#
+# DAG edges: Facilities -> Accessibility, Streets -> Accessibility,
+#            Green_Area -> Accessibility
+
+ACCESS_METHOD = "network-decay walk/bike v1"
+MODES = ("walk", "bike")
+# Speeds (m/s) turn a catchment in minutes into metres: 4.8 km/h walking, 15 km/h cycling.
+SPEED_MPS = {"walk": 4.8 / 3.6, "bike": 15.0 / 3.6}
+# D0 = 5 min, D_max = 20 min on foot (Moreno et al. 2021 use 15 min as the target);
+# the bicycle gets 5 / 20 minutes at its speed, rounded to whole hundreds of metres.
+FULL_VALUE_M = {"walk": 400.0, "bike": 1500.0}
+CUTOFF_M = {"walk": 1600.0, "bike": 5000.0}
+F_AT_CUTOFF = 0.05
+
+# category -> (weight w_c, omega_k for the 1st, 2nd, ... nearest). The keys are
+# Facility.type values plus "park" (nature.GreenSpaces). Weights are
+# equal-ish with daily needs (food, health, transit, green) above occasional ones.
+CATEGORIES = {
+    "supermarket": (3.0, (1.0,)),
+    "shop": (1.0, (1.0, 0.5, 0.25)),
+    "pharmacy": (1.5, (1.0,)),
+    "clinic_gp": (2.0, (1.0,)),
+    "hospital": (1.0, (1.0,)),
+    "school": (2.0, (1.0, 0.5)),
+    "childcare": (1.5, (1.0, 0.5)),
+    "library": (0.5, (1.0,)),
+    "sport": (1.0, (1.0,)),
+    "bus_stop": (2.0, (1.0, 0.5)),
+    "tram_metro_stop": (2.0, (1.0,)),
+    "train_station": (2.0, (1.0,)),
+    "park": (3.0, (1.0,)),
+}
+
+
+def decay_rate(mode):
+    """lambda of the exponential tail for the mode (1/m)."""
+    return -math.log(F_AT_CUTOFF) / (CUTOFF_M[mode] - FULL_VALUE_M[mode])
+
+
+def distance_decay(d_m, mode):
+    """f(d): 1 inside D0, exponential tail to D_max, 0 beyond or when unreachable (None)."""
+    if d_m is None or d_m < 0 or d_m > CUTOFF_M[mode]:
+        return 0.0
+    if d_m <= FULL_VALUE_M[mode]:
+        return 1.0
+    return math.exp(-decay_rate(mode) * (d_m - FULL_VALUE_M[mode]))
+
+
+def category_value(distances_m, mode, omegas):
+    """a_c from the sorted distances to the nearest amenities of one category; missing ones count 0."""
+    total = sum(omegas)
+    if not total:
+        return 0.0
+    got = 0.0
+    for i, omega in enumerate(omegas):
+        d = distances_m[i] if distances_m is not None and i < len(distances_m) else None
+        got += omega * distance_decay(d, mode)
+    return got / total
+
+
+def accessibility_score(distances_by_category, mode, categories=None):
+    """
+    Score 0..100 from {category: [d_1, d_2, ...]} in metres (None / missing = unreachable).
+    `categories` overrides CATEGORIES (name -> (weight, omegas)) for what-ifs.
+    """
+    categories = CATEGORIES if categories is None else categories
+    weight_sum = sum(w for w, _ in categories.values())
+    if not weight_sum:
+        return 0.0
+    total = sum(
+        w * category_value(distances_by_category.get(name), mode, omegas)
+        for name, (w, omegas) in categories.items()
+    )
+    return 100.0 * total / weight_sum
+
+
+def access_minutes(d_m, mode):
+    """Travel time in minutes for a network distance (display only)."""
+    return None if d_m is None else d_m / SPEED_MPS[mode] / 60.0

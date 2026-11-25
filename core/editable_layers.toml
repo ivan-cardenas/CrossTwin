@@ -16,7 +16,7 @@
 # mainMap/test_editing.py checks every key and field name listed here.
 
 ["builtup.Building"]
-exclude = ["area_sqm", "neighborhood", "last_updated", "connectivity"]
+exclude = ["area_sqm", "neighborhood", "last_updated"]
 optional = ["buildingType"]   # derived from usageFunction
 
 ["builtup.Street"]

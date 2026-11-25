@@ -2,6 +2,8 @@ from datetime import date
 
 from django.conf import settings
 
+from .osm_network import OVERPASS_STATEMENTS as OSM_NETWORK_STATEMENTS
+
 coordinate_system = settings.COORDINATE_SYSTEM
 
 
@@ -325,6 +327,16 @@ FIELD_MAPPINGS = {
         "osm_subtype": "type",
     },
     "osm_amenities": {
+        "__geometry__": "geom",
+        "__unique__": "osm_id",
+        "__unique_field__": "sourceID",
+        "__spatial_fk__": {"field": "neighborhood", "model": "administrative.Neighborhood", "required": False},
+        "osm_name": "name",
+        "osm_class": "type",
+        "osm_subtype": "subtype",
+    },
+    # Same fields as osm_amenities; the amenity categories of the accessibility score.
+    "osm_access_amenities": {
         "__geometry__": "geom",
         "__unique__": "osm_id",
         "__unique_field__": "sourceID",
@@ -1433,6 +1445,59 @@ EXTERNAL_DATA_CATALOG = [
         "feature_label": "Facility",
         "params": {"srsName": "EPSG:4326"},
         "requires_bbox": True,
+        "enabled": True,
+    },
+    {
+        "key": "osm_access_amenities",
+        "source": "osm",
+        "category": "Built environment",
+        "name": "Daily-needs amenities (OpenStreetMap)",
+        "description": "Supermarkets and food shops, pharmacies, GP practices, childcare, libraries, sports facilities, bus and tram stops and metro entrances (OSM nodes and ways, ways as a centre point). Together with the schools, hospitals and stations of 'Amenities (OpenStreetMap)' and the parks, these are the destinations of the network accessibility score. Import neighborhoods first.",
+        "target_model": "builtup.Facility",
+        "url": "https://overpass-api.de/api/interpreter",
+        "format": "overpass",
+        # Ways too: supermarkets and sports halls are mostly mapped as building outlines.
+        # Kept disjoint from osm_amenities (kindergarten, clinic, railway=station stay there).
+        "osm_query": [
+            'nwr["shop"~"^(supermarket|convenience|bakery|butcher|greengrocer|deli|chemist|mall|department_store|variety_store)$"]',
+            'nwr["amenity"~"^(pharmacy|doctors|childcare|library)$"]',
+            'nwr["leisure"~"^(sports_centre|swimming_pool|fitness_centre)$"]',
+            'node["highway"="bus_stop"]',
+            'node["railway"~"^(tram_stop|subway_entrance)$"]',
+        ],
+        # tag -> {OSM value: Facility.type}; the first matching tag wins
+        "osm_classes": {
+            "shop": {
+                "supermarket": "supermarket", "convenience": "shop", "bakery": "shop", "butcher": "shop",
+                "greengrocer": "shop", "deli": "shop", "chemist": "shop", "mall": "shop",
+                "department_store": "shop", "variety_store": "shop",
+            },
+            "amenity": {"pharmacy": "pharmacy", "doctors": "clinic_gp", "childcare": "childcare", "library": "library"},
+            "leisure": {"sports_centre": "sport", "swimming_pool": "sport", "fitness_centre": "sport"},
+            "highway": {"bus_stop": "bus_stop"},
+            "railway": {"tram_stop": "tram_metro_stop", "subway_entrance": "tram_metro_stop"},
+        },
+        "osm_subtype_tags": ["shop", "amenity", "leisure", "railway"],
+        "feature_label": "Facility",
+        "params": {"srsName": "EPSG:4326"},
+        "requires_bbox": True,
+        "enabled": True,
+    },
+    {
+        "key": "osm_network",
+        "source": "osm",
+        "category": "Built environment",
+        "name": "Walk & bike network (OpenStreetMap)",
+        "description": "Every routable street, path and cycleway (not motorways) as a graph of intersections and segments, flagged walkable and/or cyclable. The Streets input of the network accessibility score; each edge stores the snapshot date and a hash of the query. Re-importing an area replaces the segments of the ways that come back.",
+        "target_model": "builtup.NetworkEdge",
+        "url": "https://overpass-api.de/api/interpreter",
+        "format": "overpass_network",
+        "osm_query": OSM_NETWORK_STATEMENTS,
+        "feature_label": "Street",
+        "params": {"srsName": "EPSG:4326"},
+        "requires_bbox": True,
+        "slow": True,
+        "slow_reason": "A city's street network is tens of thousands of ways; it can take a minute or two on the public Overpass server.",
         "enabled": True,
     },
     {

@@ -11,7 +11,7 @@ Each catalog entry specifies:
   - description:  short description for the UI
   - target_model: Django model path (app_label.ModelName)
   - url/endpoint: where to fetch the data
-  - format:       'wfs' | 'wcs' | 'wms' | 'raster' | 'atom' | 'ogc_api' | 'overpass'
+  - format:       'wfs' | 'wcs' | 'wms' | 'raster' | 'atom' | 'ogc_api' | 'overpass' | 'overpass_network'
   - field_mapping: dict mapping WFS properties → model fields
   - unique_field:  field to use for update_or_create lookup
 """
@@ -3090,5 +3090,9 @@ def import_dataset(
 
     elif source == "osm" and fmt == "overpass":
         return OSMImporter.fetch(dataset, bbox)
+
+    elif source == "osm" and fmt == "overpass_network":
+        from . import osm_network
+        return osm_network.fetch(dataset, bbox)
 
     return ImportResult("error on EXTERNAL_DATA", f"No handler for source={source}, format={fmt}")

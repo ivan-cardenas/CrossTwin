@@ -126,9 +126,16 @@ class StreetCanyon(models.Model):
 class Facility(models.Model):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=100, help_text="Name of the facility")
-    type = models.CharField(max_length=100, choices=[('school', 'School'), ('hospital', 'Hospital'), ('fire_station', 'Fire Station'), 
-                                                     ('police_station', 'Police Station'), ('market', 'Market'), ('transportNode', 'Transport Node')], 
-                            help_text="Type of facility")
+    # The accessibility categories (builtup/calculations/chain.py::CATEGORIES) are the
+    # Facility types below plus parks (nature.GreenSpaces); the last group is read by
+    # the Facilities -> Accessibility edge only.
+    TYPES = [('school', 'School'), ('hospital', 'Hospital'), ('fire_station', 'Fire Station'),
+             ('police_station', 'Police Station'), ('market', 'Market'), ('transportNode', 'Transport Node'),
+             ('supermarket', 'Supermarket'), ('shop', 'Shop'), ('pharmacy', 'Pharmacy'),
+             ('clinic_gp', 'Clinic / GP'), ('childcare', 'Childcare'), ('library', 'Library'),
+             ('sport', 'Sport facility'), ('bus_stop', 'Bus stop'), ('tram_metro_stop', 'Tram / metro stop'),
+             ('train_station', 'Train station')]
+    type = models.CharField(max_length=100, choices=TYPES, help_text="Type of facility")
     subtype = models.CharField(max_length=100, null=True, blank=True, help_text="Finer source category within the type, e.g. OSM amenity 'kindergarten' or 'clinic'")
     sourceID = models.CharField(max_length=100, unique=True, null=True, blank=True, help_text="Identifier in the source dataset, e.g. 'osm:node/123' for OpenStreetMap")
     neighborhood = models.ForeignKey(Neighborhood, on_delete=models.DO_NOTHING, null=True, blank=True, help_text="City code from administrative.City")
@@ -215,7 +222,7 @@ class Building(models.Model):
     facadeShadeScore = models.FloatField(null=True, blank=True, help_text="Shade on the facades of the building's block, 0-1 (KEA 'Schaduw op gebouwen'.SOG.Score)")
     floodDepth_p99_m = models.FloatField(null=True, blank=True, help_text="99th percentile water depth around the building in a 70 mm/h cloudburst, m (KEA nl_fcab_omgevingsscore_wateroverlast.waterdiepte_p99)")
     floodDepthClass = models.CharField(max_length=50, null=True, blank=True, help_text="Water depth class around the building, e.g. '10 tot 15 cm' (KEA nl_fcab_omgevingsscore_wateroverlast.waterdiepte_klasse)")
-    connectivity = models.ManyToManyField(Facility, verbose_name="Connections to Facilities", blank=True, help_text="Facilities the property is connected to")  #TODO: Define connectivity index and calculation method
+    # Connectivity is the stored builtup.Accessibility (one row per mode), not a field here.
     # Plain id, not an FK: builtup must not depend on housing (housing imports builtup).
     source_project = models.IntegerField(null=True, blank=True, db_index=True, help_text="housing.HousingProject whose neighbourhood generator placed this building (builtup/calculations/materialise.py)")
     last_updated = models.DateTimeField(default=timezone.now)
@@ -253,6 +260,85 @@ class Building(models.Model):
     class Meta:
         verbose_name = "Building"
         verbose_name_plural = "Buildings"
+
+
+class NetworkNode(models.Model):
+    """
+    An intersection or way end of the OpenStreetMap routing graph (importer/osm_network.py).
+    The primary key is the OSM node id, so edges and pandana share one id space.
+    Together with NetworkEdge this is the stored "Streets" input of Accessibility;
+    builtup.Street (INSPIRE roads, no topology) is left untouched.
+    """
+    osm_id = models.BigIntegerField(primary_key=True, help_text="OpenStreetMap node id")
+    geom = models.PointField(srid=CoordinateSystem)
+
+    def __str__(self):
+        return f"Node {self.osm_id}"
+
+    class Meta:
+        verbose_name = "Network node"
+        verbose_name_plural = "Network nodes"
+
+
+class NetworkEdge(models.Model):
+    """
+    A routable segment between two NetworkNodes, usable on foot and/or by bicycle.
+    Undirected: a one-way street is still walkable both ways, and the bicycle
+    one-way exemption is ignored (v1). snapshot_date + query_hash identify the
+    Overpass data the edge came from, so a score can be traced to a network version.
+
+    DAG edges: Streets -> Accessibility (a saved edge refreshes the buildings near it).
+    """
+    from_node = models.ForeignKey(NetworkNode, on_delete=models.DO_NOTHING, related_name="edges_from")
+    to_node = models.ForeignKey(NetworkNode, on_delete=models.DO_NOTHING, related_name="edges_to")
+    length_m = models.FloatField(help_text="Length along the segment, m")
+    walk = models.BooleanField(default=True, help_text="Usable on foot")
+    bike = models.BooleanField(default=False, help_text="Usable by bicycle")
+    osm_id = models.BigIntegerField(null=True, blank=True, db_index=True, help_text="OpenStreetMap way id the segment was cut from")
+    highway = models.CharField(max_length=50, blank=True, default="", help_text="OSM highway tag value")
+    snapshot_date = models.DateField(null=True, blank=True, help_text="Date of the Overpass snapshot")
+    query_hash = models.CharField(max_length=16, blank=True, default="", help_text="Hash of the Overpass query that produced the edge")
+    geom = models.LineStringField(srid=CoordinateSystem)
+
+    def __str__(self):
+        return f"Edge {self.from_node_id}-{self.to_node_id} ({self.length_m:.0f} m)"
+
+    class Meta:
+        verbose_name = "Network edge"
+        verbose_name_plural = "Network edges"
+
+
+class Accessibility(models.Model):
+    """
+    Network accessibility of one building for one travel mode: how close the
+    nearest amenities of each category are along the walk or bike network, and
+    the 0-100 score derived from them (builtup/calculations/chain.py).
+
+    distances is {category: [d_1, d_2, ...]} in metres along the network, the k
+    nearest within the mode's cut-off; a category without a reachable amenity is
+    absent. Computed by builtup/calculations/accessibility.py and refreshed by
+    builtup/signals.py when a facility, a park or the network changes.
+
+    DAG edges: Facilities -> Accessibility, Streets -> Accessibility, Green_Area -> Accessibility.
+    """
+    MODES = [("walk", "Walk"), ("bike", "Bike")]
+
+    building = models.ForeignKey(Building, on_delete=models.DO_NOTHING, related_name="accessibility")
+    mode = models.CharField(max_length=10, choices=MODES)
+    distances = models.JSONField(default=dict, blank=True, help_text="{category: [network metres to the k nearest]}")
+    score = models.FloatField(help_text="Accessibility score 0-100")
+    method = models.CharField(max_length=60, help_text="Equation version (chain.ACCESS_METHOD)")
+    network_snapshot = models.DateField(null=True, blank=True, help_text="Snapshot date of the network the distances come from")
+    computed_at = models.DateTimeField(auto_now=True)
+    geom = models.PointField(srid=CoordinateSystem, help_text="Building centroid, for the map layer")
+
+    def __str__(self):
+        return f"Accessibility {self.mode} of building {self.building_id}: {self.score:.1f}"
+
+    class Meta:
+        verbose_name = "Accessibility"
+        verbose_name_plural = "Accessibility"
+        constraints = [models.UniqueConstraint(fields=["building", "mode"], name="builtup_accessibility_building_mode")]
 
 
 def bag_usage_labels(value):

@@ -7,7 +7,7 @@ do not edit by hand. Stored rows record their own source (dataset key, scene, st
 
 ## 1. Importer catalog (Retrieve Data from APIs)
 
-74 datasets from 10 providers.
+76 datasets from 10 providers.
 
 ### Publieke Dienstverlening Op de Kaart
 
@@ -104,7 +104,9 @@ Crowd-sourced open map data, fetched through the Overpass API. No authentication
 
 | Key | Dataset | Category | Stored in | Endpoint |
 |---|---|---|---|---|
+| `osm_access_amenities` | Daily-needs amenities (OpenStreetMap) | Built environment | `builtup.Facility` | https://overpass-api.de/api/interpreter |
 | `osm_amenities` | Amenities (OpenStreetMap) | Built environment | `builtup.Facility` | https://overpass-api.de/api/interpreter |
+| `osm_network` | Walk & bike network (OpenStreetMap) | Built environment | `builtup.NetworkEdge` | https://overpass-api.de/api/interpreter |
 | `osm_parks` | Parks (OpenStreetMap) | Nature & Environment | `nature.GreenSpaces` | https://overpass-api.de/api/interpreter |
 | `osm_trees` | Trees (OpenStreetMap) | Nature & Environment | `nature.Tree` | https://overpass-api.de/api/interpreter |
 | `osm_water_bodies` | Water Bodies (OpenStreetMap) | Nature & Environment | `nature.WaterBodies` | https://overpass-api.de/api/interpreter |
