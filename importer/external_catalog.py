@@ -82,7 +82,11 @@ FIELD_MAPPINGS = {
         "buurtnaam": "neighborhoodName",
         "buurtcode": "id",
         "aantalInwoners": "currentPopulation",
+        "aantalHuishoudens": "households",
+        "percentageEenpersoonshuishoudens": "onePersonHouseholds_pct",
         "jaar": "populationDate",
+        # CBS marks neighborhoods without a value (e.g. "Buitenland") with -99997 and kin
+        "__nodata__": KEA_NODATA,
     },
     "CBS_Housing": {
         "__unique_fields__": ["city", "year"],
@@ -106,6 +110,16 @@ FIELD_MAPPINGS = {
         "__city_source__": "RegioS",
         "__city_field__": "city",
         "ParticuliereHuishoudens_1": "households",
+    },
+    # The one-person households of the same table: with the households and the
+    # population they give the persons per multi-person home of the municipality.
+    "CBS_OnePersonHouseholds": {
+        "__unique_fields__": ["city", "year"],
+        "__year_source__": "Perioden",
+        "__year_field__": "year",
+        "__city_source__": "RegioS",
+        "__city_field__": "city",
+        "ParticuliereHuishoudens_1": "onePersonHouseholds",
     },
     # CBS 85173NED "Regionale prognose 2023-2050": one row per gemeente x year x
     # forecast variant, population in thousands.
@@ -539,6 +553,23 @@ EXTERNAL_DATA_CATALOG = [
       "requires_bbox": True,
       "params": {
           "filter": "LeeftijdReferentiepersoon eq '10000' and Huishoudenssamenstelling eq 'T001139' and GrootteVanHetHuishouden eq 'T001106' and startswith(RegioS,'GM') and substringof('JJ00',Perioden)",
+          "select": ["RegioS", "Perioden", "ParticuliereHuishoudens_1"],
+      },
+      "enabled": True,
+    },
+
+    {
+      "key": "CBS_OnePersonHouseholds",
+      "source": "CBS",
+      "category": "Housing",
+      "name": "One-person households 2014- (86291NED)",
+      "description": "CBS number of one-person households per municipality on 1 January (same table as Private households). With the households and the population it gives the persons per multi-person home, which the housing dashboard uses to adapt demand to a neighborhood's share of people living alone.",
+      "target_model": "housing.HouseholdSize",
+      "table_id": "86291NED",
+      "format": "odata",
+      "requires_bbox": True,
+      "params": {
+          "filter": "LeeftijdReferentiepersoon eq '10000' and Huishoudenssamenstelling eq 'T001139' and GrootteVanHetHuishouden eq '1011400' and startswith(RegioS,'GM') and substringof('JJ00',Perioden)",
           "select": ["RegioS", "Perioden", "ParticuliereHuishoudens_1"],
       },
       "enabled": True,

@@ -7,7 +7,7 @@ do not edit by hand. Stored rows record their own source (dataset key, scene, st
 
 ## 1. Importer catalog (Retrieve Data from APIs)
 
-73 datasets from 10 providers.
+74 datasets from 10 providers.
 
 ### Publieke Dienstverlening Op de Kaart
 
@@ -45,6 +45,7 @@ Dutch national statistics data platform. Open data, no authentication required. 
 | `CBS_PopulationForecast` | Population forecast 2023-2050 (85173NED) | Demographics | `administrative.PopulationProjection` | CBS table `85173NED` |
 | `CBS_Households` | Private households 2014- (86291NED) | Housing | `housing.HouseholdSize` | CBS table `86291NED` |
 | `CBS_Housing` | Housing Lifecycle (86098NED) | Housing | `housing.HousingSupplyDemand` | CBS table `86098NED` |
+| `CBS_OnePersonHouseholds` | One-person households 2014- (86291NED) | Housing | `housing.HouseholdSize` | CBS table `86291NED` |
 
 ### Copernicus Sentinel-2 Earth Observation
 
@@ -181,7 +182,7 @@ Dutch national institute for public health and the environment. Open WFS data, n
 | KNMI'23 stations | KNMI (2023), *KNMI'23 climate scenarios, key figures per station*, table Temperatuur (warmest day of the year, days with Tx >= 30 and >= 35 °C, tropical nights; De Bilt, Den Helder, Groningen, Maastricht, Vlissingen; change relative to 1991-2020). https://klimaatscenarios-data.knmi.nl, retrieved 2026-11-14. | weather/calculations/climate.py (heat-wave day of the Scenarios panel) |
 | Bbl | Besluit bouwwerken leefomgeving (Bbl), in force since 1 January 2024; art. 4.163 lid 2 (≥ 55 % of a dwelling's usable area is verblijfsgebied), §4.3.10 daylight. https://wetten.overheid.nl | builtup/calculations/regulations.py |
 | IPLO vrije indeelbaarheid | Informatiepunt Leefomgeving, *Vrije indeelbaarheid: regels bij nieuwbouw*. https://iplo.nl/regelgeving/regels-voor-activiteiten/technische-bouwactiviteit/nieuwbouw/rijksregels/vrije-indeelbaarheid/ | builtup/calculations/regulations.py |
-| IPLO infoblad woning | Informatiepunt Leefomgeving (2026), *Besluit bouwwerken leefomgeving en woning* (infoblad, February 2026): minimum 18 m² verblijfsgebied per dwelling. https://iplo.nl/publish/pages/228127/infoblad-besluit-bouwwerken-leefomgeving-en-woning_200223-februari-2026.pdf | builtup/calculations/regulations.py |
+| IPLO infoblad woning | Informatiepunt Leefomgeving (2026), *Besluit bouwwerken leefomgeving en woning* (infoblad, February 2026): minimum 18 m² verblijfsgebied per dwelling. https://iplo.nl/publish/pages/228127/infoblad-besluit-bouwwerken-leefomgeving-en-woning_200223-februari-2026.pdf | builtup/calculations/regulations.py; housing/calculations/chain.py::MIN_DWELLING_AREA_SQM (usable homes of the housing supply) |
 | IPLO daglicht | Informatiepunt Leefomgeving, *Daglichttoetreding: regels bij nieuwbouw* (NEN 2057). https://iplo.nl/regelgeving/regels-voor-activiteiten/technische-bouwactiviteit/nieuwbouw/rijksregels/daglichttoetreding/ | builtup/calculations/regulations.py |
 | IPLO brandcompartiment | Informatiepunt Leefomgeving, *Brandcompartiment: regels bij nieuwbouw* (fire spread, NEN 6068). https://iplo.nl/regelgeving/regels-voor-activiteiten/technische-bouwactiviteit/nieuwbouw/rijksregels/brandcompartiment/ | builtup/calculations/regulations.py |
 | NEN 2580 | NEN 2580:2007, *Oppervlakten en inhouden van gebouwen*: usable area (GO) ≈ 0.8 × gross floor area (BVO), a typical ratio. | builtup/calculations/regulations.py |

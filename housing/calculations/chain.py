@@ -19,11 +19,27 @@ DAG edges: Total_Population, Household_Size -> Housing_Demand
            Household_Size -> Property
 """
 
+from builtup.calculations.regulations import MIN_VERBLIJFSGEBIED_M2
+
 # Slider range of the dashboard's "persons per home" control; also the plausible
 # range stored values are checked against (NL average is ~2.1, 1-person-heavy
 # student cities fall below 1.8).
 SIZE_MIN = 1.0
 SIZE_MAX = 4.0
+
+# Range of the "residents living alone" slider, % of the residents. Neighborhood
+# values (CBS one-person households x households / inhabitants) reach about 60 %
+# in student and city-centre areas.
+ALONE_MIN = 0.0
+ALONE_MAX = 70.0
+
+# A dwelling counts as a usable home from this floor area (m2). The Bbl needs at
+# least 18 m2 verblijfsgebied per dwelling (IPLO infoblad, core/data_sources.py
+# "Bbl"); the BAG usable area (oppervlakte) is at least the verblijfsgebied, so a
+# unit below 18 m2 certainly is not a home. Rooms, studios in care or student
+# complexes and similar fall out; a unit above it is kept even if it is not
+# (a lower bound on what is excluded).
+MIN_DWELLING_AREA_SQM = MIN_VERBLIJFSGEBIED_M2
 
 # ── Affordability stress ─────────────────────────────────────────────
 #
@@ -167,11 +183,83 @@ def what_if_demand(stored_demand, population, baseline_population, stored_size, 
     return demand_units(population, size) or stored_demand
 
 
-def housed_residents(dwellings, average_size):
-    """Residents living in `dwellings` occupied at `average_size` persons each."""
-    if not dwellings or not average_size:
+def multi_person_size(population, households, one_person_households):
+    """
+    Persons per multi-person household of a municipality (CBS 86291NED):
+
+        m = (population - one_person) / (households - one_person)
+
+    One-person households hold one person each, so they are taken out of both
+    terms. None without the three inputs or without a multi-person household.
+    """
+    if not population or not households or one_person_households is None:
+        return None
+    multi = households - one_person_households
+    if multi <= 0 or population <= one_person_households:
+        return None
+    return (population - one_person_households) / multi
+
+
+def living_alone_share(one_person_households, residents):
+    """Share (0-1) of the residents who live alone: each one-person household holds one person."""
+    if not one_person_households or not residents:
+        return None
+    return min(one_person_households / residents, 1.0)
+
+
+def alone_demand_factor(average_size, alone_share, multi_size):
+    """
+    Factor on the demand (residents / average size) for a neighborhood whose share
+    of residents living alone is `alone_share`, against the municipality:
+
+        homes = share x R + (1 - share) x R / m          (R residents)
+        factor = homes / (R / average_size) = average_size x (share + (1 - share) / m)
+
+    It is 1 when the neighborhood has the municipality's share (the average is then
+    already right) and above 1 when more residents live alone (each takes a whole
+    home). 1.0 without the inputs, so the dashboard falls back to the average alone.
+    """
+    if not average_size or alone_share is None or not multi_size:
+        return 1.0
+    share = min(max(alone_share, ALONE_MIN / 100.0), ALONE_MAX / 100.0)
+    return average_size * (share + (1.0 - share) / multi_size)
+
+
+def household_split(residents, homes, alone_share):
+    """
+    (single, other_homes, other_size): `homes` split into one-person homes (the
+    residents living alone, housed first) and the others.
+
+        single     = min(residents x share, homes)
+        other_size = (residents - single) / (homes - single)
+
+    The other homes hold more than the plain average because the average already
+    counts the one-person homes. `other_size` is None when no home is left;
+    all None without residents or homes.
+    """
+    if not residents or not homes:
+        return None, None, None
+    share = min(max(alone_share or 0.0, ALONE_MIN / 100.0), ALONE_MAX / 100.0)
+    single = min(round(residents * share), homes)
+    other = homes - single
+    return single, other, ((residents - single) / other if other else None)
+
+
+def housed_residents(dwellings, residents, homes, alone_share=None):
+    """
+    Residents the `dwellings` house, never more than the `residents` there are.
+
+    One-person homes are filled first, every other dwelling holds `other_size`
+    (household_split). Dwellings beyond the occupied `homes` stand empty, so the
+    stock cannot house more than the residents (BAG alone would give dwellings x
+    average size, more than the population).
+    """
+    if not dwellings or not residents or not homes:
         return 0
-    return round(dwellings * average_size)
+    single, _, other_size = household_split(residents, homes, alone_share)
+    used_single = min(single, dwellings)
+    capacity = used_single + (dwellings - used_single) * (other_size or 0.0)
+    return round(min(capacity, residents))
 
 
 def dwelling_gap(needed, stock):

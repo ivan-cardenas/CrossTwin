@@ -12,7 +12,7 @@ from watersupply.tests.factories import make_neighborhood, make_polygon
 from housing import signals
 from housing.calculations import chain
 from housing.calculations.indicators import calculate_zoning
-from housing.models import HouseholdSize, HousingSupplyDemand
+from housing.models import HouseholdSize, HousingSupplyDemand, NeighborhoodSocialProfile
 
 
 class ZoningGroupsTests(TestCase):
@@ -250,7 +250,8 @@ class DashboardIsADeviationFromTheBaselineTests(TestCase):
     def setUp(self):
         self.hood = make_neighborhood()
         self.city = self.hood.district.city
-        HouseholdSize.objects.create(city=self.city, year=2025, population=100_000, households=50_000)
+        HouseholdSize.objects.create(city=self.city, year=2025, population=100_000, households=50_000,
+                                     onePersonHouseholds=30_000)
         HousingSupplyDemand.objects.create(city=self.city, year=2025, supply_units=45_000)
 
     def _indicators(self, **kwargs):
@@ -273,6 +274,59 @@ class DashboardIsADeviationFromTheBaselineTests(TestCase):
         ind = self._indicators()
         self.assertEqual((ind['supply_units'], ind['supply_source']), (45_000, 'cbs'))
         self.assertEqual(ind['housed_residents'], 90_000)   # 45 000 homes x 2.0
+
+    def test_residents_living_alone_adapt_the_demand(self):
+        # municipality: 100 000 residents, 50 000 households of which 30 000 one-person
+        # -> 70 000 residents in 20 000 multi-person homes = 3.5 each; share alone 30 %
+        self.assertEqual(self._indicators(alone_override=30.0)['demand_units'], 50_000)   # the municipal mix
+        ind = self._indicators(alone_override=40.0)
+        # 40 000 live alone + 60 000 / 3.5 = 17 143 homes
+        self.assertEqual(ind['demand_units'], 57_143)
+        self.assertEqual(ind['single_dwellings'], 40_000)
+        self.assertEqual(ind['other_household_size'], 3.5)
+        # 45 000 homes: the 40 000 one-person homes first, the other 5 000 at 3.5
+        self.assertEqual(ind['housed_residents'], 57_500)
+        self.assertEqual(HousingSupplyDemand.objects.get().demand_units, 50_000)   # nothing written
+
+    def test_without_municipal_one_person_households_demand_stays_at_the_average(self):
+        HouseholdSize.objects.update(onePersonHouseholds=None)
+        ind = self._indicators(alone_override=40.0)
+        self.assertEqual(ind['demand_units'], 50_000)
+        self.assertIsNone(ind['multi_person_size'])
+
+    def test_living_alone_default_is_cbs_one_person_households(self):
+        from administrative.models import Neighborhood
+        # 500 households, 40 % one-person = 200 residents alone of 1 200 inhabitants
+        Neighborhood.objects.filter(pk=self.hood.pk).update(households=500, onePersonHouseholds_pct=40.0)
+        ind = self._indicators()
+        self.assertEqual((ind['alone_pct'], ind['alone_source']), (16.7, 'cbs'))
+        # fewer living alone than the municipality's 30 %: fewer homes than residents / 2.0
+        self.assertAlmostEqual(ind['demand_units'], 40_500, delta=2)
+
+    def test_living_alone_falls_back_to_severe_loneliness(self):
+        NeighborhoodSocialProfile.objects.create(
+            neighborhood=self.hood, severeLoneliness_pct=12.0, geom=self.hood.geom)
+        ind = self._indicators()
+        self.assertEqual((ind['alone_pct'], ind['alone_source']), (12.0, 'rivm'))
+
+    def test_household_mix_helpers(self):
+        self.assertAlmostEqual(chain.multi_person_size(100_000, 50_000, 30_000), 3.5)
+        self.assertIsNone(chain.multi_person_size(100_000, 50_000, None))
+        self.assertIsNone(chain.multi_person_size(100_000, 50_000, 50_000))     # no multi-person home
+        self.assertAlmostEqual(chain.living_alone_share(200, 1200), 1 / 6)
+        # the municipality's own share leaves the demand as it is
+        self.assertAlmostEqual(chain.alone_demand_factor(2.0, 0.30, 3.5), 1.0)
+        self.assertEqual(chain.alone_demand_factor(2.0, None, 3.5), 1.0)        # no share
+        self.assertEqual(chain.alone_demand_factor(2.0, 0.40, None), 1.0)       # no municipal split
+        # Bothoven: 5 960 residents at 2.01 = 2 965 homes, 1 103 living alone, 3 786 mapped dwellings
+        single, other, other_size = chain.household_split(5960, 2965, 1103 / 5960)
+        self.assertEqual((single, other), (1103, 1862))
+        self.assertAlmostEqual(other_size, (5960 - 1103) / 1862)
+        # the stock cannot house more residents than there are (not 3 786 x 2.01 = 7 610)
+        self.assertEqual(chain.housed_residents(3786, 5960, 2965, 1103 / 5960), 5960)
+        self.assertEqual(chain.household_split(1000, 600, 0.9)[0], 600)        # share clamped to 70 %, at most the homes
+        self.assertEqual(chain.household_split(None, 600, 0.2), (None, None, None))
+        self.assertEqual(chain.housed_residents(100, 200, 100), 200)           # no share: dwellings x 2.0
 
     def test_what_if_helper(self):
         self.assertEqual(chain.what_if_demand(50_000, 110, 100, 2.0, 2.0), 55_000)     # +10 % population
@@ -305,6 +359,19 @@ class SubCitySupplyTests(TestCase):
         self.assertEqual((ind['supply_units'], ind['supply_source']), (3, 'bag'))
         self.assertEqual(ind['demand_units'], round(data['population_baseline'] / 2.0))
         self.assertEqual(ind['housed_residents'], 6)   # 3 dwellings x 2.0, not the city's 45 000
+
+    def test_units_below_the_minimum_area_or_in_vacant_buildings_are_not_homes(self):
+        from housing.views import _build_indicators
+        building = Building.objects.get(id=1)
+        Property.objects.create(name="room", grossArea=chain.MIN_DWELLING_AREA_SQM - 1,
+                                usageFunction=["Residential function"], building=building,
+                                geom=Point(257010.0, 470000.0, srid=settings.COORDINATE_SYSTEM))
+        ind = _build_indicators(self._data('neighborhood', self.hood.neighborhoodName))
+        self.assertEqual((ind['supply_units'], ind['usable_units']), (4, 3))
+        self.assertEqual(ind['supply_coverage_pct'], round(3 / ind['demand_units'] * 100, 1))
+        Building.objects.filter(id=1).update(vacant=True)
+        ind = _build_indicators(self._data('neighborhood', self.hood.neighborhoodName))
+        self.assertEqual(ind['usable_units'], 0)
 
     def test_district_counts_its_dwellings(self):
         data = self._data('district', self.hood.district.districtName)

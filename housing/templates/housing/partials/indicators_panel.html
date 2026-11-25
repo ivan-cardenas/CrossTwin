@@ -53,7 +53,7 @@
                hx-vals='{"pop_scenario": "{{ pop_scenario|default:"prognose" }}", "pop_growth": "{{ pop_growth|default:0|unlocalize }}"}'
                hx-trigger="input changed delay:200ms"
                hx-target="#indicators-grid"
-               hx-include="this"/>
+               hx-include="#household-size-slider, #alone-slider"/>
       </div>
       <div class="slider-threshold-labels">
         <span>1</span><span>2</span><span>3</span><span>4</span>
@@ -67,6 +67,51 @@
     {% else %}
     <div style="font-size:0.8rem; color:rgba(var(--accent-1-rgb), 0.55);">
       No household size for this area yet — import <em>Private households</em> and the <em>Population forecast</em> (CBS) in Retrieve Data.
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Residents living alone what-if — default from CBS one-person households (RIVM severe loneliness as fallback) -->
+  <div class="slider-container whatif-only">
+    <div class="slider-header">
+      <div class="slider-header-left">
+        <span class="card-label">Residents Living Alone</span>
+        {% info_help "housing.living_alone" %}
+      </div>
+      <div class="slider-value-display">
+        <span id="alone-display">{{ indicators.alone_pct|default:"–"|unlocalize }}</span>
+        <span class="slider-unit">% of residents</span>
+      </div>
+    </div>
+    <div class="slider-zones-container">
+      <div class="slider-zone-wrap">
+        {# Without a share for this area the slider stays but is disabled #}
+        <input id="alone-slider"
+               class="zone-slider"
+               type="range"
+               name="alone_pct"
+               min="{{ indicators.alone_min|unlocalize }}" max="{{ indicators.alone_max|unlocalize }}" step="0.5"
+               value="{{ indicators.alone_pct|default:0|unlocalize }}"
+               data-stored="{{ indicators.alone_pct_stored|unlocalize }}"
+               {% if indicators.alone_pct_stored is None %}disabled{% endif %}
+               hx-get="{% url 'housing:recalculate_indicators' level location year %}"
+               hx-vals='{"pop_scenario": "{{ pop_scenario|default:"prognose" }}", "pop_growth": "{{ pop_growth|default:0|unlocalize }}"}'
+               hx-trigger="input changed delay:200ms"
+               hx-target="#indicators-grid"
+               hx-include="#household-size-slider, #alone-slider"/>
+      </div>
+      <div class="slider-threshold-labels">
+        <span>0</span><span>20</span><span>40</span><span>60</span>
+      </div>
+    </div>
+    {% if indicators.alone_pct_stored is not None %}
+    <div style="font-size:10px; color:rgba(var(--accent-1-rgb), 0.45);">
+      {% if indicators.alone_source == 'cbs' %}CBS one-person households{% else %}RIVM severe loneliness (proxy: lonely people do not always live alone){% endif %}: {{ indicators.alone_pct_stored|unlocalize }}%
+      {% if indicators.multi_person_size %}· other homes hold {{ indicators.multi_person_size }} persons (municipality){% else %}· no one-person households for the municipality: demand stays at the average{% endif %}
+    </div>
+    {% else %}
+    <div style="font-size:0.8rem; color:rgba(var(--accent-1-rgb), 0.55);">
+      No share of residents living alone for this area yet — re-import <em>Neighborhoods</em> (CBS Wijken en Buurten) and import <em>One-person households</em> in Retrieve Data.
     </div>
     {% endif %}
   </div>

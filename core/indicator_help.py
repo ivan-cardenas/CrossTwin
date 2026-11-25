@@ -247,13 +247,23 @@ HELP = {
         ],
         "note": "Fewer persons per home means more homes are needed for the same population.",
     },
+    "housing.living_alone": {
+        "title": "Residents Living Alone",
+        "what": "The share of the residents who live alone. It adapts the housing demand to the neighborhood's household mix.",
+        "how": "The default comes from CBS Wijken en Buurten: one-person households (households x share of one-person households) over the inhabitants of the neighborhoods in the area. Where CBS has no value, the RIVM severe-loneliness share stands in as a proxy. Each resident living alone takes a whole home; the others fill homes at the persons per multi-person home of the municipality (CBS 86291NED). At the municipality's own share the demand equals residents / average persons per home. The one-person homes are housed first, so the other homes hold more than the average. The slider only changes the dashboard and saves nothing.",
+        "eq": [
+            "Persons per multi-person home = {population - one-person households | households - one-person households}",
+            "Housing demand = residents living alone + {other residents | persons per multi-person home}",
+        ],
+        "note": "More residents living alone means more homes are needed for the same population.",
+    },
     "housing.supply_coverage": {
         "title": "Housing Supply Coverage",
         "what": "The share of housing demand that the current stock meets.",
-        "how": "For a city or province, supply is the CBS dwelling stock at the end of the year (table 86098NED). CBS publishes it per municipality only, so for a district or neighborhood supply is the number of mapped dwellings (BAG residential function) inside it. Demand is population ÷ persons per home, so it follows the population dock and the slider.",
+        "how": "For a city or province, supply is the CBS dwelling stock at the end of the year (table 86098NED). CBS publishes it per municipality only, so for a district or neighborhood supply is the number of mapped dwellings (BAG residential function) inside it. Only usable homes count: dwellings in vacant buildings and units below the minimum dwelling area (18 m²) are left out, at the share found among the mapped dwellings. Demand is population ÷ persons per home, adapted to the share of residents living alone, so it follows the population dock and both sliders.",
         "eq": [
-            "Coverage = {homes available | homes needed} × 100 %",
-            "Homes needed = {population | persons per home}",
+            "Coverage = {usable homes | homes needed} × 100 %",
+            "Homes needed = {population | persons per home} × household-mix factor",
         ],
         "note": "Below 100 % there are not enough homes for the estimated demand.",
     },

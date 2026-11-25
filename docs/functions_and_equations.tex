@@ -686,6 +686,18 @@ $P^{\text{base}}_{c,y}$ is the population stored with that year's \code{Househol
 \begin{equation}
   D' = D \cdot \frac{P'}{P^{\text{base}}} \cdot \frac{\bar{s}}{s'}
 \end{equation}
+Dashboard-only household-mix what-if (\code{chain.multi\_person\_size}, \code{chain.alone\_demand\_factor}, \code{chain.household\_split}, \code{chain.housed\_residents}; never written, so the stored \code{demand\_units} and \code{Property.residents} above are unchanged). The average $\bar{s}$ hides the household mix, so the demand is adapted to the share $a$ of the residents who live alone. $a$ is $\sum_n H_n\,p_n / \sum_n P_n$ over the neighborhoods with CBS values (\code{Neighborhood.households} $H_n$, \code{onePersonHouseholds\_pct} $p_n$, \code{currentPopulation} $P_n$; each one-person household holds one person), else the RIVM severe-loneliness share as a proxy. With $S$ the one-person households of the municipality (CBS 86291NED, \code{HouseholdSize.onePersonHouseholds}), the persons per multi-person home are
+\begin{equation}
+  m = \frac{P - S}{H - S}
+\end{equation}
+and the $R$ residents (of the baseline demand, $R = D'\,\bar{s}'$) fill
+\begin{align}
+  D'' &= \operatorname{round}\!\Big(D' \cdot \bar{s}'\,\big(a + (1-a)/m\big)\Big) \;\;\text{(equals $D'$ at the municipality's own share $a = S/P$)} \
+  N_1 &= \min\!\big(\operatorname{round}(R\,a),\, D''\big) \
+  s_{\text{other}} &= (R - N_1) / (D'' - N_1) \
+  \text{housed} &= \min\!\big(N_1 + (U - N_1)\, s_{\text{other}},\; R\big)
+\end{align}
+The one-person homes are filled first. Without $m$ (no one-person households imported) $D'' = D'$. $U$ is the usable supply: the stock scaled by the share of the mapped dwellings (BAG residential function) that are not in a vacant building and have at least 18\,\si{m^2} (\code{MIN\_DWELLING\_AREA\_SQM}, the Bbl verblijfsgebied minimum); dwellings beyond $D''$ stand empty, so the stock never houses more than $R$. Supply coverage is $U / D''$.
 \textbf{Receivers} (\code{housing/signals.py}): \code{City}/\code{city\_population\_changed}, median \code{PopulationProjection}, \code{HouseholdSize}, \code{Property}/\code{ResidentialProperty}; bulk imports defer them (\code{deferred\_housing\_refresh}). \textbf{DAG edges:} \dagedge{Total\_Population $\rightarrow$ Housing\_Demand}, \dagedge{Household\_Size $\rightarrow$ Housing\_Demand}, \dagedge{Household\_Size $\rightarrow$ Property} --- \statusdone{}
 
 \subsection{Pipeline units --- \code{calculate\_new\_units()}}

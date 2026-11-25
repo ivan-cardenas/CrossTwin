@@ -32,6 +32,16 @@
     slider.addEventListener('input', e => applyZone(parseFloat(e.target.value)));
   }
 
+  // Residents-living-alone slider: live value read-out (the grid is recalculated by htmx)
+  const lonely = document.getElementById('alone-slider');
+  if (lonely) {
+    const show = v => {
+      const el = document.getElementById('alone-display');
+      if (el) el.textContent = v.toFixed(1);
+    };
+    lonely.addEventListener('input', e => show(parseFloat(e.target.value)));
+  }
+
   // initGauges needs to be global so htmx:afterSwap can call it
   window.initGauges = function() {
     document.querySelectorAll('[data-gauge-id]').forEach(card => {

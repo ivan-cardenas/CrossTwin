@@ -131,6 +131,8 @@ class Neighborhood(models.Model):
     neighborhoodName = models.CharField(max_length=100, help_text="Name of the neighborhood", verbose_name="Neighborhood Name")
     currentPopulation = models.IntegerField(null=True, blank=True, help_text="Current population in the neighborhood", verbose_name="Current Population")
     populationDate = models.DateField(null=True)
+    households = models.IntegerField(null=True, blank=True, help_text="Private households (CBS Wijken en Buurten, aantalHuishoudens)")
+    onePersonHouseholds_pct = models.FloatField(null=True, blank=True, help_text="One-person households, % of the households (CBS Wijken en Buurten, percentageEenpersoonshuishoudens)")
     area_km2 = models.FloatField(null=True, blank=True, help_text="Area in square kilometers")
     populationDensity = models.FloatField(null=True, blank=True, help_text="Population density in people per square kilometer", verbose_name="Population Density")
     urban_area = models.FloatField(null=True, help_text="Urban area in square kilometers")

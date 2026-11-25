@@ -81,7 +81,7 @@ REFERENCES = [
     ("IPLO infoblad woning", "Informatiepunt Leefomgeving (2026), *Besluit bouwwerken leefomgeving en woning* "
      "(infoblad, February 2026): minimum 18 m² verblijfsgebied per dwelling. "
      "https://iplo.nl/publish/pages/228127/infoblad-besluit-bouwwerken-leefomgeving-en-woning_200223-februari-2026.pdf",
-     "builtup/calculations/regulations.py"),
+     "builtup/calculations/regulations.py; housing/calculations/chain.py::MIN_DWELLING_AREA_SQM (usable homes of the housing supply)"),
     ("IPLO daglicht", "Informatiepunt Leefomgeving, *Daglichttoetreding: regels bij nieuwbouw* (NEN 2057). "
      "https://iplo.nl/regelgeving/regels-voor-activiteiten/technische-bouwactiviteit/nieuwbouw/rijksregels/daglichttoetreding/",
      "builtup/calculations/regulations.py"),

@@ -8,6 +8,7 @@ from .calculations import chain
 from .calculations.indicators import (
     calculate_household_size,
     calculate_dwellings,
+    calculate_living_alone,
     calculate_supply_demand_for_unit,
     supply_demand_from_dwellings,
     calculate_new_units_for_unit,
@@ -63,6 +64,7 @@ def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, po
         'population_baseline': population_baseline,
         'household': household,
         'dwellings': dwellings,
+        'living_alone': calculate_living_alone(adminUnit),
         'supply_demand': supply_demand,
         'new_units': new_units,
         'land_take': land_take,
@@ -143,13 +145,18 @@ MOCK_DATA = {
 
 # -- shared calculation -------------------------------------------------------
 
-def _build_indicators(data, household_size_override=None):
+def _build_indicators(data, household_size_override=None, alone_override=None):
     """
     Pure function: takes DB data dict, returns flat indicators dict.
 
-    `household_size_override` (persons per home, the slider) and the population
-    what-ifs already in data['population'] only deviate from the stored baseline
-    through chain.what_if_demand; nothing is written.
+    `alone_override` (% of the residents living alone, the slider; default from CBS
+    one-person households) adapts the demand to the neighborhood's household mix:
+    those residents take one home each, the others fill homes at the municipality's
+    persons per multi-person home (chain.alone_demand_factor); the one-person homes
+    are housed first (chain.household_split). `household_size_override` (persons
+    per home, the slider) and the population what-ifs already in data['population']
+    only deviate from the stored baseline through chain.what_if_demand; nothing is
+    written.
     """
     sd = data['supply_demand']
     household = data.get('household') or {}
@@ -170,17 +177,32 @@ def _build_indicators(data, household_size_override=None):
     # scaled by the what-ifs (population dock, persons-per-home slider).
     stored_size = household.get('average_size')
     size = household_size_override or stored_size
-    demand_units = chain.what_if_demand(
+    base_demand = chain.what_if_demand(
         sd['demand_units'], data.get('population'), data.get('population_baseline'),
-        stored_size, size)
-    demand_units = demand_units or 0
-    deficit = demand_units - sd['supply_units']
+        stored_size, size) or 0
+
+    # Household mix: the residents living alone (CBS), the slider's default.
+    living_alone = data.get('living_alone') or {}
+    stored_alone = living_alone.get('pct')
+    alone = alone_override if alone_override is not None else stored_alone
+    alone_share = alone / 100.0 if alone is not None else None
+    multi_size = household.get('multi_person_size')
+    factor = chain.alone_demand_factor(size, alone_share, multi_size)
+    demand_units = round(base_demand * factor)
+    # the residents the baseline demand implies, on the same (CBS) scale as the stock
+    residents = base_demand * size if size else None
+    single_dwellings, other_homes, other_size = chain.household_split(residents, demand_units, alone_share)
+
+    # Usable supply: the stock minus what does not count as a home (vacant
+    # buildings, units below the minimum dwelling area), at the mapped share.
+    usable_units = round(sd['supply_units'] * dwellings.get('usable_share', 1.0))
+    deficit = demand_units - usable_units
     deficit_pct = round(deficit / demand_units * 100, 1) if demand_units else 0
 
     # Supply coverage: what share of demand is currently met (gauge display)
     supply_coverage_pct = None
     if demand_units:
-        supply_coverage_pct = round(sd['supply_units'] / demand_units * 100, 1)
+        supply_coverage_pct = round(usable_units / demand_units * 100, 1)
 
     # Affordability: housing cost burden (mortgage or rent / income)
     income = aff.get('avg_median_income')
@@ -204,7 +226,18 @@ def _build_indicators(data, household_size_override=None):
         'dwellings': dwellings.get('dwellings', 0),
         'estimated_residents': dwellings.get('estimated_residents', 0),
         # residents the supplied homes hold at this size, against the population
-        'housed_residents': chain.housed_residents(sd['supply_units'], size),
+        'housed_residents': chain.housed_residents(usable_units, residents, demand_units, alone_share),
+        'alone_pct': alone,
+        'alone_pct_stored': stored_alone,
+        'alone_source': living_alone.get('source'),
+        'alone_min': chain.ALONE_MIN,
+        'alone_max': chain.ALONE_MAX,
+        'single_dwellings': single_dwellings,
+        'other_household_size': round(other_size, 2) if other_size else None,
+        'multi_person_size': round(multi_size, 2) if multi_size else None,
+        'usable_units': usable_units,
+        'min_dwelling_area': chain.MIN_DWELLING_AREA_SQM,
+        'usable_dwellings': dwellings.get('usable_dwellings', 0),
         # -- Supply & Demand --
         'supply_units': sd['supply_units'],
         'supply_source': sd.get('supply_source', 'cbs'),
@@ -310,12 +343,21 @@ def recalculate_indicators(request, level, location, year):
     if household_size is not None:
         household_size = min(max(household_size, chain.SIZE_MIN), chain.SIZE_MAX)
 
+    alone = request.GET.get('alone_pct')
+    try:
+        alone = float(alone) if alone else None
+    except ValueError:
+        alone = None
+    if alone is not None:
+        alone = min(max(alone, chain.ALONE_MIN), chain.ALONE_MAX)
+
     pop_scenario, pop_growth = population_params(request.GET)
     data = _get_adminUnit_data(level, location, year, pop_scenario, pop_growth)
     if data is None:
         data = MOCK_DATA
 
-    indicators = _build_indicators(data, household_size_override=household_size)
+    indicators = _build_indicators(data, household_size_override=household_size,
+                                   alone_override=alone)
 
     return render(request, 'housing/partials/indicators_grid.html', {'indicators': indicators})
 

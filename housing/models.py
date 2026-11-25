@@ -34,6 +34,7 @@ class HouseholdSize(models.Model):
     city = models.ForeignKey("administrative.City", verbose_name="City", on_delete=models.DO_NOTHING)
     year = models.IntegerField(help_text="Year (1 January) of the household data")
     households = models.IntegerField(null=True, blank=True, help_text="Private households (CBS 86291NED)")
+    onePersonHouseholds = models.IntegerField(null=True, blank=True, help_text="One-person households (CBS 86291NED, GrootteVanHetHuishouden 1011400, catalog CBS_OnePersonHouseholds)")
     population = models.IntegerField(null=True, blank=True, help_text="Population of the year: the median forecast of PopulationProjection when there is one (derived), else as entered")
     average_size = models.FloatField(null=True, blank=True, help_text="Average persons per household = population / households (derived)")
     last_updated = models.DateTimeField(default=timezone.now)

@@ -4,6 +4,7 @@ from ..models import (
     HousingSupplyDemand, HousingProject, CentralBankPolicy,
     CreditSupplyConditions, Mortgage, Rentals, HousePriceIndex,
     HousingAffordability, HouseholdSize, ResidentialProperty,
+    NeighborhoodSocialProfile,
 )
 from administrative.admin_units import cities_within, neighborhoods_within, province_of
 from builtup.models import Property, ZoningArea, Building
@@ -100,27 +101,82 @@ def calculate_household_size(adminBund, year):
                if r and r.population and r.households]
     population = sum(r.population for r in records)
     households = sum(r.households for r in records)
+    # one-person households only when every city of the unit has them (a partial sum
+    # would skew the persons per multi-person home)
+    one_person = (sum(r.onePersonHouseholds for r in records)
+                  if records and all(r.onePersonHouseholds is not None for r in records) else None)
     return {
         'average_size': round(population / households, 3) if households else None,
         'year': min((r.year for r in records), default=None),
         'households': households or None,
         'population': population or None,
+        'one_person_households': one_person,
+        'multi_person_size': chain.multi_person_size(population, households, one_person),
     }
 
 
+def calculate_loneliness(adminBund):
+    """Mean share of severely lonely adults (%, RIVM) over the unit's neighborhoods.
+
+    Only the fallback of calculate_living_alone; None when no neighborhood has a value.
+    """
+    mean = NeighborhoodSocialProfile.objects.filter(
+        neighborhood__in=neighborhoods_within(adminBund),
+        severeLoneliness_pct__isnull=False,
+    ).aggregate(mean=Avg('severeLoneliness_pct'))['mean']
+    return round(mean, 1) if mean is not None else None
+
+
+def calculate_living_alone(adminBund):
+    """
+    Share of the residents who live alone (%) in the unit's neighborhoods, with its source.
+
+    CBS Wijken en Buurten: one-person households = households x share of
+    one-person households, each holding one person, over the inhabitants of the
+    same neighborhoods (those with all three values). Without CBS values the RIVM
+    severe-loneliness share stands in (a proxy: lonely people do not always live
+    alone). {'pct': None, 'source': None} when neither exists.
+
+    Dashboard what-if input only: no stored value depends on it, so it implements
+    no edge of core/DAG.dot.
+    """
+    agg = neighborhoods_within(adminBund).filter(
+        households__isnull=False, onePersonHouseholds_pct__isnull=False,
+        currentPopulation__gt=0,
+    ).aggregate(
+        alone=Sum(ExpressionWrapper(F('households') * F('onePersonHouseholds_pct') / 100.0,
+                                    output_field=FloatField())),
+        residents=Sum('currentPopulation'),
+    )
+    share = chain.living_alone_share(agg['alone'], agg['residents'])
+    if share is not None:
+        return {'pct': round(share * 100, 1), 'source': 'cbs'}
+    lonely = calculate_loneliness(adminBund)
+    return {'pct': lonely, 'source': 'rivm' if lonely is not None else None}
+
+
 def calculate_dwellings(adminBund):
-    """Dwellings (BAG woonfunctie) of the unit and the residents estimated for them.
+    """Dwellings (BAG woonfunctie) of the unit, those that count as homes, and the residents estimated for them.
 
     `residents` is written by housing/signals.py (each dwelling holds the city's
-    average persons per home), so this only counts and sums.
+    average persons per home), so this only counts and sums. A dwelling is
+    usable when its building is not vacant and its area is at least
+    chain.MIN_DWELLING_AREA_SQM; `usable_share` (1.0 without mapped dwellings) is
+    what the supply of the unit is scaled by.
 
     DAG edges:  Household_Size -> Property
     """
     dwellings = ResidentialProperty.objects.filter(
         building__neighborhood__in=neighborhoods_within(adminBund))
-    agg = dwellings.aggregate(count=Count('id'), residents=Sum('residents'))
+    agg = dwellings.aggregate(
+        count=Count('id'), residents=Sum('residents'),
+        usable=Count('id', filter=Q(grossArea__gte=chain.MIN_DWELLING_AREA_SQM, building__vacant=False)),
+    )
+    count = agg['count'] or 0
     return {
-        'dwellings': agg['count'] or 0,
+        'dwellings': count,
+        'usable_dwellings': agg['usable'] or 0,
+        'usable_share': (agg['usable'] or 0) / count if count else 1.0,
         'estimated_residents': round(agg['residents']) if agg['residents'] else 0,
     }
 
