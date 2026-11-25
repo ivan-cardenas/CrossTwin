@@ -18,6 +18,9 @@ importer/batching.py::deferred_cascades): the streets and footprint extents are
 collected and refreshed once when the block ends. The bulk Street import
 replays street_saved through importer/batching.py::_refresh_canyons_over.
 
+Network accessibility (builtup.Accessibility) has its receivers at the end of this
+module; its edges are listed there.
+
 Map editing: rows a refresh changes or creates during an editor change are
 announced with canyon_rewriting / canyon_created (journalled by
 mainMap/signals.py), so Restore puts them back with the edit (receivers skip
@@ -30,7 +33,7 @@ from contextlib import contextmanager
 from django.db.models.signals import post_delete, post_save, pre_delete, pre_save
 from django.dispatch import Signal, receiver
 
-from .models import Building, Property, Street, StreetCanyon
+from .models import Building, Facility, NetworkEdge, Property, Street, StreetCanyon
 
 logger = logging.getLogger(__name__)
 
@@ -394,3 +397,189 @@ def _connect_landcover_created():
 
 
 _connect_landcover_created()
+
+
+# ── Network accessibility (builtup.Accessibility) ────────────────────
+#
+# DAG edges:
+#     Facilities -> Accessibility   a facility added, moved, re-typed or deleted -> the buildings
+#                                   within the cut-off of its old and new position
+#     Green_Area -> Accessibility   the same for a park (nature.GreenSpaces of type park / recreatie)
+#     Streets    -> Accessibility   a network segment changed -> the buildings around it
+#                                   (Street, the INSPIRE road, only feeds the canyon)
+#
+# Every refresh goes through refresh_accessibility(): the box of the changed geometries,
+# widened by each mode's cut-off (the network distance is never shorter than the straight
+# one, so nothing beyond the box can change), then builtup/calculations/accessibility.py::compute.
+# Bulk imports run inside deferred_accessibility_refresh() (importer/batching.py::deferred_cascades);
+# the bulk Facility import replays facility_access_saved through _refresh_accessibility_over.
+# Without a stored network every refresh is a no-op, so the receivers cost two cheap queries.
+
+# Sent with mode=..., building_ids=[...] after Accessibility rows were upserted (bulk_create,
+# no post_save). housing subscribes for Accessibility -> Property.
+accessibility_changed = Signal()
+
+_access = threading.local()
+
+
+def is_park_space(green_type):
+    """GreenSpaces.type of a public park: 'park' or a BGT recreation area (nature.models.PARK / RECREATION_PREFIX)."""
+    text = (green_type or "").lower()
+    return text == "park" or text.startswith("recreatie")
+
+
+def recompute_accessibility(buildings=None, modes=None):
+    """compute() for `buildings`, announcing the changed buildings with accessibility_changed."""
+    from .calculations import accessibility, chain
+
+    def announce(mode, building_ids):
+        accessibility_changed.send(sender=Building, mode=mode, building_ids=building_ids)
+
+    return accessibility.compute(buildings, modes or chain.MODES, after_chunk=announce)
+
+
+def refresh_accessibility(extents):
+    """Recompute both modes for the buildings a change at these extents (xmin, ymin, xmax, ymax) can reach."""
+    from django.conf import settings
+    from django.contrib.gis.geos import Polygon
+
+    from .calculations import chain
+
+    if not extents:
+        return {}
+    written = {}
+    for mode in chain.MODES:
+        reach = chain.CUTOFF_M[mode]
+        box = Polygon.from_bbox((min(e[0] for e in extents) - reach, min(e[1] for e in extents) - reach,
+                                 max(e[2] for e in extents) + reach, max(e[3] for e in extents) + reach))
+        box.srid = int(settings.COORDINATE_SYSTEM)
+        written.update(recompute_accessibility(Building.objects.filter(geom__bboverlaps=box), (mode,)))
+    return written
+
+
+def _flush_accessibility(extents):
+    try:
+        refresh_accessibility(extents)
+    except Exception:
+        # never block the save of the facility, park or segment that caused it
+        logger.exception("Accessibility refresh failed")
+
+
+@contextmanager
+def deferred_accessibility_refresh():
+    """
+    Postpone accessibility refreshes until the block ends, then run them once over the box
+    of everything collected. Nested uses defer to the outermost one; the flush also runs if
+    the block raises (errors logged).
+    """
+    if getattr(_access, "extents", None) is not None:
+        yield
+        return
+    _access.extents = []
+    try:
+        yield
+    except BaseException:
+        extents, _access.extents = _access.extents, None
+        _flush_accessibility(extents)
+        raise
+    else:
+        extents, _access.extents = _access.extents, None
+        _flush_accessibility(extents)
+
+
+def schedule_accessibility(geoms):
+    """Refresh the buildings around these geometries now, or when the enclosing deferral ends."""
+    extents = [g.extent for g in geoms if g is not None and not g.empty]
+    if not extents:
+        return
+    if getattr(_access, "extents", None) is not None:
+        _access.extents.extend(extents)
+        return
+    _flush_accessibility(extents)
+
+
+def _destination_category(facility_type, subtype):
+    from .calculations.accessibility import facility_category
+
+    return facility_category(facility_type, subtype)
+
+
+@receiver(pre_save, sender=Facility, dispatch_uid="builtup_facility_access_presave")
+def facility_access_presave(sender, instance, raw=False, **kwargs):
+    """The stored position and type, to tell whether a save changes any score."""
+    if raw or instance.pk is None:
+        return
+    instance._access_stored = Facility.objects.filter(pk=instance.pk).values("geom", "type", "subtype").first()
+
+
+@receiver(post_save, sender=Facility, dispatch_uid="builtup_facility_access_saved")
+def facility_access_saved(sender, instance, created, raw=False, **kwargs):
+    """
+    DAG edge: Facilities -> Accessibility. A facility added, moved or re-typed refreshes the
+    buildings around its old and new position; a rename or an edit of a type that is no
+    destination (fire station) refreshes nothing.
+    """
+    if raw:
+        return
+    stored = getattr(instance, "_access_stored", None)
+    now = _destination_category(instance.type, instance.subtype)
+    was = _destination_category(stored["type"], stored["subtype"]) if stored else None
+    if stored and not created and was == now and stored["geom"] is not None and instance.geom is not None \
+            and stored["geom"].equals_exact(instance.geom, tolerance=0.01):
+        return
+    schedule_accessibility([instance.geom if now else None, stored["geom"] if was and stored else None])
+
+
+@receiver(post_delete, sender=Facility, dispatch_uid="builtup_facility_access_deleted")
+def facility_access_deleted(sender, instance, **kwargs):
+    """DAG edge: Facilities -> Accessibility. A closed facility lowers the scores around it."""
+    if _destination_category(instance.type, instance.subtype):
+        schedule_accessibility([instance.geom])
+
+
+@receiver(pre_save, sender="nature.GreenSpaces", dispatch_uid="builtup_green_access_presave")
+def green_access_presave(sender, instance, raw=False, **kwargs):
+    if raw or instance.pk is None:
+        return
+    instance._access_stored = sender.objects.filter(pk=instance.pk).values("geom", "type").first()
+
+
+@receiver(post_save, sender="nature.GreenSpaces", dispatch_uid="builtup_green_access_saved")
+def green_access_saved(sender, instance, created, raw=False, **kwargs):
+    """DAG edge: Green_Area -> Accessibility. A park drawn, reshaped or (un)typed refreshes the buildings around it."""
+    if raw:
+        return
+    stored = getattr(instance, "_access_stored", None)
+    now = is_park_space(instance.type)
+    was = bool(stored) and is_park_space(stored["type"])
+    if stored and not created and was == now and stored["geom"] is not None and instance.geom is not None \
+            and stored["geom"].equals_exact(instance.geom, tolerance=0.01):
+        return
+    schedule_accessibility([instance.geom if now else None, stored["geom"] if was and stored else None])
+
+
+@receiver(post_delete, sender="nature.GreenSpaces", dispatch_uid="builtup_green_access_deleted")
+def green_access_deleted(sender, instance, **kwargs):
+    """DAG edge: Green_Area -> Accessibility. A removed park lowers the scores around it."""
+    if is_park_space(instance.type):
+        schedule_accessibility([instance.geom])
+
+
+@receiver(post_save, sender=NetworkEdge, dispatch_uid="builtup_network_edge_saved")
+def network_edge_saved(sender, instance, raw=False, **kwargs):
+    """DAG edge: Streets -> Accessibility. A saved segment (length, mode flags, line) refreshes the buildings around it."""
+    if raw:
+        return
+    from .calculations.accessibility import clear_network_cache
+
+    clear_network_cache()  # the cache key does not see an edit in place
+    schedule_accessibility([instance.geom])
+
+
+@receiver(post_delete, sender=NetworkEdge, dispatch_uid="builtup_network_edge_deleted")
+def network_edge_deleted(sender, instance, **kwargs):
+    """DAG edge: Streets -> Accessibility. A removed segment can cut buildings off from amenities."""
+    from .calculations.accessibility import clear_network_cache
+
+    clear_network_cache()
+    schedule_accessibility([instance.geom])

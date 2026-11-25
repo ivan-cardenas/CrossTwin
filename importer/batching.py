@@ -22,7 +22,10 @@ from core.cache import bump_layer_version
 from physicalEnv.signals import deferred_urban_area, schedule_urban_area_recompute
 from watersupply.signals import deferred_water_refresh, refresh_freshwater
 from housing.signals import deferred_housing_refresh
-from builtup.signals import deferred_canyon_refresh, schedule_streets, streets_in_extent
+from builtup.signals import (
+    deferred_accessibility_refresh, deferred_canyon_refresh, schedule_accessibility, schedule_streets,
+    streets_in_extent,
+)
 from builtup.calculations.urbanisation import deferred_urbanisation_refresh
 
 logger = logging.getLogger(__name__)
@@ -109,6 +112,9 @@ def deferred_cascades():
         # The Degree of Urbanisation refresh reads the neighborhoods' own
         # population and land cover; entered first, it exits last, after every
         # other cascade has settled.
+        # The accessibility refresh reads the facilities, parks, network and building
+        # footprints as the import left them; entered before everything, it runs last.
+        stack.enter_context(deferred_accessibility_refresh())
         stack.enter_context(deferred_urbanisation_refresh())
         stack.enter_context(deferred_canyon_refresh())
         stack.enter_context(deferred_water_refresh())
@@ -138,6 +144,16 @@ def _refresh_canyons_over(rows):
     extents = [row.geom.extent for row in rows if row.pk is None and getattr(row, "geom", None) is not None]
     if extents:
         schedule_streets(streets_in_extent(extents))
+
+
+def _refresh_accessibility_over(rows):
+    """Replays builtup's facility_access_saved (Facilities -> Accessibility) for bulk-written facilities."""
+    from builtup.calculations.accessibility import facility_category
+
+    schedule_accessibility([
+        row.geom for row in rows
+        if getattr(row, "geom", None) is not None and facility_category(row.type, row.subtype)
+    ])
 
 
 def _finalize_landcover(rows):
@@ -205,7 +221,7 @@ def _fill_tree_heights(rows):
 BULK_IMPORT_MODELS = {
     "physicalEnv.LandCoverVector": _finalize_landcover,   # replays physicalEnv/signals.py
     "builtup.Street": _refresh_canyons_over,              # replays builtup/signals.py
-    "builtup.Facility": None,
+    "builtup.Facility": _refresh_accessibility_over,      # replays builtup/signals.py
     "physicalEnv.SoilArea": _finalize_soil,               # replays watersupply/ and urban_heat/signals.py
     "nature.ProtectedArea": None,
     "nature.WaterWaysLN": None,

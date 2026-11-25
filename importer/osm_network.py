@@ -132,7 +132,7 @@ def split_ways(elements, project):
 def save_network(nodes, edges, dataset, snapshot=None):
     """Replace the stored edges of the returned ways and add the nodes. Returns (nodes, edges) created."""
     from django.conf import settings
-    from django.contrib.gis.geos import LineString, Point
+    from django.contrib.gis.geos import LineString, Point, Polygon
     from django.db import transaction
 
     from builtup.models import NetworkEdge, NetworkNode
@@ -144,7 +144,9 @@ def save_network(nodes, edges, dataset, snapshot=None):
     way_ids = sorted({e["osm_id"] for e in edges})
     with transaction.atomic():
         for i in range(0, len(way_ids), CHUNK):
-            NetworkEdge.objects.filter(osm_id__in=way_ids[i:i + CHUNK]).delete()
+            # raw: a normal delete() would load every edge to send post_delete to
+            # builtup/signals.py; one refresh over the whole import is scheduled below.
+            NetworkEdge.objects.filter(osm_id__in=way_ids[i:i + CHUNK])._raw_delete(NetworkEdge.objects.db)
         NetworkNode.objects.bulk_create(
             [NetworkNode(osm_id=node_id, geom=Point(x, y, srid=srid)) for node_id, (x, y) in nodes.items()],
             ignore_conflicts=True, batch_size=CHUNK,
@@ -157,8 +159,18 @@ def save_network(nodes, edges, dataset, snapshot=None):
             ) for e in edges],
             batch_size=CHUNK,
         )
-    # bulk_create fires no signals: invalidate the cached GeoJSON of both layers here.
+    # bulk_create / the raw delete fire no signals: invalidate the cached GeoJSON of both
+    # layers and the pandana graph here, and replay Streets -> Accessibility over the extent
+    # (builtup/signals.py; deferred to the end of an enclosing deferred_cascades() block).
+    from builtup.calculations.accessibility import clear_network_cache
+    from builtup.signals import schedule_accessibility
+
     bump_layer_version(NetworkNode, NetworkEdge)
+    clear_network_cache()
+    xs, ys = [xy[0] for xy in nodes.values()], [xy[1] for xy in nodes.values()]
+    extent = Polygon.from_bbox((min(xs), min(ys), max(xs), max(ys)))
+    extent.srid = int(srid)
+    schedule_accessibility([extent])
     return len(nodes), len(edges)
 
 
@@ -192,6 +204,6 @@ def fetch(dataset, bbox):
     return ImportResult(
         "success",
         f"Imported the OpenStreetMap network: {n_edges} edges ({walk} walkable, {bike} cyclable), {n_nodes} nodes. "
-        "Recompute accessibility to use it.",
+        "Accessibility of the buildings in the area was recomputed.",
         n_edges,
     )

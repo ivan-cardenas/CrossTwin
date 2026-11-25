@@ -173,10 +173,12 @@ ACCESS_METHOD = "network-decay walk/bike v1"
 MODES = ("walk", "bike")
 # Speeds (m/s) turn a catchment in minutes into metres: 4.8 km/h walking, 15 km/h cycling.
 SPEED_MPS = {"walk": 4.8 / 3.6, "bike": 15.0 / 3.6}
-# D0 = 5 min, D_max = 20 min on foot (Moreno et al. 2021 use 15 min as the target);
-# the bicycle gets 5 / 20 minutes at its speed, rounded to whole hundreds of metres.
-FULL_VALUE_M = {"walk": 400.0, "bike": 1500.0}
-CUTOFF_M = {"walk": 1600.0, "bike": 5000.0}
+# Walk: D0 = 5 min, D_max = 20 min (Moreno et al. 2021 use 15 min as the target).
+# Bike: D0 = 800 m (3 min), D_max = 2 km (8 min). The cycling cut-off is deliberately short:
+# it is also the reach of a refresh (builtup/signals.py), so a single edit on the map
+# recomputes the buildings within 2 km, not the whole city.
+FULL_VALUE_M = {"walk": 400.0, "bike": 800.0}
+CUTOFF_M = {"walk": 1600.0, "bike": 2000.0}
 F_AT_CUTOFF = 0.05
 
 # category -> (weight w_c, omega_k for the 1st, 2nd, ... nearest). The keys are
