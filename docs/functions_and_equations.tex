@@ -460,6 +460,13 @@ $n_b$, $n_i$ = nearest network nodes of the building centroid and of amenity $i$
 \end{align}
 Walking: $D_0 = 400$ m, $D_{\max} = 1600$ m; cycling: $D_0 = 800$ m, $D_{\max} = 2000$ m (the cycling cut-off is also the reach of a refresh). Weights $w_c$ and the diminishing $\omega_{ck}$ (e.g.\ shops $1, \tfrac12, \tfrac14$) are the named constants \code{CATEGORIES}; they are v1 choices, not estimates. The shape follows the Walk Score methodology (2011) and the 15-minute-city catchments \cite{Moreno2021}. Because a new amenity can only shorten a distance, $A_{bm}$ never falls when an amenity is added. Worked example: a supermarket $450$ m away on foot gives $a = e^{-\lambda \cdot 50}$ and $A = 100\, w_{\text{supermarket}} a / \sum_c w_c$.
 
+\subsection{Map raster --- \code{access\_raster.smooth\_grid()}}
+For display, \code{builtup.AccessibilityRaster} holds one 0--100 surface per mode on a $h = 25$ m grid. With $S_c = \sum_{b \in c} A_{bm}$ and $N_c = |\{b \in c\}|$ per cell $c$, and $G_\sigma$ a Gaussian kernel ($\sigma = 50$ m),
+\begin{equation}
+  R_{c} = \frac{(G_\sigma * S)_c}{(G_\sigma * N)_c}, \qquad \text{kept only where } \mathrm{dist}(c, \{N > 0\}) \le 75\ \text{m}.
+\end{equation}
+Cells beyond 75 m of a scored building are nodata. Display only: no DAG edge reads it.
+
 \subsection{Unit indicator --- \code{calculate\_accessibility()}}
 The dashboard card shows the mean of $A_{bm}$ over the unit's stored buildings, per mode, and the number of scored buildings with $A = 0$ (not connected). Reads stored rows only; writes nothing.
 

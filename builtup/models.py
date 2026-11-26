@@ -387,6 +387,29 @@ class AccessibilityBike(Accessibility):
         verbose_name_plural = "Accessibility (bike)"
 
 
+class AccessibilityRaster(models.Model):
+    """
+    Map view of the network accessibility: a smooth 0-100 raster of the stored building scores, one row per
+    travel mode (index ACCESS_WALK / ACCESS_BIKE), rebuilt by builtup/calculations/access_raster.py whenever
+    builtup.Accessibility is recomputed. Display only: no DAG edge reads it. The COG is exported by the raster
+    post_save receiver (core/signals.py).
+    """
+    raster = models.RasterField(srid=CoordinateSystem, null=True, blank=True, help_text="Accessibility score 0-100 (nodata where no building is near)")
+    index = models.CharField(max_length=20, help_text="ACCESS_WALK or ACCESS_BIKE")
+    date_time = models.DateTimeField(default=timezone.now)
+    source = models.CharField(max_length=100, null=True, blank=True, help_text="Score method (chain.METHOD_STAMP)")
+    measurement_method = models.CharField(max_length=100, null=True, blank=True, help_text="Cell size, smoothing and mask of the surface")
+    resolution = models.FloatField(null=True, blank=True, help_text="Cell size in metres")
+    cog_path = models.CharField(max_length=500, null=True, blank=True, help_text="Path to the exported Cloud-Optimized GeoTIFF served by TiTiler")
+
+    def __str__(self):
+        return f"Accessibility raster {self.index} ({self.date_time:%Y-%m-%d %H:%M})"
+
+    class Meta:
+        verbose_name = "Accessibility raster"
+        verbose_name_plural = "Accessibility rasters"
+
+
 def bag_usage_labels(value):
     """
     BAG gebruiksdoel as a list of labels (Building.BAG_USAGE_FUNCTIONS).

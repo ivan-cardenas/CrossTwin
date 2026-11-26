@@ -20,8 +20,17 @@ def status():
     from django.db.models import Avg, Count, Max
 
     from .calculations import chain
-    from .models import Accessibility, Building, NetworkEdge
+    from core.utils import without_raster_data
 
+    from .models import Accessibility, AccessibilityRaster, Building, NetworkEdge
+
+    from mainMap.views import raster_layer_entry
+
+    from .calculations.access_raster import INDEX
+
+    raster_layers = {}
+    for row in without_raster_data(AccessibilityRaster.objects.exclude(cog_path__isnull=True).order_by("pk")):
+        raster_layers.update({m: raster_layer_entry(row) for m, i in INDEX.items() if i == row.index})
     modes = {}
     for mode in chain.MODES:
         edges = NetworkEdge.objects.filter(**{mode: True}).aggregate(n=Count("id"), snapshot=Max("snapshot_date"))
@@ -32,6 +41,7 @@ def status():
             "computed_at": scores["computed"],
             "full_value_m": chain.FULL_VALUE_M[mode], "cutoff_m": chain.CUTOFF_M[mode],
             "layer": f"builtup.Accessibility{mode.capitalize()}",
+            "raster_layer": raster_layers.get(mode),
         }
     return {
         "method": chain.ACCESS_METHOD,

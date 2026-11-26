@@ -50,6 +50,7 @@ function renderLayerList() {
           </div>
           <div class="layer-actions">
             ${editing && layer.editable ? `<button onclick="startCreate('${layer.key}')" title="Draw a new object">＋</button>` : ''}
+            ${layer.layer_type === 'raster' ? `<button class="layer-3d-btn" onclick="Raster3D.open('${layer.key}')" title="View as 3D columns (averaged containers)" aria-label="View as 3D columns"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"><path d="M7 1.2 12.2 4v6L7 12.8 1.8 10V4z"/><path d="M1.8 4 7 7l5.2-3M7 7v5.8"/></svg></button>` : ''}
             <button onclick="zoomToLayer('${layer.key}')" title="Zoom to layer">🔍</button>
           </div>
         </div>`;

@@ -2,15 +2,17 @@
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.gis.geos import LineString, MultiPolygon, Point, Polygon
-from django.test import SimpleTestCase, TestCase
+from unittest import mock
+
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
 from administrative.models import City, District, Neighborhood, Province
 from builtup import views
-from builtup.calculations import chain
+from builtup.calculations import access_raster, chain
 from builtup.calculations.indicators import calculate_accessibility
-from builtup.models import (Accessibility, AccessibilityBike, AccessibilityWalk, Building, Facility, NetworkEdge,
-                            NetworkNode)
+from builtup.models import (Accessibility, AccessibilityBike, AccessibilityRaster, AccessibilityWalk, Building,
+                            Facility, NetworkEdge, NetworkNode)
 from core.indicator_help import HELP
 from core.utils import VECTOR_REGISTRY
 from mainMap.styles.layerStyles import ACCESS_CLASSES, ACCESS_LEGEND, LAYER_STYLES
@@ -50,6 +52,32 @@ class StaticTests(SimpleTestCase):
         self.assertEqual(indicators["access_bike"]["buildings"], 58_000)
 
 
+class SmoothGridTests(SimpleTestCase):
+    def test_a_single_building_gives_its_score_near_it_and_nothing_far_away(self):
+        data, x0, y1, cell = access_raster.smooth_grid([X0], [Y0], [40.0])
+        row, col = int((y1 - Y0) // cell), int((X0 - x0) // cell)
+        self.assertAlmostEqual(float(data[row, col]), 40.0, places=3)
+        self.assertEqual(float(data[0, 0]), access_raster.NODATA)   # the padding corner is beyond the mask
+        valid = data[data != access_raster.NODATA]
+        self.assertTrue(((valid >= 0) & (valid <= 100)).all())
+
+    def test_the_surface_stays_between_the_scores_and_is_deterministic(self):
+        args = ([X0, X0 + 100, X0 + 200], [Y0, Y0, Y0], [20.0, 60.0, 100.0])
+        a, *_ = access_raster.smooth_grid(*args)
+        b, *_ = access_raster.smooth_grid(*args)
+        self.assertTrue((a == b).all())
+        valid = a[a != access_raster.NODATA]
+        self.assertGreaterEqual(float(valid.min()), 20.0 - 1e-6)
+        self.assertLessEqual(float(valid.max()), 100.0 + 1e-6)
+
+    def test_the_gap_between_two_buildings_is_filled_but_a_far_gap_is_not(self):
+        data, x0, y1, cell = access_raster.smooth_grid([X0, X0 + 100], [Y0, Y0], [10.0, 90.0])
+        mid = data[int((y1 - Y0) // cell), int((X0 + 50 - x0) // cell)]
+        self.assertTrue(10.0 < float(mid) < 90.0)
+        far, x0, y1, cell = access_raster.smooth_grid([X0, X0 + 1000], [Y0, Y0], [10.0, 90.0])
+        self.assertEqual(float(far[int((y1 - Y0) // cell), int((X0 + 500 - x0) // cell)]), access_raster.NODATA)
+
+
 class DataTests(TestCase):
     def setUp(self):
         province = Province.objects.create(ProvinceName="P", geom=_rect(X0 - 500, Y0 - 500, X0 + 1000, Y0 + 500))
@@ -70,6 +98,22 @@ class DataTests(TestCase):
         self.assertEqual([r.score for r in AccessibilityWalk.objects.all()], [40])
         self.assertEqual([r.score for r in AccessibilityBike.objects.all()], [70])
         self.assertEqual(Accessibility.objects.count(), 2)
+
+    @override_settings(ACCESSIBILITY_RASTER=True)
+    def test_the_raster_row_is_updated_in_place_and_dropped_without_scores(self):
+        self._row(self.a, "walk", 40)
+        self._row(self.b, "bike", 80)
+        with mock.patch("core.rasterOperations.export_raster_to_cog") as export:
+            ids = access_raster.rebuild()
+            self.assertEqual(set(ids), {"walk", "bike"})
+            self.assertEqual(AccessibilityRaster.objects.count(), 2)
+            self.assertEqual(export.call_count, 2)
+            again = access_raster.rebuild(["walk"])
+            self.assertEqual(again["walk"], ids["walk"])           # same row, so the layer key is stable
+            self.assertEqual(AccessibilityRaster.objects.count(), 2)
+            Accessibility.objects.filter(mode="walk").delete()
+            self.assertIsNone(access_raster.rebuild(["walk"])["walk"])
+        self.assertEqual(list(AccessibilityRaster.objects.values_list("index", flat=True)), ["ACCESS_BIKE"])
 
     def test_unit_means_per_mode(self):
         self._row(self.a, "walk", 40)

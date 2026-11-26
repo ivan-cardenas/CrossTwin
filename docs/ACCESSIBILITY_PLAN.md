@@ -67,6 +67,7 @@ Compute and edges
 
 UI
 - [x] Map card "Network Accessibility" (`core/static/js/AccessibilityTool.js`), staff recompute and info endpoints (`builtup/views_accessibility.py`)
+- [x] Map view: smooth raster `AccessibilityRaster` per mode (25 m cells, Gaussian 50 m, masked beyond 75 m; `access_raster.py`), shown by the card and the "On map" button; the building dots stay as a layer
 - [x] Map layers: proxies `AccessibilityWalk` / `AccessibilityBike` (five score classes), `NetworkEdge` line layer
 - [x] Dashboard card with "?" help and "On map" button (`calculate_accessibility`)
 

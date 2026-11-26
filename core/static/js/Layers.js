@@ -318,6 +318,7 @@ function removeLayer(key) {
     });
     delete loadedLayers[key];
   }
+  window.dispatchEvent(new CustomEvent('crosstwin:layer-removed', { detail: { key } }));
   document.getElementById(`legend-${key}`)?.remove();
   const index = availableLayers.findIndex(l => l.key === key);
   if (index >= 0) availableLayers.splice(index, 1);

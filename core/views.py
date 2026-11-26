@@ -181,6 +181,54 @@ def get_raster_tiles(request, app_label, layer_name):
 
 
 
+def get_raster_blocks(request, app_label, layer_name):
+    """
+    Block-averaged grid of a raster for the 3D view (core/calculations/raster_blocks.py).
+
+    GET ?id=<row>&size=<cells per container side>&bbox=<west,south,east,north WGS84>
+    Returns the container centres, their mean values, the colour stops of the
+    raster's style (same colormap as the flat layer) and the container's ground size.
+    """
+    from core.calculations.raster_blocks import BlockGridError, raster_blocks
+
+    registry_key = f"{app_label}.{layer_name}"
+    model_class = RASTER_REGISTRY.get(registry_key)
+    if not model_class:
+        return JsonResponse({"error": f"'{registry_key}' not found in raster registry"}, status=404)
+
+    raster_id = request.GET.get("id")
+    qs = model_class.objects.filter(id=raster_id) if raster_id else model_class.objects.all()
+    instance = without_raster_data(qs).first()
+    if not instance or not instance.cog_path:
+        return JsonResponse({"error": "No raster data found"}, status=404)
+
+    try:
+        block = int(request.GET.get("size", 5))
+        bbox = request.GET.get("bbox")
+        bbox = tuple(float(v) for v in bbox.split(",")) if bbox else None
+        if bbox is not None and len(bbox) != 4:
+            raise ValueError("bbox")
+    except ValueError:
+        return JsonResponse({"error": "Invalid size or bbox"}, status=400)
+
+    cog_path = displayed_cog_path(instance)
+    try:
+        grid = raster_blocks(cog_path, block, bbox)
+    except BlockGridError as e:
+        return JsonResponse({"error": str(e)}, status=413)
+    except Exception as e:
+        return JsonResponse({"error": f"Failed to read raster: {e}"}, status=500)
+
+    style = resolve_raster_style(instance, registry_key)
+    rescale = style["rescale"] or ((grid["min"], grid["max"]) if grid["min"] is not None else None)
+    grid["legend"] = {
+        "label": style["label"], "unit": style["unit"], "min": rescale[0], "max": rescale[1],
+        "stops": colormap_legend_stops(style["colormap"] or "viridis", rescale, steps=16),
+    } if rescale else None
+    grid["version"] = _cog_version(cog_path)
+    return JsonResponse(grid)
+
+
 def console_feed(request):
     """
     The server's recent console lines for the map loader (core/console.py).

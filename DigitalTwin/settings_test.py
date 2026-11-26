@@ -16,3 +16,5 @@ LIVE_WEATHER = False
 # Edited DSM COGs are written synchronously: a worker thread cannot see a TestCase transaction.
 DSM_EDIT_BACKGROUND = False
 DEGURBA_BACKGROUND = False
+# No COG export after every accessibility recompute; the raster tests switch it on and mock the export.
+ACCESSIBILITY_RASTER = False

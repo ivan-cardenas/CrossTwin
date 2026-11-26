@@ -12,6 +12,7 @@ from .calculations.indicators import (
     calculate_street_network,
     calculate_green_space,
     calculate_facilities,
+    accessibility_raster_id,
     calculate_accessibility,
 )
 
@@ -58,6 +59,7 @@ def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, po
         'green': calculate_green_space(adminUnit, population),
         'facilities': calculate_facilities(adminUnit, population),
         'accessibility': calculate_accessibility(adminUnit),
+        'access_raster': accessibility_raster_id('walk'),
         'urbanisation': _urbanisation(adminUnit, year, pop_scenario, pop_growth),
     }
 
@@ -252,6 +254,7 @@ def _build_indicators(data, green_added_ha=None):
         # -- Network accessibility (stored scores, see builtup/calculations/chain.py) --
         'access_walk': access.get('walk'),
         'access_bike': access.get('bike'),
+        'access_raster': data.get('access_raster'),
     }
 
 

@@ -298,7 +298,22 @@ def compute(buildings=None, modes=chain.MODES, after_chunk=None):
         written[mode] = total
     # bulk_create fires no signals: invalidate the cached GeoJSON of the layer here.
     bump_layer_version(Accessibility, AccessibilityWalk, AccessibilityBike)
+    _refresh_raster(list(written))
     return written
+
+
+def _refresh_raster(modes):
+    """Rebuild the map raster of these modes (access_raster.py); never blocks the scores that were just stored."""
+    from django.conf import settings
+
+    if not getattr(settings, "ACCESSIBILITY_RASTER", True):
+        return
+    try:
+        from builtup.calculations import access_raster
+
+        access_raster.rebuild(modes)
+    except Exception:
+        logger.exception("Accessibility raster rebuild failed")
 
 
 def buildings_near(geometry, distance_m):

@@ -24,7 +24,9 @@
 <script src="{% static 'js/MapUI.js' %}"></script>
 <script src="{% static 'js/Panels.js' %}"></script>
 <script src="{% static 'js/FacilityIcons.js' %}"></script>
+<script src="https://cdn.jsdelivr.net/npm/deck.gl@9.1.0/dist.min.js"></script>
 <script src="{% static 'js/Layers.js' %}"></script>
+<script src="{% static 'js/Raster3D.js' %}"></script>
 <script src="{% static 'js/ConsoleFeed.js' %}"></script>
 <script src="{% static 'js/Editing.js' %}"></script>
 <script src="{% static 'js/LstTool.js' %}"></script>
@@ -507,6 +509,28 @@
         <button class="population-panel-close" id="population-panel-close" aria-label="Close population panel">✕</button>
       </div>
       <div class="population-panel-body" id="population-panel-body"></div>
+    </div>
+
+    <!-- 3D RASTER — block-averaged columns (core/static/js/Raster3D.js,
+         core/calculations/raster_blocks.py), opened from a raster row's 3D button. -->
+    <div class="lst-card raster3d-card" id="raster3d-card">
+      <div class="lst-card-header">
+        <div class="lst-card-title" id="raster3d-title">3D RASTER</div>
+        <button class="lst-card-close" id="raster3d-card-close" aria-label="Close 3D raster view">✕</button>
+      </div>
+      <p class="lst-card-hint">Each container of N × N cells is averaged and extruded: the taller the column, the higher the mean value.</p>
+      <div class="raster3d-fields">
+        <label><span class="raster3d-label">Container size <b id="raster3d-size-value"></b></span>
+          <input class="year-slider" type="range" id="raster3d-size" min="1" max="100" step="1" value="5">
+        </label>
+        <label><span class="raster3d-label">Max height <b id="raster3d-height-value"></b></span>
+          <input class="year-slider" type="range" id="raster3d-height" min="10" max="2000" step="10" value="200">
+        </label>
+        <label><span class="raster3d-label">Opacity <b id="raster3d-opacity-value"></b></span>
+          <input class="year-slider" type="range" id="raster3d-opacity" min="20" max="100" step="5" value="90">
+        </label>
+      </div>
+      <p class="lst-card-hint" id="raster3d-status" role="status"></p>
     </div>
 
     {% if user.is_staff %}

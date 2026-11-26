@@ -213,6 +213,15 @@ def calculate_facilities(adminBund, population):
 
 # -- Accessibility ------------------------------------------------------------
 
+def accessibility_raster_id(mode='walk'):
+    """Id of the stored accessibility raster of a mode (the "On map" button of the card), or None before the first calculation."""
+    from .access_raster import INDEX
+    from ..models import AccessibilityRaster
+
+    return (AccessibilityRaster.objects.filter(index=INDEX[mode]).exclude(cog_path__isnull=True)
+            .values_list('pk', flat=True).first())
+
+
 def calculate_accessibility(adminBund):
     """Mean network accessibility score (0-100) of the buildings of an admin unit, per mode.
 

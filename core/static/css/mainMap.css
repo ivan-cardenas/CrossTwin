@@ -546,6 +546,17 @@
     background: var(--bg-raised);
 }
 
+.layer-actions .layer-3d-btn {
+    color: var(--accent);
+    border: 1px solid rgba(var(--accent-rgb), 0.45);
+    line-height: 0;
+}
+
+.layer-actions .layer-3d-btn:hover {
+    color: var(--accent);
+    background: rgba(var(--accent-rgb), 0.15);
+}
+
 .wms-time-dock {
     position: absolute;
     left: 50%;
@@ -3361,3 +3372,13 @@ body[data-map-mode="edit"] #side-panel .summary-more { display: none; }
 .task-guide p { margin: 6px 0 8px; color: var(--text-secondary); }
 .task-guide-nav { display: flex; gap: 6px; justify-content: flex-end; }
 @media (max-width: 768px) { .task-guide { left: 12px; max-width: calc(100% - 24px); } }
+
+/* 3D raster card: one slider per row, no horizontal scroll */
+.raster3d-card { width: 300px; overflow-x: hidden; max-height: none; }
+.raster3d-fields { display: flex; flex-direction: column; gap: 12px; }
+.raster3d-fields label { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.raster3d-label {
+    display: flex; justify-content: space-between; gap: 8px;
+    font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-tertiary);
+}
+.raster3d-label b { font-weight: 500; color: var(--text-secondary); text-transform: none; letter-spacing: 0; }

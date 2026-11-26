@@ -54,6 +54,10 @@ INDEX_STYLES = {
     "HRSL_POP": ("reds", None, "Population Density (HRSL)", "people/pixel (30m)"),
     "AVG_RAD": ("inferno", None, "Nighttime Lights", "nW/cm²/sr"),
     "ALBEDO": ("greys_r", (0, 0.5), "Surface Albedo", ""),
+    # builtup.AccessibilityRaster (builtup/calculations/access_raster.py): the 0-100 network accessibility score,
+    # dark = poorly connected, bright = well connected (the same ramp as the building dots, layerStyles.ACCESS_CLASSES).
+    "ACCESS_WALK": ("viridis", (0, 100), "Accessibility (walking)", "score 0-100"),
+    "ACCESS_BIKE": ("viridis", (0, 100), "Accessibility (cycling)", "score 0-100"),
     # GHSL reference layers (importer catalog gee_ghsl_*): shown next to CrossTwin's own
     # Degree of Urbanisation, never read by any calculation (docs/DEGREE_OF_URBANISATION.md).
     "GHSL_SMOD": (None, None, "Degree of Urbanisation (GHSL GHS-SMOD, 1 km)", ""),
@@ -80,6 +84,9 @@ CATEGORICAL_INDICES = {"LGN2021", "WORLDCOVER_2021_MAP", "LABEL", "GHSL_SMOD"}
 # wanted; everything else keeps TiTiler's nearest default.
 RESAMPLING_OVERRIDES = {
     "HRSL_POP": "cubic",
+    # a smoothed surface: bilinear keeps it smooth when zoomed in
+    "ACCESS_WALK": "bilinear",
+    "ACCESS_BIKE": "bilinear",
 }
 
 # Fallback by "app_label.modelname" (lowercase; registry keys are

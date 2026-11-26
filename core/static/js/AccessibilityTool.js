@@ -4,7 +4,8 @@
 // the buildings scored and their mean score, per mode. Staff can recompute every
 // building (POST builtup/accessibility/calculate/); after that, edits to facilities, parks
 // and network segments keep the scores current on the server (builtup/signals.py), and this
-// card only reloads the layer that is on screen. The Walk / Bike switch shows one layer at a time.
+// card only reloads the layer that is on screen. The map layer is a smooth raster of the scores
+// (builtup/calculations/access_raster.py); the Walk / Bike switch shows one at a time.
 // Method: builtup/calculations/chain.py (distance decay to the nearest amenities per category).
 // Depends on: Config.js (availableLayers, layerVisibility),
 // Layers.js (toggleLayerVisibility, reloadLayer, renderLayerList), Panels.js.
@@ -48,7 +49,9 @@
     }
 
     const fmt = (n) => Math.round(n).toLocaleString();
-    const layerKey = () => state?.modes?.[el.mode.value]?.layer;
+    // The map shows the smooth raster (builtup.AccessibilityRaster); the building dots stay a separate layer.
+    const rasterEntry = () => state?.modes?.[el.mode.value]?.raster_layer;
+    const allKeys = () => Object.values(state?.modes || {}).flatMap(m => [m.layer, m.raster_layer?.key]).filter(Boolean);
 
     function render(data) {
       state = data;
@@ -90,13 +93,14 @@
 
     function showLayer() {
       if (typeof toggleLayerVisibility !== 'function' || !state) return;
-      const wanted = layerKey();
-      Object.values(state.modes).map(m => m.layer).forEach(key => {
-        if (key !== wanted && layerVisibility[key]) toggleLayerVisibility(key, false);
+      const wanted = rasterEntry();
+      allKeys().forEach(key => {
+        if (key !== wanted?.key && layerVisibility[key]) toggleLayerVisibility(key, false);
       });
-      if (!availableLayers.some(l => l.key === wanted)) return;
-      if (typeof reloadLayer === 'function') reloadLayer(wanted);
-      toggleLayerVisibility(wanted, true);
+      if (!wanted) return;
+      if (!availableLayers.some(l => l.key === wanted.key)) availableLayers.push(wanted);
+      if (typeof refreshRasterTiles === 'function') refreshRasterTiles(wanted.app_label, wanted.model_name);
+      toggleLayerVisibility(wanted.key, true);
       if (typeof renderLayerList === 'function') renderLayerList();
     }
 
@@ -142,14 +146,15 @@
     el.mode.addEventListener('change', () => {
       if (!state) return;
       render(state);
-      if (state.modes[el.mode.value].buildings) showLayer();
+      if (state.modes[el.mode.value].raster_layer) showLayer();
     });
     // An edit on the map recomputes the scores around it inside the same request
     // (builtup/signals.py); reload the layer that is on screen and refresh the counts.
     async function afterEdit() {
-      const shown = Object.values(state?.modes || {}).map(m => m.layer).filter(key => layerVisibility[key]);
+      const shown = allKeys().filter(key => layerVisibility[key]);
       if (!card.classList.contains('visible') && !shown.length) return;
-      if (typeof reloadLayer === 'function') shown.forEach(key => reloadLayer(key));
+      if (typeof reloadLayer === 'function') shown.filter(key => !key.startsWith('raster-')).forEach(key => reloadLayer(key));
+      if (typeof refreshRasterTiles === 'function') refreshRasterTiles('builtup', 'AccessibilityRaster');
       if (card.classList.contains('visible')) loadInfo();
     }
     ['feature-saved', 'backup-restored'].forEach(name => document.body.addEventListener(name, afterEdit));
