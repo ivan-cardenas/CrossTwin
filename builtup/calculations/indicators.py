@@ -209,3 +209,29 @@ def calculate_facilities(adminBund, population):
         'facilities_per_10k': round(total / population * 10_000, 1) if population else None,
         'by_type': {t: counts.get(t, 0) for t in FACILITY_TYPES},
     }
+
+
+# -- Accessibility ------------------------------------------------------------
+
+def calculate_accessibility(adminBund):
+    """Mean network accessibility score (0-100) of the buildings of an admin unit, per mode.
+
+    Reads the stored builtup.Accessibility rows (builtup/calculations/accessibility.py); a unit
+    whose buildings were never scored reports None. `unconnected` counts the scored buildings
+    without any reachable amenity (further than SNAP_MAX_M from the network, or score 0).
+
+    DAG edges:  Facilities -> Accessibility, Streets -> Accessibility, Green_Area -> Accessibility
+    """
+    from ..models import Accessibility
+
+    rows = Accessibility.objects.filter(building__neighborhood__in=neighborhoods_within(adminBund))
+    result = {}
+    for mode in ('walk', 'bike'):
+        stats = rows.filter(mode=mode).aggregate(
+            mean=Avg('score'), n=Count('id'), unconnected=Count('id', filter=Q(score=0)))
+        result[mode] = {
+            'mean_score': None if stats['mean'] is None else round(stats['mean'], 1),
+            'buildings': stats['n'],
+            'unconnected': stats['unconnected'],
+        }
+    return result

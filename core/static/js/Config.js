@@ -140,7 +140,7 @@ const LENSES = {
     // The building stock has no year; year + population only drive the per-capita cards.
     panel: (level, location) =>
       `/builtup/indicators/${level}/${location}/${window.ACTIVE_YEAR}/${populationQuery()}`,
-    tools: ['degurba'],
+    tools: ['degurba', 'access'],
   },
   administrative: {
     group: 'people', label: 'Population', title: 'Population', icon: 'bi-people',

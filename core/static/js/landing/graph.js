@@ -1,6 +1,6 @@
 // The part of core/DAG.dot drawn above the city. Names are the DAG's own node names:
 // mainMap/tests.py checks that every edge below exists in DAG.dot.
-// `computed` follows the coverage list in .claude/CLAUDE.md; false = a documented gap.
+
 
 export const LEVELS = ['Driver', 'Pressure', 'State', 'Impact', 'Response'];
 

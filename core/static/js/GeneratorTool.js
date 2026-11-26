@@ -456,7 +456,7 @@
         map.on('style.load', () => { if (card.classList.contains('visible') && outline) schedulePreview(); });
         styleHooked = true;
       }
-      ['lst-card', 'svf-card', 'solweig-card', 'degurba-card'].forEach(id => $(id)?.classList.remove('visible'));
+      ['lst-card', 'svf-card', 'solweig-card', 'degurba-card', 'access-card'].forEach(id => $(id)?.classList.remove('visible'));
       card.classList.add('visible');
       loadProjects().then(updateButtons);
       if (!outline) setStatus('Draw an outline or pick a housing project.');

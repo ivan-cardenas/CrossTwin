@@ -31,6 +31,21 @@ BUILDING_FLOOR_HEIGHT_M = 3
 BUILDING_DEFAULT_HEIGHT_M = 10
 
 
+# Accessibility score classes: (lower bound, colour, label). Bounds are the step stops of the paint
+# expression; the legend is built from the same list so the two cannot drift apart.
+ACCESS_CLASSES = [(0, '#440154', '0-20'), (20, '#3b528b', '20-40'), (40, '#21918c', '40-60'),
+                  (60, '#5ec962', '60-80'), (80, '#fde725', '80-100')]
+ACCESS_LEGEND = [{'label': label, 'color': color} for _, color, label in ACCESS_CLASSES]
+ACCESS_LAYERS = [
+    {'type': 'circle', 'paint': {
+        'circle-radius': 4,
+        'circle-color': ['step', ['to-number', ['get', 'score']], ACCESS_CLASSES[0][1],
+                         *[v for bound, color, _ in ACCESS_CLASSES[1:] for v in (bound, color)]],
+        'circle-stroke-width': 0.5,
+        'circle-stroke-color': '#ffffff',
+    }},
+]
+
 # Degree of Urbanisation level-2 classes (GHSL GHS-SMOD legend), builtup/calculations/degurba.py.
 DEGURBA_COLORS = {30: '#FF0000', 23: '#A87000', 22: '#732600', 21: '#FFFF00',
                   13: '#375623', 12: '#ABCD66', 11: '#CDF57A', 10: '#7AB6F5'}
@@ -166,6 +181,34 @@ LAYER_STYLES = {
         'color': DEGURBA_COLORS[30],
         'legend': DEGURBA_LEGEND,
         'layers': DEGURBA_LAYERS,
+    },
+    # Network accessibility score 0-100 (builtup/calculations/chain.py), five equal classes on a
+    # sequential ramp: dark = poorly connected, bright = well connected.
+    'builtup.AccessibilityWalk': {
+        'color': ACCESS_CLASSES[-1][1],
+        'legend': ACCESS_LEGEND,
+        'layers': ACCESS_LAYERS,
+    },
+    'builtup.AccessibilityBike': {
+        'color': ACCESS_CLASSES[-1][1],
+        'legend': ACCESS_LEGEND,
+        'layers': ACCESS_LAYERS,
+    },
+    # OSM walk/bike routing graph (importer/osm_network.py): cyclable-only paths in a second colour.
+    'builtup.NetworkEdge': {
+        'color': '#78909c',
+        'legend': [{'label': 'Walk and bike', 'color': '#78909c'},
+                   {'label': 'Walk only', 'color': '#a1887f'},
+                   {'label': 'Bike only', 'color': '#4db6ac'}],
+        'layers': [
+            {'type': 'line', 'paint': {
+                'line-color': ['case',
+                               ['all', ['==', ['get', 'walk'], True], ['==', ['get', 'bike'], True]], '#78909c',
+                               ['==', ['get', 'walk'], True], '#a1887f',
+                               '#4db6ac'],
+                'line-width': 1.5,
+            }},
+        ],
     },
     'builtup.Facility': {
         'color': '#ab47bc',

@@ -384,6 +384,16 @@ HELP = {
         ],
         "note": "Urban centre: ≥ 1 500 inh./km² (or ≥ 50 % built-up), 4-connected, ≥ 50 000 people. Urban cluster: ≥ 300 inh./km², 8-connected, ≥ 5 000 people. GHSL's own grid can be imported as a reference layer; it is never used in these numbers. Method: docs/DEGREE_OF_URBANISATION.md.",
     },
+    "builtup.accessibility": {
+        "title": "Network Accessibility",
+        "what": "How well the buildings of the unit reach everyday destinations (shops, health care, schools, transit stops, parks) along the street network, on foot and by bicycle.",
+        "how": "For every building, the network distance to the nearest amenities of each category is measured on the OpenStreetMap walk or bike network (a building's own offset to the street included). Each amenity counts fully within a short walk (400 m; 800 m by bike) and fades to nothing at the cut-off (1.6 km; 2 km by bike). Categories are weighted (food, health, transit and parks most), and a second or third shop adds less than the first. The card shows the mean over the unit's buildings. A new amenity can only raise a score.",
+        "eq": [
+            "Value of a distance d = 1 if d ≤ D₀; = exp(−λ (d − D₀)) up to the cut-off; = 0 beyond",
+            "Score = 100 × {Σ category weight × value of the category | Σ category weight}",
+        ],
+        "note": "Scores are relative to the destinations in OpenStreetMap, so they follow how completely it is mapped. A building more than 250 m from the network counts as not connected. The score is a connectivity measure, not a price: any link to property value is a separate, association-based estimate.",
+    },
     "builtup.age": {
         "title": "Construction Period",
         "what": "When the buildings were built, grouped in the periods of the Dutch housing-stock typology (RVO reference dwellings).",

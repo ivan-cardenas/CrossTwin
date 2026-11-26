@@ -325,7 +325,7 @@ def get_thermal_indices(adminUnit):
     urban_heat/lst/ (RS_Imagery, LandCover -> LST), physicalEnv/calculations/
     svf.py (DSM -> SVF) and urban_heat/solweig/ (Meteorology, DSM, SVF ->
     Tmrt -> PET, UTCI). No stored node consumes these statistics, so they have
-    no receiver (CLAUDE.md, dashboard-only statistics).
+    no receiver.
 
     Tmrt, PET and UTCI come from one SOLWEIG run (`select_thermal_run`), so
     the three describe the same hour, weather and extent; `indices['run']`

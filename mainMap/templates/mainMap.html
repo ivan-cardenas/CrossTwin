@@ -31,6 +31,7 @@
 <script src="{% static 'js/PersonFigure.js' %}"></script>
 <script src="{% static 'js/SolweigTool.js' %}"></script>
 <script src="{% static 'js/DegurbaTool.js' %}"></script>
+<script src="{% static 'js/AccessibilityTool.js' %}"></script>
 <script src="{% static 'js/GeneratorTool.js' %}"></script>
 <script src="{% static 'js/WeatherPill.js' %}"></script>
 <script src="{% static 'js/UnservedWater.js' %}"></script>
@@ -234,6 +235,10 @@
             <span class="bi bi-buildings"></span>
             <span class="action-btn-text">Degree of Urbanisation</span>
           </button>
+          <button type="button" class="action-panel-btn calc-tool-btn" data-calc-tool="access" id="accessToolBtn">
+            <span class="bi bi-signpost-split"></span>
+            <span class="action-btn-text">Network Accessibility</span>
+          </button>
     </div>
 
         <!-- LST TOOL — Land Surface Temperature for the area in view
@@ -329,6 +334,32 @@
           <div class="lst-view-info" id="degurba-cities"></div>
           <button class="lst-btn lst-btn-primary" id="degurba-calculate" disabled>Build the grid</button>
           <div class="lst-status" id="degurba-status" role="status"></div>
+        </div>
+
+        <!-- NETWORK ACCESSIBILITY — 0-100 score per building from the walk / bike distance to the
+             nearest amenities (core/static/js/AccessibilityTool.js, builtup/views_accessibility.py,
+             builtup/calculations/chain.py). -->
+        <div class="lst-card" id="access-card"
+             data-info-url="{% url 'builtup:accessibility_info' %}"
+             data-calculate-url="{% url 'builtup:accessibility_calculate' %}"
+             data-can-calculate="{{ user.is_staff|yesno:'1,0' }}">
+          {% csrf_token %}
+          <div class="lst-card-header">
+            <div class="lst-card-title">NETWORK ACCESSIBILITY</div>
+            <button class="lst-card-close" id="access-card-close" aria-label="Close Network Accessibility tool">✕</button>
+          </div>
+          <p class="lst-card-hint">How well each building reaches shops, health care, schools, transit stops and parks along the street network. Amenities count fully close by and fade out towards the cut-off shown below.</p>
+          <div class="lst-card-fields">
+            <label>Mode
+              <select id="access-mode">
+                <option value="walk" selected>Walking</option>
+                <option value="bike">Cycling</option>
+              </select>
+            </label>
+          </div>
+          <div class="lst-view-info" id="access-view-info"></div>
+          <button class="lst-btn lst-btn-primary" id="access-calculate" disabled>Calculate every building</button>
+          <div class="lst-status" id="access-status" role="status"></div>
         </div>
 
         <!-- THERMAL COMFORT TOOL — SOLWEIG Tmrt, UTCI and PET for the area in view

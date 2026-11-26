@@ -5,7 +5,7 @@ back to Claude as feedback (the edit itself is already applied).
 
 1. Import guard: modules loaded at startup or by the URLconf (models, signals,
    apps, views*, admin, urls, importer/utils.py, mainMap/styles/rasterStyles.py)
-   must not import heavy libraries at module level (CLAUDE.md, Key Patterns).
+   must not import heavy libraries at module level.
 2. Targeted checks for files with a fast drift test:
    - core/DAG.dot, core/dag_status.py      -> core.tests.test_dag
    - importer/external_catalog.py,
@@ -106,7 +106,7 @@ def main() -> int:
             problems.append(
                 f"{rel} imports heavy libraries at module level ({lines}). It is loaded at "
                 "startup/by the URLconf: move the import inside the function that uses it "
-                "(CLAUDE.md, Key Patterns).")
+                )
 
     if rel in TESTS:
         code, out = run([*TEST_ARGS, TESTS[rel]])

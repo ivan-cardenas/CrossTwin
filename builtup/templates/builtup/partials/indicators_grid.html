@@ -242,4 +242,26 @@
     </div>
   </div>
 
+  <!-- Network Accessibility: stored builtup.Accessibility scores, mean over the unit's buildings -->
+  <div class="card c3">
+    <div class="gauge-header">
+      <div class="card-icon">🚶</div>
+      <div class="card-label">Network Accessibility</div>
+      {% info_help "builtup.accessibility" %}{% include "partials/_show_on_map.html" with layers="builtup.AccessibilityWalk,builtup.AccessibilityBike" label="network accessibility" %}
+    </div>
+    <div>
+      <div class="card-value">{% if indicators.access_walk.mean_score is not None %}{{ indicators.access_walk.mean_score }}{% else %}–{% endif %}</div>
+      <div class="card-unit">walking score, 0–100</div>
+    </div>
+    <div class="card-unit">
+      {% if indicators.access_walk.buildings %}
+        cycling {{ indicators.access_bike.mean_score|default_if_none:"–" }} ·
+        {{ indicators.access_walk.buildings }} buildings scored ·
+        {{ indicators.access_walk.unconnected }} not connected
+      {% else %}
+        not calculated yet: Calculate tab › Network Accessibility
+      {% endif %}
+    </div>
+  </div>
+
 </div>

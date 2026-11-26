@@ -63,7 +63,7 @@ This file tracks the gaps, grouped by app. When one is closed, move it to the "D
 - [ ] `Property.residents` uses the city's *latest* household size, not the dashboard's year; and household size is carried forward into forecast years (CBS 85172NED, the household forecast, was unavailable when this was built — import it when it is back, as `HouseholdSize` rows for 2027+)
 - [ ] Dashboard note when a city's population only covers the imported neighborhoods (the stored demand already uses the whole-gemeente CBS population, so it is right; the panel's *inhabitants* line is not)
 - [ ] `Housing_Demand -> Zoning_Status` and `Housing_Demand -> House_Price_Index` — demand is now stored, but nothing reads it yet; households are not split by tenure (owner/rental) or size class
-- [ ] No `Accessibility` model exists — `Facilities/Streets/Green_Area -> Accessibility -> Property` unimplemented (`Building.connectivity` is the closest analog, itself an open TODO)
+- [ ] `Accessibility -> Property` unimplemented: `builtup.Accessibility` exists and `Facilities/Streets/Green_Area -> Accessibility` is implemented (2026-11-25), but no price logic on `Property` reads the score (hedonic model on CBS WOZ + NVM planned; association-based, upper-bound scenario)
 - [ ] `Zoning_Status -> Property` — `Property` has no `save()` logic
 - [ ] `Property -> House_Price_Index/Mortgage` — `Mortgage`/`HousePriceIndex` `calculations.py` functions only average pre-existing stored values
 - [ ] `Rent/Mortgage/Water_Tariff_Afford -> Income_Expenses` — `HousingAffordability.medianRent`/`medianMortgage`/`medianIncome` are typed inputs, never pulled from `Mortgage`, `Rentals`, or watersupply tariffs (the stress level itself is now derived: `Income_Expenses`/`Social_Profile -> Affordability_Stress`)
@@ -101,7 +101,7 @@ Collected from `#TODO` comments across the codebase:
 - Add Vegetation Coverage and Builtup Coverage as additional fields on `LandCoverVector` (`physicalEnv/models.py`)
 
 **builtup**
-- Define connectivity index and calculation method for `Building.connectivity` (`builtup/models.py`)
+- Network accessibility follow-ups: a building added or moved is not scored until the next recompute (no `Buildings -> Accessibility` edge in `DAG.dot`; decide whether to add one); tied amenities at equal network distance resolve in pandana's order (pinned in `uv.lock`); a way deleted from OpenStreetMap is not removed on re-import (`importer/osm_network.py`); one-way streets and the bicycle one-way exemption are ignored; amenity/park/network scores depend on OSM completeness; a single map edit recomputes inside the save (move to a background worker if it is slow on a dense city)
 - Define green visibility index and calculation method for `Property.greenVisibility` (`builtup/models.py`)
 
 **watersupply**

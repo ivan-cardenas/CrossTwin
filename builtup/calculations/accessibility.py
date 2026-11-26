@@ -17,7 +17,7 @@ A building further than SNAP_MAX_M from the network gets an empty row
 
 No views, no receivers here: builtup/signals.py decides when to recompute.
 numpy / pandas / pandana / shapely are imported inside the functions
-(CLAUDE.md: nothing heavy at start-up).
+
 
 DAG edges: Facilities -> Accessibility, Streets -> Accessibility,
            Green_Area -> Accessibility
@@ -31,7 +31,8 @@ from builtup.calculations import chain
 
 logger = logging.getLogger(__name__)
 
-SNAP_MAX_M = 250.0                # a building further from the network than this is not connected
+MIN_EDGE_M = 0.1                  # pandana needs strictly positive impedances; shorter segments (duplicate nodes) are lifted to this
+SNAP_MAX_M = 250.0                # a building further from the network than this is not connected (about a 3 min walk; v1 choice)
 PARK_ACCESS_SPACING_M = 50.0      # entrance points along a park's edge (a centroid would punish large parks)
 PARK_MAX_POINTS = 200             # per park ring, to bound the POI set
 BUILDING_CHUNK = 20_000
@@ -108,8 +109,10 @@ def _key(mode):
 
     from builtup.models import NetworkEdge
 
-    agg = NetworkEdge.objects.filter(**{mode: True}).aggregate(n=Count("id"), last=Max("id"), snap=Max("snapshot_date"))
-    return (mode, agg["n"], agg["last"], agg["snap"]), agg["n"], agg["snap"]
+    agg = NetworkEdge.objects.filter(**{mode: True}).aggregate(
+        n=Count("id"), last=Max("id"), snap=Max("snapshot_date"), changed=Max("updated"))
+    # `changed` makes an edit in place (length, mode flag) a new key for every worker process
+    return (mode, agg["n"], agg["last"], agg["snap"], agg["changed"]), agg["n"], agg["snap"]
 
 
 def clear_network_cache():
@@ -157,7 +160,7 @@ def _build_graph(mode, snapshot):
     nodes = nodes[nodes.index.isin(used)]
     edges = edges[edges["from"].isin(nodes.index) & edges["to"].isin(nodes.index)]
     # pandana wants strictly positive impedances
-    weights = edges[["length"]].clip(lower=0.1)
+    weights = edges[["length"]].clip(lower=MIN_EDGE_M)
     net = pandana.Network(nodes["x"], nodes["y"], edges["from"], edges["to"], weights)
     logger.info("Accessibility: built the %s network, %d nodes, %d edges", mode, len(nodes), len(edges))
     return Graph(net, nodes, snapshot)
@@ -249,7 +252,7 @@ def compute(buildings=None, modes=chain.MODES, after_chunk=None):
     from django.contrib.gis.db.models.functions import Centroid
     from django.contrib.gis.geos import Polygon
 
-    from builtup.models import Accessibility, Building
+    from builtup.models import Accessibility, AccessibilityBike, AccessibilityWalk, Building
     from core.cache import bump_layer_version
 
     # No stored network (the usual case before the first OSM import): nothing to load or write.
@@ -283,7 +286,7 @@ def compute(buildings=None, modes=chain.MODES, after_chunk=None):
             Accessibility.objects.bulk_create(
                 [Accessibility(
                     building_id=pk, mode=mode, distances=distances, score=score,
-                    method=chain.ACCESS_METHOD, network_snapshot=graph.snapshot, geom=centroid[pk],
+                    method=chain.METHOD_STAMP, network_snapshot=graph.snapshot, geom=centroid[pk],
                 ) for pk, (distances, score) in results.items()],
                 update_conflicts=True, unique_fields=["building", "mode"],
                 update_fields=["distances", "score", "method", "network_snapshot", "geom", "computed_at"],
@@ -294,7 +297,7 @@ def compute(buildings=None, modes=chain.MODES, after_chunk=None):
                 after_chunk(mode, list(results))
         written[mode] = total
     # bulk_create fires no signals: invalidate the cached GeoJSON of the layer here.
-    bump_layer_version(Accessibility)
+    bump_layer_version(Accessibility, AccessibilityWalk, AccessibilityBike)
     return written
 
 

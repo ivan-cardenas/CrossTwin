@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views, views_degurba, views_generator
+from . import views, views_accessibility, views_degurba, views_generator
 
 app_name = "builtup"
 
@@ -13,6 +13,8 @@ urlpatterns = [
          name='builtup_indicators_json'),
     path('degurba/info/', views_degurba.degurba_info, name='degurba_info'),
     path('degurba/calculate/', views_degurba.degurba_calculate, name='degurba_calculate'),
+    path('accessibility/info/', views_accessibility.accessibility_info, name='accessibility_info'),
+    path('accessibility/calculate/', views_accessibility.accessibility_calculate, name='accessibility_calculate'),
     path('generator/projects/', views_generator.generator_projects, name='generator_projects'),
     path('generator/preview/', views_generator.generator_preview, name='generator_preview'),
     path('generator/commit/', views_generator.generator_commit, name='generator_commit'),

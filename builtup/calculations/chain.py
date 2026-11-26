@@ -21,7 +21,7 @@ DAG edges: Buildings -> Canyon_Aspect, Streets -> Canyon_Aspect.
 
 import math
 
-DEFAULT_WIDTH_M ={"residential": 8.0, "secondary": 12.0, "primary": 20.0}
+DEFAULT_WIDTH_M = {"residential": 8.0, "secondary": 12.0, "primary": 20.0}
 FALLBACK_WIDTH_M = 10.0
 
 
@@ -199,6 +199,19 @@ CATEGORIES = {
     "train_station": (2.0, (1.0,)),
     "park": (3.0, (1.0,)),
 }
+
+
+def _params_hash():
+    """Short hash of every constant that shapes a score, so changing one without bumping ACCESS_METHOD shows."""
+    import hashlib
+    import json
+
+    payload = json.dumps([SPEED_MPS, FULL_VALUE_M, CUTOFF_M, F_AT_CUTOFF, CATEGORIES], sort_keys=True)
+    return hashlib.sha1(payload.encode()).hexdigest()[:8]
+
+
+# Stored in Accessibility.method: the equation version plus the hash of its constants.
+METHOD_STAMP = f"{ACCESS_METHOD} {_params_hash()}"
 
 
 def decay_rate(mode):

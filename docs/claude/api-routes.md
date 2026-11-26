@@ -30,4 +30,5 @@
 | `/housing/` | Housing indicators dashboard |
 | `/builtup/` | Built-up fabric indicators dashboard |
 | `/builtup/degurba/info/`, `/builtup/degurba/calculate/` | Map Degree of Urbanisation card: stored grid status; rebuild for the current population year (POST, staff) |
+| `/builtup/accessibility/info/`, `/builtup/accessibility/calculate/` | Map Network Accessibility card: stored network and scores per mode; recompute every building (POST, staff; 409 without a stored network) |
 | `/builtup/generator/projects/`, `.../preview/`, `.../commit/`, `.../remove/` | Map Neighbourhood generator: housing projects; layout of an outline as GeoJSON + metrics (POST, what-if, writes nothing); store on a project as completed / set back to planned (POST, staff) |

@@ -131,7 +131,7 @@ class NetworkPassTests(TestCase):
         self.assertEqual(written, {"walk": 2, "bike": 2})
         row = Accessibility.objects.get(building=self.building, mode="walk")
         self.assertEqual(row.distances, {"supermarket": [450.0]})
-        self.assertEqual(row.method, chain.ACCESS_METHOD)
+        self.assertEqual(row.method, chain.METHOD_STAMP)
         weight_sum = sum(w for w, _ in chain.CATEGORIES.values())
         # 450 m is just past D0 = 400 m on foot
         expected = 100 * chain.CATEGORIES["supermarket"][0] * chain.distance_decay(450, "walk") / weight_sum
@@ -188,8 +188,12 @@ from nature.models import GreenSpaces  # noqa: E402
 from builtup import signals  # noqa: E402
 
 
-class AccessibilityReceiverTests(TestCase):
-    """The same eight-node street as NetworkPassTests, with a building at its west end."""
+class ReceiverFixture:
+    """
+    Shared setUp and helpers of the receiver test classes: the same eight-node street as
+    NetworkPassTests, with a building at its west end. A mixin (not a TestCase), so the test
+    classes that use it do not inherit and re-run each other's tests.
+    """
 
     def setUp(self):
         accessibility.clear_network_cache()
@@ -216,6 +220,7 @@ class AccessibilityReceiverTests(TestCase):
     def _facility(self, type_="supermarket", i=2, sid="f", **kw):
         return Facility.objects.create(name=sid, type=type_, sourceID=sid, geom=Point(X0 + 100 * i, Y0 + 5, srid=SRID), **kw)
 
+class AccessibilityReceiverTests(ReceiverFixture, TestCase):
     def test_a_new_facility_scores_the_buildings_it_reaches_only(self):
         self._facility()
         self.assertGreater(self._score(1, "walk"), 0)
@@ -288,3 +293,68 @@ class AccessibilityReceiverTests(TestCase):
         accessibility.clear_network_cache()
         self._facility()
         self.assertEqual(Accessibility.objects.count(), 0)
+
+
+class AccessibilityContractTests(ReceiverFixture, TestCase):
+    """Remaining rule-10 cases: cascade, raw saves, deletes, bulk replay, cache key, parameter stamp."""
+
+    def test_deleting_a_scored_building_removes_its_rows(self):
+        self._facility()
+        self.assertTrue(Accessibility.objects.filter(building_id=1).exists())
+        self.near.delete()
+        self.assertFalse(Accessibility.objects.filter(building_id=1).exists())
+
+    def test_deleting_a_segment_cuts_the_building_off(self):
+        self._facility("supermarket", 5, "far")
+        before = self._score()
+        NetworkEdge.objects.get(from_node_id=2).delete()  # the street is cut between nodes 2 and 3
+        self.assertLess(self._score(), before)
+
+    def test_moving_a_park_refreshes_old_and_new_place(self):
+        park = GreenSpaces.objects.create(name="Park", type="park", geom=_square(X0 + 200, Y0 + 40, 30))
+        near = self._score()
+        park.geom = _square(X0 + 700, Y0 + 40, 30)
+        park.save()
+        self.assertLess(self._score(), near)
+
+    def test_raw_saves_refresh_nothing(self):
+        facility = self._facility("supermarket", 2, "a")
+        with mock.patch.object(signals, "refresh_accessibility") as refresh:
+            signals.facility_access_saved(Facility, facility, created=True, raw=True)
+            signals.green_access_saved(GreenSpaces, GreenSpaces(type="park", geom=_square(X0, Y0)), created=True, raw=True)
+            signals.network_edge_saved(NetworkEdge, NetworkEdge.objects.first(), raw=True)
+        refresh.assert_not_called()
+
+    def test_bulk_facility_finalizer_replays_the_receiver(self):
+        from importer.batching import BULK_IMPORT_MODELS
+
+        rows = [Facility(name="s", type="supermarket", geom=Point(X0 + 100, Y0, srid=SRID)),
+                Facility(name="fire", type="fire_station", geom=Point(X0 + 300, Y0, srid=SRID))]
+        with mock.patch("importer.batching.schedule_accessibility") as schedule:
+            BULK_IMPORT_MODELS["builtup.Facility"](rows)
+        (geoms,), _ = schedule.call_args
+        self.assertEqual([g.x for g in geoms], [X0 + 100])  # the fire station is no destination
+
+    def test_a_deferred_block_collects_parks_and_segments_too(self):
+        with mock.patch.object(signals, "refresh_accessibility") as refresh:
+            with signals.deferred_accessibility_refresh():
+                GreenSpaces.objects.create(name="Park", type="park", geom=_square(X0 + 200, Y0 + 40, 30))
+                edge = NetworkEdge.objects.first()
+                edge.length_m = 90.0
+                edge.save()
+            refresh.assert_called_once()
+            self.assertEqual(len(refresh.call_args.args[0]), 2)
+
+    def test_an_edit_in_place_changes_the_graph_cache_key(self):
+        before = accessibility._key("walk")[0]
+        edge = NetworkEdge.objects.first()
+        edge.length_m = 50.0
+        edge.save()
+        self.assertNotEqual(accessibility._key("walk")[0], before)
+
+    def test_rows_carry_the_parameter_stamp(self):
+        self._facility()
+        method = Accessibility.objects.get(building_id=1, mode="walk").method
+        self.assertTrue(method.startswith(chain.ACCESS_METHOD))
+        self.assertEqual(method, f"{chain.ACCESS_METHOD} {chain._params_hash()}")
+        self.assertEqual(len(chain._params_hash()), 8)

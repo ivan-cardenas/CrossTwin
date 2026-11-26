@@ -9,9 +9,6 @@
 - where: the function or model that implements it ("" for a gap);
 - note: what is missing, or how it is done.
 
-Follows `.claude/CLAUDE.md` › DAG Edge Coverage Gaps and the gap list in
-TODO.md. When an edge changes status, update it here as well;
-core/tests/test_dag.py checks that every DAG edge has exactly one entry.
 """
 
 I, P, G, L = "implemented", "partial", "gap", "lagged"
@@ -111,10 +108,13 @@ EDGE_STATUS = {
     ("Vegetation_Coverage", "DSM"): (I, "physicalEnv/calculations/dsm_patches.py::record_vegetation_change", "Editor tree / forest changes (DSMVegetationPatch)."),
     ("Streets", "Canyon_Aspect"): (I, "builtup/calculations/canyon.py::street_inputs; StreetCanyon", "W = typed width, else facade gap, else class default."),
     # ── Accessibility / housing ──────────────────────────────────────────
-    ("Facilities", "Accessibility"): (G, "", "No Accessibility model exists."),
-    ("Streets", "Accessibility"): (G, "", "No Accessibility model exists."),
-    ("Green_Area", "Accessibility"): (G, "", "No Accessibility model exists."),
-    ("Accessibility", "Property"): (G, "", "No Accessibility model; Building.connectivity is an open TODO."),
+    ("Facilities", "Accessibility"): (I, "builtup.Accessibility; builtup/calculations/accessibility.py::compute -> chain.accessibility_score",
+        "Network distance (pandana, OSM walk/bike graph) from each building to the nearest amenities per category, distance-decayed to 0-100. Receiver facility_access_saved/_deleted; bulk finalizer _refresh_accessibility_over."),
+    ("Streets", "Accessibility"): (I, "builtup.NetworkEdge; builtup/calculations/accessibility.py::get_graph",
+        "The routing graph is the stored OSM network (importer/osm_network.py), not builtup.Street. Receiver network_edge_saved/_deleted; the importer schedules one refresh over its extent."),
+    ("Green_Area", "Accessibility"): (I, "builtup/calculations/accessibility.py::park_access_points",
+        "A park (GreenSpaces type park / recreatie) is a destination through entry points every 50 m along its edge. Receiver green_access_saved/_deleted."),
+    ("Accessibility", "Property"): (G, "", "builtup.Accessibility exists, but Property has no price logic that reads it (hedonic price model planned)."),
     ("Housing_Supply", "Property"): (G, "", "calculate_property_indicators() only averages stored Property fields."),
     ("Zoning_Status", "Property"): (G, "", "Property has no save() logic."),
     ("Zoning_Status", "New_Units"): (G, "", "calculate_new_units() sums HousingProject units; never reads zoning."),

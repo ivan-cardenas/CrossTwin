@@ -441,6 +441,30 @@ $P_k$ from the unit's allocation rows; $t_0$ the earliest stored CrossTwin year 
 
 \textbf{DAG edges:} \dagedge{Total\_Population $\rightarrow$ Degree\_Urbanisation}, \dagedge{Buildings $\rightarrow$ Degree\_Urbanisation}, \dagedge{LandCover $\rightarrow$ Degree\_Urbanisation} --- \statusdone{} (receivers in \code{builtup/signals.py}, deferred by \code{deferred\_urbanisation\_refresh})
 
+\section{Built-up app --- Network accessibility}
+\label{sec:accessibility}
+Source: \code{builtup/calculations/chain.py} (equations, constants), \code{builtup/calculations/accessibility.py} (network pass), \code{importer/osm\_network.py} (graph), \code{builtup.Accessibility}. Stored per building and mode $m \in \{\text{walk}, \text{bike}\}$; method label \code{network-decay walk/bike v1}.
+
+\subsection{Network distance --- \code{compute\_points()}}
+\begin{equation}
+  d_{bi} = \underbrace{\delta_b}_{\text{building}\to\text{node}} + \underbrace{D_m(n_b, n_i)}_{\text{shortest path, pandana}} + \underbrace{\delta_i}_{\text{amenity}\to\text{node}}
+\end{equation}
+$n_b$, $n_i$ = nearest network nodes of the building centroid and of amenity $i$; $\delta$ = straight offsets; $D_m$ over the OpenStreetMap walk or bike graph (\code{NetworkEdge.length\_m}, undirected). Per category $c$ the $k_c$ nearest amenities within $D_{\max}$ are kept. A building more than $250$ m from the graph is not connected (empty distances, score $0$). Park destinations are points every $50$ m along the park's edge (\code{park\_access\_points()}).
+
+\subsection{Distance decay and score --- \code{distance\_decay()}, \code{accessibility\_score()}}
+\begin{align}
+  f_m(d) &= \begin{cases} 1 & d \le D_{0,m} \\ \exp\!\big(-\lambda_m (d - D_{0,m})\big) & D_{0,m} < d \le D_{\max,m} \\ 0 & d > D_{\max,m} \end{cases}
+  \qquad \lambda_m = \frac{-\ln 0.05}{D_{\max,m} - D_{0,m}} \\
+  a_c &= \frac{\sum_{k} \omega_{ck}\, f_m(d_{ck})}{\sum_{k} \omega_{ck}} \qquad
+  A_{bm} = 100\, \frac{\sum_c w_c\, a_c}{\sum_c w_c}
+\end{align}
+Walking: $D_0 = 400$ m, $D_{\max} = 1600$ m; cycling: $D_0 = 800$ m, $D_{\max} = 2000$ m (the cycling cut-off is also the reach of a refresh). Weights $w_c$ and the diminishing $\omega_{ck}$ (e.g.\ shops $1, \tfrac12, \tfrac14$) are the named constants \code{CATEGORIES}; they are v1 choices, not estimates. The shape follows the Walk Score methodology (2011) and the 15-minute-city catchments \cite{Moreno2021}. Because a new amenity can only shorten a distance, $A_{bm}$ never falls when an amenity is added. Worked example: a supermarket $450$ m away on foot gives $a = e^{-\lambda \cdot 50}$ and $A = 100\, w_{\text{supermarket}} a / \sum_c w_c$.
+
+\subsection{Unit indicator --- \code{calculate\_accessibility()}}
+The dashboard card shows the mean of $A_{bm}$ over the unit's stored buildings, per mode, and the number of scored buildings with $A = 0$ (not connected). Reads stored rows only; writes nothing.
+
+\textbf{DAG edges:} \dagedge{Facilities $\rightarrow$ Accessibility}, \dagedge{Streets $\rightarrow$ Accessibility}, \dagedge{Green\_Area $\rightarrow$ Accessibility} --- \statusdone{} (receivers in \code{builtup/signals.py}, deferred by \code{deferred\_accessibility\_refresh}). \dagedge{Accessibility $\rightarrow$ Property} --- \statusgap{} (no price logic reads the score yet).
+
 \section{Water supply app}
 \label{sec:watersupply}
 
@@ -761,7 +785,7 @@ The house-price-to-income ratio is the standard affordability metric of comparat
   \overline{p}_{\si{EUR/m^2}} = \operatorname{avg}(\texttt{unitaryPrice\_EUR\_per\_sqm}), \qquad
   \overline{v} = \operatorname{avg}(\texttt{vacancyRate})
 \end{equation}
-\textbf{DAG edges:} \dagedge{Housing\_Supply $\rightarrow$ Property}, \dagedge{Zoning\_Status $\rightarrow$ Property}, \dagedge{Accessibility $\rightarrow$ Property}, \dagedge{Property $\rightarrow$ Affordability\_Stress}, \dagedge{Property $\rightarrow$ Rent}, \dagedge{Property $\rightarrow$ House\_Price\_Index}, \dagedge{Property $\rightarrow$ Mortgage} --- \statusgap{} (no \code{Accessibility} model exists; none of the outgoing edges are computed --- this function only averages stored fields)
+\textbf{DAG edges:} \dagedge{Housing\_Supply $\rightarrow$ Property}, \dagedge{Zoning\_Status $\rightarrow$ Property}, \dagedge{Accessibility $\rightarrow$ Property}, \dagedge{Property $\rightarrow$ Affordability\_Stress}, \dagedge{Property $\rightarrow$ Rent}, \dagedge{Property $\rightarrow$ House\_Price\_Index}, \dagedge{Property $\rightarrow$ Mortgage} --- \statusgap{} (\code{builtup.Accessibility} now exists, but no price logic reads it, and none of the other outgoing edges are computed --- this function only averages stored fields)
 
 \section{Urban heat app}
 \label{sec:urbanheat}
@@ -1128,6 +1152,8 @@ Beyond the CBS 85173NED forecasts used for the \texttt{Population\_Growth} $\to$
 \bibitem{Lindberg2008SOLWEIG} Lindberg, F., Holmer, B., \& Thorsson, S. (2008). SOLWEIG 1.0 -- Modelling spatial variations of 3D radiant fluxes and mean radiant temperature in complex urban settings. \textit{International Journal of Biometeorology}, 52(7), 697--713.
 
 \bibitem{Ermida2020SMW} Ermida, S. L., Soares, P., Mantas, V., Göttsche, F.-M., \& Trigo, I. F. (2020). Google Earth Engine open-source code for Land Surface Temperature estimation from the Landsat series. \textit{Remote Sensing}, 12(9), 1471. \url{https://doi.org/10.3390/rs12091471}.
+
+\bibitem{Moreno2021} Moreno, C., Allam, Z., Chabaud, D., Gall, C., \& Pratlong, F. (2021). Introducing the ``15-Minute City'': Sustainability, resilience and place identity in future post-pandemic cities. \textit{Smart Cities}, 4(1), 93--111. \url{https://doi.org/10.3390/smartcities4010006}.
 
 \bibitem{Oke1987} Oke, T. R. (1987). \textit{Boundary Layer Climates} (2nd ed.). Routledge. (Urban canyon height-to-width aspect ratio.)
 

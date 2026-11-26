@@ -268,7 +268,10 @@ class NetworkNode(models.Model):
     The primary key is the OSM node id, so edges and pandana share one id space.
     Together with NetworkEdge this is the stored "Streets" input of Accessibility;
     builtup.Street (INSPIRE roads, no topology) is left untouched.
+    Not a map layer (registry_hidden): the edges are.
     """
+    registry_hidden = True
+
     osm_id = models.BigIntegerField(primary_key=True, help_text="OpenStreetMap node id")
     geom = models.PointField(srid=CoordinateSystem)
 
@@ -298,6 +301,7 @@ class NetworkEdge(models.Model):
     highway = models.CharField(max_length=50, blank=True, default="", help_text="OSM highway tag value")
     snapshot_date = models.DateField(null=True, blank=True, help_text="Date of the Overpass snapshot")
     query_hash = models.CharField(max_length=16, blank=True, default="", help_text="Hash of the Overpass query that produced the edge")
+    updated = models.DateTimeField(auto_now=True, help_text="Last change; part of the routing graph cache key, so an edit in place reaches every worker")
     geom = models.LineStringField(srid=CoordinateSystem)
 
     def __str__(self):
@@ -319,11 +323,16 @@ class Accessibility(models.Model):
     absent. Computed by builtup/calculations/accessibility.py and refreshed by
     builtup/signals.py when a facility, a park or the network changes.
 
+    The map shows one mode per layer through the proxies AccessibilityWalk and
+    AccessibilityBike; this table itself is not a layer (registry_hidden).
+
     DAG edges: Facilities -> Accessibility, Streets -> Accessibility, Green_Area -> Accessibility.
     """
+    registry_hidden = True
     MODES = [("walk", "Walk"), ("bike", "Bike")]
 
-    building = models.ForeignKey(Building, on_delete=models.DO_NOTHING, related_name="accessibility")
+    # CASCADE, not DO_NOTHING: a derived row must go with its building (like PopulationAllocation).
+    building = models.ForeignKey(Building, on_delete=models.CASCADE, related_name="accessibility")
     mode = models.CharField(max_length=10, choices=MODES)
     distances = models.JSONField(default=dict, blank=True, help_text="{category: [network metres to the k nearest]}")
     score = models.FloatField(help_text="Accessibility score 0-100")
@@ -339,6 +348,43 @@ class Accessibility(models.Model):
         verbose_name = "Accessibility"
         verbose_name_plural = "Accessibility"
         constraints = [models.UniqueConstraint(fields=["building", "mode"], name="builtup_accessibility_building_mode")]
+
+
+class _ModeRows(models.Manager):
+    mode = None
+
+    def get_queryset(self):
+        return super().get_queryset().filter(mode=self.mode)
+
+
+class _WalkRows(_ModeRows):
+    mode = "walk"
+
+
+class _BikeRows(_ModeRows):
+    mode = "bike"
+
+
+class AccessibilityWalk(Accessibility):
+    """Map layer: network accessibility on foot, one point per building."""
+    registry_hidden = False
+    objects = _WalkRows()
+
+    class Meta:
+        proxy = True
+        verbose_name = "Accessibility (walk)"
+        verbose_name_plural = "Accessibility (walk)"
+
+
+class AccessibilityBike(Accessibility):
+    """Map layer: network accessibility by bicycle, one point per building."""
+    registry_hidden = False
+    objects = _BikeRows()
+
+    class Meta:
+        proxy = True
+        verbose_name = "Accessibility (bike)"
+        verbose_name_plural = "Accessibility (bike)"
 
 
 def bag_usage_labels(value):

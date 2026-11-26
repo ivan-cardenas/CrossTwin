@@ -52,6 +52,15 @@ OTHER_SOURCES = [
 
 # Regulations, standards and literature cited by checks and equations: (key, citation, used by)
 REFERENCES = [
+    ("Walk Score methodology", "Walk Score (2011), Walk Score Methodology: a walkability score from the distance to "
+     "amenity categories, full value close by and a smooth decay to a cut-off, with diminishing weight on further "
+     "amenities of one category.",
+     "builtup/calculations/chain.py::distance_decay, accessibility_score (builtup.Accessibility)"),
+    ("15-minute city catchments", "Moreno, C., Allam, Z., Chabaud, D., Gall, C. & Pratlong, F. (2021), Introducing the "
+     "'15-Minute City': Sustainability, resilience and place identity in future post-pandemic cities, *Smart Cities* "
+     "4(1), 93-111: daily needs within a 15 minute walk or bike ride. The walking and cycling catchments are v1 "
+     "choices anchored on it, not estimates.",
+     "builtup/calculations/chain.py::FULL_VALUE_M, CUTOFF_M, CATEGORIES (builtup.Accessibility)"),
     ("Vitens small business", "Vitens N.V., reports and calculations of the drinking-water company: "
      "small-business (kleinzakelijk) demand on top of household use, total demand = 1.2 x residential demand.",
      "watersupply/calculations/chain.py::SMALL_BUSINESS_DEMAND_FACTOR, demand_m3_d (TotalWaterDemand, "

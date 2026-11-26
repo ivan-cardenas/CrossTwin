@@ -41,7 +41,7 @@ def main() -> int:
         return 2
     if (tool == "Write" and p.parent.name == "migrations"
             and p.suffix == ".py" and name != "__init__.py"):
-        print("Blocked: never write a migration file by hand (CLAUDE.md). Run "
+        print("Blocked: never write a migration file by hand . Run "
               "`uv run python manage.py makemigrations <app>`; for a data step run "
               "`makemigrations <app> --empty -n <name>` and then Edit in only the RunPython.",
               file=sys.stderr)

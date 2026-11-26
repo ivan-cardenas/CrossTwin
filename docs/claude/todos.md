@@ -9,7 +9,7 @@ Collected from inline `#TODO` comments across the codebase:
 - Add Vegetation Coverage and Builtup Coverage as additional fields on `LandCoverVector` (`physicalEnv/models.py`)
 
 ### builtup
-- Define connectivity index and calculation method for `Building.connectivity` (`builtup/models.py`)
+- Network accessibility follow-ups: a way deleted from OpenStreetMap is not removed on re-import (`importer/osm_network.py`); one-way streets and the bicycle one-way exemption are ignored; a single map edit recomputes inside the save (move to a background worker if it is slow on a dense city)
 - Define green visibility index and calculation method for `Property.greenVisibility` (`builtup/models.py`)
 
 ### watersupply

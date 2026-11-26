@@ -12,6 +12,7 @@ from .calculations.indicators import (
     calculate_street_network,
     calculate_green_space,
     calculate_facilities,
+    calculate_accessibility,
 )
 
 
@@ -56,6 +57,7 @@ def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, po
         'streets': calculate_street_network(adminUnit),
         'green': calculate_green_space(adminUnit, population),
         'facilities': calculate_facilities(adminUnit, population),
+        'accessibility': calculate_accessibility(adminUnit),
         'urbanisation': _urbanisation(adminUnit, year, pop_scenario, pop_growth),
     }
 
@@ -127,6 +129,10 @@ MOCK_DATA = {
         'by_type': {'school': 72, 'hospital': 3, 'fire_station': 6,
                     'police_station': 4, 'market': 95, 'transportNode': 30},
     },
+    'accessibility': {
+        'walk': {'mean_score': 52.0, 'buildings': 58_000, 'unconnected': 900},
+        'bike': {'mean_score': 61.0, 'buildings': 58_000, 'unconnected': 700},
+    },
     'urbanisation': None,
 }
 
@@ -146,6 +152,7 @@ def _build_indicators(data, green_added_ha=None):
     streets = data['streets']
     green = data['green']
     fac = data['facilities']
+    access = data.get('accessibility') or {}
     population = data.get('population')
 
     added_m2 = (green_added_ha or 0) * 10_000
@@ -241,6 +248,10 @@ def _build_indicators(data, green_added_ha=None):
         'total_facilities': fac['total_facilities'],
         'facilities_per_10k': fac['facilities_per_10k'],
         'facility_counts': fac['by_type'],
+
+        # -- Network accessibility (stored scores, see builtup/calculations/chain.py) --
+        'access_walk': access.get('walk'),
+        'access_bike': access.get('bike'),
     }
 
 
