@@ -3135,6 +3135,14 @@ def import_dataset(
 
     elif source == "CBS" and fmt == "odata":
         return CBSImporter.fetch(dataset, date_from, date_to, bbox)
+
+    elif source == "CBS" and fmt == "odata_buurt":
+        from . import cbs_woz
+        return cbs_woz.fetch(dataset, bbox)
+
+    elif source == "nvm" and fmt == "nvm_pdf":
+        from . import nvm_reports
+        return nvm_reports.fetch(dataset, bbox)
     
     elif source == "sentinel2":
         if fmt == "wcs":

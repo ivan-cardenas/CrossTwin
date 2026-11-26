@@ -1623,6 +1623,63 @@ EXTERNAL_DATA_CATALOG += [
                "Nature & Environment", "nature.ProtectedArea", None),
 ]
 
+# ══════════════════════════════════════════════════════════════════════════
+# House prices: CBS WOZ per buurt (level) and NVM quarterly reports (market trend)
+# ══════════════════════════════════════════════════════════════════════════
+# One CBS "Kerncijfers wijken en buurten" table per year; the column keys of the
+# mean WOZ value and of the dwelling stock change with the table (checked on
+# each table's DataProperties). Handler: importer/cbs_woz.py.
+_WOZ_TABLES = [   # (table year, CBS table, WOZ column, dwelling stock column)
+    (2019, "84583NED", "GemiddeldeWOZWaardeVanWoningen_35", "Woningvoorraad_34"),
+    (2020, "84799NED", "GemiddeldeWOZWaardeVanWoningen_35", "Woningvoorraad_34"),
+    (2021, "85039NED", "GemiddeldeWOZWaardeVanWoningen_35", "Woningvoorraad_34"),
+    (2022, "85318NED", "GemiddeldeWOZWaardeVanWoningen_35", "Woningvoorraad_34"),
+    (2023, "85618NED", "GemiddeldeWOZWaardeVanWoningen_36", "Woningvoorraad_35"),
+    (2024, "85984NED", "GemiddeldeWOZWaardeVanWoningen_39", "Woningvoorraad_35"),
+]
+
+EXTERNAL_DATA_CATALOG.extend(
+    {
+        "key": f"CBS_WOZ_{year}",
+        "source": "CBS",
+        "category": "Housing",
+        "name": f"WOZ value per neighborhood {year} ({table})",
+        "description": (
+            f"CBS mean WOZ value of the dwellings of each neighborhood (valuation date 1 January {year - 1}) and the "
+            "dwelling stock. With the mean BAG dwelling area it gives the WOZ value per m2, and the mean walk/bike "
+            "accessibility of the neighborhood is frozen as the baseline of the price model. "
+            "Import neighborhoods and buildings (and, for the baseline, the accessibility) first; neighborhoods that "
+            "are not stored are skipped, and CBS gives no value below 20 dwellings."),
+        "target_model": "housing.WOZValue",
+        "table_id": table,
+        "format": "odata_buurt",
+        "requires_bbox": True,
+        "requires_model": "administrative.Neighborhood",
+        "params": {"year": year, "woz_key": woz_key, "stock_key": stock_key},
+        "enabled": True,
+    }
+    for year, table, woz_key, stock_key in _WOZ_TABLES
+)
+
+EXTERNAL_DATA_CATALOG.append({
+    "key": "nvm_market_reports",
+    "source": "nvm",
+    "category": "Housing",
+    "name": "NVM quarterly housing-market reports (PDF)",
+    "description": (
+        "Median transaction price per m2, transaction price, transactions, days on the market and the share sold above "
+        "asking, per NVM region and quarter, read from NVM's 'Woningmarkt kwartaalcijfers' PDFs; the COROP list "
+        "('Gebiedsindeling COROP en gemeenten') maps the municipalities to the regions. The annual mean price per m2 "
+        "drives the House Price Index. The PDFs are not downloaded: NVM's terms allow non-commercial private use only, so "
+        "download them yourself from nvm.nl and put them in the server's NVM_PDF_DIR (default media/nvm). "
+        "Ask NVM before redistributing the figures."),
+    "target_model": "housing.NVMMarketReport",
+    "format": "nvm_pdf",
+    "params": {"source_page": "https://www.nvm.nl/wonen/marktinformatie-wonen/"},
+    "requires_bbox": False,
+    "enabled": True,
+})
+
 # Build a quick-lookup dict
 CATALOG_BY_KEY = {d["key"]: d for d in EXTERNAL_DATA_CATALOG}
 
@@ -1676,6 +1733,15 @@ SOURCE_INFO = {
         "name": "BIS Nederland",
         "full_name": "Bodemkundig Informatiesysteem (WUR, bodemdata.nl)",
         "description": "Dutch soil data maintained by Wageningen Environmental Research. Open WFS data, no authentication required.",
+        "icon": "globe",
+        "color": "amber",
+        "auth_required": False,
+    },
+
+    "nvm": {
+        "name": "NVM",
+        "full_name": "Nederlandse Vereniging van Makelaars (housing-market reports)",
+        "description": "Quarterly housing-market figures per region from NVM's published PDFs. Not downloaded automatically: NVM's terms allow non-commercial private use only, so put the PDFs in the server's NVM_PDF_DIR yourself.",
         "icon": "globe",
         "color": "amber",
         "auth_required": False,

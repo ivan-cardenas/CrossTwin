@@ -1156,3 +1156,25 @@ input[type="range"].zone-slider:focus-visible { outline: 1px solid var(--accent)
 :root[data-theme="light"] .pop-extrapolated,
 :root[data-theme="light"] .climate-action.is-attention small { color: var(--accent-strong); }
 :root[data-theme="light"] .climate-cta-btn { color: var(--on-accent); }
+
+/* ── Price history chart (housing House Price Index card) ───────────── */
+.price-chart { margin: 8px 0 0; }
+.price-chart svg { display: block; width: 100%; height: auto; }
+.price-chart-caption, .price-chart-legend {
+  font-family: var(--font-mono); font-size: 9px; text-transform: uppercase;
+  letter-spacing: var(--tracking-label); color: var(--text-tertiary);
+}
+.price-chart-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; }
+.pc-grid { stroke: var(--border); stroke-width: 1; }
+.pc-tick { font-family: var(--font-mono); font-size: 8px; fill: var(--text-tertiary); }
+.pc-line { fill: none; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+.pc-line.pc-nvm { stroke: var(--series-supply); }
+.pc-line.pc-woz { stroke: var(--series-demand); }
+.pc-line.pc-index { stroke: var(--accent); }
+.pc-dot.pc-nvm { fill: var(--series-supply); }
+.pc-dot.pc-woz { fill: var(--series-demand); }
+.pc-dot.pc-index { fill: var(--accent); }
+.pc-key::before { content: ""; display: inline-block; width: 14px; margin-right: 5px; vertical-align: middle; border-top: 2px solid; }
+.pc-key.pc-nvm::before { border-color: var(--series-supply); }
+.pc-key.pc-woz::before { border-color: var(--series-demand); }
+.pc-key.pc-index::before { border-color: var(--accent); }

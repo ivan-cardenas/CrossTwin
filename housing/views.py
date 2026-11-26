@@ -16,6 +16,8 @@ from .calculations.indicators import (
     calculate_mortgage_indicators,
     calculate_rent_indicators,
     calculate_house_price_index,
+    calculate_price_history,
+    price_chart,
     calculate_property_indicators,
     calculate_zoning,
     calculate_affordability,
@@ -53,6 +55,7 @@ def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, po
     mortgage = calculate_mortgage_indicators(adminUnit, year)
     rent = calculate_rent_indicators(adminUnit)
     hpi = calculate_house_price_index(adminUnit, year)
+    price_history = calculate_price_history(adminUnit)
     property_ind = calculate_property_indicators(adminUnit)
     zoning = calculate_zoning(adminUnit)
     affordability = calculate_affordability(adminUnit, year)
@@ -71,6 +74,7 @@ def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, po
         'mortgage': mortgage,
         'rent': rent,
         'hpi': hpi,
+        'price_history': price_history,
         'property': property_ind,
         'zoning': zoning,
         'affordability': affordability,
@@ -166,6 +170,7 @@ def _build_indicators(data, household_size_override=None, alone_override=None):
     mtg = data['mortgage']
     rent = data['rent']
     hpi = data['hpi']
+    price_chart_geometry, price_chart_unit = price_chart(data.get('price_history') or {'nvm': [], 'woz': [], 'index': []})
     prop = data['property']
     zoning = data['zoning']
     aff = data['affordability']
@@ -276,6 +281,8 @@ def _build_indicators(data, household_size_override=None, alone_override=None):
         'hpi_value': hpi.get('avg_index'),
         'hpi_yoy_change': hpi.get('yoy_change_pct'),
         'hpi_neighborhoods': hpi.get('neighborhoods_reported', 0),
+        'price_chart': price_chart_geometry,
+        'price_chart_unit': price_chart_unit,
 
         # -- Property Market --
         'avg_sale_price': prop.get('avg_sale_price'),

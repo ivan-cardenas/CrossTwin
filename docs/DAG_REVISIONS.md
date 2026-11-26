@@ -11,6 +11,16 @@ A dated log of every change to the DPSIR causal graph: what changed, why, and wh
 - **Lagged edge** `[lag=1, style=dashed]`. The cause acts one planning step later (a feedback). It is left out of the acyclicity check and never implemented by a receiver, because a receiver would close the loop within one save. Each lagged edge is argued here and listed in `core/test_dag.py::LAGGED_EDGES`.
 - **Counting.** Distinct `source -> target` pairs, legend excluded. `core/test_dag.py::parse_dag` is the reference parser.
 
+## 2026-11-26: `Market_Reports -> House_Price_Index` added
+
+A driver node `Market_Reports` (housing: NVM quarterly market reports) is added. `House_Price_Index` had two incoming edges (`Housing_Demand`, `Property`), both gaps, and `HousePriceIndex.index_value` was a flat typed input: nothing in the graph said where observed prices come from. The market trend is measured (NVM's median transaction price per m² per region and quarter, stored in `housing.NVMMarketReport`), so the node meets the node convention. The CBS WOZ value per buurt (`housing.WOZValue`) is the price *level* for the Phase 4 hedonic model and is not a node: it is read only by that model (`docs/ACCESSIBILITY_PLAN.md`).
+
+| change | edge | status |
+|---|---|---|
+| added | `Market_Reports -> House_Price_Index` | implemented (`HousePriceIndex.save()` -> `chain.price_index`; receivers `nvm_report_changed`, `nvm_mapping_changed`) |
+
+**Consequences.** Acyclicity is unaffected: `Market_Reports` has no incoming edge. The index is region-wide (NVM reports per COROP area), so every neighborhood of a region gets the same index; neighborhood differences enter through the WOZ level in Phase 4. NVM's terms allow non-commercial private use only, so the PDFs are read from a folder the user fills, never downloaded by CrossTwin. Coverage: 107 edges, 68 implemented (64 %), 7 partial, 32 gaps.
+
 ## 2026-11-24: `Social_Profile -> Affordability_Stress` added
 
 A node `Social_Profile` (State, housing) is added: the CBS socio-economic status score (`ses_woa`, standardised, Klimaateffectatlas) stored per neighborhood in `housing.NeighborhoodSocialProfile`. The graph had no way to say that the same housing-cost burden weighs more on a neighborhood with less welfare, education and work. The node is measurable (a stored field), so it meets the node convention.

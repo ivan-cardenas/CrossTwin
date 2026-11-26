@@ -4,7 +4,7 @@ from ..models import (
     HousingSupplyDemand, HousingProject, CentralBankPolicy,
     CreditSupplyConditions, Mortgage, Rentals, HousePriceIndex,
     HousingAffordability, HouseholdSize, ResidentialProperty,
-    NeighborhoodSocialProfile,
+    NeighborhoodSocialProfile, WOZValue,
 )
 from administrative.admin_units import cities_within, neighborhoods_within, province_of
 from builtup.models import Property, ZoningArea, Building
@@ -426,6 +426,46 @@ def calculate_house_price_index(adminBund, year):
         'yoy_change_pct': yoy_change,
         'neighborhoods_reported': agg['count'] or 0,
     }
+
+
+def calculate_price_history(adminBund):
+    """Yearly price series of a unit, for the House Price Index card's chart.
+
+    * `nvm`: mean of the neighborhoods' NVM price per m2 (EUR/m2; HousePriceIndex.pricePerSqm_EUR,
+      all neighborhoods of an NVM region carry the region's value);
+    * `woz`: CBS mean WOZ value per m2 (EUR/m2) weighted by the neighborhoods' dwellings, plotted at
+      its valuation year (1 January of the table year - 1, chain.woz_valuation_year);
+    * `index`: mean House Price Index value (base year = 100), also the stored values without NVM data.
+
+    Each is a list of (year, value) sorted by year. Read-only.
+
+    DAG edges:  Market_Reports -> House_Price_Index
+    """
+    neighborhoods = neighborhoods_within(adminBund)
+    records = HousePriceIndex.objects.filter(neighborhood__in=neighborhoods)
+    by_year = records.values('year').annotate(index=Avg('index_value'), price=Avg('pricePerSqm_EUR')).order_by('year')
+    nvm = [(r['year'], round(r['price'], 1)) for r in by_year if r['price'] is not None]
+    index = [(r['year'], round(r['index'], 1)) for r in by_year]
+
+    woz_rows = (WOZValue.objects.filter(neighborhood__in=neighborhoods, woz_per_sqm__isnull=False, dwellings__gt=0)
+                .values('year').annotate(weighted=Sum(F('woz_per_sqm') * F('dwellings'), output_field=FloatField()),
+                                         dwellings=Sum('dwellings')).order_by('year'))
+    woz = [(chain.woz_valuation_year(r['year']), round(r['weighted'] / r['dwellings'], 1)) for r in woz_rows]
+    return {'nvm': nvm, 'woz': woz, 'index': index}
+
+
+def price_chart(history):
+    """
+    The chart of calculate_price_history: NVM transaction price and WOZ value per m2 when there is
+    one, else the index. Returns (chart geometry or None, unit label).
+    """
+    from . import charts
+
+    prices = [{"key": "nvm", "label": "NVM transaction price", "points": history['nvm']},
+              {"key": "woz", "label": "WOZ value", "points": history['woz']}]
+    if any(s["points"] for s in prices):
+        return charts.line_chart(prices), "EUR per m²"
+    return charts.line_chart([{"key": "index", "label": "House price index", "points": history['index']}]), "index (base year = 100)"
 
 
 # -- Property Market ----------------------------------------------------------

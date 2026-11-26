@@ -2,7 +2,7 @@
 
 Plan for a network-accessibility score per building (walk and bike, pandana) and its use as a driver of modelled price per m². Moved here from the planning session (2026-11-25) so the phases can be tracked. Update the checkboxes and the "Status" lines as work lands.
 
-Legend: `[x]` done, `[ ]` open. Commits: Phase 1 `020d4c3`, Phase 2 backend `8a54d82`; the Phase 2 UI, docs and review fixes are not committed yet.
+Legend: `[x]` done, `[ ]` open. Commits: Phase 1 `020d4c3`, Phase 2 backend `8a54d82`; Phase 2 UI and docs follow in later commits (see `git log`); Phase 3 is not committed yet.
 
 ## Context
 
@@ -84,16 +84,19 @@ Known issue outside this work: three `physicalEnv.tests.test_dsm_edited` tests f
 
 ## Phase 3 — Price data
 
-Status: **not started**
+Status: **done in code** (2026-11-26; not committed yet); first real run on Delft still open
 
-- [ ] `housing.WOZValue`: neighborhood, year, `avgWOZ_EUR` (CBS Kerncijfers wijken en buurten), living area from BAG, `woz_per_sqm`, `cbs_table_id`, `source`, frozen buurt-mean accessibility baseline per mode
-- [ ] Catalog entries for CBS WOZ tables 2019-2024 in `importer/external_catalog.py`
-- [ ] `housing.NVMMarketReport` (region, period, transactions, average price, price per m², percent above asking, days on market, `source_url`, `pdf_sha256`, `retrieved_at`, `parser_version`) and `NVMRegionMapping`
-- [ ] `importer/nvm_reports.py`: collect PDF links from the NVM market-information page, download to `media/nvm/<sha256>.pdf`, parse with `pdfplumber`, upsert
-- [ ] Check NVM's robots.txt and terms before the first run
-- [ ] Register NVM and CBS in `core/data_sources.py`, rerun `tools/data_sources.py`
-- [ ] Edge `NVM report -> House_Price_Index` (derive the index from NVM price per m²); update DAG docs and status
-- [ ] Tests: NVM parser on a committed fixture PDF; WOZ per m²
+- [x] `housing.WOZValue`: neighborhood, year, `avgWOZ_EUR` (CBS Kerncijfers wijken en buurten), dwelling stock, mean BAG dwelling area, `woz_per_sqm`, `cbs_table_id`, `source`, `method`, frozen buurt-mean accessibility baseline per mode (with its method stamp and network snapshot)
+- [x] Catalog entries `CBS_WOZ_2019` … `CBS_WOZ_2024` (tables 84583NED, 84799NED, 85039NED, 85318NED, 85618NED, 85984NED; column keys checked on each table), handler `importer/cbs_woz.py`
+- [x] `housing.NVMMarketReport` (region, year, quarter, dwelling type, transactions, median price, price per m², days on market, asking gap, share above asking, `source_url`, `pdf_sha256`, `retrieved_at`, `parser_version`, report quarter) and `NVMRegionMapping` (municipality → COROP region)
+- [x] `importer/nvm_reports.py`: parses the PDFs with `pdfplumber` (checked on the real "Marktoverzicht Nederland, 3e kwartaal 2026" and the COROP list), upserts, newest report wins
+- [x] NVM robots.txt and terms checked (2026-11-26): robots.txt allows the pages, but the copyright and disclaimer pages allow non-commercial private use only and reserve reproduction and redistribution. **Decision: the PDFs are not downloaded by CrossTwin**; a person downloads them into `NVM_PDF_DIR` (default `media/nvm`) and the catalog entry `nvm_market_reports` reads that folder. Ask NVM for written permission before publishing or sharing the figures (research outputs, shared databases)
+- [x] NVM and CBS registered in `core/data_sources.py`, `docs/DATA_SOURCES.md` regenerated
+- [x] New DAG node `Market_Reports` and edge `Market_Reports -> House_Price_Index` (the plan's "NVM report" node): `HousePriceIndex.save()` derives the index from the region's annual mean price per m² (four quarters needed), receivers in `housing/signals.py`, deferred per region; docs per the `dag-edge` checklist (`docs/DAG_REVISIONS.md`, `DAG_COVERAGE.md`: 107 edges, 68 implemented)
+- [x] Tests: `housing/tests/test_prices.py` (NVM parser on generated PDFs and on the layout of the real report, WOZ per m², baseline freezing, CBS import with a mocked response, the edge and its deferral). No NVM PDF is committed: its terms reserve reproduction, so the fixtures are PDFs generated in the test
+- [ ] First real run: import neighborhoods and buildings for Delft, `CBS_WOZ_2024`, put the COROP list and the regional report PDFs in `media/nvm`, import `nvm_market_reports`, check `WOZValue` and `HousePriceIndex`
+
+Known limits: CBS rounds the mean WOZ value to 1 000 EUR; the index is region-wide (all neighborhoods of a COROP area share it) and needs four NVM quarters per year, and each PDF holds only three quarters, so at least two consecutive reports per year are needed; the regional PDFs' footer text was assumed to follow the national one (`... kwartaalcijfers <region> | <q>e kwartaal <year>`), a report that does not match gives no rows.
 
 ## Phase 4 — Accessibility to price
 

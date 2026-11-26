@@ -292,7 +292,7 @@ HELP = {
     "housing.hpi": {
         "title": "House Price Index",
         "what": "How house prices move over time, relative to a base year set to 100.",
-        "how": "Average index value over the reporting neighborhoods for the year; year-on-year change compares it with last year's average for the same neighborhoods.",
+        "how": "Average index value over the reporting neighborhoods for the year; year-on-year change compares it with last year's average for the same neighborhoods. Where NVM market reports are loaded, the index is the region's annual mean transaction price per m² over its first complete year. The chart plots that NVM price and the CBS mean WOZ value per m² (weighted by dwellings, drawn at its valuation date, 1 January of the year before the CBS table) by year; without them it plots the index. The two prices differ in level: WOZ is an assessed value, NVM a median of sales.",
         "eq": ["YoY change = {this year − last year | last year} × 100 %"],
         "note": "An index of 120 means prices are 20 % above the base year.",
     },

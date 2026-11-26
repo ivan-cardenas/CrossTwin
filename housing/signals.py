@@ -36,9 +36,11 @@ from builtup.models import Property
 from builtup.signals import residents_changed
 from core.cache import bump_layer_version
 
+from administrative.models import Neighborhood
+
 from .models import (
-    HouseholdSize, HousingAffordability, HousingProject, HousingSupplyDemand,
-    NeighborhoodSocialProfile, ResidentialProperty,
+    HousePriceIndex, HouseholdSize, HousingAffordability, HousingProject, HousingSupplyDemand,
+    NeighborhoodSocialProfile, NVMMarketReport, NVMRegionMapping, ResidentialProperty,
 )
 
 logger = logging.getLogger(__name__)
@@ -116,6 +118,34 @@ def _refresh_neighborhood_affordability(neighborhood_id):
     _resave(HousingAffordability.objects.filter(neighborhood_id=neighborhood_id))
 
 
+def _refresh_region_index(region):
+    """
+    Re-derive the House Price Index of every neighborhood of an NVM region, for
+    every year the region has a full year of NVM prices. A missing row is created
+    (its save() derives the index); an existing one is re-saved. Deferred under a
+    bulk import, so a PDF with a dozen figures refreshes the region once.
+
+    DAG edge: Market_Reports -> House_Price_Index
+    """
+    pending = getattr(_deferred, "regions", None)
+    if pending is not None:
+        pending.add(region)
+        return
+    from .calculations import prices
+
+    annual = prices.annual_prices(region)
+    if not annual:
+        return
+    neighborhoods = list(Neighborhood.objects.filter(district__city__nvm_region__region=region)
+                         .values_list("pk", flat=True))
+    stored = {(row.neighborhood_id, row.year): row for row in
+              HousePriceIndex.objects.filter(neighborhood_id__in=neighborhoods, year__in=annual)}
+    for neighborhood_id in neighborhoods:
+        for year in annual:
+            _resave([stored.get((neighborhood_id, year))
+                     or HousePriceIndex(neighborhood_id=neighborhood_id, year=year, index_value=0.0)])
+
+
 @contextmanager
 def deferred_housing_refresh():
     """
@@ -132,13 +162,15 @@ def deferred_housing_refresh():
 
     _deferred.pending = set()
     _deferred.neighborhoods = set()
+    _deferred.regions = set()
     try:
         yield
     except BaseException:
         pending, _deferred.pending = _deferred.pending, None
         neighborhoods, _deferred.neighborhoods = _deferred.neighborhoods, None
+        regions, _deferred.regions = _deferred.regions, None
         try:
-            _flush_housing_refresh(pending, neighborhoods)
+            _flush_housing_refresh(pending, neighborhoods, regions)
         except Exception:
             # e.g. the transaction is already broken; don't mask the original error
             logger.exception("Deferred housing refresh failed after an aborted block")
@@ -146,14 +178,17 @@ def deferred_housing_refresh():
     else:
         pending, _deferred.pending = _deferred.pending, None
         neighborhoods, _deferred.neighborhoods = _deferred.neighborhoods, None
-        _flush_housing_refresh(pending, neighborhoods)
+        regions, _deferred.regions = _deferred.regions, None
+        _flush_housing_refresh(pending, neighborhoods, regions)
 
 
-def _flush_housing_refresh(city_ids, neighborhood_ids=()):
+def _flush_housing_refresh(city_ids, neighborhood_ids=(), regions=()):
     for city_id in city_ids:
         _refresh_city_housing(city_id)
     for neighborhood_id in neighborhood_ids:
         _refresh_neighborhood_affordability(neighborhood_id)
+    for region in regions:
+        _refresh_region_index(region)
 
 
 # ── population -> housing demand ─────────────────────────────────────
@@ -218,6 +253,33 @@ def social_profile_changed(sender, instance, raw=False, **kwargs):
     """
     if not raw:
         _refresh_neighborhood_affordability(instance.neighborhood_id)
+
+
+# ── NVM market reports -> house price index ──────────────────────────
+
+@receiver(post_save, sender=NVMMarketReport, dispatch_uid="housing_nvm_report_saved")
+@receiver(post_delete, sender=NVMMarketReport, dispatch_uid="housing_nvm_report_deleted")
+def nvm_report_changed(sender, instance, raw=False, **kwargs):
+    """
+    A quarterly figure of a region changes its annual price per m2, and with it the
+    index of every neighborhood of the region (the base year may move too).
+
+    DAG edge: Market_Reports -> House_Price_Index
+    """
+    if not raw:
+        _refresh_region_index(instance.region)
+
+
+@receiver(post_save, sender=NVMRegionMapping, dispatch_uid="housing_nvm_mapping_saved")
+def nvm_mapping_changed(sender, instance, raw=False, **kwargs):
+    """
+    A municipality newly mapped to an NVM region gets that region's index (a mapping
+    imported after the reports must not leave the neighborhoods without one).
+
+    DAG edge: Market_Reports -> House_Price_Index
+    """
+    if not raw:
+        _refresh_region_index(instance.region)
 
 
 # ── a dwelling is saved -> its residents ─────────────────────────────

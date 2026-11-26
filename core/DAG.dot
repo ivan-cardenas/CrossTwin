@@ -44,6 +44,7 @@ digraph CrossTwin {
     Streets             [label="Streets\nRoad Network"];
     Central_Bank        [label="Central Bank\nPolicy"];
     Credit_Supply       [label="Credit Supply\nConditions"];
+    Market_Reports      [label="Housing Market\nReports (NVM)"];
     ConsumptionCapita   [label="Water Consumption\nper Capita"];
     Income_Expenses     [label="Income / Expenses"];
     Energy_Cost         [label="Energy Cost"];
@@ -259,6 +260,7 @@ digraph CrossTwin {
 
     Central_Bank        -> Mortgage;
     Credit_Supply       -> Mortgage;
+    Market_Reports      -> House_Price_Index;   // NVM median price per m2 of the region, annual mean over the base year (housing/calculations/prices.py)
 
     
 

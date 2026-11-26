@@ -276,19 +276,198 @@ class Rentals(models.Model):
         verbose_name_plural = "Rentals"
               
 class HousePriceIndex(models.Model):
+    """
+    House price index of a neighborhood and year, base year = 100.
+
+    Derived in save() from the NVM market reports of the neighborhood's NVM
+    region (housing/calculations/prices.py: annual mean of the quarterly median
+    price per m2, over the region's base year); without NVM data for the region
+    and year the stored `index_value` is kept (a manual or imported value).
+
+    DAG edges: Market_Reports -> House_Price_Index
+    """
     id = models.AutoField(primary_key=True)
     neighborhood = models.ForeignKey("administrative.Neighborhood", verbose_name="Neighborhood", on_delete=models.DO_NOTHING)
     year = models.IntegerField(help_text="Year of the house price index data")
     index_value = models.FloatField(help_text="Value of the house price index (base year = 100)")
+    baseYear = models.IntegerField(null=True, blank=True, editable=False, help_text="Base year of the index (= 100); derived from the NVM reports")
+    pricePerSqm_EUR = models.FloatField(null=True, blank=True, editable=False, help_text="NVM annual mean of the quarterly median price per m2 of the year, EUR/m2; derived")
+    nvmRegion = models.CharField(max_length=100, blank=True, editable=False, help_text="NVM region whose reports the index follows; derived")
+    indexMethod = models.CharField(max_length=120, blank=True, editable=False, help_text="Method of the derived index (chain.INDEX_METHOD); empty = stored value")
     last_updated = models.DateTimeField(default=timezone.now)
-    
+
     def __str__(self):
         return f"House Price Index {self.year} for {self.neighborhood}"
-    
+
+    def save(self, *args, **kwargs):
+        """
+        index = 100 x NVM price per m2 of the year / that of the region's base year
+        (housing/calculations/chain.py::price_index). Without the region's NVM
+        prices for the year the stored index is kept.
+
+        DAG edges: Market_Reports -> House_Price_Index
+        """
+        from .calculations import prices
+
+        derived = prices.index_for(self.neighborhood_id, self.year)
+        if derived is not None:
+            self.index_value = derived["index"]
+            self.baseYear = derived["base_year"]
+            self.pricePerSqm_EUR = derived["price"]
+            self.nvmRegion = derived["region"]
+            self.indexMethod = chain.INDEX_METHOD
+            if kwargs.get("update_fields"):
+                kwargs["update_fields"] = set(kwargs["update_fields"]) | {
+                    "index_value", "baseYear", "pricePerSqm_EUR", "nvmRegion", "indexMethod"}
+        super().save(*args, **kwargs)
+
     class Meta:
         verbose_name = "House Price Index"
         verbose_name_plural = "House Price Index Records"
-        
+
+
+class WOZValue(models.Model):
+    """
+    Mean WOZ value of the dwellings of a neighborhood (CBS "Kerncijfers wijken
+    en buurten", one table per year, catalog entries CBS_WOZ_<year>) and the WOZ
+    value per m2 derived from it: the price level the hedonic model of Phase 4
+    is fitted on (docs/ACCESSIBILITY_PLAN.md).
+
+    `year` is the CBS table year; its valuation date is 1 January of the year
+    before (chain.woz_valuation_year). The floor area is the mean BAG usable area
+    of the neighborhood's dwellings at the time of the import
+    (housing/calculations/woz.py), stored with its dwelling count. The mean
+    walk and bike accessibility of the neighborhood's residential buildings is
+    frozen with the row as the baseline the price equation measures a change
+    against; it is written once by `woz.freeze_baselines`, not re-derived.
+
+    The map layer is the proxy `WOZValueLatest` (latest year per neighborhood,
+    painted by WOZ value per m2); this table holds every year and is not a layer.
+
+    Stored input plus one derived ratio, no DAG edge.
+    """
+    registry_hidden = True
+
+    id = models.AutoField(primary_key=True)
+    neighborhood = models.ForeignKey("administrative.Neighborhood", verbose_name="Neighborhood", on_delete=models.DO_NOTHING, related_name="woz_values")
+    year = models.IntegerField(help_text="CBS table year (WOZ valuation date = 1 January of the year before)")
+    avgWOZ_EUR = models.FloatField(null=True, blank=True, help_text="Mean WOZ value of the dwellings, EUR (CBS publishes x 1 000 EUR)")
+    dwellings = models.IntegerField(null=True, blank=True, help_text="Dwelling stock (CBS Woningvoorraad)")
+    meanArea_sqm = models.FloatField(null=True, blank=True, help_text="Mean BAG usable area of the dwellings inside the neighborhood, m2 (housing/calculations/woz.py)")
+    areaDwellings = models.IntegerField(null=True, blank=True, help_text="Dwellings the mean area is taken over")
+    woz_per_sqm = models.FloatField(null=True, blank=True, editable=False, help_text="Mean WOZ value / mean dwelling area, EUR/m2; derived")
+    cbs_table_id = models.CharField(max_length=20, blank=True, help_text="CBS StatLine table the value comes from")
+    source = models.CharField(max_length=100, default="CBS Kerncijfers wijken en buurten", help_text="Data provider")
+    method = models.CharField(max_length=100, blank=True, editable=False, help_text="Method of the per-m2 value (chain.WOZ_METHOD)")
+    baselineAccessWalk = models.FloatField(null=True, blank=True, help_text="Mean walk accessibility score (0-100) of the neighborhood's residential buildings when frozen")
+    baselineAccessBike = models.FloatField(null=True, blank=True, help_text="Mean bike accessibility score (0-100) of the neighborhood's residential buildings when frozen")
+    baselineMethod = models.CharField(max_length=60, blank=True, help_text="Accessibility method stamp of the frozen baseline (builtup chain.METHOD_STAMP)")
+    baselineSnapshot = models.DateField(null=True, blank=True, help_text="Network snapshot date of the frozen baseline")
+    geom = models.MultiPolygonField(srid=COORDINATE_SYSTEM, null=True, blank=True, help_text="Copy of the neighborhood's geometry, for the map layer")
+    last_updated = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return f"WOZ {self.year} of {self.neighborhood_id}: {self.avgWOZ_EUR}"
+
+    def save(self, *args, **kwargs):
+        self.geom = self.neighborhood.geom
+        self.woz_per_sqm = chain.woz_per_sqm(self.avgWOZ_EUR, self.meanArea_sqm)
+        self.method = chain.WOZ_METHOD if self.woz_per_sqm is not None else ""
+        if kwargs.get("update_fields"):
+            kwargs["update_fields"] = set(kwargs["update_fields"]) | {"woz_per_sqm", "method", "geom"}
+        super().save(*args, **kwargs)
+
+    class Meta:
+        verbose_name = "WOZ value"
+        verbose_name_plural = "WOZ values"
+        constraints = [models.UniqueConstraint(fields=["neighborhood", "year"], name="unique_woz_neighborhood_year")]
+
+
+class _LatestWOZ(models.Manager):
+    def get_queryset(self):
+        newest = (WOZValue.objects.filter(neighborhood=models.OuterRef("neighborhood"))
+                  .order_by("-year").values("year")[:1])
+        return super().get_queryset().filter(year=models.Subquery(newest), geom__isnull=False)
+
+
+class WOZValueLatest(WOZValue):
+    """Map layer: the WOZ value per m2 of each neighborhood, latest table year."""
+    registry_hidden = False
+    objects = _LatestWOZ()
+
+    class Meta:
+        proxy = True
+        verbose_name = "WOZ value per m2 (latest year)"
+        verbose_name_plural = "WOZ value per m2 (latest year)"
+
+
+class NVMRegionMapping(models.Model):
+    """
+    The NVM region (COROP area) a municipality belongs to, from NVM's
+    "Gebiedsindeling COROP en gemeenten" (importer/nvm_reports.py). NVM reports
+    are per region; this maps them to cities, neighborhoods and their index.
+    """
+    registry_hidden = True
+
+    city = models.OneToOneField("administrative.City", on_delete=models.CASCADE, related_name="nvm_region")
+    region = models.CharField(max_length=100, help_text="NVM region name, as in the report titles")
+    regionNumber = models.IntegerField(null=True, blank=True, help_text="COROP number in NVM's list")
+    source = models.CharField(max_length=200, blank=True)
+
+    def __str__(self):
+        return f"{self.city_id} -> {self.region}"
+
+    class Meta:
+        verbose_name = "NVM region mapping"
+        verbose_name_plural = "NVM region mappings"
+
+
+class NVMMarketReport(models.Model):
+    """
+    One quarterly NVM housing-market figure set: a region, a quarter and a
+    dwelling type (Tussenwoning ... Appartement, Totaal), read from NVM's
+    "Woningmarkt kwartaalcijfers" PDF by importer/nvm_reports.py. Each PDF gives
+    three quarters per figure (same quarter last year, previous quarter, report
+    quarter); the figure of the newest report wins.
+
+    The provenance fields make a figure reproducible: the PDF's SHA-256, where it
+    came from, when it was read and the parser version. NVM's terms reserve
+    reproduction and redistribution (docs/DATA_SOURCES.md): use the figures for
+    non-commercial research and ask NVM before redistributing them.
+
+    Feeds House_Price_Index through housing/signals.py (DAG edge
+    Market_Reports -> House_Price_Index).
+    """
+    registry_hidden = True
+    TOTAL = "Totaal"
+
+    region = models.CharField(max_length=100, help_text="NVM region; 'Nederland' for the national report")
+    year = models.IntegerField()
+    quarter = models.IntegerField(help_text="1-4")
+    dwellingType = models.CharField(max_length=30, help_text="Tussenwoning, Hoekwoning, 2-onder-1-kap, Vrijstaand, Appartement or Totaal")
+    transactions = models.IntegerField(null=True, blank=True, help_text="Number of transactions in the quarter")
+    medianPrice_EUR = models.FloatField(null=True, blank=True, help_text="Median transaction price, EUR (NVM prints x 1 000)")
+    pricePerSqm_EUR = models.FloatField(null=True, blank=True, help_text="Median transaction price per m2 GBO wonen, EUR/m2")
+    daysOnMarket = models.FloatField(null=True, blank=True, help_text="Days from listing to deed (Verkooptijd)")
+    askingGap_pct = models.FloatField(null=True, blank=True, help_text="Difference between last asking price and transaction price, % (positive = paid more)")
+    aboveAsking_pct = models.FloatField(null=True, blank=True, help_text="Share of the homes sold above the last asking price, %")
+    reportYear = models.IntegerField(help_text="Year of the report the figures were read from")
+    reportQuarter = models.IntegerField(help_text="Quarter of that report")
+    source_url = models.CharField(max_length=500, blank=True, help_text="Where the PDF was published")
+    source_file = models.CharField(max_length=200, blank=True)
+    pdf_sha256 = models.CharField(max_length=64, help_text="SHA-256 of the PDF the figures were read from")
+    retrieved_at = models.DateTimeField(default=timezone.now)
+    parser_version = models.CharField(max_length=30, help_text="importer/nvm_reports.py::PARSER_VERSION")
+
+    def __str__(self):
+        return f"NVM {self.region} {self.year}-{self.quarter} {self.dwellingType}"
+
+    class Meta:
+        verbose_name = "NVM market report figure"
+        verbose_name_plural = "NVM market report figures"
+        constraints = [models.UniqueConstraint(fields=["region", "year", "quarter", "dwellingType"], name="unique_nvm_region_quarter_type")]
+
+
 
 class HousingAffordability(models.Model):
     id = models.AutoField(primary_key=True)

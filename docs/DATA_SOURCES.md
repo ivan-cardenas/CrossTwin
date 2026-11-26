@@ -6,7 +6,7 @@ do not edit by hand. Stored rows record their own source (dataset key, scene, st
 
 ## 1. Importer catalog (Retrieve Data from APIs)
 
-76 datasets from 10 providers.
+83 datasets from 11 providers.
 
 ### Publieke Dienstverlening Op de Kaart
 
@@ -45,6 +45,12 @@ Dutch national statistics data platform. Open data, no authentication required. 
 | `CBS_Households` | Private households 2014- (86291NED) | Housing | `housing.HouseholdSize` | CBS table `86291NED` |
 | `CBS_Housing` | Housing Lifecycle (86098NED) | Housing | `housing.HousingSupplyDemand` | CBS table `86098NED` |
 | `CBS_OnePersonHouseholds` | One-person households 2014- (86291NED) | Housing | `housing.HouseholdSize` | CBS table `86291NED` |
+| `CBS_WOZ_2019` | WOZ value per neighborhood 2019 (84583NED) | Housing | `housing.WOZValue` | CBS table `84583NED` |
+| `CBS_WOZ_2020` | WOZ value per neighborhood 2020 (84799NED) | Housing | `housing.WOZValue` | CBS table `84799NED` |
+| `CBS_WOZ_2021` | WOZ value per neighborhood 2021 (85039NED) | Housing | `housing.WOZValue` | CBS table `85039NED` |
+| `CBS_WOZ_2022` | WOZ value per neighborhood 2022 (85318NED) | Housing | `housing.WOZValue` | CBS table `85318NED` |
+| `CBS_WOZ_2023` | WOZ value per neighborhood 2023 (85618NED) | Housing | `housing.WOZValue` | CBS table `85618NED` |
+| `CBS_WOZ_2024` | WOZ value per neighborhood 2024 (85984NED) | Housing | `housing.WOZValue` | CBS table `85984NED` |
 
 ### Copernicus Sentinel-2 Earth Observation
 
@@ -96,6 +102,14 @@ Dutch soil data maintained by Wageningen Environmental Research. Open WFS data, 
 | `bodemdata_ghg` | Groundwater Depth, wet season (GHG, BIS Nederland) | Elevation & Terrain | `physicalEnv.GroundwaterDepth` | https://maps.bodemdata.nl/geoserver/ows (`bodem__ghg-mediaan`) |
 | `bodemdata_glg` | Groundwater Depth, dry season (GLG, BIS Nederland) | Elevation & Terrain | `physicalEnv.GroundwaterDepth` | https://maps.bodemdata.nl/geoserver/ows (`bodem__glg-mediaan`) |
 | `bodemdata_soil_map` | Soil Map 1:50 000 (Bodemkaart, BIS Nederland) | Elevation & Terrain | `physicalEnv.SoilArea` | https://maps.bodemdata.nl/geoserver/bodem/ows (`bodem:Bodemkaart50000`) |
+
+### Nederlandse Vereniging van Makelaars (housing-market reports)
+
+Quarterly housing-market figures per region from NVM's published PDFs. Not downloaded automatically: NVM's terms allow non-commercial private use only, so put the PDFs in the server's NVM_PDF_DIR yourself. *(no authentication; source key `nvm`)*
+
+| Key | Dataset | Category | Stored in | Endpoint |
+|---|---|---|---|---|
+| `nvm_market_reports` | NVM quarterly housing-market reports (PDF) | Housing | `housing.NVMMarketReport` | – |
 
 ### OpenStreetMap (Overpass API)
 
@@ -167,6 +181,8 @@ Dutch national institute for public health and the environment. Open WFS data, n
 | NCEP/NCAR reanalysis water vapour | NOAA via Google Earth Engine | NCEP_RE/surface_wv | urban_heat/lst/gee.py | Total precipitable water for the SMW coefficients (until 2026-03-18). |
 | Copernicus Data Space (openEO, catalogue) | ESA / Copernicus | https://openeo.dataspace.copernicus.eu, https://catalogue.dataspace.copernicus.eu/odata/v1/Products | importer (sentinel2_* entries) | Sentinel-2 L2A indices (NDVI, NDWI, moisture, albedo, true colour). |
 | CBS StatLine OData | Statistics Netherlands (CBS) | https://opendata.cbs.nl/ODataApi/OData/, https://opendata.cbs.nl/ODataFeed/OData/ | importer (CBS_* entries) | Tables 86098NED, 86291NED, 85173NED and others. |
+| CBS Kerncijfers wijken en buurten 2019-2024 (WOZ value per buurt) | Statistics Netherlands (CBS) | https://opendata.cbs.nl/ODataApi/OData/{84583NED,84799NED,85039NED,85318NED,85618NED,85984NED}/TypedDataSet | importer/cbs_woz.py (CBS_WOZ_<year> entries) -> housing.WOZValue | Mean WOZ value of the dwellings (x 1 000 EUR, valuation date 1 January of the year before) and the dwelling stock; no value below 20 dwellings. Column keys differ per table year. |
+| NVM quarterly housing-market reports (PDF) | NVM (Nederlandse Vereniging van Makelaars) | https://www.nvm.nl/wonen/marktinformatie-wonen/ (PDFs read from `NVM_PDF_DIR`, not downloaded by CrossTwin) | importer/nvm_reports.py (nvm_market_reports) -> housing.NVMMarketReport, NVMRegionMapping | Median transaction price per m2 per region and quarter. NVM's copyright and disclaimer pages allow non-commercial private use only and reserve reproduction and redistribution (checked 2026-11-26; robots.txt allows the pages): get NVM's written permission before the figures are published or shared. Each row stores the PDF's SHA-256 and the parser version. |
 | Overpass API (OpenStreetMap) | OpenStreetMap contributors (ODbL) | https://overpass-api.de/api/interpreter (`OVERPASS_URL`, mirrors in `OVERPASS_MIRRORS`) | importer (osm_* entries) | Parks, water bodies, amenities, trees. |
 | BIJ12 Informatiekaart Natuur | BIJ12 (joint provinces) | https://ogc-geoservices.bij12.nl/geoserver/IMNa_IKN/wfs (`IMNa_IKN:natuur_netwerk_nederland`) | importer (bij12_nnn) -> builtup/calculations/site.py | Natuurnetwerk Nederland; the neighbourhood generator keeps buildings out of it. |
 | Natura 2000 areas | RVO via PDOK | https://service.pdok.nl/rvo/natura2000/wfs/v1_0 | importer (pdok_natura2000) -> builtup/calculations/site.py | Cut out of the generator's buildable area. |

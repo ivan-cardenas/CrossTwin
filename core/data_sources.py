@@ -37,6 +37,17 @@ OTHER_SOURCES = [
     ("CBS StatLine OData", "Statistics Netherlands (CBS)",
      "https://opendata.cbs.nl/ODataApi/OData/, https://opendata.cbs.nl/ODataFeed/OData/",
      "importer (CBS_* entries)", "Tables 86098NED, 86291NED, 85173NED and others."),
+    ("CBS Kerncijfers wijken en buurten 2019-2024 (WOZ value per buurt)", "Statistics Netherlands (CBS)",
+     "https://opendata.cbs.nl/ODataApi/OData/{84583NED,84799NED,85039NED,85318NED,85618NED,85984NED}/TypedDataSet",
+     "importer/cbs_woz.py (CBS_WOZ_<year> entries) -> housing.WOZValue",
+     "Mean WOZ value of the dwellings (x 1 000 EUR, valuation date 1 January of the year before) and the dwelling stock; "
+     "no value below 20 dwellings. Column keys differ per table year."),
+    ("NVM quarterly housing-market reports (PDF)", "NVM (Nederlandse Vereniging van Makelaars)",
+     "https://www.nvm.nl/wonen/marktinformatie-wonen/ (PDFs read from `NVM_PDF_DIR`, not downloaded by CrossTwin)",
+     "importer/nvm_reports.py (nvm_market_reports) -> housing.NVMMarketReport, NVMRegionMapping",
+     "Median transaction price per m2 per region and quarter. NVM's copyright and disclaimer pages allow non-commercial "
+     "private use only and reserve reproduction and redistribution (checked 2026-11-26; robots.txt allows the pages): "
+     "get NVM's written permission before the figures are published or shared. Each row stores the PDF's SHA-256 and the parser version."),
     ("Overpass API (OpenStreetMap)", "OpenStreetMap contributors (ODbL)",
      "https://overpass-api.de/api/interpreter (`OVERPASS_URL`, mirrors in `OVERPASS_MIRRORS`)",
      "importer (osm_* entries)", "Parks, water bodies, amenities, trees."),

@@ -272,3 +272,69 @@ def dwelling_gap(needed, stock):
     if needed is None or stock is None:
         return None
     return needed - stock
+
+
+# ── House prices: CBS WOZ level and NVM market trend ─────────────────
+#
+#   woz_per_sqm   = mean WOZ value of the neighbourhood's dwellings / their mean floor area
+#   annual price  = mean of the year's quarterly NVM median price per m2 (dwelling type "Totaal")
+#   index         = 100 x annual price / annual price of the region's base year
+#
+# The WOZ value is the CBS "Kerncijfers wijken en buurten" mean (rounded to
+# 1 000 EUR by CBS, only for regions with at least 20 dwellings and a WOZ value
+# for 85 % of them). The table of year Y holds the WOZ value at the valuation
+# date 1 January of Y-1. The floor area is the BAG usable area (oppervlakte,
+# builtup.Property.livingArea else grossArea) of the dwellings inside the
+# neighbourhood: a ratio of two means, not a mean of per-dwelling ratios.
+
+# Smallest and largest plausible mean dwelling area (m2) for the ratio above: the
+# lower bound is the Bbl minimum (MIN_DWELLING_AREA_SQM); 500 m2 only guards
+# against a broken area column.
+WOZ_AREA_MAX_SQM = 500.0
+
+WOZ_METHOD = "mean WOZ / mean BAG dwelling area (v1)"
+# Years used by the index need all four quarters of NVM before they count as a full year.
+NVM_QUARTERS_PER_YEAR = 4
+INDEX_BASE = 100.0
+INDEX_METHOD = "NVM median price per m2, annual mean of quarters, base year = 100 (v1)"
+
+
+def woz_valuation_year(table_year):
+    """Year of the WOZ valuation date (1 January) of a CBS Kerncijfers table."""
+    return table_year - 1
+
+
+def woz_per_sqm(avg_woz_eur, mean_area_sqm):
+    """
+    WOZ value per m2 of floor area, EUR/m2. None without both inputs or when the
+    mean area is outside [MIN_DWELLING_AREA_SQM, WOZ_AREA_MAX_SQM].
+    """
+    if not avg_woz_eur or not mean_area_sqm or avg_woz_eur <= 0:
+        return None
+    if not MIN_DWELLING_AREA_SQM <= mean_area_sqm <= WOZ_AREA_MAX_SQM:
+        return None
+    return avg_woz_eur / mean_area_sqm
+
+
+def annual_price_per_sqm(quarterly_prices):
+    """
+    Mean of a year's quarterly median prices per m2, EUR/m2. `quarterly_prices`
+    is the list of the quarters that have a value; fewer than four quarters
+    give None (a part-year mean would mix seasons).
+    """
+    prices = [p for p in quarterly_prices if p]
+    if len(prices) < NVM_QUARTERS_PER_YEAR:
+        return None
+    return sum(prices) / len(prices)
+
+
+def price_index(price, base_price):
+    """
+    House price index (base year = 100) from an annual price per m2 and the base
+    year's price. None without both (a stored index is then kept).
+
+    DAG edge: Market_Reports -> House_Price_Index
+    """
+    if not price or not base_price or price <= 0 or base_price <= 0:
+        return None
+    return INDEX_BASE * price / base_price

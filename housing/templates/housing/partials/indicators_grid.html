@@ -129,7 +129,7 @@
   </div>
 
   <!-- House Price Index -->
-  <div class="card c2">
+  <div class="card c2 wide">
     <div class="gauge-header">
       <div class="card-icon">📊</div>
       <div class="card-label">House Price Index</div>
@@ -145,6 +145,29 @@
       {% if indicators.hpi_yoy_change >= 0 %}▲{% else %}▼{% endif %} {{ indicators.hpi_yoy_change }}% YoY
     </div>
     {% endif %}
+    {% with chart=indicators.price_chart %}
+    {% if chart %}
+    <figure class="price-chart">
+      <figcaption class="price-chart-caption">Historical prices · {{ indicators.price_chart_unit }}</figcaption>
+      <svg viewBox="0 0 {{ chart.width }} {{ chart.height }}" role="img" aria-label="Historical prices, {{ indicators.price_chart_unit }}">
+        {% for t in chart.y_ticks %}
+        <line class="pc-grid" x1="{{ chart.left }}" x2="{{ chart.right }}" y1="{{ t.y }}" y2="{{ t.y }}"/>
+        <text class="pc-tick" x="{{ chart.left|add:'-6' }}" y="{{ t.y|add:'3' }}" text-anchor="end">{{ t.label }}</text>
+        {% endfor %}
+        {% for t in chart.x_ticks %}
+        <text class="pc-tick" x="{{ t.x }}" y="{{ chart.height|add:'-6' }}" text-anchor="middle">{{ t.label }}</text>
+        {% endfor %}
+        {% for s in chart.series %}
+        {% if s.path %}<path class="pc-line pc-{{ s.key }}" d="{{ s.path }}"/>{% endif %}
+        {% for d in s.dots %}<circle class="pc-dot pc-{{ s.key }}" cx="{{ d.cx }}" cy="{{ d.cy }}" r="2.5"><title>{{ s.label }} {{ d.x }}: {{ d.y }}</title></circle>{% endfor %}
+        {% endfor %}
+      </svg>
+      <div class="price-chart-legend">
+        {% for s in chart.series %}<span class="pc-key pc-{{ s.key }}">{{ s.label }}</span>{% endfor %}
+      </div>
+    </figure>
+    {% endif %}
+    {% endwith %}
     <div style="margin-top:auto; font-size:9px; color:rgba(var(--accent-1-rgb), 0.35);">
       {{ indicators.hpi_neighborhoods }} neighborhoods reporting
     </div>

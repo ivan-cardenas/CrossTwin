@@ -46,6 +46,11 @@ ACCESS_LAYERS = [
     }},
 ]
 
+# WOZ value per m2 (housing.WOZValueLatest): (lower bound EUR/m2, colour, label), sequential; one list for paint and legend.
+WOZ_CLASSES = [(0, '#fff7bc', '< 2,500'), (2500, '#fec44f', '2,500-3,500'), (3500, '#fe9929', '3,500-4,500'),
+               (4500, '#d95f0e', '4,500-5,500'), (5500, '#993404', '>= 5,500')]
+WOZ_LEGEND = [{'label': label, 'color': color} for _, color, label in WOZ_CLASSES] + [{'label': 'No value', 'color': '#bdbdbd'}]
+
 # Degree of Urbanisation level-2 classes (GHSL GHS-SMOD legend), builtup/calculations/degurba.py.
 DEGURBA_COLORS = {30: '#FF0000', 23: '#A87000', 22: '#732600', 21: '#FFFF00',
                   13: '#375623', 12: '#ABCD66', 11: '#CDF57A', 10: '#7AB6F5'}
@@ -181,6 +186,20 @@ LAYER_STYLES = {
         'color': DEGURBA_COLORS[30],
         'legend': DEGURBA_LEGEND,
         'layers': DEGURBA_LAYERS,
+    },
+    # CBS mean WOZ value / mean BAG dwelling area per neighborhood (housing/calculations/woz.py); grey = CBS gives no value.
+    'housing.WOZValueLatest': {
+        'color': WOZ_CLASSES[3][1],
+        'legend': WOZ_LEGEND,
+        'layers': [
+            {'type': 'fill', 'paint': {
+                'fill-color': ['case', ['==', ['get', 'woz_per_sqm'], None], '#bdbdbd',
+                               ['step', ['to-number', ['get', 'woz_per_sqm']], WOZ_CLASSES[0][1],
+                                *[v for bound, color, _ in WOZ_CLASSES[1:] for v in (bound, color)]]],
+                'fill-opacity': 0.6,
+            }},
+            {'type': 'line', 'paint': {'line-color': '#ffffff', 'line-width': 0.6, 'line-opacity': 0.8}},
+        ],
     },
     # Network accessibility score 0-100 (builtup/calculations/chain.py), five equal classes on a
     # sequential ramp: dark = poorly connected, bright = well connected.

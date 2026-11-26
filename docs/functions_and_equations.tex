@@ -762,7 +762,17 @@ plus province-level policy fields (\code{interest\_rate}, \code{LTV\_limit}, \co
 \begin{equation}
   \Delta_{\text{YoY}}\% = \frac{\overline{\text{HPI}}_{y} - \overline{\text{HPI}}_{y-1}}{\overline{\text{HPI}}_{y-1}} \times 100
 \end{equation}
-\textbf{DAG edges:} \dagedge{Housing\_Demand $\rightarrow$ House\_Price\_Index}, \dagedge{Property $\rightarrow$ House\_Price\_Index} --- \statusgap{} (\code{HousePriceIndex} has no \code{save()}; \code{index\_value} is a flat stored field, and this function only averages it)
+\textbf{DAG edges:} \dagedge{Housing\_Demand $\rightarrow$ House\_Price\_Index}, \dagedge{Property $\rightarrow$ House\_Price\_Index} --- \statusgap{} (this function only averages the stored \code{index\_value}; the value itself is derived from NVM reports where they exist, see below, but neither the housing demand nor the properties enter it)
+
+\subsection{House Price Index from NVM reports and WOZ value per m$^2$ --- \code{HousePriceIndex.save()}, \code{WOZValue.save()}}
+\textbf{Location:} \code{housing/models.py} (\code{HousePriceIndex.save()}, \code{WOZValue.save()}), \code{housing/calculations/chain.py::price\_index}, \code{annual\_price\_per\_sqm}, \code{woz\_per\_sqm}; \code{housing/calculations/prices.py}, \code{woz.py}; \code{importer/nvm\_reports.py}, \code{cbs\_woz.py}
+\begin{align}
+  \bar p_{r,y} &= \frac{1}{4} \sum_{q=1}^{4} p_{r,y,q} \\
+  \text{HPI}_{r,y} &= 100\,\frac{\bar p_{r,y}}{\bar p_{r,y_0}} \\
+  \text{WOZ}_{m^2} &= \frac{\overline{\text{WOZ}}_n}{\bar a_n}
+\end{align}
+$p_{r,y,q}$ is NVM's median transaction price per m$^2$ (GBO wonen, dwelling type ``Totaal'') of region $r$ in quarter $q$ of year $y$, read from the quarterly PDF; a year counts only with all four quarters, and $y_0$ is the region's earliest such year (index 100). Every neighborhood of the region carries the region's index; a region is a COROP area from NVM's municipality list. Without NVM prices for the region and year the stored index is kept, and the row stores the base year, the price and the method string (\code{INDEX\_METHOD}). The index follows a single national broker association's transactions and is not a repeat-sales index. $\overline{\text{WOZ}}_n$ is CBS's mean WOZ value of the dwellings of neighborhood $n$ (``Kerncijfers wijken en buurten'' of year $Y$, valuation date 1 January $Y-1$, rounded to 1\,000~EUR, only for at least 20 dwellings) and $\bar a_n$ the mean BAG usable area of the dwellings inside it; the ratio of two means is not the mean of the per-dwelling ratios, and it is not calculated for a mean area outside 18--500~m$^2$ (\code{WOZ\_AREA\_MAX\_SQM}). The mean walk and bike accessibility of the neighborhood's residential buildings is frozen with the WOZ row as the baseline of the price model (Phase~4).
+\textbf{DAG edges:} \dagedge{Market\_Reports $\rightarrow$ House\_Price\_Index} --- \statusdone{} (receivers \code{nvm\_report\_changed}, \code{nvm\_mapping\_changed}); the WOZ value per m$^2$ is a stored input without a DAG edge.
 
 \subsection{Affordability index and stress level --- \code{HousingAffordability.save()}}
 \textbf{Location:} \code{housing/models.py} (\code{HousingAffordability.save()}), \code{housing/calculations/chain.py::monthly\_housing\_cost}, \code{housing\_cost\_burden}, \code{ses\_modifier}, \code{affordability\_stress\_level}
