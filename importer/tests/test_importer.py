@@ -893,6 +893,11 @@ class OSMImportTests(TestCase):
 
     def setUp(self):
         from administrative.models import City, District, Neighborhood
+        from importer.external_data import OSMImporter
+        # no real pauses between retry rounds in tests (the backoff tests set their own)
+        patcher = mock.patch.object(OSMImporter, "RETRY_WAITS_S", ())
+        patcher.start()
+        self.addCleanup(patcher.stop)
         area = MultiPolygon(to_storage_srid(Polygon(AMS_LONLAT, srid=4326)), srid=RD)
         province = Province.objects.create(ProvinceName="P", geom=area)
         city = City.objects.create(cityName="C", province=province, geom=area)
@@ -990,6 +995,7 @@ class OSMImportTests(TestCase):
         self.assertEqual(Facility.objects.count(), 1)
 
     @override_settings(OVERPASS_URL=None, OVERPASS_MIRRORS=["https://mirror.example/api/interpreter"])
+    @mock.patch("importer.external_data.OSMImporter.SPLIT_DEPTH", 0)  # this test is about the whole-area error
     def test_error_lists_every_failed_instance(self):
         import requests
         from importer.external_data import OSMImporter
@@ -1000,6 +1006,70 @@ class OSMImportTests(TestCase):
         self.assertEqual(result.status, "error")
         self.assertIn("HTTP 502", result.message)
         self.assertIn("mirror.example/api/interpreter: ConnectionError", result.message)
+
+    @override_settings(OVERPASS_URL=None, OVERPASS_MIRRORS=[])
+    def test_a_failed_area_is_retried_as_tiles_and_merged(self):
+        from builtup.models import Facility
+        from importer.external_data import OSMImporter
+
+        def node(i, lon):
+            return {"type": "node", "id": i, "lat": 52.37, "lon": lon, "tags": {"amenity": "police"}}
+
+        replies = [_FakeResponse(status_code=504),                                   # whole area
+                   _FakeResponse(json_data={"elements": [node(1, 4.86)]}),            # SW tile
+                   _FakeResponse(json_data={"elements": [node(2, 4.94), node(1, 4.86)]}),  # SE tile, node 1 again
+                   _FakeResponse(json_data={"elements": []}), _FakeResponse(json_data={"elements": []})]
+        with mock.patch("importer.external_data.requests.post", side_effect=replies) as post:
+            result = OSMImporter.fetch(CATALOG_BY_KEY["osm_amenities"], AMS_BBOX)
+        self.assertEqual(result.records_created, 2, result.message)  # node 1 once
+        self.assertEqual(Facility.objects.count(), 2)
+        boxes = [c.kwargs["data"]["data"].split("[bbox:")[1].split("]")[0] for c in post.call_args_list]
+        self.assertEqual(boxes[0], "52.35,4.85,52.4,4.95")                          # whole area first
+        self.assertEqual(boxes[1], "52.35,4.85,52.375,4.9")                         # then the south-west quarter
+
+    @override_settings(OVERPASS_URL=None, OVERPASS_MIRRORS=[])
+    def test_the_first_tile_that_still_fails_ends_the_import(self):
+        from importer.external_data import OSMImporter
+        with mock.patch("importer.external_data.requests.post", return_value=_FakeResponse(status_code=504)) as post:
+            result = OSMImporter.fetch(CATALOG_BY_KEY["osm_amenities"], AMS_BBOX)
+        self.assertEqual(result.status, "error")
+        self.assertIn("HTTP 504", result.message)
+        self.assertEqual(post.call_count, 1 + OSMImporter.SPLIT_DEPTH)  # one chain of retries, not every tile
+
+    @override_settings(OVERPASS_URL=None, OVERPASS_MIRRORS=[])
+    def test_busy_servers_are_retried_with_backoff_not_tiles(self):
+        from importer.external_data import OSMImporter
+        busy = _FakeResponse(status_code=502)
+        with mock.patch.object(OSMImporter, "RETRY_WAITS_S", (5, 15)),                 mock.patch("importer.external_data.time.sleep") as sleep,                 mock.patch("importer.external_data.requests.post", return_value=busy) as post:
+            result = OSMImporter.fetch(CATALOG_BY_KEY["osm_amenities"], AMS_BBOX)
+        self.assertEqual(result.status, "error")
+        self.assertEqual([c.args[0] for c in sleep.call_args_list], [5, 15])   # pauses grow between rounds
+        self.assertEqual(post.call_count, 3)                                    # three rounds, whole area each time
+
+    @override_settings(OVERPASS_URL=None, OVERPASS_MIRRORS=[])
+    def test_a_busy_server_that_recovers_is_used(self):
+        from importer.external_data import OSMImporter
+        node = {"type": "node", "id": 1, "lat": 52.37, "lon": 4.90, "tags": {"amenity": "police"}}
+        replies = [_FakeResponse(status_code=502), _FakeResponse(json_data={"elements": [node]})]
+        with mock.patch.object(OSMImporter, "RETRY_WAITS_S", (5,)),                 mock.patch("importer.external_data.time.sleep") as sleep,                 mock.patch("importer.external_data.requests.post", side_effect=replies):
+            result = OSMImporter.fetch(CATALOG_BY_KEY["osm_amenities"], AMS_BBOX)
+        self.assertEqual(result.records_created, 1, result.message)
+        sleep.assert_called_once_with(5)
+
+    @override_settings(OVERPASS_URL=None, OVERPASS_MIRRORS=[])
+    def test_split_stops_below_the_minimum_tile_size(self):
+        from importer.external_data import OSMImporter
+        tiny = [4.90, 52.37, 4.91, 52.375]  # 0.01 x 0.005 degrees: halves would be below MIN_TILE_DEG
+        with mock.patch("importer.external_data.requests.post", return_value=_FakeResponse(status_code=504)) as post:
+            result = OSMImporter.fetch(CATALOG_BY_KEY["osm_amenities"], tiny)
+        self.assertEqual((result.status, post.call_count), ("error", 1))
+
+    def test_a_way_across_a_tile_edge_is_completed_from_both_tiles(self):
+        from importer.external_data import OSMImporter
+        west = {"type": "way", "id": 9, "nodes": [1, 2, 3], "geometry": [{"lon": 4.8, "lat": 52.3}, {"lon": 4.9, "lat": 52.3}, None]}
+        east = {"type": "way", "id": 9, "nodes": [1, 2, 3], "geometry": [None, {"lon": 4.9, "lat": 52.3}, {"lon": 5.0, "lat": 52.3}]}
+        OSMImporter._merge_geometry(west, east)
+        self.assertEqual([p["lon"] for p in west["geometry"]], [4.8, 4.9, 5.0])
 
     def test_dispatcher_routes_osm_datasets(self):
         from importer.external_data import ImportResult, import_dataset

@@ -182,21 +182,16 @@ def fetch(dataset, bbox):
     from importer.console import say
     from importer.external_data import ImportResult, OSMImporter
 
-    query = OSMImporter.build_query(dataset, bbox, as_points=False)
-    response = OSMImporter._post(query, dataset)
-    if isinstance(response, ImportResult):
-        return response
-    body = response.json()
-    remark = body.get("remark") or ""
-    if "runtime error" in remark:
-        return ImportResult("error", f"Overpass query failed ({remark.strip()}). Try a smaller area.")
+    elements, error = OSMImporter.fetch_elements(dataset, bbox, as_points=False)
+    if error is not None:
+        return error
 
     transformer = Transformer.from_crs(4326, settings.COORDINATE_SYSTEM, always_xy=True)
     nodes, edges = split_ways(
-        body.get("elements", []),
+        elements,
         lambda lons, lats: tuple(list(axis) for axis in transformer.transform(lons, lats)),
     )
-    say("osm", f"Overpass returned {len(body.get('elements', []))} element(s) -> {len(edges)} edge(s), {len(nodes)} node(s)")
+    say("osm", f"Overpass returned {len(elements)} element(s) -> {len(edges)} edge(s), {len(nodes)} node(s)")
     if not edges:
         return ImportResult("success", "No walkable or cyclable ways found in the specified area.", 0)
     n_nodes, n_edges = save_network(nodes, edges, dataset)

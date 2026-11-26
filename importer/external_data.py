@@ -2893,6 +2893,8 @@ class OSMImporter:
     # Statuses that mean "this instance can't serve now", not "bad query":
     # the next instance is tried.
     TRANSIENT_STATUS = (429, 502, 503, 504)
+    # Pauses (s) between rounds over all instances when none answered: 5 + 15 + 30 s at most.
+    RETRY_WAITS_S = (5, 15, 30)
 
     @staticmethod
     def instances(dataset: Dict) -> List[str]:
@@ -2909,31 +2911,105 @@ class OSMImporter:
         failed with a transient status or could not be reached.
         """
         failures = []
-        for url in OSMImporter.instances(dataset):
-            logger.info(f"Fetching Overpass: {url} dataset={dataset['key']}")
-            say("osm", f"Fetching Overpass: {url} dataset={dataset['key']}")
-            try:
-                response = requests.post(
-                    url, data={"data": query},
-                    headers={"User-Agent": OSMImporter.USER_AGENT},
-                    timeout=OSMImporter.TIMEOUT_S + 30,
-                )
-            except (requests.ConnectionError, requests.Timeout) as e:
-                failures.append(f"{url}: {type(e).__name__}")
-                say("osm", f"Overpass {url} unreachable ({type(e).__name__}), trying the next instance")
-                continue
-            if response.status_code in OSMImporter.TRANSIENT_STATUS:
-                failures.append(f"{url}: HTTP {response.status_code}")
-                say("osm", f"Overpass {url} answered HTTP {response.status_code}, trying the next instance")
-                continue
-            response.raise_for_status()
-            return response
-        return ImportResult(
+        too_big = False
+        # The public servers answer 502/503/429 when all their workers are busy and ask clients
+        # to back off and retry: every round that no instance answers is followed by a longer pause.
+        for pause in (0, *OSMImporter.RETRY_WAITS_S):
+            if pause:
+                say("osm", f"Every Overpass instance is busy, waiting {pause} s before trying again")
+                time.sleep(pause)
+            failures = []
+            for url in OSMImporter.instances(dataset):
+                logger.info(f"Fetching Overpass: {url} dataset={dataset['key']}")
+                say("osm", f"Fetching Overpass: {url} dataset={dataset['key']}")
+                try:
+                    response = requests.post(
+                        url, data={"data": query},
+                        headers={"User-Agent": OSMImporter.USER_AGENT},
+                        timeout=OSMImporter.TIMEOUT_S + 30,
+                    )
+                except (requests.ConnectionError, requests.Timeout) as e:
+                    failures.append(f"{url}: {type(e).__name__}")
+                    too_big = too_big or isinstance(e, requests.Timeout)
+                    say("osm", f"Overpass {url} unreachable ({type(e).__name__}), trying the next instance")
+                    continue
+                if response.status_code in OSMImporter.TRANSIENT_STATUS:
+                    failures.append(f"{url}: HTTP {response.status_code}")
+                    too_big = too_big or response.status_code == 504
+                    say("osm", f"Overpass {url} answered HTTP {response.status_code}, trying the next instance")
+                    continue
+                response.raise_for_status()
+                return response
+        result = ImportResult(
             "error",
             "No Overpass server could answer (" + "; ".join(failures) + "). "
             "They may be busy or rate limiting: try again later or a smaller area, "
             "or set OVERPASS_URL / OVERPASS_MIRRORS in .env.",
         )
+        # A gateway timeout means the query was too heavy for the area: smaller tiles can help.
+        # "At capacity" (502/503/429) is the server's load, which more requests only worsen.
+        result.try_smaller_area = too_big
+        return result
+
+    # When no instance can answer for an area (gateway timeouts, or Overpass's own
+    # "runtime error"), the area is cut into four tiles and each is tried on its own,
+    # down to SPLIT_DEPTH levels (4 ** SPLIT_DEPTH tiles at most) and never below
+    # MIN_TILE_DEG degrees. The first tile that still fails ends the import with its
+    # error, so a hopeless area costs one request chain, not all the tiles.
+    SPLIT_DEPTH = 2
+    MIN_TILE_DEG = 0.01
+
+    @staticmethod
+    def _run(dataset: Dict, bbox: list, as_points: bool):
+        """(elements, None), or (None, ImportResult error) when the area could not be fetched whole."""
+        response = OSMImporter._post(OSMImporter.build_query(dataset, bbox, as_points), dataset)
+        if isinstance(response, ImportResult):
+            return None, response
+        body = response.json()
+        # Overpass reports a timeout or memory limit with HTTP 200 and a
+        # "remark", returning whatever it had collected so far.
+        remark = body.get("remark") or ""
+        if "runtime error" in remark:
+            return None, ImportResult("error", f"Overpass query failed ({remark.strip()}). Try a smaller area.")
+        return body.get("elements", []), None
+
+    @staticmethod
+    def _merge_geometry(kept: Dict, other: Dict) -> None:
+        """Fill the null positions of kept's way / relation geometry from the same element of another tile."""
+        for a, b in ((kept, other), *zip(kept.get("members", []), other.get("members", []))):
+            ga, gb = a.get("geometry"), b.get("geometry")
+            if ga and gb and len(ga) == len(gb):
+                a["geometry"] = [x or y for x, y in zip(ga, gb)]
+
+    @staticmethod
+    def fetch_elements(dataset: Dict, bbox: list, as_points: bool, depth: int = 0):
+        """
+        Overpass elements of the dataset inside bbox [west, south, east, north] (WGS84):
+        (elements, None) or (None, ImportResult error). Falls back to tiles as described above;
+        an element met in several tiles (a way across a tile edge) is kept once.
+        """
+        elements, error = OSMImporter._run(dataset, bbox, as_points)
+        if error is None:
+            return elements, None
+        west, south, east, north = bbox
+        if (depth >= OSMImporter.SPLIT_DEPTH or min(east - west, north - south) / 2 < OSMImporter.MIN_TILE_DEG
+                or not getattr(error, "try_smaller_area", True)):
+            return None, error
+        say("osm", f"{dataset['key']}: no answer for the whole area, retrying as 4 tiles (level {depth + 1})")
+        mid_x, mid_y = (west + east) / 2, (south + north) / 2
+        merged = {}
+        for tile in ([west, south, mid_x, mid_y], [mid_x, south, east, mid_y],
+                     [west, mid_y, mid_x, north], [mid_x, mid_y, east, north]):
+            part, tile_error = OSMImporter.fetch_elements(dataset, tile, as_points, depth + 1)
+            if tile_error is not None:
+                return None, tile_error
+            for element in part:
+                key = (element["type"], element["id"])
+                if key in merged:
+                    OSMImporter._merge_geometry(merged[key], element)
+                else:
+                    merged[key] = element
+        return list(merged.values()), None
 
     @staticmethod
     def fetch(dataset: Dict, bbox: list) -> ImportResult:
@@ -2953,24 +3029,16 @@ class OSMImporter:
 
             geom_type = Model._meta.get_field(mapping.get("__geometry__", "geom")).geom_type
             as_points = geom_type in ("POINT", "MULTIPOINT")
-            query = OSMImporter.build_query(dataset, bbox, as_points)
-            response = OSMImporter._post(query, dataset)
-            if isinstance(response, ImportResult):
-                return response
-            body = response.json()
-
-            # Overpass reports a timeout or memory limit with HTTP 200 and a
-            # "remark", returning whatever it had collected so far.
-            remark = body.get("remark") or ""
-            if "runtime error" in remark:
-                return ImportResult("error", f"Overpass query failed ({remark.strip()}). Try a smaller area.")
+            elements, error = OSMImporter.fetch_elements(dataset, bbox, as_points)
+            if error is not None:
+                return error
 
             features = OSMImporter.to_geojson_features(
-                body.get("elements", []), dataset,
+                elements, dataset,
                 polygons_only=geom_type in ("POLYGON", "MULTIPOLYGON"),
             )
             logger.info(f"Fetched {len(features)} feature(s) for {dataset_key}")
-            say("osm", f"Overpass returned {len(body.get('elements', []))} OSM element(s) -> "
+            say("osm", f"Overpass returned {len(elements)} OSM element(s) -> "
                        f"{len(features)} feature(s) kept for {dataset_key}")
             if not features:
                 return ImportResult("success", "No features found in the specified area.", 0)

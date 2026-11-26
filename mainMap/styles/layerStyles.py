@@ -210,10 +210,24 @@ LAYER_STYLES = {
             }},
         ],
     },
+    # One round badge icon per facility type (core/static/js/FacilityIcons.js registers 'facility-<category>';
+    # the legend is built there too). Old rows keep their meaning: see builtup/calculations/accessibility.py::facility_category.
+    # The invisible circle comes first: it is the click target, like the other point layers.
     'builtup.Facility': {
         'color': '#ab47bc',
         'layers': [
-            {'type': 'circle', 'paint': {'circle-radius': 7, 'circle-color': '#ab47bc', 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff'}},
+            {'type': 'circle', 'paint': {'circle-radius': 11, 'circle-opacity': 0}},
+            {'type': 'symbol', 'layout': {
+                'icon-image': ['case',
+                               ['all', ['==', ['get', 'type'], 'transportNode'], ['==', ['get', 'subtype'], 'station']], 'facility-train_station',
+                               ['all', ['==', ['get', 'type'], 'transportNode'], ['==', ['get', 'subtype'], 'bus_station']], 'facility-bus_stop',
+                               ['all', ['==', ['get', 'type'], 'hospital'], ['==', ['get', 'subtype'], 'clinic']], 'facility-clinic_gp',
+                               ['==', ['get', 'type'], 'market'], 'facility-shop',
+                               ['concat', 'facility-', ['to-string', ['get', 'type']]]],
+                'icon-size': ['interpolate', ['linear'], ['zoom'], 11, 0.4, 14, 0.6, 17, 0.8],
+                'icon-allow-overlap': True,
+                'icon-ignore-placement': True,
+            }},
         ],
     },
     'builtup.Building': {

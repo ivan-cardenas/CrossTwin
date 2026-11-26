@@ -123,6 +123,11 @@ async function addLayer(layerConfig, { fit = true } = {}) {
 
     const layerIds = [];
 
+    // Facility symbols (mainMap/styles/layerStyles.py): the badge images must exist before the layer
+    const usesFacilityIcons = (style_layers || []).some(
+      def => def.type === 'symbol' && JSON.stringify(def.layout || {}).includes('facility-'));
+    if (usesFacilityIcons && typeof registerFacilityIcons === 'function') await registerFacilityIcons();
+
     if (style_layers && style_layers.length > 0) {
       // Use explicit Mapbox layer definitions from the API
       style_layers.forEach((def, i) => {
@@ -180,7 +185,9 @@ async function addLayer(layerConfig, { fit = true } = {}) {
     loadedLayers[key] = { layerIds, geojson, config: layerConfig, viewport };
     if (viewport) bindViewportReload();
 
-    if (layerConfig.legend && layerConfig.legend.length) {
+    if (usesFacilityIcons && typeof facilityLegend === 'function') {
+      addCategoricalLegend(key, display_name, facilityLegend());
+    } else if (layerConfig.legend && layerConfig.legend.length) {
       addCategoricalLegend(key, display_name, layerConfig.legend);
     }
 
@@ -777,9 +784,11 @@ function addCategoricalLegend(key, title, categories) {
   const existing = document.getElementById(`legend-${key}`);
   if (existing) existing.remove();
 
-  const items = categories.map(({ label, color }) => `
+  const items = categories.map(({ label, color, icon }) => `
     <div class="legend-item">
-      <span class="legend-swatch" style="background:${color}"></span>
+      ${icon
+        ? `<img class="legend-icon" src="${icon}" alt="" width="20" height="20">`
+        : `<span class="legend-swatch" style="background:${color}"></span>`}
       <span class="legend-label">${label}</span>
     </div>
   `).join('');

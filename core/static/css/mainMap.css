@@ -1471,6 +1471,12 @@
     gap: 6px;
 }
 
+.map-legend .legend-icon {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+}
+
 .map-legend .legend-swatch {
     flex-shrink: 0;
     width: 12px;
