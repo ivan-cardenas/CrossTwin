@@ -89,6 +89,13 @@ class CatalogTests(SimpleTestCase):
         self.assertEqual(osm_network.query_hash(entry), osm_network.query_hash(entry))
         self.assertEqual(len(osm_network.query_hash(entry)), 16)
 
+    def test_amenity_query_is_exact_values_for_every_class(self):
+        entry = CATALOG_BY_KEY["osm_access_amenities"]
+        self.assertFalse([q for q in entry["osm_query"] if "~" in q], "regex filters time out on the public Overpass servers")
+        expected = {(tag, value) for tag, values in entry["osm_classes"].items() for value in values}
+        found = {tuple(part.strip('"') for part in q.split("[", 1)[1].rstrip("]").split("=")) for q in entry["osm_query"]}
+        self.assertEqual(found, expected)
+
     def test_amenity_classes_are_facility_types(self):
         from builtup.models import Facility
 

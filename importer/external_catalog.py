@@ -468,6 +468,28 @@ FIELD_MAPPINGS = {
 # 'enabled' can be toggled once a handler is implemented.
 # Preference: raster (TIFF/COG) > WCS > WFS > WMS
 
+# Destinations of the network accessibility score from OpenStreetMap: tag -> {OSM value: Facility.type}.
+# osm_access_amenities derives its Overpass statements from this table, as exact key=value
+# lookups: Overpass answers those from its tag index, while a regex (["shop"~"^(a|b)$"]) scans
+# every object with the key and times out (HTTP 504) on the public servers.
+_OSM_ACCESS_CLASSES = {
+    "shop": {
+        "supermarket": "supermarket", "convenience": "shop", "bakery": "shop", "butcher": "shop",
+        "greengrocer": "shop", "deli": "shop", "chemist": "shop", "mall": "shop",
+        "department_store": "shop", "variety_store": "shop",
+    },
+    "amenity": {"pharmacy": "pharmacy", "doctors": "clinic_gp", "childcare": "childcare", "library": "library"},
+    "leisure": {"sports_centre": "sport", "swimming_pool": "sport", "fitness_centre": "sport"},
+    "highway": {"bus_stop": "bus_stop"},
+    "railway": {"tram_stop": "tram_metro_stop", "subway_entrance": "tram_metro_stop"},
+}
+# Stops and entrances are mapped as nodes only; the rest also as building outlines (ways, relations).
+_OSM_ACCESS_NODE_ONLY = ("highway", "railway")
+_OSM_ACCESS_QUERY = [
+    f'{"node" if tag in _OSM_ACCESS_NODE_ONLY else "nwr"}["{tag}"="{value}"]'
+    for tag, values in _OSM_ACCESS_CLASSES.items() for value in values
+]
+
 EXTERNAL_DATA_CATALOG = [
     # ══════════════════════════════════════════════════════════════════════════
     # PDOK - Dutch National Geospatial Data Platform
@@ -1458,25 +1480,8 @@ EXTERNAL_DATA_CATALOG = [
         "format": "overpass",
         # Ways too: supermarkets and sports halls are mostly mapped as building outlines.
         # Kept disjoint from osm_amenities (kindergarten, clinic, railway=station stay there).
-        "osm_query": [
-            'nwr["shop"~"^(supermarket|convenience|bakery|butcher|greengrocer|deli|chemist|mall|department_store|variety_store)$"]',
-            'nwr["amenity"~"^(pharmacy|doctors|childcare|library)$"]',
-            'nwr["leisure"~"^(sports_centre|swimming_pool|fitness_centre)$"]',
-            'node["highway"="bus_stop"]',
-            'node["railway"~"^(tram_stop|subway_entrance)$"]',
-        ],
-        # tag -> {OSM value: Facility.type}; the first matching tag wins
-        "osm_classes": {
-            "shop": {
-                "supermarket": "supermarket", "convenience": "shop", "bakery": "shop", "butcher": "shop",
-                "greengrocer": "shop", "deli": "shop", "chemist": "shop", "mall": "shop",
-                "department_store": "shop", "variety_store": "shop",
-            },
-            "amenity": {"pharmacy": "pharmacy", "doctors": "clinic_gp", "childcare": "childcare", "library": "library"},
-            "leisure": {"sports_centre": "sport", "swimming_pool": "sport", "fitness_centre": "sport"},
-            "highway": {"bus_stop": "bus_stop"},
-            "railway": {"tram_stop": "tram_metro_stop", "subway_entrance": "tram_metro_stop"},
-        },
+        "osm_query": _OSM_ACCESS_QUERY,
+        "osm_classes": _OSM_ACCESS_CLASSES,
         "osm_subtype_tags": ["shop", "amenity", "leisure", "railway"],
         "feature_label": "Facility",
         "params": {"srsName": "EPSG:4326"},
