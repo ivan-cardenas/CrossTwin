@@ -48,6 +48,10 @@ canyon_created = Signal()
 # watersupply, so watersupply can subscribe without importing housing.
 residents_changed = Signal()
 
+# Two geometries closer than this (map units, metres in EPSG:28992) count as unchanged,
+# so a re-save of the same shape does not trigger a recompute.
+GEOM_EQUAL_TOL_M = 0.01
+
 CHUNK = 500
 
 _deferred = threading.local()
@@ -226,7 +230,7 @@ def building_canyon_saved(sender, instance, created, raw=False, **kwargs):
     stored = getattr(instance, "_canyon_stored", None)
     if stored and not created:
         same_geom = (stored["geom"] is not None and instance.geom is not None
-                     and stored["geom"].equals_exact(instance.geom, tolerance=0.01))
+                     and stored["geom"].equals_exact(instance.geom, tolerance=GEOM_EQUAL_TOL_M))
         if (same_geom and stored["height_m"] == instance.height_m
                 and stored["numberFloors"] == instance.numberFloors):
             return
@@ -286,7 +290,7 @@ def neighborhood_urbanisation_saved(sender, instance, created, raw=False, **kwar
     stored = getattr(instance, "_urbanisation_stored", None)
     if stored and not created:
         same_geom = (stored["geom"] is not None and instance.geom is not None
-                     and stored["geom"].equals_exact(instance.geom, tolerance=0.01))
+                     and stored["geom"].equals_exact(instance.geom, tolerance=GEOM_EQUAL_TOL_M))
         if same_geom and stored["currentPopulation"] == instance.currentPopulation:
             return
     _schedule_hoods([instance.pk])
@@ -330,7 +334,7 @@ def property_urbanisation_saved(sender, instance, created, raw=False, **kwargs):
     if not was and not now:
         return
     if stored and not created and was == now and stored["geom"] is not None and instance.geom is not None \
-            and stored["geom"].equals_exact(instance.geom, tolerance=0.01):
+            and stored["geom"].equals_exact(instance.geom, tolerance=GEOM_EQUAL_TOL_M):
         return
     _schedule_hoods(geoms=[instance.geom, stored["geom"] if stored else None])
 
@@ -356,7 +360,7 @@ def building_urbanisation_saved(sender, instance, created, raw=False, **kwargs):
         return
     old = getattr(instance, "_urbanisation_geom", None)
     if not created and old is not None and instance.geom is not None \
-            and old.equals_exact(instance.geom, tolerance=0.01):
+            and old.equals_exact(instance.geom, tolerance=GEOM_EQUAL_TOL_M):
         return
     _schedule_hoods(geoms=[instance.geom, old])
 
@@ -525,7 +529,7 @@ def facility_access_saved(sender, instance, created, raw=False, **kwargs):
     now = _destination_category(instance.type, instance.subtype)
     was = _destination_category(stored["type"], stored["subtype"]) if stored else None
     if stored and not created and was == now and stored["geom"] is not None and instance.geom is not None \
-            and stored["geom"].equals_exact(instance.geom, tolerance=0.01):
+            and stored["geom"].equals_exact(instance.geom, tolerance=GEOM_EQUAL_TOL_M):
         return
     schedule_accessibility([instance.geom if now else None, stored["geom"] if was and stored else None])
 
@@ -553,7 +557,7 @@ def green_access_saved(sender, instance, created, raw=False, **kwargs):
     now = is_park_space(instance.type)
     was = bool(stored) and is_park_space(stored["type"])
     if stored and not created and was == now and stored["geom"] is not None and instance.geom is not None \
-            and stored["geom"].equals_exact(instance.geom, tolerance=0.01):
+            and stored["geom"].equals_exact(instance.geom, tolerance=GEOM_EQUAL_TOL_M):
         return
     schedule_accessibility([instance.geom if now else None, stored["geom"] if was and stored else None])
 

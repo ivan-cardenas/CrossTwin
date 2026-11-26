@@ -51,7 +51,7 @@ Known limits: a way deleted from OSM is not removed on re-import; one-way street
 
 ## Phase 2 — Accessibility (stored node)
 
-Status: **done**, UI and docs not committed
+Status: **done**
 
 Model and equations
 - [x] `builtup.Accessibility` (unique per building and mode; `distances`, `score`, `method`, `network_snapshot`, centroid `geom`); `Building.connectivity` removed
@@ -67,7 +67,7 @@ Compute and edges
 
 UI
 - [x] Map card "Network Accessibility" (`core/static/js/AccessibilityTool.js`), staff recompute and info endpoints (`builtup/views_accessibility.py`)
-- [x] Map view: smooth raster `AccessibilityRaster` per mode (25 m cells, Gaussian 50 m, masked beyond 75 m; `access_raster.py`), shown by the card and the "On map" button; the building dots stay as a layer
+- [x] Map view: smooth raster `AccessibilityRaster` per mode (10 m cells, Gaussian 50 m, masked beyond 75 m; `access_raster.py`), shown by the card and the "On map" button; the building dots stay as a layer
 - [x] Map layers: proxies `AccessibilityWalk` / `AccessibilityBike` (five score classes), `NetworkEdge` line layer
 - [x] Dashboard card with "?" help and "On map" button (`calculate_accessibility`)
 
@@ -75,10 +75,10 @@ Docs and checks
 - [x] `docs/DAG_COVERAGE.md` (67 implemented, 7 partial, 32 gaps), `core/dag_status.py`, `docs/functions_and_equations.tex`, `TODO.md`, `docs/claude/*`, `docs/DATA_SOURCES.md`
 - [x] `dag-contract-reviewer` run; valid findings fixed
 - [x] Tests: `builtup/tests/test_accessibility.py`, `test_accessibility_ui.py`
-- [ ] Commit the UI, docs and review fixes
+- [x] Commit the UI, docs and review fixes
 - [ ] First real run on a city (Delft): import network and amenities, compute, check the score map and timing of a single map edit
-- [ ] Decide whether to add a `Buildings -> Accessibility` edge (a building added or moved is not rescored until the next recompute)
-- [ ] Name the geometry `tolerance=0.01` literal in the receivers
+- [x] Decided: no `Buildings -> Accessibility` edge in Phase 2 (a building added or moved is rescored at the next recompute; revisit with Phase 4 if price modelling needs it)
+- [x] Name the geometry `tolerance=0.01` literal in the receivers (`GEOM_EQUAL_TOL_M` in `builtup/signals.py`)
 
 Known issue outside this work: three `physicalEnv.tests.test_dsm_edited` tests fail (`cog_overview_level` imported in one function, used in another, `physicalEnv/calculations/dsm_edited.py`).
 

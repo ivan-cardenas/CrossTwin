@@ -18,7 +18,7 @@ from builtup.calculations import chain
 
 logger = logging.getLogger(__name__)
 
-CELL_M = 25.0            # raster cell (display choice; about a third of a block)
+CELL_M = 10.0            # raster cell (display choice; about one building width)
 SIGMA_M = 50.0           # Gaussian smoothing radius (1 sigma)
 MASK_M = 75.0            # cells further than this from a scored building stay empty
 MAX_CELLS = 40_000_000   # a larger extent gets a coarser cell instead of exhausting memory
