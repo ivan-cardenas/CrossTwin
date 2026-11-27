@@ -764,6 +764,22 @@ plus province-level policy fields (\code{interest\_rate}, \code{LTV\_limit}, \co
 \end{equation}
 \textbf{DAG edges:} \dagedge{Housing\_Demand $\rightarrow$ House\_Price\_Index}, \dagedge{Property $\rightarrow$ House\_Price\_Index} --- \statusgap{} (this function only averages the stored \code{index\_value}; the value itself is a stored input, but neither the housing demand nor the properties enter it)
 
+\paragraph{Base year and extrapolation to 2100 --- \code{chain.hpi\_curve()}.}
+\textbf{Location:} \code{housing/calculations/chain.py::rebase\_index}, \code{trend\_growth}, \code{long\_run\_growth}, \code{faded\_growth}, \code{hpi\_curve}, \code{hpi\_local\_curve}, \code{hpi\_at}; \code{indicators.py::calculate\_price\_history}, \code{build\_curve}, \code{hpi\_at\_year}
+\begin{equation}
+  I_y = 100\,\frac{L_y}{L_{2019}}, \qquad
+  g_k = g_\ell + (g_r - g_\ell)\,2^{-k/H}, \qquad
+  I_{y_\text{last}+k} = I_{y_\text{last}+k-1}\,(1 + g_k/100)\;\; (y \le 2100)
+\end{equation}
+$L_y$ is the area's CBS mean WOZ value per m$^2$ (dwelling-weighted, at its CBS table years) for $y$ up to the area's last observed year $y_a$; after it the area follows the national price index $N_y$ of existing own homes (table 85773ENG, stored in \code{housing.HousePriceIndex}): $I_y = I_{y_a}\,N_y/N_{y_a}$ for $y > y_a$ (\code{chain.hpi\_local\_curve}), with $N$ itself observed up to its last year and extended by the equation above. Without WOZ values the card shows $N$ rebased to 2019, without the national index the WOZ series is extended with its own trend. $g_r = 100\,(e^{b}-1)$ is the recent growth, $b$ the least-squares slope of $\ln I$ on the year over the last \code{HPI\_TREND\_YEARS}~=~10 observed years (at least 3 needed). $g_\ell$ is the long-run growth, by default the average annual growth of the whole observed series, $100\,[(I_\text{last}/I_\text{first})^{1/(y_\text{last}-y_\text{first})}-1]$ (5.5\,\% a year for the CBS index 1995--2025), and the dashboard's \emph{Long-run Price Growth} slider (0--10\,\%, never written). $k$ counts the years after the last observed year and $H$~=~\code{HPI\_FADE\_HALF\_LIFE\_YEARS}~=~5: the recent growth is halfway to the long-run rate after 5 years. The fade is a modelling assumption without a published value (a calibration parameter for a sensitivity run); it replaces a constant extrapolation of the recent rate, which compounded the 2016--2025 boom (8.4\,\% a year) to an index of about 69\,000 in 2100. A series without a 2019 value gets no curve and the card falls back to the WOZ chart. It is a trend continuation, not a forecast. The rates $g_r$, $g_\ell$ and the slider are those of the national index. The index year is the map's scenario year. \textbf{DAG edge:} \dagedge{House\_Price\_Index $\rightarrow$ Property} --- \statuspartial{}: the dashboard's modelled price per m$^2$ is the stored price (at the WOZ year $y_0$ of the active fit) times $I_y / I_{y_0}$ (\code{chain.hpi\_price\_factor}); the stored value is not rewritten. Tests: \code{housing/tests/test\_hpi\_mortgage.py::HpiCurveTests}, \code{HpiFadeTests}, \code{HpiAreaCurveTests}.
+
+\paragraph{Mortgage rate slider and payment --- \code{chain.annuity\_payment()}, \code{chain.mortgage\_rate\_at()}.}
+\textbf{Location:} \code{housing/calculations/chain.py}; \code{housing.MortgageRate}; \code{importer/ecb\_mortgage.py}
+\begin{equation}
+  M = L\,\frac{r}{1-(1+r)^{-n}}, \qquad r = \frac{\text{rate}}{1200}, \quad n = 12\,T
+\end{equation}
+The slider starts at the yearly mean of the DNB new-business rate on loans for house purchase (\code{housing.MortgageRate}, headline series \code{chain.MORTGAGE\_HEADLINE}; the latest earlier year when the year has none, else the province's \code{CreditSupplyConditions.mortgageRate}). $L$ and $T$ are the mean recorded loan and term (30 years without records). The stored payment is shown at the default rate; a moved slider recomputes it and writes nothing. Test: \code{test\_hpi\_mortgage.py::MortgageEquationTests} (200\,000 EUR at 4\,\% over 30 years = 954.83 EUR).
+
 \subsection{WOZ value per m$^2$ --- \code{WOZValue.save()}, \code{PostcodePrice.save()}}
 \textbf{Location:} \code{housing/models.py}, \code{housing/calculations/chain.py::woz\_per\_sqm}; \code{housing/calculations/woz.py}, \code{postcode\_woz.py}; \code{importer/cbs\_woz.py}
 \begin{equation}

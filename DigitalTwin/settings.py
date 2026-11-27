@@ -62,6 +62,8 @@ if os.name == 'nt':
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get("SECRET_KEY")
 MAPBOX_ACCESS_TOKEN = os.environ.get("MAPBOX_ACCESS_TOKEN")
+# DNB MFI interest rate export (JSON) read by the DNB_MORTGAGE_RATE importer entry (importer/dnb_mortgage.py)
+DNB_MFI_RATES_FILE = os.environ.get("DNB_MFI_RATES_FILE", "")
 # TiTiler (uvicorn) listens on IPv4 only; on Windows "localhost" tries ::1 first
 # and each request then waits ~2 s for the refused connection. Use 127.0.0.1.
 TITILER_BASE_URL = re.sub(

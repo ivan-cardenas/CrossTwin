@@ -61,7 +61,9 @@ def line_chart(series, width=WIDTH, height=HEIGHT):
         drawn.append({
             "key": s["key"], "label": s["label"],
             "path": " ".join(f"{'M' if i == 0 else 'L'}{cx},{cy}" for i, (cx, cy) in enumerate(coords)) if len(coords) > 1 else "",
-            "dots": [{"cx": cx, "cy": cy, "x": x, "y": _label(y)} for (cx, cy), (x, y) in zip(coords, points)],
+            # "dots": False draws the line only (a long extrapolation)
+            "dots": [] if s.get("dots") is False else
+                    [{"cx": cx, "cy": cy, "x": x, "y": _label(y)} for (cx, cy), (x, y) in zip(coords, points)],
         })
     y_ticks, value = [], y_min
     while value <= y_max + step / 2:

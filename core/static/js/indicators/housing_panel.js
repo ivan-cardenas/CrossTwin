@@ -56,6 +56,51 @@
     show();
   })();
 
+  // House Price Index year = the scenario year: dragging previews it, releasing sets it for the whole map
+  // (setTime reloads the open panel, so the chart window and the modelled prices follow). A scenario change
+  // re-renders this card with the new year, which moves the slider. Standalone page: opens that year's URL.
+  (function () {
+    const el = document.getElementById('hpi-year-slider');
+    if (!el) return;
+    const show = () => {
+      const d = document.getElementById('hpi-year-display');
+      if (d) d.textContent = el.value;
+    };
+    el.addEventListener('input', show);
+    el.addEventListener('change', () => {
+      const year = parseInt(el.value, 10);
+      if (typeof window.setTime === 'function') window.setTime({ year });
+      else window.location.href = el.dataset.urlTemplate.replace('9999', String(year));
+    });
+    show();
+  })();
+
+  // House Price Index long-run growth what-if (never written): live read-out; the grid is recalculated by htmx.
+  (function () {
+    const el = document.getElementById('hpi-long-run-slider');
+    if (!el) return;
+    const show = () => {
+      const d = document.getElementById('hpi-long-run-display');
+      const v = parseFloat(el.value);
+      if (d && !isNaN(v)) d.textContent = v.toFixed(2);
+    };
+    el.addEventListener('input', show);
+    show();
+  })();
+
+  // Mortgage-rate what-if (never written): live read-out; the slider starts at the historical rate of the year.
+  (function () {
+    const el = document.getElementById('mortgage-rate-slider');
+    if (!el) return;
+    const show = () => {
+      const d = document.getElementById('mortgage-rate-display');
+      const v = parseFloat(el.value);
+      if (d && !isNaN(v)) d.textContent = v.toFixed(2);
+    };
+    el.addEventListener('input', show);
+    show();
+  })();
+
   // Recalculate the indicator grid, so the modelled-price card shows what was just written.
   function refreshCard() {
     const slider = document.getElementById('household-size-slider') || document.getElementById('market-growth-slider');

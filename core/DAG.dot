@@ -236,6 +236,7 @@ digraph CrossTwin {
     Streets             -> Accessibility;
     Green_Area          -> Accessibility;
     Accessibility       -> Property;
+    House_Price_Index   -> Property;   // dashboard: modelled price per m2 x index(year) / index(WOZ year of the fit), housing/calculations/chain.py::hpi_price_factor
 
     // Housing
     Housing_Supply      -> Property;
@@ -247,7 +248,7 @@ digraph CrossTwin {
     
     Property            -> Affordability_Stress;
     Property            -> Rent;
-    Property            -> House_Price_Index;
+    Property            -> House_Price_Index [lag=1, style=dashed];   // lagged: the index of a year feeds the prices of that year (House_Price_Index -> Property); local prices reach the index one step later
     Property            -> Mortgage
     Water_Tariff_Afford -> Income_Expenses;
 

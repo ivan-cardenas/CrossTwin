@@ -187,26 +187,34 @@ def unit_summary(neighborhood_ids, postcode_prefix=None):
                      .filter(pc__startswith=normalise(postcode_prefix)))
     else:
         dwellings = dwellings.filter(building__neighborhood_id__in=list(neighborhood_ids))
-    stored = dwellings.aggregate(mean=Avg("modelledPrice_EUR_per_sqm"), n=Count("pk"))
+    from django.db.models import F, FloatField, Q
+    from django.db.models.functions import Coalesce
+
+    # the modelled value of a dwelling: its modelled price per m2 x its area (living area, else gross area)
+    stored = dwellings.aggregate(
+        mean=Avg("modelledPrice_EUR_per_sqm"), n=Count("pk"),
+        value=Avg(F("modelledPrice_EUR_per_sqm") * Coalesce("livingArea", "grossArea"), output_field=FloatField(),
+                  filter=Q(livingArea__gt=0) | Q(grossArea__gt=0)))
     if not stored["n"]:
-        return {"stored_mean": None, "level_mean": None, "priced": 0}, model
+        return {"stored_mean": None, "value_mean": None, "level_mean": None, "priced": 0}, model
     per_code = Counter()
     for code, count in dwellings.order_by().values("postalCode").annotate(n=Count("pk")).values_list("postalCode", "n"):
         per_code[normalise(code)] += count
     inputs = postcode_inputs(per_code)
     counted = sum(n for c, n in per_code.items() if c in inputs)
     weighted = sum(inputs[c]["woz"] * n for c, n in per_code.items() if c in inputs)
-    return {"stored_mean": stored["mean"], "level_mean": weighted / counted if counted else None,
+    return {"stored_mean": stored["mean"], "value_mean": stored["value"],
+            "level_mean": weighted / counted if counted else None,
             "priced": stored["n"]}, model
 
 
-def mean_price(summary, growth_pct=0.0):
+def mean_price(summary, growth_pct=0.0, factor=1.0):
     """
     {"price", "level", "priced"}: the dwelling-weighted mean modelled price and the mean CBS WOZ value (the same
-    dwellings), EUR/m2, with the market what-if applied to both through chain.market_growth_factor.
+    dwellings), EUR/m2, with the market what-if (chain.market_growth_factor) and `factor` (the house price index of the scenario year, chain.hpi_price_factor) applied to both.
     With growth 0 the price equals the stored mean.
     """
     if not summary.get("priced") or summary.get("stored_mean") is None or not summary.get("level_mean"):
         return {"price": None, "level": None, "priced": 0}
-    factor = chain.market_growth_factor(growth_pct)
+    factor = chain.market_growth_factor(growth_pct) * factor   # market what-if x house price index of the year
     return {"price": summary["stored_mean"] * factor, "level": summary["level_mean"] * factor, "priced": summary["priced"]}

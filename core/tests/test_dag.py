@@ -20,7 +20,7 @@ from django.test import SimpleTestCase
 DAG_PATH = Path(settings.BASE_DIR) / "core" / "DAG.dot"
 
 # Feedback edges allowed to close a loop, each argued in docs/DAG_REVISIONS.md.
-LAGGED_EDGES = {("Network", "New_Units")}
+LAGGED_EDGES = {("Network", "New_Units"), ("Property", "House_Price_Index")}
 
 # Relations cited in code before core/test_dag.py existed that are not DAG
 # edges (derived quantities between two nodes). Listed here so new drift fails;

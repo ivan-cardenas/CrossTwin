@@ -277,21 +277,68 @@ class Rentals(models.Model):
               
 class HousePriceIndex(models.Model):
     """
-    House price index of a neighborhood and year, base year = 100: a stored (imported or manual) value.
-    Nothing derives it: the NVM market reports it was once derived from are no longer used.
+    National price index of existing own homes of a year (CBS StatLine 85773ENG, "Existing own homes; purchase
+    prices, price indices 2020=100", annual values, importer/cbs_hpi.py). The index is as published (2020 = 100).
+
+    It is the national series, the same for every area (CBS publishes no finer index). The dashboard does not show
+    it as the area's own price history: that is the area's CBS WOZ value per m2 (WOZValue), rebased to
+    chain.HPI_BASE_YEAR = 100. This index extends it beyond the area's last observed year (chain.hpi_local_curve) and
+    is itself extrapolated to 2100 with a fading growth (chain.hpi_curve). It is the card's curve only when the area
+    has no WOZ values.
+
+    A stored input: no DAG edge derives it.
     """
     id = models.AutoField(primary_key=True)
-    neighborhood = models.ForeignKey("administrative.Neighborhood", verbose_name="Neighborhood", on_delete=models.DO_NOTHING)
-    year = models.IntegerField(help_text="Year of the house price index data")
-    index_value = models.FloatField(help_text="Value of the house price index (base year = 100)")
+    year = models.IntegerField(unique=True, help_text="Calendar year")
+    index_value = models.FloatField(help_text="Price index of the selling prices as published (2020 = 100)")
+    changeYoY_pct = models.FloatField(null=True, blank=True, help_text="Change against the previous year, %")
+    soldHomes = models.IntegerField(null=True, blank=True, help_text="Existing homes sold in the year")
+    avgPurchasePrice_EUR = models.FloatField(null=True, blank=True, help_text="Average purchase price, EUR")
+    cbsTable = models.CharField(max_length=20, blank=True, help_text="CBS StatLine table the values come from")
+    source = models.CharField(max_length=100, default="CBS StatLine 85773ENG", help_text="Data provider")
     last_updated = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
-        return f"House Price Index {self.year} for {self.neighborhood}"
+        return f"House Price Index {self.year}: {self.index_value}"
 
     class Meta:
         verbose_name = "House Price Index"
         verbose_name_plural = "House Price Index Records"
+        ordering = ["year"]
+
+
+class MortgageRate(models.Model):
+    """
+    A monthly interest rate on loans for house purchase of Dutch households, from the DNB MFI statistics
+    "household deposits and loans, interest rates (month)" (importer/dnb_mortgage.py): one row per month and
+    series (instrument, new business / outstanding, original maturity, initial rate fixation), % per year.
+
+    The dashboard's mortgage-rate slider starts at the yearly mean of the headline series
+    (chain.MORTGAGE_HEADLINE: new business, all loans for house purchase, all fixation periods).
+    A stored input, no DAG edge.
+    """
+    registry_hidden = True
+
+    id = models.AutoField(primary_key=True)
+    year = models.IntegerField(db_index=True)
+    month = models.IntegerField(help_text="Month 1-12")
+    instrument = models.CharField(max_length=100, help_text="DNB instrument, e.g. 'Loans for house purchasing - Total'")
+    flowType = models.CharField(max_length=40, help_text="New business or Outstanding amounts")
+    maturity = models.CharField(max_length=40, help_text="Original maturity")
+    rateFixation = models.CharField(max_length=60, help_text="Initial rate fixation period")
+    ratePct = models.FloatField(help_text="Interest rate, % per year")
+    source = models.CharField(max_length=100, default="DNB MFI interest rate statistics", help_text="Data provider")
+    last_updated = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return f"{self.instrument} {self.flowType} {self.year}-{self.month:02d}: {self.ratePct}%"
+
+    class Meta:
+        verbose_name = "Mortgage rate"
+        verbose_name_plural = "Mortgage rates"
+        ordering = ["year", "month"]
+        constraints = [models.UniqueConstraint(
+            fields=["year", "month", "instrument", "flowType", "maturity", "rateFixation"], name="uniq_mortgage_rate_series_month")]
 
 
 class WOZValue(models.Model):

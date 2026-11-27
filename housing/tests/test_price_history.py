@@ -56,12 +56,12 @@ class PriceHistoryTests(TestCase):
         self.hood = make_neighborhood(city=self.city)
         self.other = make_neighborhood(district=self.hood.district)
 
-    def test_index_is_the_yearly_mean_over_the_unit(self):
-        for hood, year, index in ((self.hood, 2023, 98.0), (self.other, 2023, 102.0),
-                                  (self.hood, 2024, 108.0), (self.other, 2024, 112.0)):
-            HousePriceIndex.objects.create(neighborhood=hood, year=year, index_value=index)
+    def test_index_is_the_national_series_of_every_area(self):
+        for year, index in ((2023, 100.0), (2024, 110.0)):
+            HousePriceIndex.objects.create(year=year, index_value=index)
         history = calculate_price_history(self.city)
         self.assertEqual(history["index"], [(2023, 100.0), (2024, 110.0)])
+        self.assertEqual(calculate_price_history(self.other)["index"], history["index"])
         self.assertNotIn("nvm", history)
 
     def test_woz_is_weighted_by_dwellings_and_dated_at_its_table_year(self):
@@ -70,8 +70,8 @@ class PriceHistoryTests(TestCase):
         self.assertEqual(calculate_price_history(self.city)["woz"], [(2024, 4250.0)])
 
     def test_a_manual_index_without_prices_is_charted_as_the_index(self):
-        HousePriceIndex.objects.create(neighborhood=self.hood, year=2020, index_value=87.5)
-        HousePriceIndex.objects.create(neighborhood=self.hood, year=2021, index_value=92.0)
+        HousePriceIndex.objects.create(year=2020, index_value=87.5)
+        HousePriceIndex.objects.create(year=2021, index_value=92.0)
         chart, unit = price_chart(calculate_price_history(self.city))
         self.assertEqual(unit, "index (base year = 100)")
         self.assertEqual([s["key"] for s in chart["series"]], ["index"])
@@ -83,7 +83,7 @@ class PriceHistoryTests(TestCase):
         self.assertEqual((unit, [s["key"] for s in chart["series"]]), ("EUR per m²", ["woz"]))
 
     def test_nothing_is_written(self):
-        HousePriceIndex.objects.create(neighborhood=self.hood, year=2023, index_value=100.0)
+        HousePriceIndex.objects.create(year=2023, index_value=100.0)
         before = HousePriceIndex.objects.count()
         calculate_price_history(self.city)
         self.assertEqual(HousePriceIndex.objects.count(), before)

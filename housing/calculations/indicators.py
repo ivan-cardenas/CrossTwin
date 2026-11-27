@@ -4,7 +4,7 @@ from ..models import (
     HousingSupplyDemand, HousingProject, CentralBankPolicy,
     CreditSupplyConditions, Mortgage, Rentals, HousePriceIndex,
     HousingAffordability, HouseholdSize, ResidentialProperty,
-    NeighborhoodSocialProfile, WOZValue,
+    NeighborhoodSocialProfile, WOZValue, MortgageRate,
 )
 from administrative.admin_units import cities_within, neighborhoods_within, province_of
 from builtup.models import Property, ZoningArea, Building
@@ -347,14 +347,28 @@ def calculate_mortgage_indicators(adminBund, year):
         avg_monthly=Avg('monthlyPayment'),
         avg_interest=Avg('interestRate'),
         avg_loan=Avg('totalLoanAmount'),
+        avg_term=Avg('loanTermYears'),
         total_count=Count('id'),
     )
+
+    # The slider's starting value is the historical national rate of the year (DNB), else the province's
+    # recorded credit-supply rate.
+    yearly = (MortgageRate.objects.filter(**chain.MORTGAGE_HEADLINE).values('year')
+              .annotate(mean=Avg('ratePct')).order_by('year'))
+    rates = {r['year']: round(r['mean'], 2) for r in yearly}
+    historical, rate_year = chain.mortgage_rate_at(rates, year)
+    if historical is not None:
+        rate, rate_source = historical, f"DNB {rate_year}"
+    else:
+        rate, rate_source = (credit.mortgageRate, f"credit supply {year}") if credit else (None, None)
 
     return {
         'interest_rate': policy.interest_rate if policy else None,
         'ltv_limit': policy.LTV_limit if policy else None,
         'lti_limit': policy.LTI_limit if policy else None,
-        'mortgage_rate': credit.mortgageRate if credit else None,
+        'mortgage_rate': rate,
+        'mortgage_rate_source': rate_source,
+        'avg_term_years': round(agg['avg_term']) if agg['avg_term'] else None,
         'approval_rate': credit.mortgage_approval_rate if credit else None,
         'avg_down_payment_pct': credit.average_down_payment if credit else None,
         'avg_monthly_payment': round(agg['avg_monthly'], 2) if agg['avg_monthly'] else None,
@@ -395,36 +409,16 @@ def calculate_rent_indicators(adminBund):
 # -- House Price Index --------------------------------------------------------
 
 def calculate_house_price_index(adminBund, year):
-    """House price index aggregated across neighborhoods.
+    """National house price index of `year` as published (CBS 85773ENG, 2020 = 100) and its change on the
+    previous year. The same for every area; the dashboard card shows the rebased curve (hpi_at_year).
 
     DAG edges:  Housing_Demand -> House_Price_Index
-                Property       -> House_Price_Index
     """
-    neighborhoods = neighborhoods_within(adminBund)
-    records = HousePriceIndex.objects.filter(
-        neighborhood__in=neighborhoods, year=year,
-    )
-
-    agg = records.aggregate(
-        avg_index=Avg('index_value'),
-        count=Count('id'),
-    )
-
-    # Year-over-year change
-    prev_records = HousePriceIndex.objects.filter(
-        neighborhood__in=neighborhoods, year=year - 1,
-    )
-    prev_avg = prev_records.aggregate(avg=Avg('index_value'))['avg']
-    current_avg = agg['avg_index']
-
-    yoy_change = None
-    if current_avg and prev_avg and prev_avg > 0:
-        yoy_change = round((current_avg - prev_avg) / prev_avg * 100, 1)
-
+    values = dict(HousePriceIndex.objects.filter(year__in=[year, year - 1]).values_list('year', 'index_value'))
+    current, previous = values.get(year), values.get(year - 1)
     return {
-        'avg_index': round(current_avg, 1) if current_avg else None,
-        'yoy_change_pct': yoy_change,
-        'neighborhoods_reported': agg['count'] or 0,
+        'avg_index': round(current, 1) if current else None,
+        'yoy_change_pct': round((current - previous) / previous * 100, 1) if current and previous else None,
     }
 
 
@@ -432,30 +426,93 @@ def calculate_price_history(adminBund):
     """Yearly price series of a unit, for the House Price Index card's chart.
 
     * `woz`: CBS mean WOZ value per m2 (EUR/m2) weighted by the neighborhoods' dwellings, plotted at the
-      CBS table year as published (every year available, none shifted);
-    * `index`: mean House Price Index value (base year = 100).
+      CBS table year as published (every year available, none shifted): the unit's own price level;
+    * `index`: the CBS national house price index (2020 = 100 as published), the same for every area;
+    * `curve`: the unit's WOZ value rebased to chain.HPI_BASE_YEAR = 100 and carried to 2100 with the national
+      index (build_curve).
 
-    Each is a list of (year, value) sorted by year. Read-only.
+    Each series is a list of (year, value) sorted by year. Read-only.
     """
     neighborhoods = neighborhoods_within(adminBund)
-    records = HousePriceIndex.objects.filter(neighborhood__in=neighborhoods)
-    by_year = records.values('year').annotate(index=Avg('index_value')).order_by('year')
-    index = [(r['year'], round(r['index'], 1)) for r in by_year]
+    index = list(HousePriceIndex.objects.order_by('year').values_list('year', 'index_value'))
 
     woz_rows = (WOZValue.objects.filter(neighborhood__in=neighborhoods, woz_per_sqm__isnull=False, dwellings__gt=0)
                 .values('year').annotate(weighted=Sum(F('woz_per_sqm') * F('dwellings'), output_field=FloatField()),
                                          dwellings=Sum('dwellings')).order_by('year'))
     woz = [(r['year'], round(r['weighted'] / r['dwellings'], 1)) for r in woz_rows]
-    return {'woz': woz, 'index': index}
+    history = {'woz': woz, 'index': index}
+    history['curve'] = build_curve(history)
+    return history
 
 
-def price_chart(history):
+def build_curve(history, long_run_pct=None):
     """
-    The chart of calculate_price_history: the WOZ value per m2 when there is one, else the index.
+    The House Price Index curve of a calculate_price_history result, base year = 100.
+
+    The unit's own series is its CBS WOZ value per m2 (neighborhoods, dwelling-weighted); beyond its last year it
+    moves with the national CBS index, whose growth fades from the last-10-years trend to `long_run_pct` (default:
+    the average of the whole national series). Without WOZ values the national index itself is shown; without the
+    national index the WOZ series continues with its own trend. None without a base-year value.
+    """
+    national = chain.hpi_curve(history['index'], long_run_pct=long_run_pct) if history['index'] else None
+    if history['woz']:
+        if national:
+            local = chain.hpi_local_curve(history['woz'], national)
+            if local:
+                return local
+        else:
+            return chain.hpi_curve(history['woz'], long_run_pct=long_run_pct)
+    return national
+
+
+def hpi_at_year(curve, year):
+    """
+    The House Price Index card's value for `year` from the curve: {'avg_index', 'yoy_change_pct', 'projected',
+    'base_year', 'growth_pct'}; None without a curve or outside it. Read-only, no DAG edge.
+    """
+    value, previous, projected = chain.hpi_at(curve, year)
+    if value is None:
+        return None
+    yoy = round((value - previous) / previous * 100, 1) if previous else None
+    return {'avg_index': round(value, 1), 'yoy_change_pct': yoy, 'projected': projected,
+            'base_year': curve['base_year'], 'growth_pct': curve['growth_pct']}
+
+
+def hpi_window(curve, year):
+    """
+    (first, last) year of the House Price Index chart: chain.HPI_WINDOW_YEARS wide and centred on the scenario
+    `year` (moved inside the curve at its ends), so the chart follows the map's year.
+    """
+    first_year, last_year = curve['observed'][0][0], (curve['projected'] or curve['observed'])[-1][0]
+    size = chain.HPI_WINDOW_YEARS
+    first = min(max(year - size // 2, first_year), max(last_year - size + 1, first_year))
+    return first, min(first + size - 1, last_year)
+
+
+def price_chart(history, year=None, curve=None):
+    """
+    The chart of calculate_price_history: a window of chain.HPI_WINDOW_YEARS years of the index curve (observed, then
+    the extrapolation to 2100) around the scenario `year`, from `curve` (the what-if long-run rate) or the stored one, when the series has a base-year
+    value; else the WOZ value per m2, else the stored index.
     Returns (chart geometry or None, unit label).
     """
     from . import charts
 
+    curve = curve or history.get('curve')
+    if curve:
+        first, last = hpi_window(curve, year if year is not None else curve['observed'][-1][0])
+        observed = [p for p in curve['observed'] if first <= p[0] <= last]
+        projected = [p for p in curve['projected'] if first <= p[0] <= last]
+        if projected and observed:
+            projected = [observed[-1]] + projected   # joined to the last observed year
+        growth = (f" ({curve['recent_pct']:+.1f} % fading to {curve['long_run_pct']:+.1f} %/yr)"
+                  if curve['recent_pct'] is not None else "")
+        if curve.get('source') == 'area' and growth:
+            growth = " with national growth" + growth
+        return charts.line_chart([
+            {"key": "index", "label": f"Observed (base year {curve['base_year']} = 100)", "points": observed},
+            {"key": "projection", "label": f"Trend extrapolation{growth}", "points": projected},
+        ]), f"index ({curve['base_year']} = 100) · {first}-{last}"
     if history['woz']:
         return charts.line_chart([{"key": "woz", "label": "WOZ value", "points": history['woz']}]), "EUR per m²"
     return charts.line_chart([{"key": "index", "label": "House price index", "points": history['index']}]), "index (base year = 100)"

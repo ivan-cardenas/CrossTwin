@@ -1729,6 +1729,42 @@ EXTERNAL_DATA_CATALOG.extend(
     for year, table, woz_key, stock_key in _WOZ_TABLES
 )
 
+# ══════════════════════════════════════════════════════════════════════════
+# House price index (CBS, national) and mortgage rates (DNB, national)
+# ══════════════════════════════════════════════════════════════════════════
+EXTERNAL_DATA_CATALOG.extend([
+    {
+        "key": "CBS_HPI",
+        "source": "CBS",
+        "category": "Housing",
+        "name": "House price index, national (CBS 85773ENG)",
+        "description": (
+            "CBS price index of existing own homes (2020 = 100), annual values with the homes sold and the average "
+            "purchase price. National: every area shows the same index. The dashboard rebases it to 2019 = 100 and "
+            "extends it to 2100 with the trend of the last 10 years."),
+        "target_model": "housing.HousePriceIndex",
+        "table_id": "85773ENG",
+        "format": "odata_hpi",
+        "requires_bbox": False,
+        "enabled": True,
+    },
+    {
+        "key": "DNB_MORTGAGE_RATE",
+        "source": "dnb",
+        "category": "Housing",
+        "name": "Mortgage interest rates, monthly (DNB MFI statistics)",
+        "description": (
+            "Monthly interest rates on loans for house purchase (new business and outstanding, by original "
+            "maturity and initial rate fixation) from the DNB export 'MFI household deposits and loans, interest "
+            "rates (Month)'. Download the JSON from DNB and set DNB_MFI_RATES_FILE in .env to its path. The "
+            "mortgage-rate slider starts at the yearly mean of the new-business rate."),
+        "target_model": "housing.MortgageRate",
+        "format": "dnb_json",
+        "requires_bbox": False,
+        "enabled": True,
+    },
+])
+
 # Build a quick-lookup dict
 CATALOG_BY_KEY = {d["key"]: d for d in EXTERNAL_DATA_CATALOG}
 
@@ -1752,6 +1788,15 @@ SOURCE_INFO = {
       "auth_required": False 
     },
     
+    "dnb": {
+        "name": "DNB",
+        "full_name": "De Nederlandsche Bank, MFI interest rate statistics",
+        "description": "Monthly interest rates of Dutch banks on household loans, from a file downloaded from DNB.",
+        "icon": "globe",
+        "color": "cyan",
+        "auth_required": False,
+    },
+
     "sentinel2": {
         "name": "Sentinel-2",
         "full_name": "Copernicus Sentinel-2 Earth Observation",

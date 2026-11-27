@@ -1175,6 +1175,9 @@ input[type="range"].zone-slider:focus-visible { outline: 1px solid var(--accent)
 .pc-key::before { content: ""; display: inline-block; width: 14px; margin-right: 5px; vertical-align: middle; border-top: 2px solid; }
 .pc-key.pc-woz::before { border-color: var(--series-demand); }
 .pc-key.pc-index::before { border-color: var(--accent); }
+/* the extrapolated trend: same colour as the observed index, dashed */
+.pc-line.pc-projection { stroke: var(--accent); stroke-dasharray: 4 3; }
+.pc-key.pc-projection::before { border-color: var(--accent); border-top-style: dashed; }
 
 /* Modelled price card (housing): staff buttons and the amenity-term tables */
 .pm-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }

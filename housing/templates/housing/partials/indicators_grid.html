@@ -1,5 +1,6 @@
 {% load humanize %}
 {% load indicator_help %}
+{% load l10n %}
 {% comment %} indicators_grid.html {% endcomment %}
 <div class="grid">
 
@@ -97,7 +98,7 @@
     </div>
     <div style="display:flex; align-items:baseline; gap:8px;">
       <div class="card-value">{{ indicators.mortgage_rate|default:"–" }}%</div>
-      <div class="card-unit">annual rate</div>
+      <div class="card-unit">annual rate{% if indicators.mortgage_rate_whatif %} · what-if{% elif indicators.mortgage_rate_source %} · {{ indicators.mortgage_rate_source }}{% endif %}</div>
     </div>
     <div style="position:relative;">
       <div class="bar-track" style="height:8px;">
@@ -138,8 +139,27 @@
     </div>
     <div>
       <div class="card-value">{{ indicators.hpi_value|default:"–" }}</div>
-      <div class="card-unit">index (base = 100)</div>
+      <div class="card-unit">index ({{ indicators.hpi_base_year|default:"base year" }} = 100){% if indicators.hpi_projected %} · trend extrapolation{% endif %}</div>
     </div>
+    {% if indicators.hpi_year_min %}
+    <!-- Year of the index: the map's scenario year. Releasing the slider sets it (housing_panel.js), so the chart window, the
+         modelled prices and every other panel follow, and a change of the scenario moves this slider. -->
+    <div class="slider-container hpi-year">
+      <div class="slider-header">
+        <div class="slider-header-left"><span class="card-label">Year</span>{% info_help "housing.hpi_window" %}</div>
+        <div class="slider-value-display"><span id="hpi-year-display">{{ indicators.year|unlocalize }}</span></div>
+      </div>
+      <div class="slider-zones-container">
+        <div class="slider-zone-wrap">
+          <input id="hpi-year-slider" class="zone-slider" type="range"
+                 min="{{ indicators.hpi_year_min|unlocalize }}" max="{{ indicators.hpi_year_max|unlocalize }}" step="1"
+                 value="{{ indicators.year|unlocalize }}" aria-label="House price index year"
+                 data-url-template="{% url 'housing:housing_indicators' level location 9999 %}"/>
+        </div>
+        <div class="slider-threshold-labels"><span>{{ indicators.hpi_year_min|unlocalize }}</span><span>{{ indicators.hpi_year_max|unlocalize }}</span></div>
+      </div>
+    </div>
+    {% endif %}
     {% if indicators.hpi_yoy_change != None %}
     <div style="font-size:0.85rem; font-family:var(--font-mono);
                 color:{% if indicators.hpi_yoy_change >= 0 %}#22c55e{% else %}#ef4444{% endif %};">
@@ -170,7 +190,7 @@
     {% endif %}
     {% endwith %}
     <div style="margin-top:auto; font-size:9px; color:rgba(var(--accent-1-rgb), 0.35);">
-      {{ indicators.hpi_neighborhoods }} neighborhoods reporting
+      {% if indicators.hpi_source == 'area' %}CBS WOZ value per m² of this area, carried on with the national index (CBS 85773ENG){% else %}CBS national index (85773ENG), the same for every area{% endif %}
     </div>
   </div>
 
@@ -184,7 +204,7 @@
     {% if indicators.mp_available %}
     <div>
       <div class="card-value">€ {{ indicators.mp_price|intcomma }}</div>
-      <div class="card-unit">per m² · mean of {{ indicators.mp_priced|intcomma }} dwellings{% if indicators.mp_whatif %} · what-if{% endif %}</div>
+      <div class="card-unit">per m² · mean of {{ indicators.mp_priced|intcomma }} dwellings{% if indicators.mp_whatif %} · {% if indicators.hpi_price_factor != 1 %}index {{ indicators.year|unlocalize }}{% else %}what-if{% endif %}{% endif %}</div>
     </div>
     <div style="font-size:0.85rem; font-family:var(--font-mono);">
       {% if indicators.mp_change_pct >= 0 %}▲{% else %}▼{% endif %} {{ indicators.mp_change_pct }}% against the CBS WOZ value (€ {{ indicators.mp_level|intcomma }}/m²)
@@ -303,16 +323,12 @@
     </div>
     <div style="display:flex; gap:16px; flex-wrap:wrap; margin-top:4px;">
       <div>
-        <div style="font-size:9px; color:rgba(var(--accent-1-rgb), 0.45); text-transform:uppercase; letter-spacing:0.1em;">Avg Sale Price</div>
-        <div style="font-family:var(--font-base); font-size:1rem; font-weight:700;">€ {{ indicators.avg_sale_price|default:"–" }}</div>
+        <div style="font-size:9px; color:rgba(var(--accent-1-rgb), 0.45); text-transform:uppercase; letter-spacing:0.1em;">Avg Modelled Value</div>
+        <div style="font-family:var(--font-base); font-size:1rem; font-weight:700;">€ {{ indicators.modelled_value|intcomma|default:"–" }}</div>
       </div>
       <div>
-        <div style="font-size:9px; color:rgba(var(--accent-1-rgb), 0.45); text-transform:uppercase; letter-spacing:0.1em;">Avg Listing Price</div>
-        <div style="font-family:var(--font-base); font-size:1rem; font-weight:700;">€ {{ indicators.avg_listing_price|default:"–" }}</div>
-      </div>
-      <div>
-        <div style="font-size:9px; color:rgba(var(--accent-1-rgb), 0.45); text-transform:uppercase; letter-spacing:0.1em;">Unitary Price</div>
-        <div style="font-family:var(--font-base); font-size:1rem; font-weight:700;">€ {{ indicators.avg_price_sqm|default:"–" }} <span style="font-size:0.65rem; color:rgba(var(--accent-1-rgb), 0.45);">/m²</span></div>
+        <div style="font-size:9px; color:rgba(var(--accent-1-rgb), 0.45); text-transform:uppercase; letter-spacing:0.1em;">Avg Modelled Price</div>
+        <div style="font-family:var(--font-base); font-size:1rem; font-weight:700;">€ {{ indicators.modelled_sqm|intcomma|default:"–" }} <span style="font-size:0.65rem; color:rgba(var(--accent-1-rgb), 0.45);">/m²</span></div>
       </div>
       <div>
         <div style="font-size:9px; color:rgba(var(--accent-1-rgb), 0.45); text-transform:uppercase; letter-spacing:0.1em;">Living Area</div>
@@ -320,7 +336,7 @@
       </div>
     </div>
     <div style="margin-top:10px; font-size:9px; color:rgba(var(--accent-1-rgb), 0.35);">
-      {{ indicators.total_properties }} properties · {{ indicators.vacant_buildings }} / {{ indicators.total_buildings }} vacant buildings ({{ indicators.vacancy_rate|default:"–" }}%)
+      {% if indicators.modelled_count %}Mean of {{ indicators.modelled_count|intcomma }} modelled dwellings ({{ indicators.mp_label }}){% else %}No modelled dwellings yet: fit the price model and reprice{% endif %} · {{ indicators.total_properties }} properties · {{ indicators.vacant_buildings }} / {{ indicators.total_buildings }} vacant buildings ({{ indicators.vacancy_rate|default:"–" }}%)
     </div>
   </div>
 

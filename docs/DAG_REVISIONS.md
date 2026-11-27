@@ -166,3 +166,9 @@ The canyon height/width ratio is read off the buildings, and the buildings alrea
 ## 2026-11-04: `LST -> PET` removed
 
 PET is computed from the mean radiant temperature of SOLWEIG (`Tmrt -> PET`), the air temperature (with the Koopmans urban heat island) and the 1.2 m wind. The Landsat land surface temperature is a separate observed surface temperature and is not a PET input.
+
+## 2026-11-27: `House_Price_Index -> Property` added, `Property -> House_Price_Index` lagged
+
+The modelled price per m² of a dwelling is a price level at the WOZ year of the fit; the housing market moves it with the house price index of the year shown. So the index feeds the price (`House_Price_Index -> Property`, dashboard factor `chain.hpi_price_factor`: index(year) / index(WOZ year)). The old `Property -> House_Price_Index` would close a loop with it. The index is now the CBS national series (table 85773ENG), which the prices of one municipality do not move in the same step, so the property-to-index direction becomes the lagged feedback edge (`[lag=1, style=dashed]`): local prices reach the national index one step later. It was a gap before and stays unimplemented.
+
+- Before: 106 distinct edges. After: 107 distinct edges (69 implemented, 8 partial, 28 gaps, 2 lagged).

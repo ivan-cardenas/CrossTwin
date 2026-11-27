@@ -20,6 +20,8 @@ from .calculations.indicators import (
     calculate_mortgage_indicators,
     calculate_rent_indicators,
     calculate_house_price_index,
+    hpi_at_year,
+    build_curve,
     calculate_price_history,
     price_chart,
     calculate_property_indicators,
@@ -59,8 +61,8 @@ def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, po
     land_take = calculate_pipeline_land_take(adminUnit, year)
     mortgage = calculate_mortgage_indicators(adminUnit, year)
     rent = calculate_rent_indicators(adminUnit)
-    hpi = calculate_house_price_index(adminUnit, year)
     price_history = calculate_price_history(adminUnit)
+    hpi = calculate_house_price_index(adminUnit, year)
     property_ind = calculate_property_indicators(adminUnit)
     zoning = calculate_zoning(adminUnit)
     affordability = calculate_affordability(adminUnit, year)
@@ -201,7 +203,7 @@ def _control_rows(model):
     return kept, dropped
 
 
-def _modelled_price_indicators(mp, market_growth):
+def _modelled_price_indicators(mp, market_growth, hpi_factor=1.0):
     """The modelled-price card: stored mean, the what-if mean, the fit with its screened terms and the label."""
     model, summary = mp.get('model'), mp.get('summary') or {}
     out = {
@@ -227,7 +229,8 @@ def _modelled_price_indicators(mp, market_growth):
         return out
     default = property_price.mean_price(summary)
     whatif = market_growth != 0.0
-    shown = property_price.mean_price(summary, market_growth) if whatif else default
+    whatif = whatif or hpi_factor != 1.0
+    shown = property_price.mean_price(summary, market_growth, hpi_factor) if whatif else default
     if not shown['priced']:
         return out
     out.update({
@@ -243,7 +246,7 @@ def _modelled_price_indicators(mp, market_growth):
 
 
 def _build_indicators(data, household_size_override=None, alone_override=None,
-                      market_growth=0.0):
+                      market_growth=0.0, mortgage_rate_override=None, year=None, hpi_long_run=None):
     """
     Pure function: takes DB data dict, returns flat indicators dict.
 
@@ -258,7 +261,15 @@ def _build_indicators(data, household_size_override=None, alone_override=None,
 
     The modelled price (DAG edge Accessibility -> Property) is the mean of the stored values; `market_growth` (%)
     is its what-if, applied with chain.market_growth_factor, the factor of the function that wrote the stored
-    values, and never written.
+    values, and never written. The Property Market card reads those stored modelled values and applies the same
+    factor.
+
+    The House Price Index chart shows chain.HPI_WINDOW_YEARS years centred on the scenario `year` (the map's
+    year; the card's year slider sets it). The modelled prices follow the same index: stored price x
+    chain.hpi_price_factor(curve, year, WOZ year of the active fit), DAG edge House_Price_Index -> Property.
+
+    `mortgage_rate_override` (% per year, the slider; it starts at the historical rate of the year) only changes
+    the monthly payment, recomputed as an annuity on the average recorded loan (chain.annuity_payment).
     """
     sd = data['supply_demand']
     household = data.get('household') or {}
@@ -267,14 +278,31 @@ def _build_indicators(data, household_size_override=None, alone_override=None,
     land_take = data.get('land_take') or {}
     mtg = data['mortgage']
     rent = data['rent']
-    hpi = data['hpi']
-    price_chart_geometry, price_chart_unit = price_chart(data.get('price_history') or {'woz': [], 'index': []})
+    history = data.get('price_history') or {'woz': [], 'index': []}
+    # the card's index is the base-year curve (observed or extrapolated) when the series has a base-year value;
+    # the long-run growth slider only changes how the extrapolation fades (never written)
+    curve = build_curve(history, hpi_long_run) if hpi_long_run is not None else history.get('curve')
+    hpi = {**data['hpi'], **(hpi_at_year(curve, year) or {})} if year else dict(data['hpi'])
+    price_chart_geometry, price_chart_unit = price_chart(history, year, curve)
     prop = data['property']
     zoning = data['zoning']
     aff = data['affordability']
 
-    effective_rate = mtg.get('mortgage_rate')
+    stored_rate = mtg.get('mortgage_rate')
+    effective_rate = stored_rate if mortgage_rate_override is None else mortgage_rate_override
     avg_monthly = mtg.get('avg_monthly_payment')
+    # the slider reports its value to the cent; the stored rate itself is the default, not a what-if
+    rate_whatif = (mortgage_rate_override is not None
+                   and (stored_rate is None or abs(mortgage_rate_override - stored_rate) >= 0.005))
+    if rate_whatif:
+        avg_monthly = chain.annuity_payment(
+            mtg.get('avg_loan_amount'), effective_rate,
+            mtg.get('avg_term_years') or chain.MORTGAGE_DEFAULT_TERM_YEARS)
+        avg_monthly = round(avg_monthly, 2) if avg_monthly else mtg.get('avg_monthly_payment')
+    growth_factor = chain.market_growth_factor(market_growth)
+
+    def _grown(value):
+        return round(value * growth_factor * hpi_factor) if value else None
 
     # Housing demand = population / persons per home. The stored baseline is
     # scaled by the what-ifs (population dock, persons-per-home slider).
@@ -317,7 +345,10 @@ def _build_indicators(data, household_size_override=None, alone_override=None,
     stress = aff.get('stress_distribution', {})
     stress_total = sum(stress.values()) if stress else 0
 
-    modelled = _modelled_price_indicators(data.get('modelled_price') or {}, market_growth)
+    modelled_summary = (data.get('modelled_price') or {}).get('summary') or {}
+    fit = (data.get('modelled_price') or {}).get('model')
+    hpi_factor = chain.hpi_price_factor(curve, year, fit.wozYear) if (curve and fit and year) else 1.0
+    modelled = _modelled_price_indicators(data.get('modelled_price') or {}, market_growth, hpi_factor)
 
     return {
         **modelled,
@@ -365,6 +396,11 @@ def _build_indicators(data, household_size_override=None, alone_override=None,
         # -- Mortgage --
         'interest_rate': mtg.get('interest_rate'),
         'mortgage_rate': effective_rate,
+        'mortgage_rate_stored': stored_rate,
+        'mortgage_rate_source': mtg.get('mortgage_rate_source'),
+        'mortgage_rate_whatif': rate_whatif,
+        'mortgage_rate_min': chain.MORTGAGE_RATE_MIN,
+        'mortgage_rate_max': chain.MORTGAGE_RATE_MAX,
         'ltv_limit': mtg.get('ltv_limit'),
         'lti_limit': mtg.get('lti_limit'),
         'approval_rate': mtg.get('approval_rate'),
@@ -381,11 +417,28 @@ def _build_indicators(data, household_size_override=None, alone_override=None,
         # -- House Price Index --
         'hpi_value': hpi.get('avg_index'),
         'hpi_yoy_change': hpi.get('yoy_change_pct'),
-        'hpi_neighborhoods': hpi.get('neighborhoods_reported', 0),
+        'year': year,
+        'hpi_year_min': curve['observed'][0][0] if curve else None,
+        'hpi_year_max': (curve['projected'] or curve['observed'])[-1][0] if curve else None,
+        'hpi_price_factor': round(hpi_factor, 4),
+        'hpi_source': curve.get('source') if curve else None,
+        'hpi_recent_pct': curve['recent_pct'] if curve else None,
+        'hpi_long_run': curve['long_run_pct'] if curve else None,
+        'hpi_long_run_default': curve['long_run_default_pct'] if curve else None,
+        'hpi_long_run_min': chain.HPI_LONG_RUN_MIN,
+        'hpi_long_run_max': chain.HPI_LONG_RUN_MAX,
+        'hpi_half_life': chain.HPI_FADE_HALF_LIFE_YEARS,
+        'hpi_long_run_whatif': hpi_long_run is not None and curve is not None and abs(hpi_long_run - (curve['long_run_default_pct'] or 0)) >= 0.005,
+        'hpi_projected': hpi.get('projected', False),
+        'hpi_base_year': hpi.get('base_year'),
+        'hpi_growth_pct': hpi.get('growth_pct'),
         'price_chart': price_chart_geometry,
         'price_chart_unit': price_chart_unit,
 
         # -- Property Market --
+        'modelled_value': _grown(modelled_summary.get('value_mean')),
+        'modelled_sqm': _grown(modelled_summary.get('stored_mean')),
+        'modelled_count': modelled_summary.get('priced', 0),
         'avg_sale_price': prop.get('avg_sale_price'),
         'avg_listing_price': prop.get('avg_listing_price'),
         'avg_price_sqm': prop.get('avg_price_sqm'),
@@ -441,7 +494,7 @@ def housing_indicators(request, level, location, year):
         'level': level,
         'location': location,
         'year': year,
-        'indicators': _build_indicators(data),
+        'indicators': _build_indicators(data, year=year),
         'pop_scenario': pop_scenario,
         'pop_growth': pop_growth,
         'can_fit_price_model': request.user.is_staff,
@@ -476,7 +529,10 @@ def recalculate_indicators(request, level, location, year):
 
     indicators = _build_indicators(
         data, household_size_override=household_size, alone_override=alone,
-        market_growth=_float_param(request.GET, 'market_growth', chain.MARKET_GROWTH_MIN, chain.MARKET_GROWTH_MAX, 0.0))
+        market_growth=_float_param(request.GET, 'market_growth', chain.MARKET_GROWTH_MIN, chain.MARKET_GROWTH_MAX, 0.0),
+        mortgage_rate_override=_float_param(request.GET, 'mortgage_rate', chain.MORTGAGE_RATE_MIN, chain.MORTGAGE_RATE_MAX, None),
+        year=year,
+        hpi_long_run=_float_param(request.GET, 'hpi_long_run', chain.HPI_LONG_RUN_MIN, chain.HPI_LONG_RUN_MAX, None))
 
     return render(request, 'housing/partials/indicators_grid.html', {
         'indicators': indicators, 'level': level, 'location': location, 'year': year,
@@ -488,14 +544,14 @@ def housing_indicators_json(request, level, location, year):
     data = _get_adminUnit_data(level, location, year)
     if data is None:
         return JsonResponse({'error': 'Administrative unit not found', 'using_mock': True,
-                             'indicators': _build_indicators(MOCK_DATA)})
+                             'indicators': _build_indicators(MOCK_DATA, year=year)})
 
     name_field = ADMIN_LEVELS.get(level, (None, None))[1]
     name = getattr(data['adminUnit'], name_field, None) if name_field else str(data['adminUnit'])
     return JsonResponse({
         'adminUnit': name,
         'year': year,
-        'indicators': _build_indicators(data),
+        'indicators': _build_indicators(data, year=year),
     })
 
 

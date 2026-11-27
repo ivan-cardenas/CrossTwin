@@ -291,10 +291,27 @@ HELP = {
     },
     "housing.hpi": {
         "title": "House Price Index",
-        "what": "How house prices move over time, relative to a base year set to 100.",
-        "how": "Average stored index value over the reporting neighborhoods for the year; year-on-year change compares it with last year's average for the same neighborhoods. The chart plots the CBS mean WOZ value per m² (weighted by dwellings) at each CBS table year as published, with no shift to a valuation date; without WOZ values it plots the index.",
-        "eq": ["YoY change = {this year − last year | last year} × 100 %"],
-        "note": "An index of 120 means prices are 20 % above the base year.",
+        "what": "How house prices move over time, relative to 2019 (= 100), and where they could go to 2100 if the long-run pattern holds.",
+        "how": "For the area shown, the index is its CBS mean WOZ value per m² (weighted by dwellings, at each CBS table year as published) divided by its 2019 value, so it reflects the area's own price history. After the area's last observed year it moves with the national CBS price index of existing own homes (table 85773ENG): first its observed years, then its extension, whose growth starts at the recent trend (least squares on the logarithm of the last 10 observed years) and fades towards the long-run average growth of the whole national series (1995–2025), halfway after 5 years. So the area is not extrapolated from its own few years, and the recent boom is not repeated for 75 years. Without WOZ values the national index itself is shown. The Long-run Price Growth slider changes the rate the national growth fades to. The year slider sets the scenario year of the whole map; the chart shows the 5 years around it.",
+        "eq": [
+            "Index = 100 × {value | value in 2019}",
+            "Growth(k) = long-run + (recent − long-run) × 0.5^(k ÷ 5)",
+            "Area index(year) = last area index × {national index (year) | national index (last area year)}",
+            "YoY change = {this year − last year | last year} × 100 %",
+        ],
+        "where": [
+            ("k", "years after the last observed year"),
+            ("recent", "national annual growth of the last 10 observed years"),
+            ("long-run", "average annual growth of the whole national series, or the slider"),
+        ],
+        "note": "An index of 120 means prices are 20 % above 2019. The extension follows the national index and is a trend continuation, not a forecast: it has no demand, income, interest-rate or affordability feedback, and the 5-year fade is a modelling assumption, not a measured value. Without a 2019 value the chart plots the WOZ value per m².",
+    },
+    "housing.hpi_long_run": {
+        "title": "Long-run Price Growth",
+        "what": "The yearly price growth the house price index extension settles at, a what-if.",
+        "how": "It starts at the average annual growth of the whole national index (CBS, first to last year). The national extension begins at the recent 10-year trend and fades towards this rate, halfway after 5 years. Raise it for a market that keeps outgrowing history, lower it for a cooling one. The area follows the national curve, and so do the modelled prices. Nothing is written.",
+        "eq": ["Growth(k) = long-run + (recent − long-run) × 0.5^(k ÷ 5)"],
+        "note": "Constant growth of 5 % a year multiplies prices by about 40 in 75 years, so values far ahead are an illustration of the rate chosen, not a forecast.",
     },
     "housing.modelled_price": {
         "title": "Modelled Price",
@@ -304,6 +321,19 @@ HELP = {
             "Price = S × (1 + change) × e^(a + Σ β × T(A) + Σ γ × z + μ)",
         ],
         "note": "Association-based scenario (upper bound), not a forecast. The coefficients come from a cross-section of postcode areas, so accessibility is credited with everything that goes with it (prestige, jobs, older housing), and WOZ lags the market. S is Duan's smearing factor, which makes the model reproduce the WOZ level it was calibrated on. Local differences the variables do not explain are not carried into the price. The observed price per m² is not touched. To read what one amenity does, add it with the Add amenity button: the scores around it and the modelled prices are recomputed.",
+    },
+    "housing.hpi_window": {
+        "title": "Index Year",
+        "what": "The year the House Price Index and the modelled prices refer to: the scenario year of the map.",
+        "how": "Moving the slider sets the scenario year for the whole map, and moving the scenario moves the slider. The chart shows the 5 years around it; years after the last observed one are the trend extrapolation. Modelled prices are the stored price × the index of this year ÷ the index of the WOZ year the price model was fitted on.",
+        "eq": ["Price(year) = stored price × {index (year) | index (WOZ year)}"],
+    },
+    "housing.mortgage_rate_slider": {
+        "title": "Mortgage Rate",
+        "what": "A what-if mortgage rate, starting at the historical rate of the year shown.",
+        "how": "The start value is the year's mean new-business rate on loans for house purchase in the Netherlands (DNB MFI statistics), else the province's recorded credit-supply rate. Moving the slider recomputes the monthly payment of the average recorded loan over its average term (30 years without records) as an annuity. Nothing is written.",
+        "eq": ["Monthly payment = L × {r | 1 − (1 + r)^(−n)}"],
+        "note": "The rate is national: it does not differ between areas.",
     },
     "housing.market_growth": {
         "title": "Market Change",
@@ -323,8 +353,9 @@ HELP = {
     "housing.property": {
         "title": "Property Market",
         "what": "What homes in the area sell and list for, and how many buildings stand empty.",
-        "how": "Averages across all recorded properties in the area.",
+        "how": "Averages across all recorded properties in the area. The modelled value and price are the means of the modelled price stored on the dwellings (the value is that price × the living area, else the gross area); the Market Change slider scales both.",
         "eq": [
+            "Modelled value = modelled price per m² × living area",
             "Price per m² = {sale price | living area}",
             "Vacancy = {vacant buildings | all buildings} × 100 %",
         ],

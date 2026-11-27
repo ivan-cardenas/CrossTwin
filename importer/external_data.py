@@ -3140,6 +3140,13 @@ def import_dataset(
         from . import cbs_woz
         return cbs_woz.fetch(dataset, bbox)
 
+    elif source == "CBS" and fmt == "odata_hpi":
+        from . import cbs_hpi
+        return cbs_hpi.fetch(dataset, bbox)
+
+    elif source == "dnb" and fmt == "dnb_json":
+        from . import dnb_mortgage
+        return dnb_mortgage.fetch(dataset, bbox)
 
     elif source == "sentinel2":
         if fmt == "wcs":

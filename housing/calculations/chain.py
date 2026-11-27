@@ -304,6 +304,196 @@ def woz_per_sqm(avg_woz_eur, mean_area_sqm):
     return avg_woz_eur / mean_area_sqm
 
 
+# ── House price index: base year and extrapolation ──────────────────
+#
+#   index_t   = 100 x level_t / level_base                     (observed years, base year = 100)
+#   ln(index) = a + b x year    (least squares over the last HPI_TREND_YEARS observed years)
+#   g_recent  = exp(b) - 1                                     (the recent growth rate)
+#   g_long    = (index_last / index_first)^(1 / years) - 1     (the average growth over the whole observed series)
+#   g_k       = g_long + (g_recent - g_long) x 0.5^(k / HPI_FADE_HALF_LIFE_YEARS)     k = years after the last observed year
+#   index_k   = index_(k-1) x (1 + g_k)                        up to HPI_END_YEAR
+#
+# The recent trend (a boom, or a slump) is not repeated for 75 years: the growth rate fades from the recent trend
+# towards the long-run average of the observed series, halfway after HPI_FADE_HALF_LIFE_YEARS. The long-run rate is
+# the dashboard's slider (default: the average of the observed series, 1995-2025 for the CBS national index).
+# It is a trend continuation, not a forecast: no demand, income, interest-rate or affordability feedback.
+
+HPI_BASE_YEAR = 2019
+HPI_END_YEAR = 2100
+HPI_TREND_YEARS = 10          # observed years the recent growth rate is fitted on
+HPI_WINDOW_YEARS = 5          # years the dashboard chart shows at a time (centred on the scenario year)
+HPI_MIN_TREND_POINTS = 3      # fewer observed years give no trend, hence no projection
+# Years until the recent growth has faded halfway to the long-run rate. A modelling assumption (no published
+# value): the recent 10-year boom is mostly gone after two half-lives (10 years), the near term stays close to it.
+# A calibration parameter to test in a sensitivity run, not a measured value.
+HPI_FADE_HALF_LIFE_YEARS = 5
+HPI_LONG_RUN_MIN, HPI_LONG_RUN_MAX = 0.0, 10.0   # % per year, range of the dashboard's long-run growth slider
+HPI_METHOD = ("area WOZ value per m2 rebased to the base year, carried on with the national CBS index, whose growth fades "
+              "from the last-10-years trend to the long-run average with a 5-year half-life, to 2100 (v3)")
+
+
+def rebase_index(series, base_year=HPI_BASE_YEAR):
+    """
+    [(year, level)] -> [(year, index)] with the level of `base_year` = 100, sorted by year.
+    Empty when the series has no positive level in the base year.
+    """
+    levels = {year: value for year, value in series if value is not None}
+    base = levels.get(base_year)
+    if not base or base <= 0:
+        return []
+    return [(year, round(100.0 * value / base, 2)) for year, value in sorted(levels.items()) if value > 0]
+
+
+def trend_growth(index_points, trend_years=HPI_TREND_YEARS):
+    """
+    Annual log growth rate b of the last `trend_years` observed years (OLS of ln(index) on the year);
+    None with fewer than HPI_MIN_TREND_POINTS points.
+    """
+    import math
+
+    points = sorted(index_points)[-trend_years:]
+    if len(points) < HPI_MIN_TREND_POINTS:
+        return None
+    xs, ys = [p[0] for p in points], [math.log(p[1]) for p in points]
+    mean_x, mean_y = sum(xs) / len(xs), sum(ys) / len(ys)
+    spread = sum((x - mean_x) ** 2 for x in xs)
+    return sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys)) / spread
+
+
+def long_run_growth(index_points):
+    """Average annual growth (%) over the whole observed series, first to last year; None under two years."""
+    points = sorted(index_points)
+    if len(points) < 2 or points[-1][0] == points[0][0] or points[0][1] <= 0:
+        return None
+    years = points[-1][0] - points[0][0]
+    return ((points[-1][1] / points[0][1]) ** (1.0 / years) - 1.0) * 100.0
+
+
+def faded_growth(recent_pct, long_run_pct, k, half_life=HPI_FADE_HALF_LIFE_YEARS):
+    """Annual growth (%) `k` years after the last observed year: the recent rate fading to the long-run one."""
+    return long_run_pct + (recent_pct - long_run_pct) * 0.5 ** (k / half_life)
+
+
+def hpi_curve(series, base_year=HPI_BASE_YEAR, end_year=HPI_END_YEAR, long_run_pct=None):
+    """
+    The house price index curve of a [(year, level)] series: the observed years rebased to `base_year` = 100 and
+    the growth extrapolated year by year to `end_year` (recent trend fading to `long_run_pct`, default the average
+    growth of the whole observed series).
+
+    Returns None without a base-year level; {"observed", "projected", "recent_pct", "long_run_pct",
+    "long_run_default_pct", "growth_pct" (= recent_pct), "half_life", "base_year", "method"} otherwise, with an empty
+    `projected` (and no rates) when there are too few years for a trend.
+    Reads stored values only (the stored index or the CBS WOZ value per m2); no DAG edge.
+    """
+    import math
+
+    observed = rebase_index(series, base_year)
+    if not observed:
+        return None
+    b = trend_growth(observed)
+    default = long_run_growth(observed)
+    last_year, last_value = observed[-1]
+    out = {"observed": observed, "projected": [], "base_year": base_year, "method": HPI_METHOD, "source": "series",
+           "half_life": HPI_FADE_HALF_LIFE_YEARS, "recent_pct": None, "growth_pct": None, "long_run_pct": None,
+           "long_run_default_pct": None if default is None else round(default, 2)}
+    if b is None or default is None:
+        return out
+    recent = (math.exp(b) - 1.0) * 100.0
+    long_run = default if long_run_pct is None else long_run_pct
+    value, projected = last_value, []
+    for k, year in enumerate(range(last_year + 1, end_year + 1), start=1):
+        value *= 1.0 + faded_growth(recent, long_run, k) / 100.0
+        projected.append((year, round(value, 2)))
+    out.update(projected=projected, recent_pct=round(recent, 2), growth_pct=round(recent, 2),
+               long_run_pct=round(long_run, 2))
+    return out
+
+
+def hpi_local_curve(series, national, base_year=HPI_BASE_YEAR):
+    """
+    The curve of an area: its own observed [(year, level)] series (the CBS WOZ value per m2 of its neighborhoods)
+    rebased to `base_year` = 100, carried beyond its last observed year with the year-on-year change of the national
+    curve `national` (hpi_curve of the national index: observed national years, then the faded extrapolation).
+
+        index_y = index_last x national_y / national_last          for y after the area's last observed year
+
+    None without a base-year level of the area or without a national curve covering its last year.
+    """
+    observed = rebase_index(series, base_year)
+    if not observed or not national:
+        return None
+    nat = {**dict(national["observed"]), **dict(national["projected"])}
+    last_year, last_value = observed[-1]
+    reference = nat.get(last_year)
+    if not reference:
+        return None
+    projected = [(year, round(last_value * nat[year] / reference, 2)) for year in sorted(nat) if year > last_year]
+    return {**national, "observed": observed, "projected": projected, "source": "area"}
+
+
+def hpi_at(curve, year):
+    """
+    (index, previous index, projected?) of a curve at `year`; (None, None, False) outside the curve.
+    The previous index is that of year - 1, None when the curve does not cover it.
+    """
+    if not curve:
+        return None, None, False
+    values = {y: v for y, v in curve["observed"]}
+    projected = {y: v for y, v in curve["projected"]}
+    value = values.get(year, projected.get(year))
+    previous = values.get(year - 1, projected.get(year - 1))
+    return value, previous, year in projected and year not in values
+
+
+def hpi_price_factor(curve, year, base_year):
+    """
+    Factor on a modelled price per m2 for the scenario `year`: the house price index of `year` over that of
+    `base_year`, the WOZ year the price fit was calibrated on. 1.0 without a curve or a value for either year.
+
+        price_year = price_stored x I_year / I_base_year
+
+    DAG edge: House_Price_Index -> Property (dashboard path; the stored price stays at the fit's WOZ year)
+    """
+    value, _, _ = hpi_at(curve, year)
+    base, _, _ = hpi_at(curve, base_year)
+    if not value or not base:
+        return 1.0
+    return value / base
+
+
+# ── Mortgage: historical rate and monthly payment ───────────────────
+#
+#   rate_y    = the year's mean of the monthly rates of MORTGAGE_HEADLINE (DNB MFI statistics)
+#   payment   = L x r / (1 - (1 + r)^-n),  r = rate / 12 / 100,  n = 12 x term (years)
+
+MORTGAGE_RATE_MIN, MORTGAGE_RATE_MAX = 0.0, 10.0   # % per year; the slider range and the card's bar cap
+# the series the slider starts from (housing.MortgageRate): all loans for house purchase, new business, all fixation periods
+MORTGAGE_HEADLINE = {"instrument": "Loans for house purchasing - Total", "flowType": "New business",
+                     "maturity": "Total", "rateFixation": "Total"}
+MORTGAGE_DEFAULT_TERM_YEARS = 30                   # the Dutch standard annuity term, when no recorded mortgage gives one
+
+
+def mortgage_rate_at(rates, year):
+    """
+    (rate %, year it belongs to) of {year: rate}: that of `year`, else the latest earlier year; (None, None)
+    when there is none.
+    """
+    usable = [y for y, r in rates.items() if r is not None and y <= year]
+    if not usable:
+        return None, None
+    best = max(usable)
+    return rates[best], best
+
+
+def annuity_payment(loan, rate_pct, term_years=MORTGAGE_DEFAULT_TERM_YEARS):
+    """Monthly payment of an annuity mortgage, EUR; None without a loan or a term. A zero rate repays linearly."""
+    if not loan or not term_years or rate_pct is None:
+        return None
+    n = 12 * term_years
+    r = rate_pct / 100.0 / 12.0
+    return loan / n if r == 0 else loan * r / (1.0 - (1.0 + r) ** -n)
+
+
 # ── Accessibility -> modelled price (association-based, Phase 4 of docs/ACCESSIBILITY_PLAN.md) ──
 #
 #   modelled = S x (1 + g) x exp( a + SUM_t beta_t T(A_t) + SUM_k gamma_k z_k + mu_c )

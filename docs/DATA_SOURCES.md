@@ -6,7 +6,7 @@ do not edit by hand. Stored rows record their own source (dataset key, scene, st
 
 ## 1. Importer catalog (Retrieve Data from APIs)
 
-84 datasets from 10 providers.
+86 datasets from 11 providers.
 
 ### Publieke Dienstverlening Op de Kaart
 
@@ -44,6 +44,7 @@ Dutch national statistics data platform. Open data, no authentication required. 
 | `pdok_postcode4` | Postcode areas - PC4 | Administrative boundaries | `administrative.Postcode4` | https://service.pdok.nl/cbs/postcode4/2023/wfs/v1_0 (`postcode4:postcode4`) |
 | `pdok_postcode6` | Postcode areas - PC6 | Administrative boundaries | `administrative.Postcode6` | https://service.pdok.nl/cbs/postcode6/2023/wfs/v1_0 (`postcode6:postcode6`) |
 | `CBS_PopulationForecast` | Population forecast 2023-2050 (85173NED) | Demographics | `administrative.PopulationProjection` | CBS table `85173NED` |
+| `CBS_HPI` | House price index, national (CBS 85773ENG) | Housing | `housing.HousePriceIndex` | CBS table `85773ENG` |
 | `CBS_Households` | Private households 2014- (86291NED) | Housing | `housing.HouseholdSize` | CBS table `86291NED` |
 | `CBS_Housing` | Housing Lifecycle (86098NED) | Housing | `housing.HousingSupplyDemand` | CBS table `86098NED` |
 | `CBS_OnePersonHouseholds` | One-person households 2014- (86291NED) | Housing | `housing.HouseholdSize` | CBS table `86291NED` |
@@ -53,6 +54,14 @@ Dutch national statistics data platform. Open data, no authentication required. 
 | `CBS_WOZ_2022` | WOZ value per neighborhood 2022 (85318NED) | Housing | `housing.WOZValue` | CBS table `85318NED` |
 | `CBS_WOZ_2023` | WOZ value per neighborhood 2023 (85618NED) | Housing | `housing.WOZValue` | CBS table `85618NED` |
 | `CBS_WOZ_2024` | WOZ value per neighborhood 2024 (85984NED) | Housing | `housing.WOZValue` | CBS table `85984NED` |
+
+### De Nederlandsche Bank, MFI interest rate statistics
+
+Monthly interest rates of Dutch banks on household loans, from a file downloaded from DNB. *(no authentication; source key `dnb`)*
+
+| Key | Dataset | Category | Stored in | Endpoint |
+|---|---|---|---|---|
+| `DNB_MORTGAGE_RATE` | Mortgage interest rates, monthly (DNB MFI statistics) | Housing | `housing.MortgageRate` | – |
 
 ### Copernicus Sentinel-2 Earth Observation
 
@@ -176,6 +185,8 @@ Dutch national institute for public health and the environment. Open WFS data, n
 | Copernicus Data Space (openEO, catalogue) | ESA / Copernicus | https://openeo.dataspace.copernicus.eu, https://catalogue.dataspace.copernicus.eu/odata/v1/Products | importer (sentinel2_* entries) | Sentinel-2 L2A indices (NDVI, NDWI, moisture, albedo, true colour). |
 | CBS StatLine OData | Statistics Netherlands (CBS) | https://opendata.cbs.nl/ODataApi/OData/, https://opendata.cbs.nl/ODataFeed/OData/ | importer (CBS_* entries) | Tables 86098NED, 86291NED, 85173NED and others. |
 | CBS Kerncijfers wijken en buurten 2019-2024 (WOZ value per buurt) | Statistics Netherlands (CBS) | https://opendata.cbs.nl/ODataApi/OData/{84583NED,84799NED,85039NED,85318NED,85618NED,85984NED}/TypedDataSet | importer/cbs_woz.py (CBS_WOZ_<year> entries) -> housing.WOZValue | Mean WOZ value of the dwellings (x 1 000 EUR) and the dwelling stock; no value below 20 dwellings. Column keys differ per table year. |
+| CBS StatLine 85773ENG: existing own homes, price indices 2020=100 | Statistics Netherlands (CBS) | https://opendata.cbs.nl/ODataApi/OData/85773ENG/TypedDataSet | importer/cbs_hpi.py (CBS_HPI) -> housing.HousePriceIndex | National annual price index of the selling prices, homes sold and average purchase price. |
+| DNB MFI interest rate statistics (household deposits and loans, month) | De Nederlandsche Bank | https://www.dnb.nl/en/statistics/ (downloaded JSON export, table 5_2_7_1_BVR) | importer/dnb_mortgage.py (DNB_MORTGAGE_RATE) -> housing.MortgageRate | Monthly interest rates on loans for house purchase, new business and outstanding, by maturity and rate fixation. |
 | Overpass API (OpenStreetMap) | OpenStreetMap contributors (ODbL) | https://overpass-api.de/api/interpreter (`OVERPASS_URL`, mirrors in `OVERPASS_MIRRORS`) | importer (osm_* entries) | Parks, water bodies, amenities, trees. |
 | BIJ12 Informatiekaart Natuur | BIJ12 (joint provinces) | https://ogc-geoservices.bij12.nl/geoserver/IMNa_IKN/wfs (`IMNa_IKN:natuur_netwerk_nederland`) | importer (bij12_nnn) -> builtup/calculations/site.py | Natuurnetwerk Nederland; the neighbourhood generator keeps buildings out of it. |
 | Natura 2000 areas | RVO via PDOK | https://service.pdok.nl/rvo/natura2000/wfs/v1_0 | importer (pdok_natura2000) -> builtup/calculations/site.py | Cut out of the generator's buildable area. |
