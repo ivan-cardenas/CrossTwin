@@ -1168,13 +1168,22 @@ input[type="range"].zone-slider:focus-visible { outline: 1px solid var(--accent)
 .pc-grid { stroke: var(--border); stroke-width: 1; }
 .pc-tick { font-family: var(--font-mono); font-size: 8px; fill: var(--text-tertiary); }
 .pc-line { fill: none; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
-.pc-line.pc-nvm { stroke: var(--series-supply); }
 .pc-line.pc-woz { stroke: var(--series-demand); }
 .pc-line.pc-index { stroke: var(--accent); }
-.pc-dot.pc-nvm { fill: var(--series-supply); }
 .pc-dot.pc-woz { fill: var(--series-demand); }
 .pc-dot.pc-index { fill: var(--accent); }
 .pc-key::before { content: ""; display: inline-block; width: 14px; margin-right: 5px; vertical-align: middle; border-top: 2px solid; }
-.pc-key.pc-nvm::before { border-color: var(--series-supply); }
 .pc-key.pc-woz::before { border-color: var(--series-demand); }
 .pc-key.pc-index::before { border-color: var(--accent); }
+
+/* Modelled price card (housing): staff buttons and the amenity-term tables */
+.pm-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.pm-btn { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; padding: 4px 10px; background: transparent; color: var(--text-secondary); border: 1px solid var(--border); border-radius: 0; cursor: pointer; }
+.pm-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--text-primary); }
+.pm-btn:disabled { opacity: 0.5; cursor: default; }
+.pm-status { font-family: var(--font-mono); font-size: 10px; color: var(--text-tertiary); }
+.pm-terms { margin-top: 6px; color: var(--text-tertiary); }
+.pm-terms summary { cursor: pointer; color: var(--text-secondary); }
+.pm-terms table { border-collapse: collapse; margin-top: 4px; }
+.pm-terms th, .pm-terms td { text-align: left; padding: 2px 10px 2px 0; font-weight: 400; }
+.pm-terms th { color: var(--text-secondary); }

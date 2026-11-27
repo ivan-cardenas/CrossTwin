@@ -6,7 +6,7 @@ do not edit by hand. Stored rows record their own source (dataset key, scene, st
 
 ## 1. Importer catalog (Retrieve Data from APIs)
 
-83 datasets from 11 providers.
+84 datasets from 10 providers.
 
 ### Publieke Dienstverlening Op de Kaart
 
@@ -41,6 +41,8 @@ Dutch national statistics data platform. Open data, no authentication required. 
 |---|---|---|---|---|
 | `pdok_districts` | Districts - Wijken | Administrative boundaries | `administrative.District` | https://service.pdok.nl/cbs/wijkenbuurten/2025/wfs/v1_0 (`wijkenbuurten:wijken`) |
 | `pdok_neighborhoods` | Neighborhoods - Buurten | Administrative boundaries | `administrative.Neighborhood` | https://service.pdok.nl/cbs/wijkenbuurten/2025/wfs/v1_0 (`wijkenbuurten:buurten`) |
+| `pdok_postcode4` | Postcode areas - PC4 | Administrative boundaries | `administrative.Postcode4` | https://service.pdok.nl/cbs/postcode4/2023/wfs/v1_0 (`postcode4:postcode4`) |
+| `pdok_postcode6` | Postcode areas - PC6 | Administrative boundaries | `administrative.Postcode6` | https://service.pdok.nl/cbs/postcode6/2023/wfs/v1_0 (`postcode6:postcode6`) |
 | `CBS_PopulationForecast` | Population forecast 2023-2050 (85173NED) | Demographics | `administrative.PopulationProjection` | CBS table `85173NED` |
 | `CBS_Households` | Private households 2014- (86291NED) | Housing | `housing.HouseholdSize` | CBS table `86291NED` |
 | `CBS_Housing` | Housing Lifecycle (86098NED) | Housing | `housing.HousingSupplyDemand` | CBS table `86098NED` |
@@ -102,14 +104,6 @@ Dutch soil data maintained by Wageningen Environmental Research. Open WFS data, 
 | `bodemdata_ghg` | Groundwater Depth, wet season (GHG, BIS Nederland) | Elevation & Terrain | `physicalEnv.GroundwaterDepth` | https://maps.bodemdata.nl/geoserver/ows (`bodem__ghg-mediaan`) |
 | `bodemdata_glg` | Groundwater Depth, dry season (GLG, BIS Nederland) | Elevation & Terrain | `physicalEnv.GroundwaterDepth` | https://maps.bodemdata.nl/geoserver/ows (`bodem__glg-mediaan`) |
 | `bodemdata_soil_map` | Soil Map 1:50 000 (Bodemkaart, BIS Nederland) | Elevation & Terrain | `physicalEnv.SoilArea` | https://maps.bodemdata.nl/geoserver/bodem/ows (`bodem:Bodemkaart50000`) |
-
-### Nederlandse Vereniging van Makelaars (housing-market reports)
-
-Quarterly housing-market figures per region from NVM's published PDFs. Not downloaded automatically: NVM's terms allow non-commercial private use only, so put the PDFs in the server's NVM_PDF_DIR yourself. *(no authentication; source key `nvm`)*
-
-| Key | Dataset | Category | Stored in | Endpoint |
-|---|---|---|---|---|
-| `nvm_market_reports` | NVM quarterly housing-market reports (PDF) | Housing | `housing.NVMMarketReport` | – |
 
 ### OpenStreetMap (Overpass API)
 
@@ -181,8 +175,7 @@ Dutch national institute for public health and the environment. Open WFS data, n
 | NCEP/NCAR reanalysis water vapour | NOAA via Google Earth Engine | NCEP_RE/surface_wv | urban_heat/lst/gee.py | Total precipitable water for the SMW coefficients (until 2026-03-18). |
 | Copernicus Data Space (openEO, catalogue) | ESA / Copernicus | https://openeo.dataspace.copernicus.eu, https://catalogue.dataspace.copernicus.eu/odata/v1/Products | importer (sentinel2_* entries) | Sentinel-2 L2A indices (NDVI, NDWI, moisture, albedo, true colour). |
 | CBS StatLine OData | Statistics Netherlands (CBS) | https://opendata.cbs.nl/ODataApi/OData/, https://opendata.cbs.nl/ODataFeed/OData/ | importer (CBS_* entries) | Tables 86098NED, 86291NED, 85173NED and others. |
-| CBS Kerncijfers wijken en buurten 2019-2024 (WOZ value per buurt) | Statistics Netherlands (CBS) | https://opendata.cbs.nl/ODataApi/OData/{84583NED,84799NED,85039NED,85318NED,85618NED,85984NED}/TypedDataSet | importer/cbs_woz.py (CBS_WOZ_<year> entries) -> housing.WOZValue | Mean WOZ value of the dwellings (x 1 000 EUR, valuation date 1 January of the year before) and the dwelling stock; no value below 20 dwellings. Column keys differ per table year. |
-| NVM quarterly housing-market reports (PDF) | NVM (Nederlandse Vereniging van Makelaars) | https://www.nvm.nl/wonen/marktinformatie-wonen/ (PDFs read from `NVM_PDF_DIR`, not downloaded by CrossTwin) | importer/nvm_reports.py (nvm_market_reports) -> housing.NVMMarketReport, NVMRegionMapping | Median transaction price per m2 per region and quarter. NVM's copyright and disclaimer pages allow non-commercial private use only and reserve reproduction and redistribution (checked 2026-11-26; robots.txt allows the pages): get NVM's written permission before the figures are published or shared. Each row stores the PDF's SHA-256 and the parser version. |
+| CBS Kerncijfers wijken en buurten 2019-2024 (WOZ value per buurt) | Statistics Netherlands (CBS) | https://opendata.cbs.nl/ODataApi/OData/{84583NED,84799NED,85039NED,85318NED,85618NED,85984NED}/TypedDataSet | importer/cbs_woz.py (CBS_WOZ_<year> entries) -> housing.WOZValue | Mean WOZ value of the dwellings (x 1 000 EUR) and the dwelling stock; no value below 20 dwellings. Column keys differ per table year. |
 | Overpass API (OpenStreetMap) | OpenStreetMap contributors (ODbL) | https://overpass-api.de/api/interpreter (`OVERPASS_URL`, mirrors in `OVERPASS_MIRRORS`) | importer (osm_* entries) | Parks, water bodies, amenities, trees. |
 | BIJ12 Informatiekaart Natuur | BIJ12 (joint provinces) | https://ogc-geoservices.bij12.nl/geoserver/IMNa_IKN/wfs (`IMNa_IKN:natuur_netwerk_nederland`) | importer (bij12_nnn) -> builtup/calculations/site.py | Natuurnetwerk Nederland; the neighbourhood generator keeps buildings out of it. |
 | Natura 2000 areas | RVO via PDOK | https://service.pdok.nl/rvo/natura2000/wfs/v1_0 | importer (pdok_natura2000) -> builtup/calculations/site.py | Cut out of the generator's buildable area. |
@@ -212,6 +205,10 @@ Dutch national institute for public health and the environment. Open WFS data, n
 | Natura 2000 / NNN law | Omgevingswet and Besluit activiteiten leefomgeving (Natura 2000, formerly Wet natuurbescherming); provincial omgevingsverordening (Natuurnetwerk Nederland). | builtup/calculations/site.py |
 | HILUCS | INSPIRE Hierarchical INSPIRE Land Use Classification System. http://inspire.ec.europa.eu/codelist/HILUCSValue | physicalEnv/hilucs.py, builtup/calculations/site.py |
 | CORINE | European Environment Agency, *CORINE Land Cover nomenclature*. https://land.copernicus.eu/ | physicalEnv/calculations/landcover.py |
+| Rosen 1974 | Rosen, S. (1974). Hedonic prices and implicit markets: product differentiation in pure competition. *Journal of Political Economy* 82(1), 34-55. | housing/calculations/price_model.py (hedonic fit of ln WOZ per m2 on accessibility), chain.py::modelled_price_per_sqm |
+| Anselin 1988 | Anselin, L. (1988). *Spatial Econometrics: Methods and Models*. Kluwer, Dordrecht (spatial error model); PySAL libpysal, esda and spreg (Rey & Anselin 2007, *The Review of Regional Studies* 37(1), 5-27). | housing/calculations/price_model.py (Moran's I of the residuals, spatial error model) |
+| Moran 1950 | Moran, P.A.P. (1950). Notes on continuous stochastic phenomena. *Biometrika* 37(1/2), 17-23. | housing/calculations/price_model.py::morans (queen contiguity, permutation p-value) |
+| Roberts et al. 2017 | Roberts, D.R. et al. (2017). Cross-validation strategies for data with temporal, spatial, hierarchical, or phylogenetic structure. *Ecography* 40(8), 913-929. | housing/calculations/price_model.py::_cv_r2 (blocked cross-validation of the functional form) |
 | Oke et al. 2017 | Oke, T.R., Mills, G., Christen, A., Voogt, J.A. (2017). *Urban Climates*. Cambridge University Press (Table 5.1 albedo). | physicalEnv.SurfaceMaterialProperties |
 | Bonafoni & Sekertekin 2020 | Bonafoni, S., Sekertekin, A. (2020). Albedo retrieval from Sentinel-2 by new narrow-to-broadband conversion coefficients. *IEEE GRSL* 17(9), 1618–1622. | physicalEnv/calculations/albedo.py |
 | Ermida et al. 2020 | Ermida, S.L., Soares, P., Mantas, V., Göttsche, F.-M., Trigo, I.F. (2020). Google Earth Engine open-source code for land surface temperature estimation from the Landsat series. *Remote Sensing* 12(9), 1471. https://doi.org/10.3390/rs12091471 | urban_heat/lst/ |

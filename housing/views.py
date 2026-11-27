@@ -1,10 +1,14 @@
+import logging
+import math
+
 from django.shortcuts import render
 from django.http import JsonResponse
+from django.views.decorators.http import require_POST
 
 from administrative.admin_units import resolve_admin_unit, ADMIN_LEVELS
 from administrative.models import District, Neighborhood
 from administrative.calculations.population import DEFAULT_SCENARIO, get_population, is_extrapolated, population_params
-from .calculations import chain
+from .calculations import chain, property_price
 from .calculations.indicators import (
     calculate_household_size,
     calculate_dwellings,
@@ -21,6 +25,7 @@ from .calculations.indicators import (
     calculate_property_indicators,
     calculate_zoning,
     calculate_affordability,
+    calculate_modelled_price,
 )
 
 
@@ -59,6 +64,7 @@ def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, po
     property_ind = calculate_property_indicators(adminUnit)
     zoning = calculate_zoning(adminUnit)
     affordability = calculate_affordability(adminUnit, year)
+    modelled_price = calculate_modelled_price(adminUnit)
 
     return {
         'adminUnit': adminUnit,
@@ -78,6 +84,7 @@ def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, po
         'property': property_ind,
         'zoning': zoning,
         'affordability': affordability,
+        'modelled_price': modelled_price,
     }
 
 
@@ -149,7 +156,94 @@ MOCK_DATA = {
 
 # -- shared calculation -------------------------------------------------------
 
-def _build_indicators(data, household_size_override=None, alone_override=None):
+def _screening_rows(model):
+    """The amenity terms of a fit for the card: kept ones with their beta first, then the screened-out ones with the reason."""
+    terms = ((model.screening or {}).get('terms')) or {}
+    kept, dropped = [], []
+    for term, info in terms.items():
+        mode, category = chain.split_term(term)
+        row = {'term': term, 'mode': mode, 'category': category.replace('_', ' '), 'reason': info.get('reason', '')}
+        if info.get('status') == 'kept':
+            row.update(beta=info.get('beta'), p=info.get('p'), effect_pct=(info.get('effect_per_sd') or 0) * 100,
+                       vif=info.get('vif'))
+            kept.append(row)
+        else:
+            dropped.append(row)
+    kept.sort(key=lambda r: -(abs(r['beta'] or 0)))
+    return kept, sorted(dropped, key=lambda r: (r['reason'], r['term']))
+
+
+# What the card shows per control: label, the step the effect is quoted for and its unit (the fit's scale of the control).
+CONTROL_STEPS = {
+    'constructionYear': ('Construction year', 10.0, '+10 years'),
+    'energyLabel': ('Energy label', 1.0, 'one label step better'),
+    'apartmentShare': ('Share of apartments in the area', 0.1, '+10 percentage points'),
+    'rentalShare': ('Share of rentals in the area', 0.1, '+10 percentage points'),
+    'ses': ('Socio-economic status', 1.0, '+1 on the CBS scale'),
+    'distCentre_km': ('Distance to the municipal centre', 1.0, '+1 km'),
+}
+
+
+def _control_rows(model):
+    """The controls of a fit for the card: kept ones with the price change per step, then the dropped ones."""
+    spec, coefficients = model.spec or {}, model.coefficients or {}
+    kept, dropped = [], []
+    for name in spec.get('controls') or []:
+        label, step, unit = CONTROL_STEPS.get(name, (name, 1.0, '+1'))
+        info = coefficients.get(name) or {}
+        beta = info.get('coef')
+        kept.append({'control': name, 'label': label, 'step': unit, 'beta': beta, 'p': info.get('p'),
+                     'effect_pct': None if beta is None else (math.exp(beta * step) - 1.0) * 100.0})
+    if spec.get('controls_requested', True):
+        for name in spec.get('dropped_controls') or []:
+            dropped.append({'control': name, 'label': CONTROL_STEPS.get(name, (name,))[0],
+                            'reason': 'not in the rows, constant, or present for under 80 % of the areas'})
+    return kept, dropped
+
+
+def _modelled_price_indicators(mp, market_growth):
+    """The modelled-price card: stored mean, the what-if mean, the fit with its screened terms and the label."""
+    model, summary = mp.get('model'), mp.get('summary') or {}
+    out = {
+        'mp_available': False,
+        'mp_label': chain.PRICE_LABEL,
+        'mp_growth': market_growth, 'mp_growth_min': chain.MARKET_GROWTH_MIN, 'mp_growth_max': chain.MARKET_GROWTH_MAX,
+        'mp_has_model': model is not None,
+        'mp_stored_mean': summary.get('stored_mean'),
+    }
+    if model is not None:
+        kept, dropped = _screening_rows(model)
+        controls_kept, controls_dropped = _control_rows(model)
+        screening = model.screening or {}
+        out['mp_model'] = {
+            'id': model.pk, 'n': model.n, 'r2': model.r2, 'form': model.form, 'woz_year': model.wozYear,
+            'spatial_model': model.spatialModel, 'morans_p': model.moransP, 'diagnostic_passed': model.diagnosticPassed,
+            'spline_departs': (model.formComparison or {}).get('spline_departs'),
+            'excluded': len((model.spec or {}).get('excluded_low_coverage') or []),
+            'candidates': screening.get('candidates'), 'kept': kept, 'dropped': dropped,
+            'controls': controls_kept, 'controls_dropped': controls_dropped,
+        }
+    if model is None or not summary.get('priced'):
+        return out
+    default = property_price.mean_price(summary)
+    whatif = market_growth != 0.0
+    shown = property_price.mean_price(summary, market_growth) if whatif else default
+    if not shown['priced']:
+        return out
+    out.update({
+        'mp_available': True,
+        'mp_price': round(shown['price']),
+        'mp_level': round(shown['level']),
+        'mp_change_pct': round((shown['price'] / shown['level'] - 1) * 100, 1),
+        'mp_default_price': round(default['price']) if default['price'] else None,
+        'mp_priced': shown['priced'],
+        'mp_whatif': whatif,
+    })
+    return out
+
+
+def _build_indicators(data, household_size_override=None, alone_override=None,
+                      market_growth=0.0):
     """
     Pure function: takes DB data dict, returns flat indicators dict.
 
@@ -161,6 +255,10 @@ def _build_indicators(data, household_size_override=None, alone_override=None):
     per home, the slider) and the population what-ifs already in data['population']
     only deviate from the stored baseline through chain.what_if_demand; nothing is
     written.
+
+    The modelled price (DAG edge Accessibility -> Property) is the mean of the stored values; `market_growth` (%)
+    is its what-if, applied with chain.market_growth_factor, the factor of the function that wrote the stored
+    values, and never written.
     """
     sd = data['supply_demand']
     household = data.get('household') or {}
@@ -170,7 +268,7 @@ def _build_indicators(data, household_size_override=None, alone_override=None):
     mtg = data['mortgage']
     rent = data['rent']
     hpi = data['hpi']
-    price_chart_geometry, price_chart_unit = price_chart(data.get('price_history') or {'nvm': [], 'woz': [], 'index': []})
+    price_chart_geometry, price_chart_unit = price_chart(data.get('price_history') or {'woz': [], 'index': []})
     prop = data['property']
     zoning = data['zoning']
     aff = data['affordability']
@@ -219,7 +317,10 @@ def _build_indicators(data, household_size_override=None, alone_override=None):
     stress = aff.get('stress_distribution', {})
     stress_total = sum(stress.values()) if stress else 0
 
+    modelled = _modelled_price_indicators(data.get('modelled_price') or {}, market_growth)
+
     return {
+        **modelled,
         'population': data.get('population'),
         'population_extrapolated': data.get('population_extrapolated', False),
         # -- Household size (CBS persons per home; the slider) --
@@ -320,6 +421,15 @@ def _build_indicators(data, household_size_override=None, alone_override=None):
 
 # -- views --------------------------------------------------------------------
 
+def _float_param(params, name, low, high, default):
+    """A float query parameter clamped to [low, high]; `default` when missing or not a number."""
+    try:
+        value = float(params.get(name))
+    except (TypeError, ValueError):
+        return default
+    return min(max(value, low), high)
+
+
 def housing_indicators(request, level, location, year):
     pop_scenario, pop_growth = population_params(request.GET)
     data = _get_adminUnit_data(level, location, year, pop_scenario, pop_growth)
@@ -334,6 +444,7 @@ def housing_indicators(request, level, location, year):
         'indicators': _build_indicators(data),
         'pop_scenario': pop_scenario,
         'pop_growth': pop_growth,
+        'can_fit_price_model': request.user.is_staff,
     }
 
     if request.headers.get('HX-Request'):
@@ -363,10 +474,13 @@ def recalculate_indicators(request, level, location, year):
     if data is None:
         data = MOCK_DATA
 
-    indicators = _build_indicators(data, household_size_override=household_size,
-                                   alone_override=alone)
+    indicators = _build_indicators(
+        data, household_size_override=household_size, alone_override=alone,
+        market_growth=_float_param(request.GET, 'market_growth', chain.MARKET_GROWTH_MIN, chain.MARKET_GROWTH_MAX, 0.0))
 
-    return render(request, 'housing/partials/indicators_grid.html', {'indicators': indicators})
+    return render(request, 'housing/partials/indicators_grid.html', {
+        'indicators': indicators, 'level': level, 'location': location, 'year': year,
+        'can_fit_price_model': request.user.is_staff})
 
 
 def housing_indicators_json(request, level, location, year):
@@ -383,3 +497,73 @@ def housing_indicators_json(request, level, location, year):
         'year': year,
         'indicators': _build_indicators(data),
     })
+
+
+# -- accessibility price model (staff) ------------------------------------------
+
+def _model_summary(model, repriced):
+    screening = model.screening or {}
+    return {
+        'id': model.pk, 'n': model.n, 'woz_year': model.wozYear, 'form': model.form, 'r2': model.r2,
+        'spatial_model': model.spatialModel, 'morans_p': model.moransP, 'diagnostic_passed': model.diagnosticPassed,
+        'terms_kept': screening.get('kept'), 'terms_candidates': screening.get('candidates'),
+        'repriced': repriced, 'label': chain.PRICE_LABEL,
+        'exploratory': bool((model.spec or {}).get('exploratory')),
+    }
+
+
+@require_POST
+def price_model_fit(request):
+    """Fit the hedonic model on the newest WOZ year available, make it the active fit and reprice the dwellings (staff)."""
+    from .calculations import price_model
+
+    if not request.user.is_staff:
+        return JsonResponse({'error': 'Log in as a staff user to fit the price model.'}, status=403)
+    exploratory = request.POST.get('mode') == 'exploratory'   # no controls, small minimum, stored but not applied
+    try:
+        model = price_model.fit_and_store(use_controls=not exploratory, exploratory=exploratory)
+    except price_model.PriceModelError as exc:
+        return JsonResponse({'error': str(exc)}, status=409)
+    except Exception:
+        logging.getLogger(__name__).exception('Price model fit failed')
+        return JsonResponse({'error': 'The fit failed; see the server log.'}, status=500)
+    return JsonResponse(_model_summary(model, model.repriced))
+
+
+@require_POST
+def price_model_refreeze(request):
+    """
+    Freeze the accessibility baselines of every PC6 postcode area again from the stored accessibility (staff).
+    Use it after the accessibility was recomputed with other settings (e.g. a new cut-off): a baseline made
+    with the old ones would price that change as an amenity effect. Fit the price model afterwards.
+    """
+    from .calculations import postcode_woz
+
+    if not request.user.is_staff:
+        return JsonResponse({'error': 'Log in as a staff user to freeze the baselines.'}, status=403)
+    try:
+        rows = postcode_woz.prepare(refreeze=True)
+    except ValueError as exc:
+        return JsonResponse({'error': str(exc)}, status=409)
+    except Exception:
+        logging.getLogger(__name__).exception('Re-freezing the baselines failed')
+        return JsonResponse({'error': 'Freezing the baselines failed; see the server log.'}, status=500)
+    return JsonResponse({'message': f'Baselines frozen again for {len(rows)} postcode areas. Fit the price model next.'})
+
+
+@require_POST
+def price_model_reprice(request):
+    """Reprice every dwelling with the active fit, e.g. after a new WOZ year was imported (staff)."""
+    from .models import PriceModel
+
+    if not request.user.is_staff:
+        return JsonResponse({'error': 'Log in as a staff user to reprice the dwellings.'}, status=403)
+    model = PriceModel.active()
+    if model is None:
+        return JsonResponse({'error': 'No price model is fitted yet.'}, status=409)
+    try:
+        repriced = property_price.reprice(model=model)
+    except Exception:
+        logging.getLogger(__name__).exception('Repricing failed')
+        return JsonResponse({'error': 'The repricing failed; see the server log.'}, status=500)
+    return JsonResponse(_model_summary(model, repriced))

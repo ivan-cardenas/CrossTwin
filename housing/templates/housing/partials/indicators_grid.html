@@ -1,3 +1,4 @@
+{% load humanize %}
 {% load indicator_help %}
 {% comment %} indicators_grid.html {% endcomment %}
 <div class="grid">
@@ -171,6 +172,90 @@
     <div style="margin-top:auto; font-size:9px; color:rgba(var(--accent-1-rgb), 0.35);">
       {{ indicators.hpi_neighborhoods }} neighborhoods reporting
     </div>
+  </div>
+
+  <!-- Modelled price: Accessibility -> Property (association-based scenario) -->
+  <div class="card c3 wide" id="modelled-price-card">
+    <div class="gauge-header">
+      <div class="card-icon">📍</div>
+      <div class="card-label">Modelled Price</div>
+      {% info_help "housing.modelled_price" %}{% include "partials/_show_on_map.html" with layers="housing.WOZValueLatest,builtup.AccessibilityWalk" label="modelled price" %}
+    </div>
+    {% if indicators.mp_available %}
+    <div>
+      <div class="card-value">€ {{ indicators.mp_price|intcomma }}</div>
+      <div class="card-unit">per m² · mean of {{ indicators.mp_priced|intcomma }} dwellings{% if indicators.mp_whatif %} · what-if{% endif %}</div>
+    </div>
+    <div style="font-size:0.85rem; font-family:var(--font-mono);">
+      {% if indicators.mp_change_pct >= 0 %}▲{% else %}▼{% endif %} {{ indicators.mp_change_pct }}% against the CBS WOZ value (€ {{ indicators.mp_level|intcomma }}/m²)
+    </div>
+    {% elif indicators.mp_has_model %}
+    <div style="font-size:0.8rem; color:rgba(var(--accent-1-rgb), 0.55);">
+      No dwelling of this area has a stored modelled price yet. Import the CBS postcode areas (PC6), compute the network accessibility, then reprice.
+    </div>
+    {% else %}
+    <div style="font-size:0.8rem; color:rgba(var(--accent-1-rgb), 0.55);">
+      No price model is fitted yet. It needs the PC6 postcode areas (CBS) imported, the network accessibility computed and the BAG dwellings loaded for the area: at least 30 postcode areas with a WOZ value and a baseline.
+    </div>
+    {% endif %}
+    {% if indicators.mp_model %}
+    <div class="pm-fit" style="font-size:10px; color:rgba(var(--accent-1-rgb), 0.45); font-family:var(--font-mono);">
+      Fit {{ indicators.mp_model.id }} · WOZ {{ indicators.mp_model.woz_year }} · n = {{ indicators.mp_model.n }} areas · R² {{ indicators.mp_model.r2|floatformat:2|default:"–" }}
+      · {{ indicators.mp_model.kept|length }} of {{ indicators.mp_model.candidates|default:"–" }} amenity terms kept after the redundancy and influence screening
+      · {{ indicators.mp_model.form }}, {{ indicators.mp_model.spatial_model|upper }}, Moran's I p = {{ indicators.mp_model.morans_p|floatformat:3|default:"–" }}{% if not indicators.mp_model.diagnostic_passed %} · spatial autocorrelation remains{% endif %}{% if indicators.mp_model.spline_departs %} · the accessibility curve departs from the fitted form{% endif %}{% if indicators.mp_model.excluded %} · {{ indicators.mp_model.excluded }} areas left out: too few BAG dwellings loaded{% endif %}
+    </div>
+    {% if indicators.mp_model.kept %}
+    <details class="pm-terms" style="font-size:10px; font-family:var(--font-mono);">
+      <summary>Amenity terms in the price ({{ indicators.mp_model.kept|length }})</summary>
+      <table>
+        <thead><tr><th scope="col">Amenity</th><th scope="col">Mode</th><th scope="col">β</th><th scope="col">Price per sd</th><th scope="col">p</th><th scope="col">VIF</th></tr></thead>
+        <tbody>
+        {% for t in indicators.mp_model.kept %}
+          <tr><td>{{ t.category }}</td><td>{{ t.mode }}</td><td>{{ t.beta|floatformat:5 }}</td><td>{{ t.effect_pct|floatformat:1 }}%</td><td>{{ t.p|floatformat:3 }}</td><td>{{ t.vif|floatformat:1 }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </details>
+    {% endif %}
+    {% if indicators.mp_model.controls %}
+    <details class="pm-terms" style="font-size:10px; font-family:var(--font-mono);">
+      <summary>Controls in the price ({{ indicators.mp_model.controls|length }})</summary>
+      <table>
+        <thead><tr><th scope="col">Variable</th><th scope="col">Step</th><th scope="col">Price change</th><th scope="col">p</th></tr></thead>
+        <tbody>
+        {% for c in indicators.mp_model.controls %}
+          <tr><td>{{ c.label }}</td><td>{{ c.step }}</td><td>{{ c.effect_pct|floatformat:1 }}%</td><td>{{ c.p|floatformat:3 }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% if indicators.mp_model.controls_dropped %}<div>Not used: {% for c in indicators.mp_model.controls_dropped %}{{ c.label }}{% if not forloop.last %}, {% endif %}{% endfor %} (too little data)</div>{% endif %}
+    </details>
+    {% endif %}
+    {% if indicators.mp_model.dropped %}
+    <details class="pm-terms" style="font-size:10px; font-family:var(--font-mono);">
+      <summary>Screened out ({{ indicators.mp_model.dropped|length }}): redundant, collinear or too little influence</summary>
+      <table>
+        <thead><tr><th scope="col">Amenity</th><th scope="col">Mode</th><th scope="col">Reason</th></tr></thead>
+        <tbody>
+        {% for t in indicators.mp_model.dropped %}
+          <tr><td>{{ t.category }}</td><td>{{ t.mode }}</td><td>{{ t.reason }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </details>
+    {% endif %}
+    {% endif %}
+    <div class="card-unit">{{ indicators.mp_label }}</div>
+    {% if can_fit_price_model %}
+    <div class="pm-actions">
+      <button type="button" class="pm-btn" data-price-model-url="{% url 'housing:price_model_fit' %}">Fit price model</button>
+      <button type="button" class="pm-btn" data-price-model-url="{% url 'housing:price_model_fit' %}" data-price-model-mode="exploratory" title="Accessibility only, from 8 areas: checks the pipeline on a small area, stored but not applied">Fit without controls (exploratory)</button>
+      <button type="button" class="pm-btn" data-price-model-url="{% url 'housing:price_model_refreeze' %}" title="Freeze the accessibility baselines of all postcode areas again from the stored accessibility. Do it after the accessibility was recomputed with other settings, then fit the price model.">Re-freeze baselines</button>
+      {% if indicators.mp_has_model %}<button type="button" class="pm-btn" data-price-model-url="{% url 'housing:price_model_reprice' %}">Reprice dwellings</button>{% endif %}
+      <button type="button" class="pm-btn" data-add-amenity="builtup.Facility" title="Place a new amenity (shop, stop, school, ...) on the map: the accessibility and the modelled prices around it are recomputed when you save it">Add amenity</button>
+      <span class="pm-status" role="status" aria-live="polite"></span>
+    </div>
+    {% endif %}
   </div>
 
   <!-- New Housing Units -->

@@ -24,6 +24,8 @@ attrs==26.1.0
     #   morecantile
     #   rasterio
     #   rio-tiler
+beautifulsoup4==4.15.0
+    # via libpysal
 cachetools==7.2.4
     # via rio-tiler
 certifi==2026.10.19
@@ -50,6 +52,8 @@ click-plugins==1.1.1.2
     # via rasterio
 cligj==0.7.2
     # via rasterio
+cloudpickle==3.1.3
+    # via joblib
 color-operations==0.4.0
     # via rio-tiler
 colorama==0.4.6 ; sys_platform == 'win32'
@@ -82,6 +86,8 @@ django-extensions==4.1
     # via crosstwin
 earthengine-api==1.7.49
     # via crosstwin
+esda==2.10.0
+    # via crosstwin
 executing==2.3.0
     # via stack-data
 fastapi==0.152.0
@@ -90,6 +96,8 @@ fastapi==0.152.0
     #   titiler-core
 fonttools==4.67.0
     # via matplotlib
+formulaic==1.2.2
+    # via statsmodels
 gdal==3.13.3 ; (python_full_version >= '3.16' and platform_machine == 'AMD64' and sys_platform == 'win32') or (python_full_version >= '3.16' and platform_machine == 'ARM64' and sys_platform == 'win32') or (platform_machine != 'AMD64' and platform_machine != 'ARM64' and sys_platform == 'win32')
     # via crosstwin
 gdal @ https://github.com/cgohlke/geospatial-wheels/releases/download/v2026.8.20/gdal-3.13.3-cp312-cp312-win_amd64.whl ; python_full_version < '3.13' and platform_machine == 'AMD64' and sys_platform == 'win32'
@@ -113,6 +121,8 @@ geojson-pydantic==2.2.0
 geopandas==1.2.0
     # via
     #   crosstwin
+    #   esda
+    #   libpysal
     #   openeo
 google-api-core==2.42.0
     # via
@@ -165,6 +175,8 @@ idna==3.20
     #   anyio
     #   httpx2
     #   requests
+interface-meta==2.0.1
+    # via formulaic
 ipykernel==7.4.0
 ipython==9.17.1
     # via ipykernel
@@ -173,7 +185,11 @@ ipython-pygments-lexers==1.1.1
 jedi==0.20.1
     # via ipython
 jinja2==3.1.6
-    # via titiler-core
+    # via
+    #   libpysal
+    #   titiler-core
+joblib==1.6.0
+    # via scikit-learn
 jupyter-client==8.10.0
     # via ipykernel
 jupyter-core==5.9.1
@@ -182,6 +198,11 @@ jupyter-core==5.9.1
     #   jupyter-client
 kiwisolver==1.5.1
     # via matplotlib
+libpysal==4.15.1
+    # via
+    #   crosstwin
+    #   esda
+    #   spreg
 lxml==6.1.3
     # via
     #   crosstwin
@@ -199,6 +220,10 @@ morecantile==7.1.0
     #   rio-cogeo
     #   rio-tiler
     #   titiler-core
+narwhals==2.29.0
+    # via
+    #   formulaic
+    #   scikit-learn
 nest-asyncio2==1.7.4
     # via ipykernel
 numexpr==2.14.2
@@ -208,16 +233,23 @@ numpy==2.4.6
     #   color-operations
     #   contourpy
     #   crosstwin
+    #   esda
+    #   formulaic
     #   geopandas
+    #   libpysal
     #   matplotlib
     #   numexpr
     #   openeo
     #   pandas
+    #   patsy
     #   pyogrio
     #   rasterio
     #   rio-tiler
+    #   scikit-learn
     #   scipy
     #   shapely
+    #   spreg
+    #   statsmodels
     #   titiler-core
     #   xarray
 openeo==0.53.0
@@ -234,23 +266,35 @@ packaging==26.3
     # via
     #   geopandas
     #   ipykernel
+    #   libpysal
     #   matplotlib
+    #   patsy
     #   pyogrio
+    #   statsmodels
     #   xarray
 pandas==2.3.3
     # via
     #   crosstwin
+    #   esda
+    #   formulaic
     #   geopandas
+    #   libpysal
     #   openeo
+    #   spreg
+    #   statsmodels
     #   xarray
 parso==0.8.7
     # via jedi
+patsy==1.0.3
+    # via statsmodels
 pexpect==4.9.0 ; sys_platform != 'emscripten' and sys_platform != 'win32'
     # via ipython
 pillow==13.0.0
     # via matplotlib
 platformdirs==4.13.5
-    # via jupyter-core
+    # via
+    #   jupyter-core
+    #   libpysal
 prompt-toolkit==3.0.53
     # via ipython
 proto-plus==1.29.0
@@ -422,6 +466,7 @@ requests==2.34.2
     #   earthengine-api
     #   google-api-core
     #   google-cloud-storage
+    #   libpysal
     #   openeo
     #   owslib
 rio-cogeo==7.0.4
@@ -430,17 +475,35 @@ rio-tiler==9.4.12
     # via
     #   crosstwin
     #   titiler-core
+scikit-learn==1.9.1
+    # via
+    #   esda
+    #   libpysal
+    #   spreg
 scipy==1.17.1
-    # via crosstwin
+    # via
+    #   crosstwin
+    #   esda
+    #   formulaic
+    #   libpysal
+    #   scikit-learn
+    #   spreg
+    #   statsmodels
 shapely==2.2.0
     # via
     #   crosstwin
+    #   esda
     #   geopandas
+    #   libpysal
     #   openeo
 simplejson==4.2.0
     # via titiler-core
 six==1.17.0
     # via python-dateutil
+soupsieve==4.1.3
+    # via beautifulsoup4
+spreg==1.9.2
+    # via crosstwin
 sqlparse==0.6.0
     # via django
 stack-data==0.6.3
@@ -449,6 +512,10 @@ starlette==1.9.0
     # via
     #   fastapi
     #   titiler-core
+statsmodels==0.15.0
+    # via crosstwin
+threadpoolctl==3.8.0
+    # via scikit-learn
 titiler-core==2.4.0
     # via crosstwin
 tornado==6.5.10
@@ -469,7 +536,9 @@ truststore==0.10.5 ; sys_platform != 'emscripten'
 typing-extensions==4.16.0
     # via
     #   anyio
+    #   beautifulsoup4
     #   fastapi
+    #   formulaic
     #   httpx2
     #   jupyter-client
     #   opentelemetry-api
@@ -499,7 +568,9 @@ uvicorn==0.54.0
 wcwidth==0.9.2
     # via prompt-toolkit
 wrapt==2.5.1
-    # via deprecated
+    # via
+    #   deprecated
+    #   formulaic
 xarray==2026.9.0
     # via
     #   crosstwin

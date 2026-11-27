@@ -16,67 +16,80 @@
 \contentsline {subsection}{\numberline {2.14}Building changes on the DSM --- \texttt {dsm\_patches.record\_change()}, \texttt {apply\_patches()}}{7}{subsection.2.14}%
 \contentsline {subsection}{\numberline {2.15}Vegetation changes on the DSM --- \texttt {dsm\_patches.record\_vegetation\_change()}}{8}{subsection.2.15}%
 \contentsline {section}{\numberline {3}Physical environment app --- soil hydrology and infiltration}{9}{section.3}%
-\contentsline {subsection}{\numberline {3.1}Hydrologic soil group --- \texttt {classify\_soil\_group()}, \texttt {SoilType.save()}}{9}{subsection.3.1}%
-\contentsline {subsection}{\numberline {3.2}Curve number --- \texttt {curve\_number()}}{9}{subsection.3.2}%
-\contentsline {subsection}{\numberline {3.3}Shallow groundwater and drained land --- \texttt {soil\_landcover\_composition()}}{10}{subsection.3.3}%
-\contentsline {subsection}{\numberline {3.4}SCS runoff and infiltration coefficient --- \texttt {scs\_runoff\_mm()}, \texttt {infiltration\_coefficient()}}{11}{subsection.3.4}%
-\contentsline {subsection}{\numberline {3.5}Area-weighted unit summary --- \texttt {summarize\_infiltration()}}{11}{subsection.3.5}%
-\contentsline {subsection}{\numberline {3.6}Stored infiltration rate --- \texttt {weighted\_infiltration\_rate\_mm\_h()}}{12}{subsection.3.6}%
-\contentsline {subsection}{\numberline {3.7}HILUCS land-use codes --- \texttt {parse\_hilucs\_href()}, \texttt {hilucs\_q()}}{12}{subsection.3.7}%
-\contentsline {section}{\numberline {4}Built-up app --- Degree of Urbanisation}{12}{section.4}%
-\contentsline {subsection}{\numberline {4.1}Allocation: people $\rightarrow $ residential properties $\rightarrow $ cells --- \texttt {allocate()}}{12}{subsection.4.1}%
-\contentsline {subsection}{\numberline {4.2}Cell density --- \texttt {density()}}{13}{subsection.4.2}%
-\contentsline {subsection}{\numberline {4.3}Grid classes --- \texttt {classify()}}{13}{subsection.4.3}%
-\contentsline {subsection}{\numberline {4.4}Unit class and urbanisation rate --- \texttt {classify\_unit()}, \texttt {urbanization\_rate()}}{13}{subsection.4.4}%
-\contentsline {section}{\numberline {5}Water supply app}{14}{section.5}%
-\contentsline {subsection}{\numberline {5.1}Per-capita consumption --- \texttt {\_get\_consumption\_capita()}}{14}{subsection.5.1}%
-\contentsline {subsection}{\numberline {5.2}Total water demand --- \texttt {calculate\_total\_demand()}, \texttt {TotalWaterDemand.save()}}{14}{subsection.5.2}%
-\contentsline {subsection}{\numberline {5.3}Total consumption --- \texttt {ConsumptionCapita.save()}}{14}{subsection.5.3}%
-\contentsline {subsection}{\numberline {5.4}Source recharge --- \texttt {AvailableFreshWater.save()}}{14}{subsection.5.4}%
-\contentsline {subsection}{\numberline {5.5}Yearly recharge depth --- \texttt {recharge\_depth\_cm\_yr()}}{14}{subsection.5.5}%
-\contentsline {subsection}{\numberline {5.6}Total extraction --- \texttt {calculate\_total\_extraction()}}{15}{subsection.5.6}%
-\contentsline {subsection}{\numberline {5.7}Total production --- \texttt {calculate\_total\_production\_day()}}{15}{subsection.5.7}%
-\contentsline {subsection}{\numberline {5.8}Supply security \& service time}{16}{subsection.5.8}%
-\contentsline {subsection}{\numberline {5.9}Energy consumption --- \texttt {calculate\_energy\_consumption()}}{16}{subsection.5.9}%
-\contentsline {subsection}{\numberline {5.10}Pump emissions --- \texttt {ExtractionWater.save()}}{16}{subsection.5.10}%
-\contentsline {subsection}{\numberline {5.11}Extraction OPEX and environmental cost --- \texttt {ExtractionWater.save()}}{16}{subsection.5.11}%
-\contentsline {subsection}{\numberline {5.12}Consolidated OPEX --- \texttt {OPEX.save()}}{17}{subsection.5.12}%
-\contentsline {subsection}{\numberline {5.13}OPEX recovery (dashboard) --- \texttt {calculate\_opex\_recovery()}}{17}{subsection.5.13}%
-\contentsline {subsection}{\numberline {5.14}Billed consumption and revenue --- \texttt {MeteredResidential.save()}}{17}{subsection.5.14}%
-\contentsline {subsection}{\numberline {5.15}Collection ratio --- \texttt {calculate\_collection\_ratio()}}{17}{subsection.5.15}%
-\contentsline {subsection}{\numberline {5.16}Coverage --- \texttt {calculate\_coverage()}, \texttt {CoverageWaterSupply.save()}}{18}{subsection.5.16}%
-\contentsline {subsection}{\numberline {5.17}Non-Revenue Water and ILI}{18}{subsection.5.17}%
-\contentsline {subsection}{\numberline {5.18}Water quality --- \texttt {calculate\_water\_quality()}}{19}{subsection.5.18}%
-\contentsline {subsection}{\numberline {5.19}Available fresh water and drought area}{19}{subsection.5.19}%
-\contentsline {subsection}{\numberline {5.20}Infiltration indicator (dashboard) --- \texttt {calculate\_infiltration()}, \texttt {\_infiltration\_indicators()}}{19}{subsection.5.20}%
-\contentsline {subsection}{\numberline {5.21}Pipe geometry --- \texttt {PipeNetwork.save()}}{19}{subsection.5.21}%
-\contentsline {section}{\numberline {6}Housing app}{19}{section.6}%
-\contentsline {subsection}{\numberline {6.1}Supply/demand deficit}{20}{subsection.6.1}%
-\contentsline {subsubsection}{\numberline {6.1.1}Household size and housing demand --- \texttt {HouseholdSize.save()}, \texttt {HousingSupplyDemand.save()}}{20}{subsubsection.6.1.1}%
-\contentsline {subsection}{\numberline {6.2}Pipeline units --- \texttt {calculate\_new\_units()}}{20}{subsection.6.2}%
-\contentsline {subsubsection}{\numberline {6.2.1}Pipeline land take --- \texttt {calculate\_pipeline\_land\_take()}}{21}{subsubsection.6.2.1}%
-\contentsline {subsection}{\numberline {6.3}Mortgage indicators --- \texttt {calculate\_mortgage\_indicators()}}{21}{subsection.6.3}%
-\contentsline {subsection}{\numberline {6.4}House Price Index --- \texttt {calculate\_house\_price\_index()}}{21}{subsection.6.4}%
-\contentsline {subsection}{\numberline {6.5}Affordability index --- \texttt {HousingAffordability.save()}}{21}{subsection.6.5}%
-\contentsline {subsection}{\numberline {6.6}Zoning composition --- \texttt {calculate\_zoning()}}{22}{subsection.6.6}%
-\contentsline {subsection}{\numberline {6.7}Property market and vacancy --- \texttt {calculate\_property\_indicators()}}{22}{subsection.6.7}%
-\contentsline {section}{\numberline {7}Urban heat app}{22}{section.7}%
-\contentsline {subsection}{\numberline {7.1}Green area and vegetation coverage}{23}{subsection.7.1}%
-\contentsline {subsection}{\numberline {7.2}Street canyon aspect ratio --- \texttt {builtup.StreetCanyon}, \texttt {calculate\_canyon\_aspect()}}{23}{subsection.7.2}%
-\contentsline {subsection}{\numberline {7.3}Raster statistics --- \texttt {\_raster\_stats\_sql()}, \texttt {get\_thermal\_indices()}}{24}{subsection.7.3}%
-\contentsline {subsection}{\numberline {7.4}Thermal stress classification}{24}{subsection.7.4}%
-\contentsline {subsection}{\numberline {7.5}Land surface temperature, Statistical Mono-Window --- \texttt {urban\_heat/lst/}}{25}{subsection.7.5}%
-\contentsline {subsection}{\numberline {7.6}Thermal comfort with SOLWEIG --- \texttt {urban\_heat/solweig/}}{25}{subsection.7.6}%
-\contentsline {subsection}{\numberline {7.7}Nature-Based Solutions coverage --- \texttt {calculate\_nbs\_coverage()}}{27}{subsection.7.7}%
-\contentsline {section}{\numberline {8}Map editing and what-if backup (mainMap app)}{27}{section.8}%
-\contentsline {subsection}{\numberline {8.1}Editable-layer allowlist --- \texttt {EDITABLE\_LAYERS}, \texttt {is\_editable()}}{27}{subsection.8.1}%
-\contentsline {subsection}{\numberline {8.2}Attribute and geometry form --- \texttt {\_build\_form()}, \texttt {feature\_form()}}{27}{subsection.8.2}%
-\contentsline {subsection}{\numberline {8.3}Identifiers for new objects --- \texttt {\_next\_negative\_pk()}}{28}{subsection.8.3}%
-\contentsline {subsection}{\numberline {8.4}Deferred-constraint check --- \texttt {\_check\_constraints()}}{28}{subsection.8.4}%
-\contentsline {subsection}{\numberline {8.5}Change journal --- \texttt {journal()}}{28}{subsection.8.5}%
-\contentsline {subsection}{\numberline {8.6}Restore --- \texttt {restore\_backup()}}{28}{subsection.8.6}%
-\contentsline {subsection}{\numberline {8.7}Map-side editor --- \texttt {Editing.js}}{29}{subsection.8.7}%
-\contentsline {section}{\numberline {9}Imported climate-effect indicators (importer app, Klimaateffectatlas)}{29}{section.9}%
-\contentsline {subsection}{\numberline {9.1}Value transforms --- \texttt {\_prepare\_features()}}{30}{subsection.9.1}%
-\contentsline {subsection}{\numberline {9.2}Join and write rules --- \texttt {\_keep\_existing()}, \texttt {\_enrich\_rows()}}{30}{subsection.9.2}%
-\contentsline {section}{\numberline {10}Summary table}{30}{section.10}%
+\contentsline {subsection}{\numberline {3.1}Urban land --- \texttt {fill\_urban\_soil\_gaps()}}{9}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}Hydrologic soil group --- \texttt {classify\_soil\_group()}, \texttt {SoilType.save()}}{9}{subsection.3.2}%
+\contentsline {subsection}{\numberline {3.3}Curve number --- \texttt {curve\_number()}}{10}{subsection.3.3}%
+\contentsline {subsection}{\numberline {3.4}Shallow groundwater and drained land --- \texttt {soil\_landcover\_composition()}}{11}{subsection.3.4}%
+\contentsline {subsection}{\numberline {3.5}SCS runoff and infiltration coefficient --- \texttt {scs\_runoff\_mm()}, \texttt {infiltration\_coefficient()}}{12}{subsection.3.5}%
+\contentsline {subsection}{\numberline {3.6}Area-weighted unit summary --- \texttt {summarize\_infiltration()}}{12}{subsection.3.6}%
+\contentsline {subsection}{\numberline {3.7}Stored infiltration rate --- \texttt {weighted\_infiltration\_rate\_mm\_h()}}{12}{subsection.3.7}%
+\contentsline {subsection}{\numberline {3.8}HILUCS land-use codes --- \texttt {parse\_hilucs\_href()}, \texttt {hilucs\_q()}}{13}{subsection.3.8}%
+\contentsline {section}{\numberline {4}Built-up app --- Degree of Urbanisation}{13}{section.4}%
+\contentsline {subsection}{\numberline {4.1}Allocation: people $\rightarrow $ residential properties $\rightarrow $ cells --- \texttt {allocate()}}{13}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}Cell density --- \texttt {density()}}{14}{subsection.4.2}%
+\contentsline {subsection}{\numberline {4.3}Grid classes --- \texttt {classify()}}{14}{subsection.4.3}%
+\contentsline {subsection}{\numberline {4.4}Unit class and urbanisation rate --- \texttt {classify\_unit()}, \texttt {urbanization\_rate()}}{14}{subsection.4.4}%
+\contentsline {section}{\numberline {5}Built-up app --- Network accessibility}{14}{section.5}%
+\contentsline {subsection}{\numberline {5.1}Network distance --- \texttt {compute\_points()}}{15}{subsection.5.1}%
+\contentsline {subsection}{\numberline {5.2}Distance decay and score --- \texttt {distance\_decay()}, \texttt {accessibility\_score()}}{15}{subsection.5.2}%
+\contentsline {subsection}{\numberline {5.3}Map raster --- \texttt {access\_raster.smooth\_grid()}}{15}{subsection.5.3}%
+\contentsline {subsection}{\numberline {5.4}Unit indicator --- \texttt {calculate\_accessibility()}}{15}{subsection.5.4}%
+\contentsline {section}{\numberline {6}Water supply app}{15}{section.6}%
+\contentsline {subsection}{\numberline {6.1}Per-capita consumption --- \texttt {\_get\_consumption\_capita()}}{16}{subsection.6.1}%
+\contentsline {subsection}{\numberline {6.2}Total water demand --- \texttt {calculate\_total\_demand()}, \texttt {TotalWaterDemand.save()}}{16}{subsection.6.2}%
+\contentsline {subsection}{\numberline {6.3}Total consumption --- \texttt {ConsumptionCapita.save()}}{16}{subsection.6.3}%
+\contentsline {subsection}{\numberline {6.4}Source recharge --- \texttt {AvailableFreshWater.save()}}{16}{subsection.6.4}%
+\contentsline {subsection}{\numberline {6.5}Yearly recharge depth --- \texttt {recharge\_depth\_cm\_yr()}}{17}{subsection.6.5}%
+\contentsline {subsection}{\numberline {6.6}Total extraction --- \texttt {calculate\_total\_extraction()}}{17}{subsection.6.6}%
+\contentsline {subsection}{\numberline {6.7}Total production --- \texttt {calculate\_total\_production\_day()}}{17}{subsection.6.7}%
+\contentsline {subsection}{\numberline {6.8}Supply security \& service time}{18}{subsection.6.8}%
+\contentsline {subsection}{\numberline {6.9}Energy consumption --- \texttt {calculate\_energy\_consumption()}}{18}{subsection.6.9}%
+\contentsline {subsection}{\numberline {6.10}Pump emissions --- \texttt {ExtractionWater.save()}}{18}{subsection.6.10}%
+\contentsline {subsection}{\numberline {6.11}Extraction OPEX and environmental cost --- \texttt {ExtractionWater.save()}}{18}{subsection.6.11}%
+\contentsline {subsection}{\numberline {6.12}Consolidated OPEX --- \texttt {OPEX.save()}}{19}{subsection.6.12}%
+\contentsline {subsection}{\numberline {6.13}OPEX recovery (dashboard) --- \texttt {calculate\_opex\_recovery()}}{19}{subsection.6.13}%
+\contentsline {subsection}{\numberline {6.14}Billed consumption and revenue --- \texttt {MeteredResidential.save()}}{19}{subsection.6.14}%
+\contentsline {subsection}{\numberline {6.15}Collection ratio --- \texttt {calculate\_collection\_ratio()}}{20}{subsection.6.15}%
+\contentsline {subsection}{\numberline {6.16}Water supply users --- \texttt {UsersLocation.save()}}{20}{subsection.6.16}%
+\contentsline {subsection}{\numberline {6.17}Coverage --- \texttt {calculate\_coverage()}, \texttt {CoverageWaterSupply.save()}}{20}{subsection.6.17}%
+\contentsline {subsection}{\numberline {6.18}Urban area outside the network --- \texttt {CoverageWaterSupply.save()}}{20}{subsection.6.18}%
+\contentsline {subsection}{\numberline {6.19}Non-Revenue Water and ILI}{21}{subsection.6.19}%
+\contentsline {subsection}{\numberline {6.20}Water quality --- \texttt {calculate\_water\_quality()}}{21}{subsection.6.20}%
+\contentsline {subsection}{\numberline {6.21}Available fresh water and drought area}{22}{subsection.6.21}%
+\contentsline {subsection}{\numberline {6.22}Infiltration indicator (dashboard) --- \texttt {calculate\_infiltration()}, \texttt {\_infiltration\_indicators()}}{22}{subsection.6.22}%
+\contentsline {subsection}{\numberline {6.23}Pipe geometry --- \texttt {PipeNetwork.save()}}{22}{subsection.6.23}%
+\contentsline {section}{\numberline {7}Housing app}{22}{section.7}%
+\contentsline {subsection}{\numberline {7.1}Supply/demand deficit}{23}{subsection.7.1}%
+\contentsline {subsubsection}{\numberline {7.1.1}Household size and housing demand --- \texttt {HouseholdSize.save()}, \texttt {HousingSupplyDemand.save()}}{23}{subsubsection.7.1.1}%
+\contentsline {subsection}{\numberline {7.2}Pipeline units --- \texttt {calculate\_new\_units()}}{24}{subsection.7.2}%
+\contentsline {subsubsection}{\numberline {7.2.1}Pipeline land take --- \texttt {calculate\_pipeline\_land\_take()}}{24}{subsubsection.7.2.1}%
+\contentsline {subsection}{\numberline {7.3}Mortgage indicators --- \texttt {calculate\_mortgage\_indicators()}}{24}{subsection.7.3}%
+\contentsline {subsection}{\numberline {7.4}House Price Index --- \texttt {calculate\_house\_price\_index()}}{25}{subsection.7.4}%
+\contentsline {subsection}{\numberline {7.5}House Price Index from NVM reports and WOZ value per m$^2$ --- \texttt {HousePriceIndex.save()}, \texttt {WOZValue.save()}}{25}{subsection.7.5}%
+\contentsline {subsection}{\numberline {7.6}Modelled price from accessibility --- \texttt {modelled\_price\_per\_sqm()}, \texttt {fit\_hedonic()}}{26}{subsection.7.6}%
+\contentsline {subsection}{\numberline {7.7}Affordability index and stress level --- \texttt {HousingAffordability.save()}}{27}{subsection.7.7}%
+\contentsline {subsection}{\numberline {7.8}Zoning composition --- \texttt {calculate\_zoning()}}{27}{subsection.7.8}%
+\contentsline {subsection}{\numberline {7.9}Property market and vacancy --- \texttt {calculate\_property\_indicators()}}{27}{subsection.7.9}%
+\contentsline {section}{\numberline {8}Urban heat app}{28}{section.8}%
+\contentsline {subsection}{\numberline {8.1}Green area and vegetation coverage}{28}{subsection.8.1}%
+\contentsline {subsection}{\numberline {8.2}Street canyon aspect ratio --- \texttt {builtup.StreetCanyon}, \texttt {calculate\_canyon\_aspect()}}{28}{subsection.8.2}%
+\contentsline {subsection}{\numberline {8.3}Raster statistics --- \texttt {\_raster\_stats\_sql()}, \texttt {get\_thermal\_indices()}}{29}{subsection.8.3}%
+\contentsline {subsection}{\numberline {8.4}Thermal stress classification}{29}{subsection.8.4}%
+\contentsline {subsection}{\numberline {8.5}Land surface temperature, Statistical Mono-Window --- \texttt {urban\_heat/lst/}}{30}{subsection.8.5}%
+\contentsline {subsection}{\numberline {8.6}Thermal comfort with SOLWEIG --- \texttt {urban\_heat/solweig/}}{31}{subsection.8.6}%
+\contentsline {subsection}{\numberline {8.7}Nature-Based Solutions coverage --- \texttt {calculate\_nbs\_coverage()}}{32}{subsection.8.7}%
+\contentsline {section}{\numberline {9}Map editing and what-if backup (mainMap app)}{32}{section.9}%
+\contentsline {subsection}{\numberline {9.1}Editable-layer allowlist --- \texttt {EDITABLE\_LAYERS}, \texttt {is\_editable()}}{32}{subsection.9.1}%
+\contentsline {subsection}{\numberline {9.2}Attribute and geometry form --- \texttt {\_build\_form()}, \texttt {feature\_form()}}{33}{subsection.9.2}%
+\contentsline {subsection}{\numberline {9.3}Identifiers for new objects --- \texttt {\_next\_negative\_pk()}}{33}{subsection.9.3}%
+\contentsline {subsection}{\numberline {9.4}Deferred-constraint check --- \texttt {\_check\_constraints()}}{33}{subsection.9.4}%
+\contentsline {subsection}{\numberline {9.5}Change journal --- \texttt {journal()}}{34}{subsection.9.5}%
+\contentsline {subsection}{\numberline {9.6}Restore --- \texttt {restore\_backup()}}{34}{subsection.9.6}%
+\contentsline {subsection}{\numberline {9.7}Map-side editor --- \texttt {Editing.js}}{34}{subsection.9.7}%
+\contentsline {section}{\numberline {10}Climate change scenarios (weather app, KNMI'23)}{35}{section.10}%
+\contentsline {paragraph}{Season or heat-wave day.}{36}{section*.2}%
+\contentsline {subsection}{\numberline {10.1}Stored scenario runs}{36}{subsection.10.1}%
+\contentsline {section}{\numberline {11}Imported climate-effect indicators (importer app, Klimaateffectatlas)}{37}{section.11}%
+\contentsline {subsection}{\numberline {11.1}Value transforms --- \texttt {\_prepare\_features()}}{37}{subsection.11.1}%
+\contentsline {subsection}{\numberline {11.2}Join and write rules --- \texttt {\_keep\_existing()}, \texttt {\_enrich\_rows()}}{38}{subsection.11.2}%
+\contentsline {section}{\numberline {12}Summary table}{38}{section.12}%

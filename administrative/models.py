@@ -153,6 +153,76 @@ class Neighborhood(models.Model):
         verbose_name = "Neighborhood"
         verbose_name_plural = "Neighborhoods"
 
+
+class _PostcodeArea(models.Model):
+    """
+    Common fields of a CBS postcode area (the PDOK "CBS Postcode statistieken" layers): the number and
+    the figures CBS publishes per area. Postcode areas cut across municipalities and neighborhoods, so
+    they are not part of the Province > City > District > Neighborhood chain: nothing cascades into or
+    out of them, and a unit's population is the CBS figure as published (no cascade writes it).
+
+    CBS leaves out a figure it cannot publish without identifying people (-99997 and kin): that is
+    stored as null, never as 0. meanWOZ_EUR is CBS's "gemiddelde WOZ-waarde" (published in 1 000 EUR).
+    """
+    code = models.CharField(primary_key=True, max_length=6, help_text="Postcode number (PC4) or postcode (PC6, e.g. 2611AG)")
+    currentPopulation = models.IntegerField(null=True, blank=True, help_text="Inhabitants (CBS aantalInwoners)")
+    households = models.IntegerField(null=True, blank=True, help_text="Private households (CBS aantalPartHuishoudens)")
+    avgHouseholdSize = models.FloatField(null=True, blank=True, help_text="Persons per household (CBS gemiddeldeHuishoudensgrootte)")
+    dwellings = models.IntegerField(null=True, blank=True, help_text="Dwellings (CBS aantalWoningen)")
+    multiFamilyDwellings = models.IntegerField(null=True, blank=True, help_text="Multi-family dwellings (CBS aantalMeergezinsWoningen)")
+    vacantDwellings = models.IntegerField(null=True, blank=True, help_text="Dwellings not occupied (CBS aantalNietBewoondeWoningen)")
+    ownerOccupied_pct = models.FloatField(null=True, blank=True, help_text="Owner-occupied dwellings, % (CBS percentageKoopwoningen)")
+    rental_pct = models.FloatField(null=True, blank=True, help_text="Rental dwellings, % (CBS percentageHuurwoningen)")
+    meanWOZ_EUR = models.FloatField(null=True, blank=True, help_text="Mean WOZ value of the dwellings, EUR (CBS gemiddeldeWozWaardeWoning, published x 1 000 EUR)")
+    dataYear = models.IntegerField(null=True, blank=True, help_text="Year of the CBS postcode statistics the figures come from")
+    source = models.CharField(max_length=100, default="CBS Postcode statistieken (PDOK)", help_text="Data provider")
+    area_km2 = models.FloatField(null=True, blank=True, help_text="Area in square kilometers")
+    populationDensity = models.FloatField(null=True, blank=True, help_text="Inhabitants per square kilometer")
+    geom = models.MultiPolygonField(srid=CoordinateSystem)
+    last_updated = models.DateTimeField(default=timezone.now)
+
+    def save(self, *args, **kwargs):
+        self.code = str(self.code).strip().upper()
+        self.area_km2 = self.geom.area / 1e6
+        self.populationDensity = (self.currentPopulation or 0) / self.area_km2 if self.area_km2 else 0.0
+        self.last_updated = timezone.now()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.code
+
+    class Meta:
+        abstract = True
+
+
+class Postcode4(_PostcodeArea):
+    """A four-digit postcode area (PC4, e.g. 2611): about 4 000 in the Netherlands, 1-10 km2 in a city."""
+
+    class Meta:
+        verbose_name = "Postcode area (PC4)"
+        verbose_name_plural = "Postcode areas (PC4)"
+
+
+class Postcode6(_PostcodeArea):
+    """
+    A six-character postcode area (PC6, e.g. 2611AG): a street section, about 460 000 in the Netherlands.
+    `postcode4` is the first four characters, written by save(), so the two levels join without a
+    foreign key (a PC6 can be imported before its PC4).
+    """
+    postcode4 = models.CharField(max_length=4, db_index=True, editable=False, help_text="PC4 the postcode belongs to; derived from the code")
+
+    def save(self, *args, **kwargs):
+        self.code = str(self.code).strip().upper()
+        self.postcode4 = self.code[:4]
+        if kwargs.get("update_fields"):
+            kwargs["update_fields"] = set(kwargs["update_fields"]) | {"postcode4"}
+        super().save(*args, **kwargs)
+
+    class Meta:
+        verbose_name = "Postcode area (PC6)"
+        verbose_name_plural = "Postcode areas (PC6)"
+
+
 class PopulationProjection(models.Model):
     """
     Projected total population of a City for one year and forecast variant.

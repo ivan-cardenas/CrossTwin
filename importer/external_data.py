@@ -3140,10 +3140,7 @@ def import_dataset(
         from . import cbs_woz
         return cbs_woz.fetch(dataset, bbox)
 
-    elif source == "nvm" and fmt == "nvm_pdf":
-        from . import nvm_reports
-        return nvm_reports.fetch(dataset, bbox)
-    
+
     elif source == "sentinel2":
         if fmt == "wcs":
             return Sentinel2Importer.fetch_wcs(dataset, bbox)

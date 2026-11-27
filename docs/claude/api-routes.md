@@ -28,6 +28,7 @@
 | `/weather/live/` | Map weather pill: current weather at `?lat=&lng=` (Open-Meteo, cached per ~2 km cell) |
 | `/watersupply/unserved/` | Homes no pipe reaches, as WGS84 GeoJSON points (`?bbox=`) |
 | `/housing/` | Housing indicators dashboard |
+| `/housing/price-model/fit/`, `/housing/price-model/reprice/`, `/housing/price-model/refreeze/` | Modelled price (staff, POST): fit the hedonic model (per amenity category, PC6 postcode areas) on the newest WOZ year available, make it the active fit and reprice the dwellings; reprice with the active fit (e.g. after a new WOZ year). `refreeze` freezes the accessibility baselines of every PC6 area again (after the accessibility was recomputed with other settings; fit afterwards). The market what-if slider (`market_growth`) goes through `recalculate/` and writes nothing. New amenities are added with the card's *Add amenity* button, which uses the map editor (`/api/layers/builtup/Facility/features/new/`) |
 | `/builtup/` | Built-up fabric indicators dashboard |
 | `/builtup/degurba/info/`, `/builtup/degurba/calculate/` | Map Degree of Urbanisation card: stored grid status; rebuild for the current population year (POST, staff) |
 | `/builtup/accessibility/info/`, `/builtup/accessibility/calculate/` | Map Network Accessibility card: stored network and scores per mode; recompute every building (POST, staff; 409 without a stored network) |

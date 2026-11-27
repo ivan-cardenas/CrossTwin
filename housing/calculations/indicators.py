@@ -9,7 +9,7 @@ from ..models import (
 from administrative.admin_units import cities_within, neighborhoods_within, province_of
 from builtup.models import Property, ZoningArea, Building
 from physicalEnv.hilucs import hilucs_q
-from . import chain
+from . import chain, property_price
 
 
 # -- Supply & Demand ---------------------------------------------------------
@@ -431,40 +431,33 @@ def calculate_house_price_index(adminBund, year):
 def calculate_price_history(adminBund):
     """Yearly price series of a unit, for the House Price Index card's chart.
 
-    * `nvm`: mean of the neighborhoods' NVM price per m2 (EUR/m2; HousePriceIndex.pricePerSqm_EUR,
-      all neighborhoods of an NVM region carry the region's value);
-    * `woz`: CBS mean WOZ value per m2 (EUR/m2) weighted by the neighborhoods' dwellings, plotted at
-      its valuation year (1 January of the table year - 1, chain.woz_valuation_year);
-    * `index`: mean House Price Index value (base year = 100), also the stored values without NVM data.
+    * `woz`: CBS mean WOZ value per m2 (EUR/m2) weighted by the neighborhoods' dwellings, plotted at the
+      CBS table year as published (every year available, none shifted);
+    * `index`: mean House Price Index value (base year = 100).
 
     Each is a list of (year, value) sorted by year. Read-only.
-
-    DAG edges:  Market_Reports -> House_Price_Index
     """
     neighborhoods = neighborhoods_within(adminBund)
     records = HousePriceIndex.objects.filter(neighborhood__in=neighborhoods)
-    by_year = records.values('year').annotate(index=Avg('index_value'), price=Avg('pricePerSqm_EUR')).order_by('year')
-    nvm = [(r['year'], round(r['price'], 1)) for r in by_year if r['price'] is not None]
+    by_year = records.values('year').annotate(index=Avg('index_value')).order_by('year')
     index = [(r['year'], round(r['index'], 1)) for r in by_year]
 
     woz_rows = (WOZValue.objects.filter(neighborhood__in=neighborhoods, woz_per_sqm__isnull=False, dwellings__gt=0)
                 .values('year').annotate(weighted=Sum(F('woz_per_sqm') * F('dwellings'), output_field=FloatField()),
                                          dwellings=Sum('dwellings')).order_by('year'))
-    woz = [(chain.woz_valuation_year(r['year']), round(r['weighted'] / r['dwellings'], 1)) for r in woz_rows]
-    return {'nvm': nvm, 'woz': woz, 'index': index}
+    woz = [(r['year'], round(r['weighted'] / r['dwellings'], 1)) for r in woz_rows]
+    return {'woz': woz, 'index': index}
 
 
 def price_chart(history):
     """
-    The chart of calculate_price_history: NVM transaction price and WOZ value per m2 when there is
-    one, else the index. Returns (chart geometry or None, unit label).
+    The chart of calculate_price_history: the WOZ value per m2 when there is one, else the index.
+    Returns (chart geometry or None, unit label).
     """
     from . import charts
 
-    prices = [{"key": "nvm", "label": "NVM transaction price", "points": history['nvm']},
-              {"key": "woz", "label": "WOZ value", "points": history['woz']}]
-    if any(s["points"] for s in prices):
-        return charts.line_chart(prices), "EUR per m²"
+    if history['woz']:
+        return charts.line_chart([{"key": "woz", "label": "WOZ value", "points": history['woz']}]), "EUR per m²"
     return charts.line_chart([{"key": "index", "label": "House price index", "points": history['index']}]), "index (base year = 100)"
 
 
@@ -475,7 +468,6 @@ def calculate_property_indicators(adminBund):
 
     DAG edges:  Housing_Supply -> Property
                 Zoning_Status  -> Property
-                Accessibility  -> Property
                 Property       -> Affordability_Stress
                 Property       -> Rent
                 Property       -> House_Price_Index
@@ -515,6 +507,23 @@ def calculate_property_indicators(adminBund):
         'total_buildings': vacancy['total_buildings'] or 0,
         'avg_vacancy_rate': round(avg_vacancy_rate, 1) if avg_vacancy_rate else None,
     }
+
+
+def calculate_modelled_price(adminBund):
+    """
+    Inputs of the modelled-price card: the mean stored modelled price of the unit's dwellings, the mean WOZ
+    level of the same dwellings and the active fit (housing.PriceModel). The card itself is
+    views._build_indicators, which applies the market what-if with chain.market_growth_factor
+    (association-based scenario, upper bound, not a forecast).
+
+    DAG edges:  Accessibility -> Property
+    """
+    from administrative.models import Postcode4, Postcode6
+
+    # a postcode area prices its own dwellings (by their BAG postcode), not the whole neighborhood around it
+    prefix = adminBund.code if isinstance(adminBund, (Postcode4, Postcode6)) else None
+    summary, model = property_price.unit_summary([n.pk for n in neighborhoods_within(adminBund)], postcode_prefix=prefix)
+    return {'summary': summary, 'model': model}
 
 
 # -- Zoning -------------------------------------------------------------------

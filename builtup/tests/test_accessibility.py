@@ -14,7 +14,7 @@ class DistanceDecayTests(SimpleTestCase):
 
     def test_value_at_cutoff_is_f_at_cutoff(self):
         self.assertAlmostEqual(chain.distance_decay(1600, "walk"), chain.F_AT_CUTOFF, places=12)
-        self.assertAlmostEqual(chain.distance_decay(2000, "bike"), chain.F_AT_CUTOFF, places=12)
+        self.assertAlmostEqual(chain.distance_decay(3200, "bike"), chain.F_AT_CUTOFF, places=12)
 
     def test_pinned_midpoint(self):
         # walk: D0 400, Dmax 1600, halfway (1000 m) -> exp(ln(0.05) * 0.5) = sqrt(0.05)
@@ -145,7 +145,7 @@ class NetworkPassTests(TestCase):
                                        geom=LineString((X0 + 700 + 300 * (i - 1), Y0), (X0 + 700 + 300 * i, Y0), srid=SRID))
             prev = 100 + i
         accessibility.clear_network_cache()
-        Facility.objects.create(name="far", type="pharmacy", sourceID="far", geom=Point(X0 + 1900, Y0, srid=SRID))  # ~1.9 km: past the 1.6 km walk cut-off, inside the 2 km bike one
+        Facility.objects.create(name="far", type="pharmacy", sourceID="far", geom=Point(X0 + 1900, Y0, srid=SRID))  # ~1.9 km: past the 1.6 km walk cut-off, inside the 3.2 km bike one
         accessibility.compute(Building.objects.filter(pk=1))
         self.assertEqual(Accessibility.objects.get(building_id=1, mode="walk").distances, {})
         self.assertIn("pharmacy", Accessibility.objects.get(building_id=1, mode="bike").distances)
@@ -204,7 +204,7 @@ class ReceiverFixture:
             for i in range(7)
         ])
         self.near = Building.objects.create(id=1, buildingType="residential", geom=_square(X0, Y0 + 20))
-        # 1.8 km north of the street: outside the 1.6 km walk reach of an amenity on it, inside the 2 km bike reach
+        # 1.8 km north of the street: outside the 1.6 km walk reach of an amenity on it, inside the 3.2 km bike reach
         self.north = Building.objects.create(id=2, buildingType="residential", geom=_square(X0, Y0 + 1800))
         self.received = []
         signals.accessibility_changed.connect(self._receive, dispatch_uid="test_access_changed")
@@ -226,7 +226,7 @@ class AccessibilityReceiverTests(ReceiverFixture, TestCase):
         self.assertGreater(self._score(1, "walk"), 0)
         self.assertGreater(self._score(1, "bike"), 0)
         self.assertIsNone(self._score(2, "walk"))   # beyond the 1.6 km walk reach: not even recomputed
-        self.assertIsNotNone(self._score(2, "bike"))  # within the 2 km bike reach (but off the network: score 0)
+        self.assertIsNotNone(self._score(2, "bike"))  # within the 3.2 km bike reach (but off the network: score 0)
         self.assertIn(("walk", [1]), self.received)
 
     def test_a_second_amenity_raises_the_score(self):
@@ -358,3 +358,43 @@ class AccessibilityContractTests(ReceiverFixture, TestCase):
         self.assertTrue(method.startswith(chain.ACCESS_METHOD))
         self.assertEqual(method, f"{chain.ACCESS_METHOD} {chain._params_hash()}")
         self.assertEqual(len(chain._params_hash()), 8)
+
+
+class MergeClosePointsTests(SimpleTestCase):
+    def test_two_stops_on_either_side_of_a_street_are_one_destination(self):
+        from builtup.calculations.accessibility import merge_close_points
+
+        merged = merge_close_points([(0.0, 0.0), (0.0, 20.0), (500.0, 0.0)])
+        self.assertEqual(merged, [(0.0, 10.0), (500.0, 0.0)])
+
+    def test_the_radius_is_the_named_constant_and_the_edge_counts(self):
+        from builtup.calculations.accessibility import merge_close_points
+
+        self.assertEqual(chain.POI_MERGE_M, 50.0)
+        self.assertEqual(len(merge_close_points([(0.0, 0.0), (50.0, 0.0)])), 1)
+        self.assertEqual(len(merge_close_points([(0.0, 0.0), (50.5, 0.0)])), 2)
+
+    def test_a_row_of_stops_is_not_chained_into_one(self):
+        from builtup.calculations.accessibility import merge_close_points
+
+        row = [(40.0 * i, 0.0) for i in range(6)]       # 40 m apart: each step is within 50 m, the row is 200 m long
+        self.assertGreater(len(merge_close_points(row)), 1)
+
+    def test_the_result_does_not_depend_on_the_input_order(self):
+        from builtup.calculations.accessibility import merge_close_points
+
+        points = [(0.0, 0.0), (30.0, 0.0), (60.0, 0.0), (400.0, 0.0), (420.0, 10.0)]
+        self.assertEqual(merge_close_points(points), merge_close_points(points[::-1]))
+
+    def test_the_merge_changes_the_score_method_stamp(self):
+        self.assertTrue(chain.METHOD_STAMP.startswith("network-decay walk/bike v3"))
+
+
+class LoadPoisMergeTests(TestCase):
+    def test_nearby_stops_of_one_category_are_one_destination_but_other_categories_are_not_merged_with_them(self):
+        for i, (type_, dy) in enumerate((("bus_stop", 0), ("bus_stop", 20), ("bus_stop", 400), ("pharmacy", 0))):
+            Facility.objects.create(name=f"f{i}", type=type_, sourceID=f"m{i}", geom=Point(X0, Y0 + dy, srid=SRID))
+        pois = accessibility.load_pois()
+        self.assertEqual(len(pois["bus_stop"]), 2)             # the pair is one stop, the far one another
+        self.assertEqual(len(pois["pharmacy"]), 1)             # a different category at the same spot stays its own
+        self.assertIn((X0, Y0 + 10.0), [(round(x, 6), round(y, 6)) for x, y in pois["bus_stop"]])

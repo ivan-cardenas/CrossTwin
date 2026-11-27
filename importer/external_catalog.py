@@ -90,6 +90,44 @@ FIELD_MAPPINGS = {
         # CBS marks neighborhoods without a value (e.g. "Buitenland") with -99997 and kin
         "__nodata__": KEA_NODATA,
     },
+    # CBS postcode statistics (PDOK): one row per postcode area. CBS leaves out figures it cannot publish
+    # without identifying people (-99997 and kin) -> null; the WOZ value is published x 1 000 EUR.
+    "pdok_postcode4": {
+        "__geometry__": "geom",
+        "__unique__": "postcode",
+        "__unique_field__": "code",
+        "postcode": "code",
+        "aantalInwoners": "currentPopulation",
+        "aantalPartHuishoudens": "households",
+        "gemiddeldeHuishoudensgrootte": "avgHouseholdSize",
+        "aantalWoningen": "dwellings",
+        "aantalMeergezinsWoningen": "multiFamilyDwellings",
+        "aantalNietBewoondeWoningen": "vacantDwellings",
+        "percentageKoopwoningen": "ownerOccupied_pct",
+        "percentageHuurwoningen": "rental_pct",
+        "gemiddeldeWozWaardeWoning": "meanWOZ_EUR",
+        "__value_scales__": {"gemiddeldeWozWaardeWoning": 1000},
+        "__static__": {"dataYear": 2023},   # the year of the PDOK layer in the catalog entry below
+        "__nodata__": KEA_NODATA,
+    },
+    "pdok_postcode6": {
+        "__geometry__": "geom",
+        "__unique__": "postcode6",
+        "__unique_field__": "code",
+        "postcode6": "code",
+        "aantalInwoners": "currentPopulation",
+        "aantalPartHuishoudens": "households",
+        "gemiddeldeHuishoudensgrootte": "avgHouseholdSize",
+        "aantalWoningen": "dwellings",
+        "aantalMeergezinsWoningen": "multiFamilyDwellings",
+        "aantalNietBewoondeWoningen": "vacantDwellings",
+        "percentageKoopwoningen": "ownerOccupied_pct",
+        "percentageHuurwoningen": "rental_pct",
+        "gemiddeldeWozWaardeWoning": "meanWOZ_EUR",
+        "__value_scales__": {"gemiddeldeWozWaardeWoning": 1000},
+        "__static__": {"dataYear": 2023},
+        "__nodata__": KEA_NODATA,
+    },
     "CBS_Housing": {
         "__unique_fields__": ["city", "year"],
         "__year_source__": "Perioden",
@@ -554,6 +592,38 @@ EXTERNAL_DATA_CATALOG = [
         "requires_bbox": True,
         "bbox_from": "administrative.District",  # area of interest is picked from imported districts
         "requires_model": "administrative.District",
+        "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
+        "enabled": True,
+    },
+    {
+        "key": "pdok_postcode4",
+        "source": "CBS",
+        "category": "Administrative boundaries",
+        "name": "Postcode areas - PC4",
+        "description": "CBS postcode statistics per four-digit postcode area (inhabitants, households, dwellings, tenure, mean WOZ value), with the area polygons.",
+        "target_model": "administrative.Postcode4",
+        "url": "https://service.pdok.nl/cbs/postcode4/2023/wfs/v1_0",  # UPDATE YEAR AS NEEDED (also dataYear in the mapping)
+        "layer": "postcode4:postcode4",
+        "format": "wfs",
+        "requires_bbox": True,
+        "bbox_from": "administrative.City",  # area of interest is picked from imported cities
+        "requires_model": "administrative.City",
+        "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
+        "enabled": True,
+    },
+    {
+        "key": "pdok_postcode6",
+        "source": "CBS",
+        "category": "Administrative boundaries",
+        "name": "Postcode areas - PC6",
+        "description": "CBS postcode statistics per six-character postcode area (a street section). CBS leaves out figures for small areas.",
+        "target_model": "administrative.Postcode6",
+        "url": "https://service.pdok.nl/cbs/postcode6/2023/wfs/v1_0",  # UPDATE YEAR AS NEEDED (also dataYear in the mapping)
+        "layer": "postcode6:postcode6",
+        "format": "wfs",
+        "requires_bbox": True,
+        "bbox_from": "administrative.City",
+        "requires_model": "administrative.City",
         "params": {"srsName": "EPSG:{coordinate_system}".format(coordinate_system=coordinate_system)},
         "enabled": True,
     },
@@ -1624,7 +1694,7 @@ EXTERNAL_DATA_CATALOG += [
 ]
 
 # ══════════════════════════════════════════════════════════════════════════
-# House prices: CBS WOZ per buurt (level) and NVM quarterly reports (market trend)
+# House prices: CBS WOZ per buurt (level)
 # ══════════════════════════════════════════════════════════════════════════
 # One CBS "Kerncijfers wijken en buurten" table per year; the column keys of the
 # mean WOZ value and of the dwelling stock change with the table (checked on
@@ -1645,11 +1715,9 @@ EXTERNAL_DATA_CATALOG.extend(
         "category": "Housing",
         "name": f"WOZ value per neighborhood {year} ({table})",
         "description": (
-            f"CBS mean WOZ value of the dwellings of each neighborhood (valuation date 1 January {year - 1}) and the "
-            "dwelling stock. With the mean BAG dwelling area it gives the WOZ value per m2, and the mean walk/bike "
-            "accessibility of the neighborhood is frozen as the baseline of the price model. "
-            "Import neighborhoods and buildings (and, for the baseline, the accessibility) first; neighborhoods that "
-            "are not stored are skipped, and CBS gives no value below 20 dwellings."),
+            "CBS mean WOZ value of the dwellings of each neighborhood and the dwelling stock. With the mean BAG "
+            "dwelling area it gives the WOZ value per m2. Import neighborhoods and buildings first; neighborhoods "
+            "that are not stored are skipped, and CBS gives no value below 20 dwellings."),
         "target_model": "housing.WOZValue",
         "table_id": table,
         "format": "odata_buurt",
@@ -1660,25 +1728,6 @@ EXTERNAL_DATA_CATALOG.extend(
     }
     for year, table, woz_key, stock_key in _WOZ_TABLES
 )
-
-EXTERNAL_DATA_CATALOG.append({
-    "key": "nvm_market_reports",
-    "source": "nvm",
-    "category": "Housing",
-    "name": "NVM quarterly housing-market reports (PDF)",
-    "description": (
-        "Median transaction price per m2, transaction price, transactions, days on the market and the share sold above "
-        "asking, per NVM region and quarter, read from NVM's 'Woningmarkt kwartaalcijfers' PDFs; the COROP list "
-        "('Gebiedsindeling COROP en gemeenten') maps the municipalities to the regions. The annual mean price per m2 "
-        "drives the House Price Index. The PDFs are not downloaded: NVM's terms allow non-commercial private use only, so "
-        "download them yourself from nvm.nl and put them in the server's NVM_PDF_DIR (default media/nvm). "
-        "Ask NVM before redistributing the figures."),
-    "target_model": "housing.NVMMarketReport",
-    "format": "nvm_pdf",
-    "params": {"source_page": "https://www.nvm.nl/wonen/marktinformatie-wonen/"},
-    "requires_bbox": False,
-    "enabled": True,
-})
 
 # Build a quick-lookup dict
 CATALOG_BY_KEY = {d["key"]: d for d in EXTERNAL_DATA_CATALOG}
@@ -1733,15 +1782,6 @@ SOURCE_INFO = {
         "name": "BIS Nederland",
         "full_name": "Bodemkundig Informatiesysteem (WUR, bodemdata.nl)",
         "description": "Dutch soil data maintained by Wageningen Environmental Research. Open WFS data, no authentication required.",
-        "icon": "globe",
-        "color": "amber",
-        "auth_required": False,
-    },
-
-    "nvm": {
-        "name": "NVM",
-        "full_name": "Nederlandse Vereniging van Makelaars (housing-market reports)",
-        "description": "Quarterly housing-market figures per region from NVM's published PDFs. Not downloaded automatically: NVM's terms allow non-commercial private use only, so put the PDFs in the server's NVM_PDF_DIR yourself.",
         "icon": "globe",
         "color": "amber",
         "auth_required": False,

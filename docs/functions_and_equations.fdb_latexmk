@@ -1,5 +1,5 @@
 # Fdb version 4
-["pdflatex"] 1794492499.96677 "c:/PERSONAL/Github/CrossTwin/docs/functions_and_equations.tex" "functions_and_equations.pdf" "functions_and_equations" 1794492508.96434 2
+["pdflatex"] 1795776643.29173 "c:/PERSONAL/Github/CrossTwin/docs/functions_and_equations.tex" "functions_and_equations.pdf" "functions_and_equations" 1795776651.50757 2
   "C:/Program Files/MiKTeX/fonts/enc/dvips/cm-super/cm-super-ts1.enc" 1001775420 2900 1537cc8184ad1792082cd229ecc269f4 ""
   "C:/Program Files/MiKTeX/fonts/tfm/jknappen/ec/tcrm1095.tfm" 993062508 1460 8005ce585ff351dff78998923504da5e ""
   "C:/Program Files/MiKTeX/fonts/tfm/public/amsfonts/cmextra/cmex7.tfm" 1233951848 1004 54797486969f23fa377b128694d548df ""
@@ -12,6 +12,10 @@
   "C:/Program Files/MiKTeX/fonts/tfm/public/amsfonts/symbols/msbm7.tfm" 1233951854 940 228d6584342e91276bf566bcf9716b83 ""
   "C:/Program Files/MiKTeX/fonts/tfm/public/cm/cmbx10.tfm" 1136765053 1328 c834bbb027764024c09d3d2bf908b5f0 ""
   "C:/Program Files/MiKTeX/fonts/tfm/public/cm/cmbx12.tfm" 1136765053 1324 c910af8c371558dc20f2d7822f66fe64 ""
+  "C:/Program Files/MiKTeX/fonts/tfm/public/cm/cmbx5.tfm" 1136765053 1332 f817c21a1ba54560425663374f1b651a ""
+  "C:/Program Files/MiKTeX/fonts/tfm/public/cm/cmbx6.tfm" 1136765053 1344 8a0be4fe4d376203000810ad4dc81558 ""
+  "C:/Program Files/MiKTeX/fonts/tfm/public/cm/cmbx7.tfm" 1136765053 1336 3125ccb448c1a09074e3aa4a9832f130 ""
+  "C:/Program Files/MiKTeX/fonts/tfm/public/cm/cmbx8.tfm" 1136765053 1332 1fde11373e221473104d6cc5993f046e ""
   "C:/Program Files/MiKTeX/fonts/tfm/public/cm/cmex10.tfm" 1136765053 992 662f679a0b3d2d53c1b94050fdaa3f50 ""
   "C:/Program Files/MiKTeX/fonts/tfm/public/cm/cmmi10.tfm" 1136765053 1528 abec98dbc43e172678c11b3b9031252a ""
   "C:/Program Files/MiKTeX/fonts/tfm/public/cm/cmmi12.tfm" 1136765053 1524 4414a8315f39513458b80dfc63bff03a ""
@@ -110,11 +114,11 @@
   "C:/Users/icard/AppData/Roaming/MiKTeX/tex/latex/translations/dicts/translations-basic-dictionary-english.trsl" 1644048522 5588 0c1628daf15f4411ff1f463114c634a3 ""
   "C:/Users/icard/AppData/Roaming/MiKTeX/tex/latex/translations/translations.sty" 1644048522 44247 2188b95d0ee74e31eca4d316263c58a7 ""
   "C:/Users/icard/AppData/Roaming/MiKTeX/tex/latex/xltabular/xltabular.sty" 1604485412 3623 13474540f7d9568bf6269d154cad18d4 ""
-  "c:/PERSONAL/Github/CrossTwin/docs/functions_and_equations.tex" 1794492490 113909 564c4d0999e8b53e45b6d4374c84a919 ""
-  "functions_and_equations.aux" 1794492507 18911 68c7307ad87fcc5865d9137d6c35dd3d "pdflatex"
-  "functions_and_equations.out" 1794492507 26805 f9c4593934c4ed47e6b1ba1ce9ed64de "pdflatex"
-  "functions_and_equations.tex" 1794492490 113909 564c4d0999e8b53e45b6d4374c84a919 ""
-  "functions_and_equations.toc" 1794492507 10574 affc4f4fe2273eeeaeb37944ed4dd327 "pdflatex"
+  "c:/PERSONAL/Github/CrossTwin/docs/functions_and_equations.tex" 1795712419 148599 67cc044f725d60a2eb34b4bff1978bf4 ""
+  "functions_and_equations.aux" 1795776650 21609 d4301b0425e1ec96a20db9069d6413ee "pdflatex"
+  "functions_and_equations.out" 1795776650 30863 8a61526068a3fb2b7377132002ed109d "pdflatex"
+  "functions_and_equations.tex" 1795712419 148599 67cc044f725d60a2eb34b4bff1978bf4 ""
+  "functions_and_equations.toc" 1795776650 12207 e4cd33a2a3cdf2d369bc663671ef6173 "pdflatex"
   (generated)
   "functions_and_equations.aux"
   "functions_and_equations.log"

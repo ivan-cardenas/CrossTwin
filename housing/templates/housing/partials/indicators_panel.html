@@ -53,7 +53,7 @@
                hx-vals='{"pop_scenario": "{{ pop_scenario|default:"prognose" }}", "pop_growth": "{{ pop_growth|default:0|unlocalize }}"}'
                hx-trigger="input changed delay:200ms"
                hx-target="#indicators-grid"
-               hx-include="#household-size-slider, #alone-slider"/>
+               hx-include=".whatif-only input"/>
       </div>
       <div class="slider-threshold-labels">
         <span>1</span><span>2</span><span>3</span><span>4</span>
@@ -98,7 +98,7 @@
                hx-vals='{"pop_scenario": "{{ pop_scenario|default:"prognose" }}", "pop_growth": "{{ pop_growth|default:0|unlocalize }}"}'
                hx-trigger="input changed delay:200ms"
                hx-target="#indicators-grid"
-               hx-include="#household-size-slider, #alone-slider"/>
+               hx-include=".whatif-only input"/>
       </div>
       <div class="slider-threshold-labels">
         <span>0</span><span>20</span><span>40</span><span>60</span>
@@ -114,6 +114,39 @@
       No share of residents living alone for this area yet — re-import <em>Neighborhoods</em> (CBS Wijken en Buurten) and import <em>One-person households</em> in Retrieve Data.
     </div>
     {% endif %}
+  </div>
+
+  <!-- Market Change what-if: scales the modelled price and its WOZ level (never written) -->
+  <div class="slider-container whatif-only">
+    <div class="slider-header">
+      <div class="slider-header-left">
+        <span class="card-label">Market Change</span>
+        {% info_help "housing.market_growth" %}
+      </div>
+      <div class="slider-value-display">
+        <span id="market-growth-display">{{ indicators.mp_growth|unlocalize }}</span>
+        <span class="slider-unit">% on the WOZ level</span>
+      </div>
+    </div>
+    <div class="slider-zones-container">
+      <div class="slider-zone-wrap">
+        <input id="market-growth-slider"
+               class="zone-slider"
+               type="range"
+               name="market_growth"
+               min="{{ indicators.mp_growth_min|unlocalize }}" max="{{ indicators.mp_growth_max|unlocalize }}" step="0.5"
+               value="{{ indicators.mp_growth|unlocalize }}"
+               {% if not indicators.mp_available %}disabled{% endif %}
+               hx-get="{% url 'housing:recalculate_indicators' level location year %}"
+               hx-vals='{"pop_scenario": "{{ pop_scenario|default:"prognose" }}", "pop_growth": "{{ pop_growth|default:0|unlocalize }}"}'
+               hx-trigger="input changed delay:200ms"
+               hx-target="#indicators-grid"
+               hx-include=".whatif-only input"/>
+      </div>
+      <div class="slider-threshold-labels">
+        <span>-30</span><span>0</span><span>+30</span>
+      </div>
+    </div>
   </div>
 
   <!-- Cards — swap target for recalculate -->

@@ -45,9 +45,11 @@ dependencies = [
     "earthengine-api>=1.7.18",
     "openeo>=0.51.0",
     "pydot>=4.0.1",
-    # Hedonic price model (housing/calculations/price_model.py) and NVM report PDFs (importer/nvm_reports.py)
+    # Hedonic price model (housing/calculations/price_model.py)
     "statsmodels>=0.14.4",
-    "pdfplumber>=0.11.4",
+    "libpysal>=4.15.1",
+    "esda>=2.10.0",
+    "spreg>=1.9.2",
 ]
 
 [project.optional-dependencies]

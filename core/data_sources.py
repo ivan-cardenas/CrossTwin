@@ -40,14 +40,8 @@ OTHER_SOURCES = [
     ("CBS Kerncijfers wijken en buurten 2019-2024 (WOZ value per buurt)", "Statistics Netherlands (CBS)",
      "https://opendata.cbs.nl/ODataApi/OData/{84583NED,84799NED,85039NED,85318NED,85618NED,85984NED}/TypedDataSet",
      "importer/cbs_woz.py (CBS_WOZ_<year> entries) -> housing.WOZValue",
-     "Mean WOZ value of the dwellings (x 1 000 EUR, valuation date 1 January of the year before) and the dwelling stock; "
+     "Mean WOZ value of the dwellings (x 1 000 EUR) and the dwelling stock; "
      "no value below 20 dwellings. Column keys differ per table year."),
-    ("NVM quarterly housing-market reports (PDF)", "NVM (Nederlandse Vereniging van Makelaars)",
-     "https://www.nvm.nl/wonen/marktinformatie-wonen/ (PDFs read from `NVM_PDF_DIR`, not downloaded by CrossTwin)",
-     "importer/nvm_reports.py (nvm_market_reports) -> housing.NVMMarketReport, NVMRegionMapping",
-     "Median transaction price per m2 per region and quarter. NVM's copyright and disclaimer pages allow non-commercial "
-     "private use only and reserve reproduction and redistribution (checked 2026-11-26; robots.txt allows the pages): "
-     "get NVM's written permission before the figures are published or shared. Each row stores the PDF's SHA-256 and the parser version."),
     ("Overpass API (OpenStreetMap)", "OpenStreetMap contributors (ODbL)",
      "https://overpass-api.de/api/interpreter (`OVERPASS_URL`, mirrors in `OVERPASS_MIRRORS`)",
      "importer (osm_* entries)", "Parks, water bodies, amenities, trees."),
@@ -126,6 +120,17 @@ REFERENCES = [
      "http://inspire.ec.europa.eu/codelist/HILUCSValue", "physicalEnv/hilucs.py, builtup/calculations/site.py"),
     ("CORINE", "European Environment Agency, *CORINE Land Cover nomenclature*. https://land.copernicus.eu/",
      "physicalEnv/calculations/landcover.py"),
+    ("Rosen 1974", "Rosen, S. (1974). Hedonic prices and implicit markets: product differentiation in pure "
+     "competition. *Journal of Political Economy* 82(1), 34-55.",
+     "housing/calculations/price_model.py (hedonic fit of ln WOZ per m2 on accessibility), chain.py::modelled_price_per_sqm"),
+    ("Anselin 1988", "Anselin, L. (1988). *Spatial Econometrics: Methods and Models*. Kluwer, Dordrecht "
+     "(spatial error model); PySAL libpysal, esda and spreg (Rey & Anselin 2007, *The Review of Regional Studies* 37(1), 5-27).",
+     "housing/calculations/price_model.py (Moran's I of the residuals, spatial error model)"),
+    ("Moran 1950", "Moran, P.A.P. (1950). Notes on continuous stochastic phenomena. *Biometrika* 37(1/2), 17-23.",
+     "housing/calculations/price_model.py::morans (queen contiguity, permutation p-value)"),
+    ("Roberts et al. 2017", "Roberts, D.R. et al. (2017). Cross-validation strategies for data with temporal, spatial, "
+     "hierarchical, or phylogenetic structure. *Ecography* 40(8), 913-929.",
+     "housing/calculations/price_model.py::_cv_r2 (blocked cross-validation of the functional form)"),
     ("Oke et al. 2017", "Oke, T.R., Mills, G., Christen, A., Voogt, J.A. (2017). *Urban Climates*. Cambridge University Press "
      "(Table 5.1 albedo).", "physicalEnv.SurfaceMaterialProperties"),
     ("Bonafoni & Sekertekin 2020", "Bonafoni, S., Sekertekin, A. (2020). Albedo retrieval from Sentinel-2 by new "

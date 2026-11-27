@@ -13,9 +13,8 @@ CBS gives no value for a buurt with fewer than 20 dwellings or without a WOZ
 value for 85 % of them; those rows are stored with an empty value so the gap
 stays visible. Only neighborhoods already stored are written.
 
-After the rows the mean dwelling area (BAG) and the accessibility baseline are
-filled from the database (housing/calculations/woz.py), so the per-m2 value and
-the baseline are frozen with the import.
+After the rows the mean dwelling area (BAG) is filled from the database
+(housing/calculations/woz.py), so the per-m2 value is derived with the import.
 """
 import logging
 
@@ -111,7 +110,6 @@ def fetch(dataset, bbox=None):
         woz.fill_areas(saved)
         for row in saved:
             row.save()
-        frozen = woz.freeze_baselines(saved)
     return _result("success", f"Imported {len(parsed)} neighborhood WOZ value(s) of {year} from CBS {table_id}: "
-                              f"created {created}, updated {updated}; accessibility baseline frozen for {len(frozen)}.",
+                              f"created {created}, updated {updated}.",
                    created, updated)

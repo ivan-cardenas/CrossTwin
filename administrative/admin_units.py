@@ -12,7 +12,7 @@ from django.conf import settings
 from django.contrib.gis.gdal import CoordTransform, SpatialReference
 from django.contrib.gis.geos import Point
 
-from .models import Province, City, District, Neighborhood
+from .models import Province, City, District, Neighborhood, Postcode4, Postcode6
 
 
 @functools.lru_cache(maxsize=1)
@@ -29,7 +29,16 @@ ADMIN_LEVELS = {
     'city':         (City,         'cityName'),
     'district':     (District,     'districtName'),
     'neighborhood': (Neighborhood, 'neighborhoodName'),
+    # Postcode areas cut across the chain above (a PC4 spans several neighborhoods and often several
+    # municipalities): they are units you can select and aggregate by, but not part of the hierarchy that
+    # a point resolves through (HIERARCHY_LEVELS) or that cascades population.
+    'postcode4':    (Postcode4,    'code'),
+    'postcode6':    (Postcode6,    'code'),
 }
+
+# The nested chain, largest to smallest: what a map point resolves through (smallest first).
+HIERARCHY_LEVELS = ('province', 'city', 'district', 'neighborhood')
+POSTCODE_MODELS = (Postcode4, Postcode6)
 
 
 def resolve_admin_unit(level, name):
@@ -57,11 +66,25 @@ def resolve_admin_unit_at_point(lng, lat):
     point = Point(lng, lat, srid=4326)
     point.transform(_wgs84_to_storage())
 
-    for level, (model, _name_field) in reversed(list(ADMIN_LEVELS.items())):
+    for level in reversed(HIERARCHY_LEVELS):
+        model = ADMIN_LEVELS[level][0]
         unit = model.objects.filter(geom__contains=point).first()
         if unit:
             return level, unit
     return None, None
+
+
+def postcodes_at_point(lng, lat):
+    """{'postcode4': Postcode4 or None, 'postcode6': Postcode6 or None} containing a WGS84 (lng, lat) point."""
+    point = Point(lng, lat, srid=4326)
+    point.transform(_wgs84_to_storage())
+    return {level: ADMIN_LEVELS[level][0].objects.filter(geom__contains=point).first()
+            for level in ('postcode4', 'postcode6')}
+
+
+def _anchor(unit):
+    """A point that lies on the unit (point on surface, so it is inside even for a concave area)."""
+    return unit.geom.point_on_surface
 
 
 def city_of(unit):
@@ -75,6 +98,9 @@ def city_of(unit):
         return unit.city
     if isinstance(unit, Neighborhood):
         return unit.district.city if unit.district else None
+    if isinstance(unit, POSTCODE_MODELS):
+        # a postcode area can span cities: the one under its point on surface
+        return City.objects.filter(geom__contains=_anchor(unit)).first()
     return None
 
 
@@ -88,6 +114,8 @@ def cities_within(unit):
         return City.objects.filter(pk=unit.city_id)
     if isinstance(unit, Neighborhood):
         return City.objects.filter(pk=unit.district.city_id)
+    if isinstance(unit, POSTCODE_MODELS):
+        return City.objects.filter(geom__intersects=unit.geom)
     raise TypeError(f"cities_within: unsupported unit type {type(unit)!r}")
 
 
@@ -101,6 +129,15 @@ def neighborhoods_within(unit):
         return Neighborhood.objects.filter(district=unit)
     if isinstance(unit, Neighborhood):
         return Neighborhood.objects.filter(pk=unit.pk)
+    if isinstance(unit, Postcode6):
+        # a street section is smaller than a neighborhood: the one it lies in
+        return Neighborhood.objects.filter(geom__contains=_anchor(unit))
+    if isinstance(unit, Postcode4):
+        # the neighborhoods whose point on surface lies in the area (a neighborhood cut by the border
+        # belongs to the area that holds its middle, so none is counted twice)
+        from django.contrib.gis.db.models.functions import PointOnSurface
+
+        return Neighborhood.objects.annotate(anchor_pt=PointOnSurface("geom")).filter(anchor_pt__within=unit.geom)
     raise TypeError(f"neighborhoods_within: unsupported unit type {type(unit)!r}")
 
 
@@ -118,4 +155,7 @@ def province_of(unit):
         return unit.city.province
     if isinstance(unit, Neighborhood):
         return unit.district.city.province
+    if isinstance(unit, POSTCODE_MODELS):
+        city = city_of(unit)
+        return city.province if city else None
     raise TypeError(f"province_of: unsupported unit type {type(unit)!r}")

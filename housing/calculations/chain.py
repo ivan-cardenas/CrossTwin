@@ -274,18 +274,15 @@ def dwelling_gap(needed, stock):
     return needed - stock
 
 
-# ── House prices: CBS WOZ level and NVM market trend ─────────────────
+# ── House prices: CBS WOZ level ─────────────────────────────────────
 #
-#   woz_per_sqm   = mean WOZ value of the neighbourhood's dwellings / their mean floor area
-#   annual price  = mean of the year's quarterly NVM median price per m2 (dwelling type "Totaal")
-#   index         = 100 x annual price / annual price of the region's base year
+#   woz_per_sqm   = mean WOZ value of the area's dwellings / their mean floor area
 #
-# The WOZ value is the CBS "Kerncijfers wijken en buurten" mean (rounded to
-# 1 000 EUR by CBS, only for regions with at least 20 dwellings and a WOZ value
-# for 85 % of them). The table of year Y holds the WOZ value at the valuation
-# date 1 January of Y-1. The floor area is the BAG usable area (oppervlakte,
-# builtup.Property.livingArea else grossArea) of the dwellings inside the
-# neighbourhood: a ratio of two means, not a mean of per-dwelling ratios.
+# The WOZ value is the CBS mean (rounded to 1 000 EUR for the neighborhood tables, only for regions
+# with at least 20 dwellings and a WOZ value for 85 % of them). The newest table year available is
+# used as it is: no valuation-date shift is applied. The floor area is the BAG usable area
+# (oppervlakte, builtup.Property.livingArea else grossArea) of the dwellings of the area: a ratio of
+# two means, not a mean of per-dwelling ratios.
 
 # Smallest and largest plausible mean dwelling area (m2) for the ratio above: the
 # lower bound is the Bbl minimum (MIN_DWELLING_AREA_SQM); 500 m2 only guards
@@ -293,15 +290,6 @@ def dwelling_gap(needed, stock):
 WOZ_AREA_MAX_SQM = 500.0
 
 WOZ_METHOD = "mean WOZ / mean BAG dwelling area (v1)"
-# Years used by the index need all four quarters of NVM before they count as a full year.
-NVM_QUARTERS_PER_YEAR = 4
-INDEX_BASE = 100.0
-INDEX_METHOD = "NVM median price per m2, annual mean of quarters, base year = 100 (v1)"
-
-
-def woz_valuation_year(table_year):
-    """Year of the WOZ valuation date (1 January) of a CBS Kerncijfers table."""
-    return table_year - 1
 
 
 def woz_per_sqm(avg_woz_eur, mean_area_sqm):
@@ -316,25 +304,132 @@ def woz_per_sqm(avg_woz_eur, mean_area_sqm):
     return avg_woz_eur / mean_area_sqm
 
 
-def annual_price_per_sqm(quarterly_prices):
+# ── Accessibility -> modelled price (association-based, Phase 4 of docs/ACCESSIBILITY_PLAN.md) ──
+#
+#   modelled = S x (1 + g) x exp( a + SUM_t beta_t T(A_t) + SUM_k gamma_k z_k + mu_c )
+#
+# One equation for the whole city (housing.PriceModel.prediction), calibrated on the CBS WOZ value per m2 of the
+# PC6 postcode areas; a dwelling's price is that equation applied to the dwelling's own variables. The WOZ value
+# of its area is not an input of the price.
+#
+#   a, mu_c     intercept and municipality effect of the fit (mu_c = 0 for a fit on one municipality)
+#   t           a term "mode:category": how reachable one kind of amenity is (supermarket, shop, school,
+#               bus stop, train station, park, ...) on foot or by bicycle; A_t is the building's value of
+#               that category, 0-100 (builtup chain.category_value x 100), beta_t its coefficient: only the terms
+#               that survived the redundancy and influence screening of the fit have one
+#   T           the functional form of the fit: identity ("linear") or ln(1 + A)
+#   z_k         the controls: construction year, apartment share, rental share, energy label, socio-economic
+#               status, distance to the municipal centre; a control a dwelling lacks is the fit's mean of it
+#   S           Duan's smearing factor, so that the median-like exp() reproduces the level of the calibration data
+#   g           what-if market change (0 for the stored value)
+#
+# The betas come from a cross-section of postcode areas, so the result reads as an association, not as
+# the causal effect of one amenity: it credits accessibility with everything that goes with it
+# (prestige, jobs, older housing), and the WOZ value lags the market. Every modelled price carries
+# PRICE_LABEL. Adding an amenity changes the A_t of the buildings near it and with them the price, through the
+# same betas everywhere.
+
+PRICE_METHOD = "hedonic city-wide equation on amenity categories, calibrated on WOZ per PC6 (v3)"
+PRICE_LABEL = "association-based scenario (upper bound), not a forecast"
+PRICE_FORMS = ("linear", "log1p")
+TERM_SEP = ":"
+
+# What-if range of the dashboard's market slider (never written).
+MARKET_GROWTH_MIN, MARKET_GROWTH_MAX = -30.0, 30.0       # % change of the market on top of the model
+SCORE_MIN, SCORE_MAX = 0.0, 100.0
+
+
+def term_key(mode, category):
+    """The name of one accessibility term of the price model: 'walk:supermarket'."""
+    return f"{mode}{TERM_SEP}{category}"
+
+
+def split_term(term):
+    """(mode, category) of a term name."""
+    mode, _, category = term.partition(TERM_SEP)
+    return mode, category
+
+
+def candidate_terms():
+    """Every term the price model can use: each mode x each amenity category of the accessibility score."""
+    from builtup.calculations import chain as access
+
+    return [term_key(mode, category) for mode in access.MODES for category in access.CATEGORIES]
+
+
+def term_values(distances, mode):
     """
-    Mean of a year's quarterly median prices per m2, EUR/m2. `quarterly_prices`
-    is the list of the quarters that have a value; fewer than four quarters
-    give None (a part-year mean would mix seasons).
+    {term: value 0-100} of one building and mode from its stored Accessibility.distances
+    ({category: [network metres to the k nearest]}). A category with no reachable amenity is 0, as in the score.
     """
-    prices = [p for p in quarterly_prices if p]
-    if len(prices) < NVM_QUARTERS_PER_YEAR:
+    from builtup.calculations import chain as access
+
+    return {term_key(mode, category): 100.0 * access.category_value((distances or {}).get(category), mode, omegas)
+            for category, (_weight, omegas) in access.CATEGORIES.items()}
+
+
+def access_transform(score, form):
+    """T(A): the score as the fit entered it. None stays None."""
+    import math
+
+    if score is None:
         return None
-    return sum(prices) / len(prices)
+    if form == "log1p":
+        return math.log1p(max(score, SCORE_MIN))
+    if form == "linear":
+        return float(score)
+    raise ValueError(f"unknown functional form {form!r}")
 
 
-def price_index(price, base_price):
+def market_growth_factor(growth_pct):
+    """1 + g: the what-if market change as a factor on the price."""
+    return 1.0 + growth_pct / 100.0
+
+
+def log_price(prediction, access, controls, city, form=None):
     """
-    House price index (base year = 100) from an annual price per m2 and the base
-    year's price. None without both (a stored index is then kept).
-
-    DAG edge: Market_Reports -> House_Price_Index
+    ln of the modelled price before smearing: a + SUM beta T(A) + SUM gamma z + mu_c, from `prediction`
+    (PriceModel.prediction). `access` is {term: value}, `controls` {name: value or None}, `city` the municipality id.
+    None when the equation cannot be applied: no intercept, a term without a value (the building has no stored
+    accessibility), a control that neither the dwelling nor the fit has, or a municipality the fit has no effect for.
     """
-    if not price or not base_price or price <= 0 or base_price <= 0:
+    form = form or prediction.get("form", "linear")
+    intercept, terms = prediction.get("intercept"), prediction.get("terms") or {}
+    if intercept is None or not terms:
         return None
-    return INDEX_BASE * price / base_price
+    total = intercept
+    for term, beta in terms.items():
+        value = access.get(term)
+        if beta is None or value is None:
+            return None
+        total += beta * access_transform(value, form)
+    for name, gamma in (prediction.get("controls") or {}).items():
+        value = controls.get(name)
+        if value is None:
+            value = (prediction.get("control_means") or {}).get(name)
+        if value is None or gamma is None:
+            return None
+        total += gamma * value
+    cities = prediction.get("cities") or {}
+    if cities:
+        if city is None or str(city) not in cities:
+            return None
+        total += cities[str(city)]
+    return total
+
+
+def modelled_price_per_sqm(prediction, access, controls, city, form=None, growth_pct=0.0):
+    """
+    Modelled price per m2 of a dwelling, EUR/m2: association-based scenario (upper bound),
+    not a forecast. The stored value uses growth 0; the dashboard's market slider changes only that.
+
+    None when the equation cannot be applied (the stored price is kept).
+
+    DAG edge: Accessibility -> Property
+    """
+    import math
+
+    value = log_price(prediction, access, controls, city, form)
+    if value is None:
+        return None
+    return math.exp(value) * prediction.get("smearing", 1.0) * market_growth_factor(growth_pct)

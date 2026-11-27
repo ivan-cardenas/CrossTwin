@@ -77,9 +77,35 @@ def park_access_points(geometry, spacing_m=PARK_ACCESS_SPACING_M, max_points=PAR
     return points
 
 
+def merge_close_points(points, radius_m=chain.POI_MERGE_M):
+    """
+    Amenities of one category within `radius_m` of each other become one destination at their centroid.
+    Greedy and deterministic: the points are taken in sorted order, each unmerged point gathers the unmerged
+    ones within the radius of it (no chaining: a row of stops every 40 m is several destinations, not one).
+    """
+    if len(points) < 2:
+        return list(points)
+    import numpy as np
+    from scipy.spatial import cKDTree
+
+    ordered = np.array(sorted(points), dtype=float)
+    tree = cKDTree(ordered)
+    taken = np.zeros(len(ordered), dtype=bool)
+    merged = []
+    for i in range(len(ordered)):
+        if taken[i]:
+            continue
+        group = [j for j in tree.query_ball_point(ordered[i], radius_m) if not taken[j]]
+        taken[group] = True
+        centre = ordered[group].mean(axis=0)
+        merged.append((float(centre[0]), float(centre[1])))
+    return merged
+
+
 def load_pois(box=None):
     """
-    {category: [(x, y), ...]} in the project CRS from the stored facilities and parks;
+    {category: [(x, y), ...]} in the project CRS from the stored facilities and parks (amenities of a category within
+    chain.POI_MERGE_M of each other merged into one destination, parks excepted);
     only those overlapping `box` (a GEOS polygon) when given: an amenity outside the buildings'
     extent widened by the cut-off cannot be reached, as network distance >= straight distance.
     """
@@ -99,7 +125,8 @@ def load_pois(box=None):
     for geom in parks.values_list("geom", flat=True).iterator(chunk_size=500):
         if geom:
             pois.setdefault("park", []).extend(park_access_points(shapely.from_wkb(bytes(geom.wkb))))
-    return pois
+    return {category: points if category in chain.MERGE_EXEMPT else merge_close_points(points)
+            for category, points in pois.items()}
 
 
 # ── network ────────────────────────────────────────────────────────────

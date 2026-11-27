@@ -42,6 +42,90 @@
     lonely.addEventListener('input', e => show(parseFloat(e.target.value)));
   }
 
+  // Modelled-price what-if (never written): live read-out of the market-change slider.
+  // The grid is recalculated by htmx on every input event.
+  (function () {
+    const el = document.getElementById('market-growth-slider');
+    if (!el) return;
+    const show = () => {
+      const d = document.getElementById('market-growth-display');
+      const v = parseFloat(el.value);
+      if (d) d.textContent = (v > 0 ? '+' : '') + v.toFixed(1);
+    };
+    el.addEventListener('input', show);
+    show();
+  })();
+
+  // Recalculate the indicator grid, so the modelled-price card shows what was just written.
+  function refreshCard() {
+    const slider = document.getElementById('household-size-slider') || document.getElementById('market-growth-slider');
+    if (slider && window.htmx) window.htmx.trigger(slider, 'input');
+  }
+
+  // Staff buttons of the modelled-price card (fit / reprice). The card is swapped by htmx, so the
+  // handler is delegated once on the body.
+  if (!window._housingPriceModelListenerAttached) {
+    document.body.addEventListener('click', function (evt) {
+      const btn = evt.target.closest('[data-price-model-url]');
+      if (!btn) return;
+      const card = btn.closest('#modelled-price-card');
+      const status = card && card.querySelector('.pm-status');
+      const token = (document.cookie.match(/(?:^|; )csrftoken=([^;]*)/) || [])[1] || '';
+      card.querySelectorAll('.pm-btn').forEach(b => { b.disabled = true; });
+      if (status) status.textContent = 'Working…';
+      const body = new URLSearchParams();
+      if (btn.dataset.priceModelMode) body.set('mode', btn.dataset.priceModelMode);
+      fetch(btn.dataset.priceModelUrl, { method: 'POST', body, headers: { 'X-CSRFToken': decodeURIComponent(token) } })
+        .then(r => r.json().then(data => ({ ok: r.ok, data })))
+        .then(({ ok, data }) => {
+          if (!ok) throw new Error(data.error || 'Failed');
+          if (data.message) { if (status) status.textContent = data.message; return; }
+          if (status) status.textContent = data.exploratory
+            ? 'Exploratory fit ' + data.id + ' stored (n = ' + data.n + ', ' + data.terms_kept + ' of ' + data.terms_candidates + ' terms, Moran p ' + data.morans_p.toFixed(3) + '): not applied, not interpretable.'
+            : 'Model ' + data.id + ' (' + data.terms_kept + ' of ' + data.terms_candidates + ' amenity terms kept): ' + data.repriced + ' dwellings repriced.';
+          refreshCard();
+        })
+        .catch(err => { if (status) status.textContent = err.message; })
+        .finally(() => { card.querySelectorAll('.pm-btn').forEach(b => { b.disabled = false; }); });
+    });
+    window._housingPriceModelListenerAttached = true;
+  }
+
+  // "Add amenity": switch the map to Edit mode, make the amenity layer editable (staff) and open the new-object
+  // form, where the amenity is placed on the map. Saving it recomputes the accessibility around it and the
+  // modelled prices inside the same request (builtup/signals.py -> housing/signals.py); the card then refreshes.
+  if (!window._housingAddAmenityListenerAttached) {
+    document.body.addEventListener('click', function (evt) {
+      const btn = evt.target.closest('[data-add-amenity]');
+      if (!btn) return;
+      const card = btn.closest('#modelled-price-card');
+      const status = card && card.querySelector('.pm-status');
+      const say = text => { if (status) status.textContent = text; };
+      if (typeof setMapMode !== 'function' || typeof startCreate !== 'function') {
+        say('Open the map to place an amenity.');
+        return;
+      }
+      const key = btn.dataset.addAmenity;
+      const token = (document.cookie.match(/(?:^|; )csrftoken=([^;]*)/) || [])[1] || '';
+      fetch('/api/settings/editable/', {
+        method: 'POST', body: new URLSearchParams({ key, enabled: 'on' }),
+        headers: { 'X-CSRFToken': decodeURIComponent(token) },
+      })
+        .then(r => {
+          if (!r.ok || !r.headers.get('HX-Trigger')) throw new Error('Log in as a staff user to add amenities.');
+          setMapMode('edit');
+          startCreate(key);
+          say('Pick the type, place the amenity on the map and save.');
+        })
+        .catch(err => say(err.message));
+    });
+    document.body.addEventListener('feature-saved', function (evt) {
+      const layer = evt.detail && evt.detail.layer;
+      if (layer === 'builtup.Facility' || layer === 'builtup.Building') refreshCard();
+    });
+    window._housingAddAmenityListenerAttached = true;
+  }
+
   // initGauges needs to be global so htmx:afterSwap can call it
   window.initGauges = function() {
     document.querySelectorAll('[data-gauge-id]').forEach(card => {

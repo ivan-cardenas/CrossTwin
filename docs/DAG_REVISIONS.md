@@ -11,6 +11,16 @@ A dated log of every change to the DPSIR causal graph: what changed, why, and wh
 - **Lagged edge** `[lag=1, style=dashed]`. The cause acts one planning step later (a feedback). It is left out of the acyclicity check and never implemented by a receiver, because a receiver would close the loop within one save. Each lagged edge is argued here and listed in `core/test_dag.py::LAGGED_EDGES`.
 - **Counting.** Distinct `source -> target` pairs, legend excluded. `core/test_dag.py::parse_dag` is the reference parser.
 
+## 2026-11-27: `Market_Reports -> House_Price_Index` removed
+
+NVM market reports are no longer used (the reports' terms allow non-commercial private use only and the figures are not needed once the price level is the CBS WOZ value of the PC6 area). The node `Market_Reports` and its edge are removed from `core/DAG.dot`; `House_Price_Index` is a stored (imported or manual) value again, its derived fields, `NVMMarketReport`, `NVMRegionMapping`, the receivers `nvm_report_changed` and `nvm_mapping_changed` and `importer/nvm_reports.py` are deleted (migration `housing/0016`).
+
+| change | edge | status |
+|---|---|---|
+| removed | `Market_Reports -> House_Price_Index` | was implemented |
+
+**Consequences.** Acyclicity is unaffected (`Market_Reports` had no incoming edge). Coverage: 106 edges, 68 implemented (64 %), 7 partial, 31 gaps. `Accessibility -> Property` stays implemented; its equation is now a sum over amenity categories instead of two aggregate scores, and its what-if sliders (accessibility effect, accessibility change) are removed.
+
 ## 2026-11-26: `Market_Reports -> House_Price_Index` added
 
 A driver node `Market_Reports` (housing: NVM quarterly market reports) is added. `House_Price_Index` had two incoming edges (`Housing_Demand`, `Property`), both gaps, and `HousePriceIndex.index_value` was a flat typed input: nothing in the graph said where observed prices come from. The market trend is measured (NVM's median transaction price per m² per region and quarter, stored in `housing.NVMMarketReport`), so the node meets the node convention. The CBS WOZ value per buurt (`housing.WOZValue`) is the price *level* for the Phase 4 hedonic model and is not a node: it is read only by that model (`docs/ACCESSIBILITY_PLAN.md`).

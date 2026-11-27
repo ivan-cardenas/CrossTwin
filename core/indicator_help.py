@@ -292,9 +292,24 @@ HELP = {
     "housing.hpi": {
         "title": "House Price Index",
         "what": "How house prices move over time, relative to a base year set to 100.",
-        "how": "Average index value over the reporting neighborhoods for the year; year-on-year change compares it with last year's average for the same neighborhoods. Where NVM market reports are loaded, the index is the region's annual mean transaction price per m² over its first complete year. The chart plots that NVM price and the CBS mean WOZ value per m² (weighted by dwellings, drawn at its valuation date, 1 January of the year before the CBS table) by year; without them it plots the index. The two prices differ in level: WOZ is an assessed value, NVM a median of sales.",
+        "how": "Average stored index value over the reporting neighborhoods for the year; year-on-year change compares it with last year's average for the same neighborhoods. The chart plots the CBS mean WOZ value per m² (weighted by dwellings) at each CBS table year as published, with no shift to a valuation date; without WOZ values it plots the index.",
         "eq": ["YoY change = {this year − last year | last year} × 100 %"],
         "note": "An index of 120 means prices are 20 % above the base year.",
+    },
+    "housing.modelled_price": {
+        "title": "Modelled Price",
+        "what": "What the dwellings of the area would sell for per m², from one price equation for the whole city that is calibrated on the CBS WOZ values per postcode area and uses how reachable each kind of amenity is.",
+        "how": "A hedonic fit on the PC6 postcode areas relates ln WOZ per m² to the access to each amenity category (supermarket, shop, pharmacy, GP, hospital, school, childcare, library, sport, bus stop, tram/metro stop, train station, park), on foot and by bicycle, with controls for construction year, apartment share, rental share, energy label, socio-economic status and distance to the municipal centre (the card lists each with the price change per step, e.g. +10 years of construction year), and municipality effects (weighted least squares, errors clustered by municipality or neighborhood). Before the fit every term is screened: terms that hardly vary, that repeat another term (|r| ≥ 0.9), that are collinear with the others (VIF > 10) or that have no detectable influence (not significant at 10 % or under 0.5 % of price per standard deviation) are left out, and the card lists each with its reason. The fit tests its residuals for spatial autocorrelation (Moran's I) and uses a spatial error model when they fail, and compares a linear and a logarithmic form. The same intercept, coefficients and municipality effects are then applied to every dwelling's own variables: the WOZ value of its area is what the model was calibrated on, not an input of its price. A dwelling without a stored accessibility keeps its stored value; a control a dwelling lacks is replaced by its mean in the fit.",
+        "eq": [
+            "Price = S × (1 + change) × e^(a + Σ β × T(A) + Σ γ × z + μ)",
+        ],
+        "note": "Association-based scenario (upper bound), not a forecast. The coefficients come from a cross-section of postcode areas, so accessibility is credited with everything that goes with it (prestige, jobs, older housing), and WOZ lags the market. S is Duan's smearing factor, which makes the model reproduce the WOZ level it was calibrated on. Local differences the variables do not explain are not carried into the price. The observed price per m² is not touched. To read what one amenity does, add it with the Add amenity button: the scores around it and the modelled prices are recomputed.",
+    },
+    "housing.market_growth": {
+        "title": "Market Change",
+        "what": "A what-if change of the whole market on top of the WOZ level.",
+        "how": "Multiplies every modelled price by 1 + the slider. It moves the level, not the accessibility effect. Nothing is written.",
+        "eq": ["Price × (1 + change / 100)"],
     },
     "housing.new_units": {
         "title": "New Housing Units",
@@ -387,7 +402,7 @@ HELP = {
     "builtup.accessibility": {
         "title": "Network Accessibility",
         "what": "How well the buildings of the unit reach everyday destinations (shops, health care, schools, transit stops, parks) along the street network, on foot and by bicycle.",
-        "how": "For every building, the network distance to the nearest amenities of each category is measured on the OpenStreetMap walk or bike network (a building's own offset to the street included). Each amenity counts fully within a short walk (400 m; 800 m by bike) and fades to nothing at the cut-off (1.6 km; 2 km by bike). Categories are weighted (food, health, transit and parks most), and a second or third shop adds less than the first. The card shows the mean over the unit's buildings. A new amenity can only raise a score.",
+        "how": "For every building, the network distance to the nearest amenities of each category is measured on the OpenStreetMap walk or bike network (a building's own offset to the street included). Each amenity counts fully within a short walk (400 m; 800 m by bike) and fades to nothing at the cut-off (1.6 km; 3.2 km by bike). Categories are weighted (food, health, transit and parks most), and a second or third shop adds less than the first. The card shows the mean over the unit's buildings. A new amenity can only raise a score.",
         "eq": [
             "Value of a distance d = 1 if d ≤ D₀; = exp(−λ (d − D₀)) up to the cut-off; = 0 beyond",
             "Score = 100 × {Σ category weight × value of the category | Σ category weight}",

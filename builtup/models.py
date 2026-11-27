@@ -472,6 +472,12 @@ class Property(models.Model):
     # Not derived in save(): builtup must not import housing. housing/signals.py
     # writes it (DAG edge Household_Size -> Property) for dwellings only.
     residents = models.FloatField(null=True, blank=True, help_text="Estimated residents: the city's average persons per home (CBS household size), for dwellings; set by housing/signals.py")
+    # Written by housing/signals.py (DAG edge Accessibility -> Property) for dwellings only, like residents:
+    # builtup must not import housing, so priceModel is a lazy string reference and nothing here derives it.
+    modelledPrice_EUR_per_sqm = models.FloatField(null=True, blank=True, help_text="Modelled price per m2: the postcode area's WOZ value per m2 x exp(sum of beta x change in each accessibility term). Association-based scenario (upper bound), not a forecast; the observed unitaryPrice_EUR_per_sqm is untouched")
+    # SET_NULL on purpose (not the DO_NOTHING of spatial models): deleting a fit must not be blocked by, or delete, the prices it wrote.
+    priceModel = models.ForeignKey("housing.PriceModel", null=True, blank=True, on_delete=models.SET_NULL, related_name="+", help_text="Fit the modelled price used")
+    priceMethod = models.CharField(max_length=255, blank=True, default="", help_text="Method, WOZ year, market factor and label of the modelled price")
     last_updated = models.DateTimeField(default=timezone.now)
     geom = models.PointField(srid=CoordinateSystem)
     
