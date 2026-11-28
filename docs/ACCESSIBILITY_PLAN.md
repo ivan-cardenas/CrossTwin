@@ -22,7 +22,7 @@ Funda and Pararius are **not** scraped (their terms forbid it). A licensed expor
 |---|---|---|
 | Routing | pandana, optional `access` extra | Spike result: pandana 0.8.1 installs from a wheel on Python 3.12/Windows, so the scipy fallback was not needed. |
 | Modes | walk and bike, OSM graph | |
-| Reach | travel time, same for both modes: full value to 5 min, cut-off 15 min (Moreno et al. 2021); distances follow from speed (walk 4.8 km/h: 400 m / 1.2 km; bike 15 km/h: 1.25 / 3.75 km) | Bike cut-off cut from 5 km to 2 km (2026-11-25) so one map edit recomputes a bounded area; replaced on 2026-11-28 by a 15 min cut-off in both modes (bike 3.75 km, method v4). Frozen price baselines made with the 2 km cut-off must be re-frozen. |
+| Reach | travel time, same for both modes: cut-off 15 min (Moreno et al. 2021), from speed 1.2 km walk (4.8 km/h) / 3.75 km bike (15 km/h); full value to 100 m walk / 400 m bike | Bike cut-off cut from 5 km to 2 km (2026-11-25) so one map edit recomputes a bounded area; replaced on 2026-11-28 by a 15 min cut-off in both modes (bike 3.75 km, method v5). Frozen price baselines made with the 2 km cut-off must be re-frozen. |
 | Prices | CBS WOZ per PC6 postcode area (level; newest year available, no valuation-date shift) | NVM removed 2026-11-27. |
 | Reading of the price result | association-based scenario, **upper bound**, not a forecast | A cross-neighbourhood fit credits accessibility with everything correlated with it (prestige, jobs, older housing); WOZ also lags the market. |
 

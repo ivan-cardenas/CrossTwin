@@ -9,16 +9,16 @@ from builtup.calculations import chain
 class DistanceDecayTests(SimpleTestCase):
     def test_full_value_inside_d0(self):
         self.assertEqual(chain.distance_decay(0, "walk"), 1.0)
-        self.assertEqual(chain.distance_decay(400, "walk"), 1.0)
-        self.assertEqual(chain.distance_decay(1250, "bike"), 1.0)
+        self.assertEqual(chain.distance_decay(100, "walk"), 1.0)
+        self.assertEqual(chain.distance_decay(400, "bike"), 1.0)
 
     def test_value_at_cutoff_is_f_at_cutoff(self):
         self.assertAlmostEqual(chain.distance_decay(1200, "walk"), chain.F_AT_CUTOFF, places=12)
         self.assertAlmostEqual(chain.distance_decay(3750, "bike"), chain.F_AT_CUTOFF, places=12)
 
     def test_pinned_midpoint(self):
-        # walk: D0 400, Dmax 1200 (15 min), halfway (800 m) -> exp(ln(0.05) * 0.5) = sqrt(0.05)
-        self.assertAlmostEqual(chain.distance_decay(800, "walk"), math.sqrt(0.05), places=12)
+        # walk: D0 100, Dmax 1200 (15 min), halfway (650 m) -> exp(ln(0.05) * 0.5) = sqrt(0.05)
+        self.assertAlmostEqual(chain.distance_decay(650, "walk"), math.sqrt(0.05), places=12)
 
     def test_zero_beyond_cutoff_or_unreachable(self):
         self.assertEqual(chain.distance_decay(1200.01, "walk"), 0.0)
@@ -41,7 +41,7 @@ class ScoreTests(SimpleTestCase):
         # Only a supermarket at <= D0: that category's weight share of the total weight.
         weight_sum = sum(w for w, _ in chain.CATEGORIES.values())
         expected = 100.0 * chain.CATEGORIES["supermarket"][0] / weight_sum
-        self.assertAlmostEqual(chain.accessibility_score({"supermarket": [250.0]}, "walk"), expected, places=9)
+        self.assertAlmostEqual(chain.accessibility_score({"supermarket": [90.0]}, "walk"), expected, places=9)
 
     def test_further_amenities_of_a_category_weigh_less(self):
         one = chain.category_value([100.0], "walk", (1.0, 0.5, 0.25))
@@ -71,7 +71,7 @@ class ScoreTests(SimpleTestCase):
         self.assertEqual(chain.CUTOFF_MIN, 15.0)
         for mode in chain.MODES:
             self.assertAlmostEqual(chain.access_minutes(chain.CUTOFF_M[mode], mode), 15.0, places=1)
-            self.assertAlmostEqual(chain.access_minutes(chain.FULL_VALUE_M[mode], mode), 5.0, places=1)
+        self.assertEqual(chain.FULL_VALUE_M, {"walk": 100.0, "bike": 400.0})
         self.assertGreater(chain.CUTOFF_M["bike"], chain.CUTOFF_M["walk"])
         self.assertIsNone(chain.access_minutes(None, "bike"))
 
@@ -395,7 +395,7 @@ class MergeClosePointsTests(SimpleTestCase):
         self.assertEqual(merge_close_points(points), merge_close_points(points[::-1]))
 
     def test_the_merge_changes_the_score_method_stamp(self):
-        self.assertTrue(chain.METHOD_STAMP.startswith("network-decay walk/bike v4"))
+        self.assertTrue(chain.METHOD_STAMP.startswith("network-decay walk/bike v5"))
 
 
 class LoadPoisMergeTests(TestCase):
