@@ -1190,3 +1190,35 @@ input[type="range"].zone-slider:focus-visible { outline: 1px solid var(--accent)
 .pm-terms table { border-collapse: collapse; margin-top: 4px; }
 .pm-terms th, .pm-terms td { text-align: left; padding: 2px 10px 2px 0; font-weight: 400; }
 .pm-terms th { color: var(--text-secondary); }
+
+/* HPI sliders sit under the chart: low-profile variant */
+.slider-container.hpi-compact { padding: 4px 10px; margin: 6px 0 0; }
+.slider-container.hpi-compact .slider-header { margin-bottom: 2px; }
+.slider-container.hpi-compact .slider-zones-container { margin: 0; }
+.slider-container.hpi-compact .slider-threshold-labels { margin-top: 0; font-size: 9px; }
+.slider-container.hpi-compact > div[style*="font-size:10px"] { display: none; }
+
+/* Standalone dashboard: the slider carries the rate; hide the duplicate static read-out */
+body:not([data-map-mode]) .mortgage-static { display: none; }
+
+/* Slider placed straight in a card: no second box inside the card */
+.slider-container.slider-flat { background: none; border: 0; padding: 0; }
+.slider-container.slider-flat::before { display: none; }
+.slider-container.slider-flat .slider-value-display { font-size: 1.6rem; }
+
+/* Plain sliders (no colour zones): grey rail, accent fill from the left up to the thumb (--fill set by slider_fill.js) */
+.slider-zones-container:not(:has(.slider-zones)) input[type="range"].zone-slider {
+  height: 14px;
+  background: transparent;
+}
+.slider-zones-container:not(:has(.slider-zones)) input[type="range"].zone-slider::-webkit-slider-runnable-track {
+  height: 4px; border-radius: 2px;
+  background: linear-gradient(to right, var(--thumb-col, var(--accent2)) var(--fill, 0%), rgba(128,128,128,0.3) var(--fill, 0%));
+}
+.slider-zones-container:not(:has(.slider-zones)) input[type="range"].zone-slider::-moz-range-track {
+  height: 4px; border-radius: 2px; background: rgba(128,128,128,0.3);
+}
+.slider-zones-container:not(:has(.slider-zones)) input[type="range"].zone-slider::-moz-range-progress {
+  height: 4px; border-radius: 2px; background: var(--thumb-col, var(--accent2));
+}
+.slider-zones-container:not(:has(.slider-zones)) input[type="range"].zone-slider::-webkit-slider-thumb { margin-top: -5px; }

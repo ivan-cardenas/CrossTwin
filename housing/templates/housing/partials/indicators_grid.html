@@ -101,7 +101,7 @@
       <div class="card-unit">annual rate{% if indicators.mortgage_rate_source %} · {{ indicators.mortgage_rate_source }}{% endif %}</div>
     </div>
     <!-- Mortgage-rate what-if (never written): starts at the historical rate of the year. Released slider recalculates the grid. -->
-    <div class="slider-container whatif-only">
+    <div class="slider-container whatif-only slider-flat">
       <div class="slider-header">
         <div class="slider-header-left"><span class="card-label">Mortgage Rate</span></div>
         <div class="slider-value-display">
@@ -158,55 +158,6 @@
       <div class="card-value">{{ indicators.hpi_value|default:"–" }}</div>
       <div class="card-unit">index ({{ indicators.hpi_base_year|default:"base year" }} = 100){% if indicators.hpi_projected %} · trend extrapolation{% endif %}</div>
     </div>
-    {% if indicators.hpi_year_min %}
-    <!-- Year of the index: the map's scenario year. Releasing the slider sets it (housing_panel.js), so the chart window, the
-         modelled prices and every other panel follow, and a change of the scenario moves this slider. -->
-    <div class="slider-container hpi-year">
-      <div class="slider-header">
-        <div class="slider-header-left"><span class="card-label">Year</span>{% info_help "housing.hpi_window" %}</div>
-        <div class="slider-value-display"><span id="hpi-year-display">{{ indicators.year|unlocalize }}</span></div>
-      </div>
-      <div class="slider-zones-container">
-        <div class="slider-zone-wrap">
-          <input id="hpi-year-slider" class="zone-slider" type="range"
-                 min="{{ indicators.hpi_year_min|unlocalize }}" max="{{ indicators.hpi_year_max|unlocalize }}" step="1"
-                 value="{{ indicators.year|unlocalize }}" aria-label="House price index year"
-                 data-url-template="{% url 'housing:housing_indicators' level location 9999 %}"/>
-        </div>
-        <div class="slider-threshold-labels"><span>{{ indicators.hpi_year_min|unlocalize }}</span><span>{{ indicators.hpi_year_max|unlocalize }}</span></div>
-      </div>
-    </div>
-    {% endif %}
-    <!-- Long-run growth what-if (never written): the extrapolation fades from the recent trend to this rate -->
-    <div class="slider-container whatif-only">
-      <div class="slider-header">
-        <div class="slider-header-left"><span class="card-label">Long-run Price Growth</span>{% info_help "housing.hpi_long_run" %}</div>
-        <div class="slider-value-display">
-          <span id="hpi-long-run-display">{% if indicators.hpi_long_run is not None %}{{ indicators.hpi_long_run|unlocalize }}{% else %}–{% endif %}</span>
-          <span class="slider-unit">% per year</span>
-        </div>
-      </div>
-      <div class="slider-zones-container">
-        <div class="slider-zone-wrap">
-          <input id="hpi-long-run-slider"
-                 class="zone-slider"
-                 type="range"
-                 name="hpi_long_run"
-                 min="{{ indicators.hpi_long_run_min|unlocalize }}" max="{{ indicators.hpi_long_run_max|unlocalize }}" step="0.05"
-                 value="{{ indicators.hpi_long_run|default_if_none:0|unlocalize }}"
-                 {% if indicators.hpi_long_run_default is None %}disabled{% endif %}
-                 hx-get="{% url 'housing:recalculate_indicators' level location year %}"
-                 hx-vals='{"pop_scenario": "{{ pop_scenario|default:"prognose" }}", "pop_growth": "{{ pop_growth|default:0|unlocalize }}"}'
-                 hx-trigger="change"
-                 hx-target="#indicators-grid"
-                 hx-include=".whatif-only input"/>
-        </div>
-        <div class="slider-threshold-labels"><span>0</span><span>5</span><span>10</span></div>
-      </div>
-      <div style="font-size:10px; color:rgba(var(--accent-1-rgb), 0.45);">
-        {% if indicators.hpi_long_run_default is not None %}Starts at the average of the whole series ({{ indicators.hpi_long_run_default|unlocalize }}% a year); the recent trend ({{ indicators.hpi_recent_pct|unlocalize }}%) fades to it, halfway after {{ indicators.hpi_half_life }} years.{% else %}Needs at least 3 years of the index: import <em>House price index, national (CBS 85773ENG)</em> in Retrieve Data.{% endif %}
-      </div>
-    </div>
     {% if indicators.hpi_yoy_change != None %}
     <div style="font-size:0.85rem; font-family:var(--font-mono);
                 color:{% if indicators.hpi_yoy_change >= 0 %}#22c55e{% else %}#ef4444{% endif %};">
@@ -236,6 +187,55 @@
     </figure>
     {% endif %}
     {% endwith %}
+    {% if indicators.hpi_year_min %}
+    <!-- Year of the index: the map's scenario year. Releasing the slider sets it (housing_panel.js), so the chart window, the
+         modelled prices and every other panel follow, and a change of the scenario moves this slider. -->
+    <div class="slider-container hpi-year hpi-compact">
+      <div class="slider-header">
+        <div class="slider-header-left"><span class="card-label">Year</span>{% info_help "housing.hpi_window" %}</div>
+        <div class="slider-value-display"><span id="hpi-year-display">{{ indicators.year|unlocalize }}</span></div>
+      </div>
+      <div class="slider-zones-container">
+        <div class="slider-zone-wrap">
+          <input id="hpi-year-slider" class="zone-slider" type="range"
+                 min="{{ indicators.hpi_year_min|unlocalize }}" max="{{ indicators.hpi_year_max|unlocalize }}" step="1"
+                 value="{{ indicators.year|unlocalize }}" aria-label="House price index year"
+                 data-url-template="{% url 'housing:housing_indicators' level location 9999 %}"/>
+        </div>
+        <div class="slider-threshold-labels"><span>{{ indicators.hpi_year_min|unlocalize }}</span><span>{{ indicators.hpi_year_max|unlocalize }}</span></div>
+      </div>
+    </div>
+    {% endif %}
+    <!-- Long-run growth what-if (never written): the extrapolation fades from the recent trend to this rate -->
+    <div class="slider-container whatif-only hpi-compact">
+      <div class="slider-header">
+        <div class="slider-header-left"><span class="card-label">Long-run Price Growth</span>{% info_help "housing.hpi_long_run" %}</div>
+        <div class="slider-value-display">
+          <span id="hpi-long-run-display">{% if indicators.hpi_long_run is not None %}{{ indicators.hpi_long_run|unlocalize }}{% else %}–{% endif %}</span>
+          <span class="slider-unit">% per year</span>
+        </div>
+      </div>
+      <div class="slider-zones-container">
+        <div class="slider-zone-wrap">
+          <input id="hpi-long-run-slider"
+                 class="zone-slider"
+                 type="range"
+                 name="hpi_long_run"
+                 min="{{ indicators.hpi_long_run_min|unlocalize }}" max="{{ indicators.hpi_long_run_max|unlocalize }}" step="0.05"
+                 value="{{ indicators.hpi_long_run|default_if_none:0|unlocalize }}"
+                 {% if indicators.hpi_long_run_default is None %}disabled{% endif %}
+                 hx-get="{% url 'housing:recalculate_indicators' level location year %}"
+                 hx-vals='{"pop_scenario": "{{ pop_scenario|default:"prognose" }}", "pop_growth": "{{ pop_growth|default:0|unlocalize }}"}'
+                 hx-trigger="change"
+                 hx-target="#indicators-grid"
+                 hx-include=".whatif-only input"/>
+        </div>
+        <div class="slider-threshold-labels"><span>0</span><span>5</span><span>10</span></div>
+      </div>
+      <div style="font-size:10px; color:rgba(var(--accent-1-rgb), 0.45);">
+        {% if indicators.hpi_long_run_default is not None %}Starts at the average of the whole series ({{ indicators.hpi_long_run_default|unlocalize }}% a year); the recent trend ({{ indicators.hpi_recent_pct|unlocalize }}%) fades to it, halfway after {{ indicators.hpi_half_life }} years.{% else %}Needs at least 3 years of the index: import <em>House price index, national (CBS 85773ENG)</em> in Retrieve Data.{% endif %}
+      </div>
+    </div>
     <div style="margin-top:auto; font-size:9px; color:rgba(var(--accent-1-rgb), 0.35);">
       {% if indicators.hpi_source == 'area' %}CBS WOZ value per m² of this area, carried on with the national index (CBS 85773ENG){% else %}CBS national index (85773ENG), the same for every area{% endif %}
     </div>
