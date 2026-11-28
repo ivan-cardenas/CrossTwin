@@ -3016,6 +3016,7 @@ body[data-map-mode="edit"] .mode-banner { border-bottom-color: rgba(239, 68, 68,
 /* Explore and Edit show the stored baseline: no what-if controls */
 body:not([data-map-mode="plan"]) #side-panel .lens-panel .whatif-only,
 body:not([data-map-mode="plan"]) .pop-controls { display: none; }
+body[data-map-mode="plan"] #side-panel .lens-panel .mortgage-static { display: none; }
 body[data-map-mode="edit"] #side-panel .summary-more { display: none; }
 /* In Plan the banner says what is a what-if; no badge on each card */
 #side-panel .whatif-badge { display: none; }

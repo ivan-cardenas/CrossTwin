@@ -42,20 +42,6 @@
     lonely.addEventListener('input', e => show(parseFloat(e.target.value)));
   }
 
-  // Modelled-price what-if (never written): live read-out of the market-change slider.
-  // The grid is recalculated by htmx on every input event.
-  (function () {
-    const el = document.getElementById('market-growth-slider');
-    if (!el) return;
-    const show = () => {
-      const d = document.getElementById('market-growth-display');
-      const v = parseFloat(el.value);
-      if (d) d.textContent = (v > 0 ? '+' : '') + v.toFixed(1);
-    };
-    el.addEventListener('input', show);
-    show();
-  })();
-
   // House Price Index year = the scenario year: dragging previews it, releasing sets it for the whole map
   // (setTime reloads the open panel, so the chart window and the modelled prices follow). A scenario change
   // re-renders this card with the new year, which moves the slider. Standalone page: opens that year's URL.
@@ -103,8 +89,12 @@
 
   // Recalculate the indicator grid, so the modelled-price card shows what was just written.
   function refreshCard() {
-    const slider = document.getElementById('household-size-slider') || document.getElementById('market-growth-slider');
-    if (slider && window.htmx) window.htmx.trigger(slider, 'input');
+    if (!window.htmx) return;
+    const slider = document.getElementById('household-size-slider') || document.getElementById('alone-slider');
+    if (slider) { window.htmx.trigger(slider, 'input'); return; }
+    // no slider of the input kind: any enabled what-if slider of the grid recalculates it on 'change'
+    const other = document.querySelector('#indicators-grid input[hx-get]:not([disabled])');
+    if (other) window.htmx.trigger(other, 'change');
   }
 
   // Staff buttons of the modelled-price card (fit / reprice). The card is swapped by htmx, so the
@@ -210,15 +200,6 @@
         if (txt) txt.textContent = val ? val.toFixed(1) : '–';
       }
     });
-
-    // Mortgage rate bar
-    const mtgCard = document.querySelector('[data-mortgage-rate]');
-    const mtgBar  = document.getElementById('mortgage-rate-bar');
-    if (mtgCard && mtgBar) {
-      const rate = parseFloat(mtgCard.dataset.mortgageRate) || 0;
-      const pct  = Math.min(rate / 10 * 100, 100);
-      requestAnimationFrame(() => { mtgBar.style.width = pct + '%'; });
-    }
   };
 
   // Run on panel load

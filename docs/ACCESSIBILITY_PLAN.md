@@ -126,7 +126,7 @@ Rent: no open per-buurt rent source yet, so `Property -> Rent` stays a gap. A li
 - Unit tests: `uv run python manage.py test builtup housing importer --settings=DigitalTwin.settings_test --keepdb --noinput`
 - Delft run: import network and amenities, compute accessibility, check the score map
 - Add a supermarket in the map editor: nearby walk scores rise (and, after Phase 4, `modelledPrice_EUR_per_sqm`); buildings beyond the cut-off are unchanged
-- Move the market-growth slider: prices change on the dashboard and nothing is written
+- Move the year slider of the House Price Index: the modelled prices follow the index and nothing is written
 
 ## Revision 2026-11-27
 

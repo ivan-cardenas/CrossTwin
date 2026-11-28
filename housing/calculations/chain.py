@@ -511,7 +511,6 @@ def annuity_payment(loan, rate_pct, term_years=MORTGAGE_DEFAULT_TERM_YEARS):
 #   z_k         the controls: construction year, apartment share, rental share, energy label, socio-economic
 #               status, distance to the municipal centre; a control a dwelling lacks is the fit's mean of it
 #   S           Duan's smearing factor, so that the median-like exp() reproduces the level of the calibration data
-#   g           what-if market change (0 for the stored value)
 #
 # The betas come from a cross-section of postcode areas, so the result reads as an association, not as
 # the causal effect of one amenity: it credits accessibility with everything that goes with it
@@ -524,8 +523,6 @@ PRICE_LABEL = "association-based scenario (upper bound), not a forecast"
 PRICE_FORMS = ("linear", "log1p")
 TERM_SEP = ":"
 
-# What-if range of the dashboard's market slider (never written).
-MARKET_GROWTH_MIN, MARKET_GROWTH_MAX = -30.0, 30.0       # % change of the market on top of the model
 SCORE_MIN, SCORE_MAX = 0.0, 100.0
 
 
@@ -571,11 +568,6 @@ def access_transform(score, form):
     raise ValueError(f"unknown functional form {form!r}")
 
 
-def market_growth_factor(growth_pct):
-    """1 + g: the what-if market change as a factor on the price."""
-    return 1.0 + growth_pct / 100.0
-
-
 def log_price(prediction, access, controls, city, form=None):
     """
     ln of the modelled price before smearing: a + SUM beta T(A) + SUM gamma z + mu_c, from `prediction`
@@ -608,10 +600,10 @@ def log_price(prediction, access, controls, city, form=None):
     return total
 
 
-def modelled_price_per_sqm(prediction, access, controls, city, form=None, growth_pct=0.0):
+def modelled_price_per_sqm(prediction, access, controls, city, form=None):
     """
     Modelled price per m2 of a dwelling, EUR/m2: association-based scenario (upper bound),
-    not a forecast. The stored value uses growth 0; the dashboard's market slider changes only that.
+    not a forecast.
 
     None when the equation cannot be applied (the stored price is kept).
 
@@ -622,4 +614,4 @@ def modelled_price_per_sqm(prediction, access, controls, city, form=None, growth
     value = log_price(prediction, access, controls, city, form)
     if value is None:
         return None
-    return math.exp(value) * prediction.get("smearing", 1.0) * market_growth_factor(growth_pct)
+    return math.exp(value) * prediction.get("smearing", 1.0)

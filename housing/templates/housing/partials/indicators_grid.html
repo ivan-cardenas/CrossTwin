@@ -89,29 +89,46 @@
   </div>
 
   <!-- Average Fixed Mortgage Rate — slider-controlled -->
-  <div class="card c3 wide"
-       data-mortgage-rate="{{ indicators.mortgage_rate|default:0 }}">
+  <div class="card c3 wide">
     <div class="gauge-header">
       <div class="card-icon">📈</div>
       <div class="card-label">Average Fixed Mortgage Rate</div>
       {% info_help "housing.mortgage" %}
     </div>
-    <div style="display:flex; align-items:baseline; gap:8px;">
+    <!-- Read-only rate for Summary/Explore/Edit; in Plan mode the slider header below shows it instead -->
+    <div class="mortgage-static" style="display:flex; align-items:baseline; gap:8px;">
       <div class="card-value">{{ indicators.mortgage_rate|default:"–" }}%</div>
-      <div class="card-unit">annual rate{% if indicators.mortgage_rate_whatif %} · what-if{% elif indicators.mortgage_rate_source %} · {{ indicators.mortgage_rate_source }}{% endif %}</div>
+      <div class="card-unit">annual rate{% if indicators.mortgage_rate_source %} · {{ indicators.mortgage_rate_source }}{% endif %}</div>
     </div>
-    <div style="position:relative;">
-      <div class="bar-track" style="height:8px;">
-        <div class="bar-fill" id="mortgage-rate-bar"
-             style="width:0%;
-                    background:#ef4444;">
+    <!-- Mortgage-rate what-if (never written): starts at the historical rate of the year. Released slider recalculates the grid. -->
+    <div class="slider-container whatif-only">
+      <div class="slider-header">
+        <div class="slider-header-left"><span class="card-label">Mortgage Rate</span></div>
+        <div class="slider-value-display">
+          <span id="mortgage-rate-display">{% if indicators.mortgage_rate is not None %}{{ indicators.mortgage_rate|unlocalize }}{% else %}–{% endif %}</span>
+          <span class="slider-unit">% per year</span>
         </div>
       </div>
-      <div style="display:flex; justify-content:space-between;
-                  margin-top:6px; font-size:9px;
-                  color:rgba(var(--accent-1-rgb), 0.35); font-family:var(--font-mono);">
-        <span>0%</span>
-        <span>10% cap</span>
+      <div class="slider-zones-container">
+        <div class="slider-zone-wrap">
+          <input id="mortgage-rate-slider"
+                 class="zone-slider"
+                 type="range"
+                 name="mortgage_rate"
+                 aria-label="Mortgage rate what-if"
+                 min="{{ indicators.mortgage_rate_min|unlocalize }}" max="{{ indicators.mortgage_rate_max|unlocalize }}" step="0.01"
+                 value="{{ indicators.mortgage_rate|default_if_none:0|unlocalize }}"
+                 {% if indicators.mortgage_rate_stored is None %}disabled{% endif %}
+                 hx-get="{% url 'housing:recalculate_indicators' level location year %}"
+                 hx-vals='{"pop_scenario": "{{ pop_scenario|default:"prognose" }}", "pop_growth": "{{ pop_growth|default:0|unlocalize }}"}'
+                 hx-trigger="change"
+                 hx-target="#indicators-grid"
+                 hx-include=".whatif-only input"/>
+        </div>
+        <div class="slider-threshold-labels"><span>0</span><span>5</span><span>10</span></div>
+      </div>
+      <div style="font-size:10px; color:rgba(var(--accent-1-rgb), 0.45);">
+        {% if indicators.mortgage_rate_stored is not None %}Starts at {{ indicators.mortgage_rate_stored|unlocalize }}% ({{ indicators.mortgage_rate_source }}){% if indicators.mortgage_rate_whatif %} · what-if{% endif %}{% else %}No historical mortgage rate yet: import <em>Mortgage interest rates, monthly (DNB)</em> in Retrieve Data.{% endif %}
       </div>
     </div>
     <div style="display:flex; gap:16px; margin-top:10px;">
@@ -160,6 +177,36 @@
       </div>
     </div>
     {% endif %}
+    <!-- Long-run growth what-if (never written): the extrapolation fades from the recent trend to this rate -->
+    <div class="slider-container whatif-only">
+      <div class="slider-header">
+        <div class="slider-header-left"><span class="card-label">Long-run Price Growth</span>{% info_help "housing.hpi_long_run" %}</div>
+        <div class="slider-value-display">
+          <span id="hpi-long-run-display">{% if indicators.hpi_long_run is not None %}{{ indicators.hpi_long_run|unlocalize }}{% else %}–{% endif %}</span>
+          <span class="slider-unit">% per year</span>
+        </div>
+      </div>
+      <div class="slider-zones-container">
+        <div class="slider-zone-wrap">
+          <input id="hpi-long-run-slider"
+                 class="zone-slider"
+                 type="range"
+                 name="hpi_long_run"
+                 min="{{ indicators.hpi_long_run_min|unlocalize }}" max="{{ indicators.hpi_long_run_max|unlocalize }}" step="0.05"
+                 value="{{ indicators.hpi_long_run|default_if_none:0|unlocalize }}"
+                 {% if indicators.hpi_long_run_default is None %}disabled{% endif %}
+                 hx-get="{% url 'housing:recalculate_indicators' level location year %}"
+                 hx-vals='{"pop_scenario": "{{ pop_scenario|default:"prognose" }}", "pop_growth": "{{ pop_growth|default:0|unlocalize }}"}'
+                 hx-trigger="change"
+                 hx-target="#indicators-grid"
+                 hx-include=".whatif-only input"/>
+        </div>
+        <div class="slider-threshold-labels"><span>0</span><span>5</span><span>10</span></div>
+      </div>
+      <div style="font-size:10px; color:rgba(var(--accent-1-rgb), 0.45);">
+        {% if indicators.hpi_long_run_default is not None %}Starts at the average of the whole series ({{ indicators.hpi_long_run_default|unlocalize }}% a year); the recent trend ({{ indicators.hpi_recent_pct|unlocalize }}%) fades to it, halfway after {{ indicators.hpi_half_life }} years.{% else %}Needs at least 3 years of the index: import <em>House price index, national (CBS 85773ENG)</em> in Retrieve Data.{% endif %}
+      </div>
+    </div>
     {% if indicators.hpi_yoy_change != None %}
     <div style="font-size:0.85rem; font-family:var(--font-mono);
                 color:{% if indicators.hpi_yoy_change >= 0 %}#22c55e{% else %}#ef4444{% endif %};">

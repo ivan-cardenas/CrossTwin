@@ -78,10 +78,6 @@ class PriceEquationTests(SimpleTestCase):
 
         self.assertNotIn("woz", " ".join(inspect.signature(chain.modelled_price_per_sqm).parameters))
 
-    def test_the_market_what_if_scales_the_price(self):
-        self.assertAlmostEqual(self.price(growth_pct=10.0), self.price() * 1.1)
-        self.assertAlmostEqual(chain.market_growth_factor(-30.0), 0.7)
-
     def test_a_control_the_dwelling_lacks_is_the_mean_of_the_fit(self):
         lacking = self.price(controls={"constructionYear": None, "ses": 0.5})
         at_mean = self.price(controls={"constructionYear": 1960.0, "ses": 0.5})
@@ -567,7 +563,7 @@ class PropertyPriceTests(TestCase):
         self._supermarket(self.building, 400.0)
         self._supermarket(self.other, 700.0)
         property_price.reprice()
-        indicators = views._modelled_price_indicators(self._mp(), 0.0)
+        indicators = views._modelled_price_indicators(self._mp())
         stored = list(Property.objects.filter(usageFunction__contains=DWELLING).values_list("modelledPrice_EUR_per_sqm", flat=True))
         self.assertTrue(indicators["mp_available"])
         self.assertAlmostEqual(indicators["mp_price"], sum(stored) / len(stored), delta=0.51)   # price is rounded to whole EUR
@@ -580,25 +576,10 @@ class PropertyPriceTests(TestCase):
         property_price.reprice()
         stored = Property.objects.get(pk=self.home.pk).modelledPrice_EUR_per_sqm
         direct = chain.modelled_price_per_sqm(self.prediction, {SUPERMARKET: value_at("supermarket", 400.0)},
-                                              {"constructionYear": 1970}, 503, growth_pct=10.0)
-        self.assertAlmostEqual(stored * chain.market_growth_factor(10.0), direct, places=1)
-        shown = property_price.mean_price(self._mp(prefix="7511AA")["summary"], 10.0)
+                                              {"constructionYear": 1970}, 503)
+        self.assertAlmostEqual(stored, direct, places=1)
+        shown = property_price.mean_price(self._mp(prefix="7511AA")["summary"])
         self.assertAlmostEqual(shown["price"], direct, places=1)
-
-    def test_the_market_what_if_changes_the_card_and_writes_nothing(self):
-        self._supermarket(self.building, 400.0)
-        self._supermarket(self.other, 400.0)
-        property_price.reprice()
-        before = list(Property.objects.order_by("pk").values_list("modelledPrice_EUR_per_sqm", "priceMethod", "last_updated"))
-        mp = self._mp()
-        default = views._modelled_price_indicators(mp, 0.0)
-        growth = views._modelled_price_indicators(mp, 10.0)
-        self.assertAlmostEqual(growth["mp_price"], default["mp_price"] * 1.1, delta=1)
-        self.assertAlmostEqual(growth["mp_level"], default["mp_level"] * 1.1, delta=1)
-        self.assertTrue(growth["mp_whatif"])
-        self.assertEqual(before, list(Property.objects.order_by("pk").values_list(
-            "modelledPrice_EUR_per_sqm", "priceMethod", "last_updated")))
-        self.assertEqual(default["mp_label"], chain.PRICE_LABEL)
 
     def test_the_card_lists_the_kept_and_the_screened_out_terms(self):
         screening = {"candidates": 3, "kept": 1, "terms": {
@@ -608,24 +589,23 @@ class PropertyPriceTests(TestCase):
         PriceModel.objects.filter(pk=self.model.pk).update(screening=screening)
         self._supermarket(self.building, 400.0)
         property_price.reprice()
-        model = views._modelled_price_indicators(self._mp(), 0.0)["mp_model"]
+        model = views._modelled_price_indicators(self._mp())["mp_model"]
         self.assertEqual([(t["category"], t["mode"]) for t in model["kept"]], [("supermarket", "walk")])
         self.assertEqual({t["term"] for t in model["dropped"]}, {"walk:shop", "walk:park"})
         self.assertEqual((model["candidates"], model["id"]), (3, self.model.pk))
 
     def test_card_without_a_fit_says_so_and_stays_unavailable(self):
         PriceModel.objects.update(isActive=False)
-        indicators = views._modelled_price_indicators(self._mp(), 0.0)
+        indicators = views._modelled_price_indicators(self._mp())
         self.assertFalse(indicators["mp_available"])
         self.assertFalse(indicators["mp_has_model"])
 
-    def test_panel_renders_the_card_with_the_market_slider_only(self):
+    def test_panel_renders_the_card_without_market_or_accessibility_sliders(self):
         self._supermarket(self.building, 400.0)
         property_price.reprice()
         url = reverse("housing:housing_indicators", args=["neighborhood", self.hood.pk, 2025])
         response = Client().get(url, HTTP_HX_REQUEST="true")
-        self.assertContains(response, 'id="market-growth-slider"')
-        self.assertContains(response, "% on the WOZ level")
+        self.assertNotContains(response, 'id="market-growth-slider"')
         self.assertNotContains(response, 'id="beta-slider"')
         self.assertNotContains(response, 'id="access-delta-slider"')
         self.assertNotContains(response, "Accessibility Effect")
@@ -643,7 +623,7 @@ class PropertyPriceTests(TestCase):
         self.assertNotIn("Fit on neighborhoods", html)
         self.assertNotIn("data-price-model-unit", html)
 
-    def test_recalculate_clamps_the_market_parameter_and_ignores_the_removed_ones(self):
+    def test_recalculate_ignores_the_removed_parameters(self):
         self._supermarket(self.building, 400.0)
         property_price.reprice()
         url = reverse("housing:recalculate_indicators", args=["neighborhood", self.hood.pk, 2025])
@@ -651,11 +631,6 @@ class PropertyPriceTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Modelled Price")
         self.assertContains(response, chain.PRICE_LABEL)
-        self.assertEqual(views._float_param({"market_growth": "999"}, "market_growth", chain.MARKET_GROWTH_MIN, chain.MARKET_GROWTH_MAX, 0.0),
-                         chain.MARKET_GROWTH_MAX)
-        self.assertEqual(views._float_param({"market_growth": "-999"}, "market_growth", chain.MARKET_GROWTH_MIN, chain.MARKET_GROWTH_MAX, 0.0),
-                         chain.MARKET_GROWTH_MIN)
-        self.assertEqual(views._float_param({"market_growth": "abc"}, "market_growth", chain.MARKET_GROWTH_MIN, chain.MARKET_GROWTH_MAX, 0.0), 0.0)
 
 
 class PriceModelEndpointTests(TestCase):

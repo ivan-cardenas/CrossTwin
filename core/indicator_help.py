@@ -280,7 +280,7 @@ HELP = {
     "housing.mortgage": {
         "title": "Average Fixed Mortgage Rate",
         "what": "The typical interest rate homebuyers in the area pay, and what that means per month.",
-        "how": "Average rate from the credit-supply data, with the average monthly payment and loan amount of the recorded mortgages.",
+        "how": "The rate starts at the year's mean new-business rate on loans for house purchase in the Netherlands (DNB MFI statistics), else the province's recorded credit-supply rate (national, the same for every area). The slider is a what-if: it recomputes the monthly payment of the average recorded loan over its average term (30 years without records) as an annuity. Nothing is written.",
         "eq": ["Monthly payment = L × {r | 1 − (1 + r)^(−n)}"],
         "where": [
             ("L", "loan amount"),
@@ -318,7 +318,7 @@ HELP = {
         "what": "What the dwellings of the area would sell for per m², from one price equation for the whole city that is calibrated on the CBS WOZ values per postcode area and uses how reachable each kind of amenity is.",
         "how": "A hedonic fit on the PC6 postcode areas relates ln WOZ per m² to the access to each amenity category (supermarket, shop, pharmacy, GP, hospital, school, childcare, library, sport, bus stop, tram/metro stop, train station, park), on foot and by bicycle, with controls for construction year, apartment share, rental share, energy label, socio-economic status and distance to the municipal centre (the card lists each with the price change per step, e.g. +10 years of construction year), and municipality effects (weighted least squares, errors clustered by municipality or neighborhood). Before the fit every term is screened: terms that hardly vary, that repeat another term (|r| ≥ 0.9), that are collinear with the others (VIF > 10) or that have no detectable influence (not significant at 10 % or under 0.5 % of price per standard deviation) are left out, and the card lists each with its reason. The fit tests its residuals for spatial autocorrelation (Moran's I) and uses a spatial error model when they fail, and compares a linear and a logarithmic form. The same intercept, coefficients and municipality effects are then applied to every dwelling's own variables: the WOZ value of its area is what the model was calibrated on, not an input of its price. A dwelling without a stored accessibility keeps its stored value; a control a dwelling lacks is replaced by its mean in the fit.",
         "eq": [
-            "Price = S × (1 + change) × e^(a + Σ β × T(A) + Σ γ × z + μ)",
+            "Price = S × e^(a + Σ β × T(A) + Σ γ × z + μ)",
         ],
         "note": "Association-based scenario (upper bound), not a forecast. The coefficients come from a cross-section of postcode areas, so accessibility is credited with everything that goes with it (prestige, jobs, older housing), and WOZ lags the market. S is Duan's smearing factor, which makes the model reproduce the WOZ level it was calibrated on. Local differences the variables do not explain are not carried into the price. The observed price per m² is not touched. To read what one amenity does, add it with the Add amenity button: the scores around it and the modelled prices are recomputed.",
     },
@@ -327,19 +327,6 @@ HELP = {
         "what": "The year the House Price Index and the modelled prices refer to: the scenario year of the map.",
         "how": "Moving the slider sets the scenario year for the whole map, and moving the scenario moves the slider. The chart shows the 5 years around it; years after the last observed one are the trend extrapolation. Modelled prices are the stored price × the index of this year ÷ the index of the WOZ year the price model was fitted on.",
         "eq": ["Price(year) = stored price × {index (year) | index (WOZ year)}"],
-    },
-    "housing.mortgage_rate_slider": {
-        "title": "Mortgage Rate",
-        "what": "A what-if mortgage rate, starting at the historical rate of the year shown.",
-        "how": "The start value is the year's mean new-business rate on loans for house purchase in the Netherlands (DNB MFI statistics), else the province's recorded credit-supply rate. Moving the slider recomputes the monthly payment of the average recorded loan over its average term (30 years without records) as an annuity. Nothing is written.",
-        "eq": ["Monthly payment = L × {r | 1 − (1 + r)^(−n)}"],
-        "note": "The rate is national: it does not differ between areas.",
-    },
-    "housing.market_growth": {
-        "title": "Market Change",
-        "what": "A what-if change of the whole market on top of the WOZ level.",
-        "how": "Multiplies every modelled price by 1 + the slider. It moves the level, not the accessibility effect. Nothing is written.",
-        "eq": ["Price × (1 + change / 100)"],
     },
     "housing.new_units": {
         "title": "New Housing Units",
@@ -353,7 +340,7 @@ HELP = {
     "housing.property": {
         "title": "Property Market",
         "what": "What homes in the area sell and list for, and how many buildings stand empty.",
-        "how": "Averages across all recorded properties in the area. The modelled value and price are the means of the modelled price stored on the dwellings (the value is that price × the living area, else the gross area); the Market Change slider scales both.",
+        "how": "Averages across all recorded properties in the area. The modelled value and price are the means of the modelled price stored on the dwellings (the value is that price × the living area, else the gross area).",
         "eq": [
             "Modelled value = modelled price per m² × living area",
             "Price per m² = {sale price | living area}",

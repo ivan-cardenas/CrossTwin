@@ -208,13 +208,12 @@ def unit_summary(neighborhood_ids, postcode_prefix=None):
             "priced": stored["n"]}, model
 
 
-def mean_price(summary, growth_pct=0.0, factor=1.0):
+def mean_price(summary, factor=1.0):
     """
     {"price", "level", "priced"}: the dwelling-weighted mean modelled price and the mean CBS WOZ value (the same
-    dwellings), EUR/m2, with the market what-if (chain.market_growth_factor) and `factor` (the house price index of the scenario year, chain.hpi_price_factor) applied to both.
-    With growth 0 the price equals the stored mean.
+    dwellings), EUR/m2, with `factor` (the house price index of the scenario year, chain.hpi_price_factor) applied to both.
+    With factor 1 the price equals the stored mean.
     """
     if not summary.get("priced") or summary.get("stored_mean") is None or not summary.get("level_mean"):
         return {"price": None, "level": None, "priced": 0}
-    factor = chain.market_growth_factor(growth_pct) * factor   # market what-if x house price index of the year
     return {"price": summary["stored_mean"] * factor, "level": summary["level_mean"] * factor, "priced": summary["priced"]}

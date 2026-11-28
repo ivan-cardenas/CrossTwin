@@ -203,13 +203,12 @@ def _control_rows(model):
     return kept, dropped
 
 
-def _modelled_price_indicators(mp, market_growth, hpi_factor=1.0):
+def _modelled_price_indicators(mp, hpi_factor=1.0):
     """The modelled-price card: stored mean, the what-if mean, the fit with its screened terms and the label."""
     model, summary = mp.get('model'), mp.get('summary') or {}
     out = {
         'mp_available': False,
         'mp_label': chain.PRICE_LABEL,
-        'mp_growth': market_growth, 'mp_growth_min': chain.MARKET_GROWTH_MIN, 'mp_growth_max': chain.MARKET_GROWTH_MAX,
         'mp_has_model': model is not None,
         'mp_stored_mean': summary.get('stored_mean'),
     }
@@ -228,9 +227,8 @@ def _modelled_price_indicators(mp, market_growth, hpi_factor=1.0):
     if model is None or not summary.get('priced'):
         return out
     default = property_price.mean_price(summary)
-    whatif = market_growth != 0.0
-    whatif = whatif or hpi_factor != 1.0
-    shown = property_price.mean_price(summary, market_growth, hpi_factor) if whatif else default
+    whatif = hpi_factor != 1.0
+    shown = property_price.mean_price(summary, hpi_factor) if whatif else default
     if not shown['priced']:
         return out
     out.update({
@@ -246,7 +244,7 @@ def _modelled_price_indicators(mp, market_growth, hpi_factor=1.0):
 
 
 def _build_indicators(data, household_size_override=None, alone_override=None,
-                      market_growth=0.0, mortgage_rate_override=None, year=None, hpi_long_run=None):
+                      mortgage_rate_override=None, year=None, hpi_long_run=None):
     """
     Pure function: takes DB data dict, returns flat indicators dict.
 
@@ -259,10 +257,7 @@ def _build_indicators(data, household_size_override=None, alone_override=None,
     only deviate from the stored baseline through chain.what_if_demand; nothing is
     written.
 
-    The modelled price (DAG edge Accessibility -> Property) is the mean of the stored values; `market_growth` (%)
-    is its what-if, applied with chain.market_growth_factor, the factor of the function that wrote the stored
-    values, and never written. The Property Market card reads those stored modelled values and applies the same
-    factor.
+    The modelled price (DAG edge Accessibility -> Property) is the mean of the stored values. The Property Market card reads those stored modelled values.
 
     The House Price Index chart shows chain.HPI_WINDOW_YEARS years centred on the scenario `year` (the map's
     year; the card's year slider sets it). The modelled prices follow the same index: stored price x
@@ -281,7 +276,11 @@ def _build_indicators(data, household_size_override=None, alone_override=None,
     history = data.get('price_history') or {'woz': [], 'index': []}
     # the card's index is the base-year curve (observed or extrapolated) when the series has a base-year value;
     # the long-run growth slider only changes how the extrapolation fades (never written)
-    curve = build_curve(history, hpi_long_run) if hpi_long_run is not None else history.get('curve')
+    # a slider value equal to the stored default (the slider echoes it on every request) is not a what-if
+    stored_curve = history.get('curve')
+    default_long_run = (stored_curve or {}).get('long_run_default_pct')
+    long_run_moved = hpi_long_run is not None and (default_long_run is None or abs(hpi_long_run - default_long_run) >= 0.005)
+    curve = build_curve(history, hpi_long_run) if long_run_moved else stored_curve
     hpi = {**data['hpi'], **(hpi_at_year(curve, year) or {})} if year else dict(data['hpi'])
     price_chart_geometry, price_chart_unit = price_chart(history, year, curve)
     prop = data['property']
@@ -299,10 +298,9 @@ def _build_indicators(data, household_size_override=None, alone_override=None,
             mtg.get('avg_loan_amount'), effective_rate,
             mtg.get('avg_term_years') or chain.MORTGAGE_DEFAULT_TERM_YEARS)
         avg_monthly = round(avg_monthly, 2) if avg_monthly else mtg.get('avg_monthly_payment')
-    growth_factor = chain.market_growth_factor(market_growth)
 
     def _grown(value):
-        return round(value * growth_factor * hpi_factor) if value else None
+        return round(value * hpi_factor) if value else None
 
     # Housing demand = population / persons per home. The stored baseline is
     # scaled by the what-ifs (population dock, persons-per-home slider).
@@ -348,7 +346,7 @@ def _build_indicators(data, household_size_override=None, alone_override=None,
     modelled_summary = (data.get('modelled_price') or {}).get('summary') or {}
     fit = (data.get('modelled_price') or {}).get('model')
     hpi_factor = chain.hpi_price_factor(curve, year, fit.wozYear) if (curve and fit and year) else 1.0
-    modelled = _modelled_price_indicators(data.get('modelled_price') or {}, market_growth, hpi_factor)
+    modelled = _modelled_price_indicators(data.get('modelled_price') or {}, hpi_factor)
 
     return {
         **modelled,
@@ -529,13 +527,13 @@ def recalculate_indicators(request, level, location, year):
 
     indicators = _build_indicators(
         data, household_size_override=household_size, alone_override=alone,
-        market_growth=_float_param(request.GET, 'market_growth', chain.MARKET_GROWTH_MIN, chain.MARKET_GROWTH_MAX, 0.0),
         mortgage_rate_override=_float_param(request.GET, 'mortgage_rate', chain.MORTGAGE_RATE_MIN, chain.MORTGAGE_RATE_MAX, None),
         year=year,
         hpi_long_run=_float_param(request.GET, 'hpi_long_run', chain.HPI_LONG_RUN_MIN, chain.HPI_LONG_RUN_MAX, None))
 
     return render(request, 'housing/partials/indicators_grid.html', {
         'indicators': indicators, 'level': level, 'location': location, 'year': year,
+        'pop_scenario': pop_scenario, 'pop_growth': pop_growth,
         'can_fit_price_model': request.user.is_staff})
 
 

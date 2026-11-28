@@ -162,15 +162,14 @@ class HpiAndMortgageDashboardTests(TestCase):
                                    HTTP_HX_REQUEST="true")
         self.assertContains(response, "trend extrapolation")
 
-    def test_property_market_reads_the_modelled_values_and_the_market_slider_scales_them(self):
+    def test_property_market_reads_the_stored_modelled_values(self):
         from housing.calculations.indicators import calculate_property_indicators
 
         calculate_property_indicators(self.city)
         data = views._get_adminUnit_data("city", "Testville", 2021)
         data["modelled_price"] = {**data["modelled_price"], "summary": {"stored_mean": 4000.0, "value_mean": 400_000.0, "priced": 12}}
-        shown = views._build_indicators(data, market_growth=10.0)
-        self.assertEqual((shown["modelled_sqm"], shown["modelled_value"], shown["modelled_count"]), (4400, 440_000, 12))
-        self.assertEqual(views._build_indicators(data)["modelled_value"], 400_000)
+        shown = views._build_indicators(data)
+        self.assertEqual((shown["modelled_sqm"], shown["modelled_value"], shown["modelled_count"]), (4000, 400_000, 12))
 
     def test_modelled_prices_follow_the_index_of_the_scenario_year(self):
         from types import SimpleNamespace
@@ -186,8 +185,6 @@ class HpiAndMortgageDashboardTests(TestCase):
         self.assertEqual((later["modelled_sqm"], later["modelled_value"], later["mp_price"]), (5216, 521_628, 5216))   # x 130.4 / 100 (the curve is rounded to 0.01)
         self.assertEqual(later["mp_level"], round(3800 * 1.304))
         self.assertTrue(later["mp_whatif"])
-        on_top = views._build_indicators(data, year=2022, market_growth=10.0)
-        self.assertEqual(on_top["modelled_sqm"], round(4000 * 1.304 * 1.1))
 
     def test_nothing_is_written(self):
         before = (MortgageRate.objects.count(), HousePriceIndex.objects.count())

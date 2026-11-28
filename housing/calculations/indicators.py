@@ -570,8 +570,7 @@ def calculate_modelled_price(adminBund):
     """
     Inputs of the modelled-price card: the mean stored modelled price of the unit's dwellings, the mean WOZ
     level of the same dwellings and the active fit (housing.PriceModel). The card itself is
-    views._build_indicators, which applies the market what-if with chain.market_growth_factor
-    (association-based scenario, upper bound, not a forecast).
+    views._build_indicators (association-based scenario, upper bound, not a forecast).
 
     DAG edges:  Accessibility -> Property
     """
