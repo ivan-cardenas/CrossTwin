@@ -169,16 +169,19 @@ def layout_metrics(site_m2, footprints_m2, floors, units, street_m2, street_leng
 # DAG edges: Facilities -> Accessibility, Streets -> Accessibility,
 #            Green_Area -> Accessibility
 
-ACCESS_METHOD = "network-decay walk/bike v3"
+ACCESS_METHOD = "network-decay walk/bike v4 (15 min)"
 MODES = ("walk", "bike")
 # Speeds (m/s) turn a catchment in minutes into metres: 4.8 km/h walking, 15 km/h cycling.
 SPEED_MPS = {"walk": 4.8 / 3.6, "bike": 15.0 / 3.6}
-# Walk: D0 = 5 min, D_max = 20 min (Moreno et al. 2021 use 15 min as the target).
-# Bike: D0 = 800 m (3 min), D_max = 3.2 km (13 min), twice the walking cut-off. The cycling cut-off is deliberately bounded:
-# it is also the reach of a refresh (builtup/signals.py), so a single edit on the map
-# recomputes the buildings within 3.2 km, not the whole city.
-FULL_VALUE_M = {"walk": 400.0, "bike": 800.0}
-CUTOFF_M = {"walk": 1600.0, "bike": 3200.0}
+# The catchments are travel TIMES, the same for both modes (what matters is minutes, a bike covers more distance
+# in them): full value up to FULL_VALUE_MIN, cut-off at CUTOFF_MIN = 15 min (Moreno et al. 2021, 15-minute city).
+# The metre values below are derived from the mode's speed (walk 400 m / 1.2 km, bike 1.25 / 3.75 km). The cut-off
+# is also the reach of a refresh (builtup/signals.py), so a single edit on the map recomputes the buildings
+# within it, not the whole city.
+FULL_VALUE_MIN = 5.0
+CUTOFF_MIN = 15.0
+FULL_VALUE_M = {m: round(FULL_VALUE_MIN * 60 * v, 1) for m, v in SPEED_MPS.items()}
+CUTOFF_M = {m: round(CUTOFF_MIN * 60 * v, 1) for m, v in SPEED_MPS.items()}
 F_AT_CUTOFF = 0.05
 
 # Amenities of one category closer than this to each other count as one destination (a bus stop on each
@@ -212,7 +215,7 @@ def _params_hash():
     import hashlib
     import json
 
-    payload = json.dumps([SPEED_MPS, FULL_VALUE_M, CUTOFF_M, F_AT_CUTOFF, CATEGORIES, POI_MERGE_M, MERGE_EXEMPT], sort_keys=True)
+    payload = json.dumps([SPEED_MPS, FULL_VALUE_MIN, CUTOFF_MIN, FULL_VALUE_M, CUTOFF_M, F_AT_CUTOFF, CATEGORIES, POI_MERGE_M, MERGE_EXEMPT], sort_keys=True)
     return hashlib.sha1(payload.encode()).hexdigest()[:8]
 
 

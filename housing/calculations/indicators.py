@@ -7,6 +7,7 @@ from ..models import (
     NeighborhoodSocialProfile, WOZValue, MortgageRate,
 )
 from administrative.admin_units import cities_within, neighborhoods_within, province_of
+from administrative.models import City, Province
 from builtup.models import Property, ZoningArea, Building
 from physicalEnv.hilucs import hilucs_q
 from . import chain, property_price
@@ -108,11 +109,46 @@ def calculate_household_size(adminBund, year):
     return {
         'average_size': round(population / households, 3) if households else None,
         'year': min((r.year for r in records), default=None),
+        # True when some city has no record of `year` and the closest year stands in
+        # (always so after the last CBS year: no household forecast is published)
+        'carried': any(r.year != year for r in records),
         'households': households or None,
         'population': population or None,
         'one_person_households': one_person,
         'multi_person_size': chain.multi_person_size(population, households, one_person),
     }
+
+
+# A population within this share of the whole-gemeente CBS figure counts as covering it.
+POPULATION_COVERAGE_TOLERANCE = 0.98
+
+
+def calculate_population_coverage(adminBund, population, year):
+    """
+    Whether the `population` shown for a city or province covers only the
+    neighborhoods imported so far, and the CBS whole-gemeente population it falls
+    short of.
+
+    Without CBS forecast rows the shown population is City.currentPopulation, the
+    sum of the imported neighborhoods; the stored demand never uses it (it takes
+    the whole-gemeente CBS population, housing/calculations/chain.py::baseline_population),
+    so only the panel's *inhabitants* line is short. Districts and neighborhoods
+    are parts of a city by definition and get no note. Returns {'partial': False}
+    when the figure is complete or no CBS population is known.
+
+    Display only: it implements no edge of core/DAG.dot.
+    """
+    if not isinstance(adminBund, (City, Province)) or not population:
+        return {'partial': False}
+    cbs = 0
+    for city in cities_within(adminBund):
+        value, partial = chain.baseline_population(city, year)
+        if value is None or partial:
+            return {'partial': False}      # a city without a CBS figure: nothing to compare with
+        cbs += value
+    if not cbs or population >= cbs * POPULATION_COVERAGE_TOLERANCE:
+        return {'partial': False}
+    return {'partial': True, 'cbs_population': round(cbs), 'share_pct': round(population / cbs * 100)}
 
 
 def calculate_loneliness(adminBund):
@@ -155,11 +191,15 @@ def calculate_living_alone(adminBund):
     return {'pct': lonely, 'source': 'rivm' if lonely is not None else None}
 
 
-def calculate_dwellings(adminBund):
+def calculate_dwellings(adminBund, year=None):
     """Dwellings (BAG woonfunctie) of the unit, those that count as homes, and the residents estimated for them.
 
-    `residents` is written by housing/signals.py (each dwelling holds the city's
-    average persons per home), so this only counts and sums. A dwelling is
+    The stored `Property.residents` (written by housing/signals.py) is the city's
+    *latest* average persons per home. With a `year`, the estimate follows the
+    dashboard instead: the unit's dwellings of each city x that city's average
+    size of `year` (HouseholdSize.for_year; the closest year where the year has
+    none), so a 2019 view does not use the 2026 size. Without a year, or for a
+    city without a household size, the stored values are summed. A dwelling is
     usable when its building is not vacant and its area is at least
     chain.MIN_DWELLING_AREA_SQM; `usable_share` (1.0 without mapped dwellings) is
     what the supply of the unit is scaled by.
@@ -173,11 +213,19 @@ def calculate_dwellings(adminBund):
         usable=Count('id', filter=Q(grossArea__gte=chain.MIN_DWELLING_AREA_SQM, building__vacant=False)),
     )
     count = agg['count'] or 0
+    residents = agg['residents'] or 0
+    if year is not None and count:
+        per_city = dwellings.values('building__neighborhood__district__city_id').annotate(
+            n=Count('id'), stored=Sum('residents'))
+        residents = 0
+        for row in per_city:
+            record = HouseholdSize.for_year(row['building__neighborhood__district__city_id'], year)
+            residents += row['n'] * record.average_size if record else (row['stored'] or 0)
     return {
         'dwellings': count,
         'usable_dwellings': agg['usable'] or 0,
         'usable_share': (agg['usable'] or 0) / count if count else 1.0,
-        'estimated_residents': round(agg['residents']) if agg['residents'] else 0,
+        'estimated_residents': round(residents) if residents else 0,
     }
 
 

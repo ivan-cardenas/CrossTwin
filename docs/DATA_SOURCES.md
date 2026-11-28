@@ -6,7 +6,7 @@ do not edit by hand. Stored rows record their own source (dataset key, scene, st
 
 ## 1. Importer catalog (Retrieve Data from APIs)
 
-86 datasets from 11 providers.
+87 datasets from 11 providers.
 
 ### Publieke Dienstverlening Op de Kaart
 
@@ -45,6 +45,7 @@ Dutch national statistics data platform. Open data, no authentication required. 
 | `pdok_postcode6` | Postcode areas - PC6 | Administrative boundaries | `administrative.Postcode6` | https://service.pdok.nl/cbs/postcode6/2023/wfs/v1_0 (`postcode6:postcode6`) |
 | `CBS_PopulationForecast` | Population forecast 2023-2050 (85173NED) | Demographics | `administrative.PopulationProjection` | CBS table `85173NED` |
 | `CBS_HPI` | House price index, national (CBS 85773ENG) | Housing | `housing.HousePriceIndex` | CBS table `85773ENG` |
+| `CBS_HouseholdPopulationObserved` | Observed population 2014-2022 (03759NED) | Housing | `housing.HouseholdSize` | CBS table `03759NED` |
 | `CBS_Households` | Private households 2014- (86291NED) | Housing | `housing.HouseholdSize` | CBS table `86291NED` |
 | `CBS_Housing` | Housing Lifecycle (86098NED) | Housing | `housing.HousingSupplyDemand` | CBS table `86098NED` |
 | `CBS_OnePersonHouseholds` | One-person households 2014- (86291NED) | Housing | `housing.HouseholdSize` | CBS table `86291NED` |

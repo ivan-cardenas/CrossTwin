@@ -43,8 +43,8 @@ class StaticTests(SimpleTestCase):
 
     def test_help_text_quotes_the_current_constants(self):
         text = HELP["builtup.accessibility"]["how"]
-        self.assertIn(f"({chain.FULL_VALUE_M['walk']:.0f} m; {chain.FULL_VALUE_M['bike']:.0f} m by bike)", text)
-        self.assertIn(f"({chain.CUTOFF_M['walk'] / 1000:g} km; {chain.CUTOFF_M['bike'] / 1000:g} km by bike)", text)
+        self.assertIn(f"within {chain.FULL_VALUE_MIN:g} minutes ({chain.FULL_VALUE_M['walk']:.0f} m on foot; {chain.FULL_VALUE_M['bike'] / 1000:g} km by bike)", text)
+        self.assertIn(f"at {chain.CUTOFF_MIN:g} minutes ({chain.CUTOFF_M['walk'] / 1000:g} km on foot; {chain.CUTOFF_M['bike'] / 1000:g} km by bike)", text)
 
     def test_the_card_value_comes_from_the_stored_means(self):
         indicators = views._build_indicators(views.MOCK_DATA)

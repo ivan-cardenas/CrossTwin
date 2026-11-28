@@ -382,3 +382,89 @@ class SubCitySupplyTests(TestCase):
         sd = supply_demand_from_dwellings(1_579, 3_200, 2.0)
         self.assertEqual((sd['demand_units'], sd['deficit'], sd['deficit_pct']), (1_600, 21, 1.3))
         self.assertEqual(supply_demand_from_dwellings(10, None, 2.0)['demand_units'], 0)
+
+
+class ObservedPopulationTests(TestCase):
+    """The observed population (CBS_HouseholdPopulationObserved) fills the years before the forecast."""
+
+    def setUp(self):
+        self.city = make_neighborhood().district.city
+
+    def test_observed_population_gives_an_average_in_either_import_order(self):
+        # population first (observed import), households after
+        HouseholdSize.objects.update_or_create(city=self.city, year=2018, defaults={"population": 150_000})
+        row, _ = HouseholdSize.objects.update_or_create(city=self.city, year=2018, defaults={"households": 75_000})
+        row.refresh_from_db()
+        self.assertAlmostEqual(row.average_size, 2.0)
+        # households first, population after
+        HouseholdSize.objects.update_or_create(city=self.city, year=2019, defaults={"households": 60_000})
+        row, _ = HouseholdSize.objects.update_or_create(city=self.city, year=2019, defaults={"population": 150_000})
+        row.refresh_from_db()
+        self.assertAlmostEqual(row.average_size, 2.5)
+
+    def test_the_forecast_wins_where_both_exist(self):
+        PopulationProjection.objects.create(city=self.city, year=2023, population=120_000)
+        row, _ = HouseholdSize.objects.update_or_create(city=self.city, year=2023, defaults={"households": 60_000})
+        row, _ = HouseholdSize.objects.update_or_create(city=self.city, year=2023, defaults={"population": 90_000})
+        row.refresh_from_db()
+        self.assertEqual(row.population, 120_000)
+
+    def test_catalog_entry_is_limited_to_the_years_before_the_forecast(self):
+        from importer.external_catalog import CATALOG_BY_KEY
+        entry = CATALOG_BY_KEY["CBS_HouseholdPopulationObserved"]
+        self.assertEqual(entry["target_model"], "housing.HouseholdSize")
+        self.assertIn("startswith(Perioden,'2022')", entry["params"]["filter"])
+        self.assertNotIn("startswith(Perioden,'2023')", entry["params"]["filter"])
+
+
+class DashboardYearResidentsTests(TestCase):
+    """Dashboard residents follow the dashboard year; the stored value stays the latest size."""
+
+    def setUp(self):
+        from administrative.models import Neighborhood
+        self.hood = make_neighborhood()
+        self.city = self.hood.district.city
+        self.building = Building.objects.create(
+            id=1, buildingType="residential", geom=make_polygon(257000.0, 470000.0, 20))
+        HouseholdSize.objects.create(city=self.city, year=2020, population=100_000, households=40_000)   # 2.5
+        HouseholdSize.objects.create(city=self.city, year=2025, population=100_000, households=50_000)   # 2.0
+        for i in range(4):
+            Property.objects.create(name="p", grossArea=80, usageFunction=["Residential function"],
+                                    geom=Point(257000.0 + i, 470000.0, srid=settings.COORDINATE_SYSTEM))
+
+    def test_residents_use_the_size_of_the_year(self):
+        from housing.calculations.indicators import calculate_dwellings
+        self.assertEqual(calculate_dwellings(self.city)['estimated_residents'], 8)        # stored: latest 2.0
+        self.assertEqual(calculate_dwellings(self.city, 2020)['estimated_residents'], 10)  # 4 x 2.5
+        self.assertEqual(calculate_dwellings(self.city, 2030)['estimated_residents'], 8)   # carried forward
+
+    def test_household_size_reports_when_it_is_carried(self):
+        from housing.calculations.indicators import calculate_household_size
+        self.assertFalse(calculate_household_size(self.city, 2025)['carried'])
+        self.assertTrue(calculate_household_size(self.city, 2030)['carried'])
+
+
+class PopulationCoverageTests(TestCase):
+    """The panel's inhabitants line says when it only covers the imported neighborhoods."""
+
+    def setUp(self):
+        self.hood = make_neighborhood()
+        self.city = self.hood.district.city
+        type(self.city).objects.filter(pk=self.city.pk).update(currentPopulation=60_000)
+        self.city.refresh_from_db()
+
+    def test_partial_when_the_shown_population_is_below_the_cbs_figure(self):
+        from housing.calculations.indicators import calculate_population_coverage
+        HouseholdSize.objects.create(city=self.city, year=2025, population=100_000, households=50_000)
+        note = calculate_population_coverage(self.city, 60_000, 2025)
+        self.assertEqual(note, {'partial': True, 'cbs_population': 100_000, 'share_pct': 60})
+
+    def test_complete_figures_and_sub_city_units_get_no_note(self):
+        from housing.calculations.indicators import calculate_population_coverage
+        HouseholdSize.objects.create(city=self.city, year=2025, population=100_000, households=50_000)
+        self.assertFalse(calculate_population_coverage(self.city, 100_000, 2025)['partial'])
+        self.assertFalse(calculate_population_coverage(self.hood, 60_000, 2025)['partial'])
+
+    def test_no_cbs_figure_no_note(self):
+        from housing.calculations.indicators import calculate_population_coverage
+        self.assertFalse(calculate_population_coverage(self.city, 60_000, 2025)['partial'])

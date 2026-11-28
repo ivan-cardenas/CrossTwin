@@ -10,18 +10,18 @@ class DistanceDecayTests(SimpleTestCase):
     def test_full_value_inside_d0(self):
         self.assertEqual(chain.distance_decay(0, "walk"), 1.0)
         self.assertEqual(chain.distance_decay(400, "walk"), 1.0)
-        self.assertEqual(chain.distance_decay(800, "bike"), 1.0)
+        self.assertEqual(chain.distance_decay(1250, "bike"), 1.0)
 
     def test_value_at_cutoff_is_f_at_cutoff(self):
-        self.assertAlmostEqual(chain.distance_decay(1600, "walk"), chain.F_AT_CUTOFF, places=12)
-        self.assertAlmostEqual(chain.distance_decay(3200, "bike"), chain.F_AT_CUTOFF, places=12)
+        self.assertAlmostEqual(chain.distance_decay(1200, "walk"), chain.F_AT_CUTOFF, places=12)
+        self.assertAlmostEqual(chain.distance_decay(3750, "bike"), chain.F_AT_CUTOFF, places=12)
 
     def test_pinned_midpoint(self):
-        # walk: D0 400, Dmax 1600, halfway (1000 m) -> exp(ln(0.05) * 0.5) = sqrt(0.05)
-        self.assertAlmostEqual(chain.distance_decay(1000, "walk"), math.sqrt(0.05), places=12)
+        # walk: D0 400, Dmax 1200 (15 min), halfway (800 m) -> exp(ln(0.05) * 0.5) = sqrt(0.05)
+        self.assertAlmostEqual(chain.distance_decay(800, "walk"), math.sqrt(0.05), places=12)
 
     def test_zero_beyond_cutoff_or_unreachable(self):
-        self.assertEqual(chain.distance_decay(1600.01, "walk"), 0.0)
+        self.assertEqual(chain.distance_decay(1200.01, "walk"), 0.0)
         self.assertEqual(chain.distance_decay(None, "walk"), 0.0)
 
     def test_monotone_non_increasing(self):
@@ -65,6 +65,14 @@ class ScoreTests(SimpleTestCase):
 
     def test_minutes(self):
         self.assertAlmostEqual(chain.access_minutes(400, "walk"), 5.0, places=6)
+        self.assertAlmostEqual(chain.access_minutes(1250, "bike"), 5.0, places=6)
+
+    def test_catchments_are_15_minutes_in_both_modes(self):
+        self.assertEqual(chain.CUTOFF_MIN, 15.0)
+        for mode in chain.MODES:
+            self.assertAlmostEqual(chain.access_minutes(chain.CUTOFF_M[mode], mode), 15.0, places=1)
+            self.assertAlmostEqual(chain.access_minutes(chain.FULL_VALUE_M[mode], mode), 5.0, places=1)
+        self.assertGreater(chain.CUTOFF_M["bike"], chain.CUTOFF_M["walk"])
         self.assertIsNone(chain.access_minutes(None, "bike"))
 
 
@@ -145,7 +153,7 @@ class NetworkPassTests(TestCase):
                                        geom=LineString((X0 + 700 + 300 * (i - 1), Y0), (X0 + 700 + 300 * i, Y0), srid=SRID))
             prev = 100 + i
         accessibility.clear_network_cache()
-        Facility.objects.create(name="far", type="pharmacy", sourceID="far", geom=Point(X0 + 1900, Y0, srid=SRID))  # ~1.9 km: past the 1.6 km walk cut-off, inside the 3.2 km bike one
+        Facility.objects.create(name="far", type="pharmacy", sourceID="far", geom=Point(X0 + 1900, Y0, srid=SRID))  # ~1.9 km: past the 1.2 km (15 min) walk cut-off, inside the 3.75 km (15 min) bike one
         accessibility.compute(Building.objects.filter(pk=1))
         self.assertEqual(Accessibility.objects.get(building_id=1, mode="walk").distances, {})
         self.assertIn("pharmacy", Accessibility.objects.get(building_id=1, mode="bike").distances)
@@ -204,7 +212,7 @@ class ReceiverFixture:
             for i in range(7)
         ])
         self.near = Building.objects.create(id=1, buildingType="residential", geom=_square(X0, Y0 + 20))
-        # 1.8 km north of the street: outside the 1.6 km walk reach of an amenity on it, inside the 3.2 km bike reach
+        # 1.8 km north of the street: outside the 1.2 km (15 min) walk reach of an amenity on it, inside the 3.75 km bike reach
         self.north = Building.objects.create(id=2, buildingType="residential", geom=_square(X0, Y0 + 1800))
         self.received = []
         signals.accessibility_changed.connect(self._receive, dispatch_uid="test_access_changed")
@@ -225,8 +233,8 @@ class AccessibilityReceiverTests(ReceiverFixture, TestCase):
         self._facility()
         self.assertGreater(self._score(1, "walk"), 0)
         self.assertGreater(self._score(1, "bike"), 0)
-        self.assertIsNone(self._score(2, "walk"))   # beyond the 1.6 km walk reach: not even recomputed
-        self.assertIsNotNone(self._score(2, "bike"))  # within the 3.2 km bike reach (but off the network: score 0)
+        self.assertIsNone(self._score(2, "walk"))   # beyond the 1.2 km walk reach: not even recomputed
+        self.assertIsNotNone(self._score(2, "bike"))  # within the 3.75 km bike reach (but off the network: score 0)
         self.assertIn(("walk", [1]), self.received)
 
     def test_a_second_amenity_raises_the_score(self):
@@ -387,7 +395,7 @@ class MergeClosePointsTests(SimpleTestCase):
         self.assertEqual(merge_close_points(points), merge_close_points(points[::-1]))
 
     def test_the_merge_changes_the_score_method_stamp(self):
-        self.assertTrue(chain.METHOD_STAMP.startswith("network-decay walk/bike v3"))
+        self.assertTrue(chain.METHOD_STAMP.startswith("network-decay walk/bike v4"))
 
 
 class LoadPoisMergeTests(TestCase):

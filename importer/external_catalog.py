@@ -161,6 +161,18 @@ FIELD_MAPPINGS = {
         "__city_field__": "city",
         "ParticuliereHuishoudens_1": "onePersonHouseholds",
     },
+    # The observed population on 1 January (CBS 03759NED) of the years before the forecast
+    # starts (2023). It fills HouseholdSize.population only where no median forecast exists
+    # (HouseholdSize.derive prefers the forecast), so PopulationProjection, its trend
+    # extrapolation and the population curves stay forecast-only.
+    "CBS_HouseholdPopulationObserved": {
+        "__unique_fields__": ["city", "year"],
+        "__year_source__": "Perioden",
+        "__year_field__": "year",
+        "__city_source__": "RegioS",
+        "__city_field__": "city",
+        "BevolkingOp1Januari_1": "population",
+    },
     # CBS 85173NED "Regionale prognose 2023-2050": one row per gemeente x year x
     # forecast variant, population in thousands.
     "CBS_PopulationForecast": {
@@ -675,6 +687,23 @@ EXTERNAL_DATA_CATALOG = [
       "params": {
           "filter": "LeeftijdReferentiepersoon eq '10000' and Huishoudenssamenstelling eq 'T001139' and GrootteVanHetHuishouden eq '1011400' and startswith(RegioS,'GM') and substringof('JJ00',Perioden)",
           "select": ["RegioS", "Perioden", "ParticuliereHuishoudens_1"],
+      },
+      "enabled": True,
+    },
+
+    {
+      "key": "CBS_HouseholdPopulationObserved",
+      "source": "CBS",
+      "category": "Housing",
+      "name": "Observed population 2014-2022 (03759NED)",
+      "description": "CBS observed population per municipality on 1 January, 2014-2022 (before the population forecast starts). Together with the private households it gives the average persons per home of those years; the forecast years keep using the median forecast of CBS_PopulationForecast.",
+      "target_model": "housing.HouseholdSize",
+      "table_id": "03759NED",
+      "format": "odata",
+      "requires_bbox": True,
+      "params": {
+          "filter": "Geslacht eq 'T001038' and Leeftijd eq '10000' and BurgerlijkeStaat eq 'T001019' and startswith(RegioS,'GM') and substringof('JJ00',Perioden) and (startswith(Perioden,'2014') or startswith(Perioden,'2015') or startswith(Perioden,'2016') or startswith(Perioden,'2017') or startswith(Perioden,'2018') or startswith(Perioden,'2019') or startswith(Perioden,'2020') or startswith(Perioden,'2021') or startswith(Perioden,'2022'))",
+          "select": ["RegioS", "Perioden", "BevolkingOp1Januari_1"],
       },
       "enabled": True,
     },

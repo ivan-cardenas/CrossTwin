@@ -17,6 +17,11 @@
       👥 {{ indicators.population|intcomma }} inhabitants{% if indicators.population_extrapolated %} <span class="pop-extrapolated" title="Beyond the imported CBS projection: the CBS trend (compound annual growth between its first and last year) continued">· trend extrapolation</span>{% endif %}
       <span style="opacity:.7;">· {{ pop_scenario|default:"prognose" }}{% if pop_growth %}, {{ pop_growth|floatformat:1 }}%/yr extra growth{% endif %}</span>
     </div>
+    {% if indicators.population_coverage.partial %}
+    <div id="panel-population-partial" style="margin-top:2px; font-size:0.72rem; color:rgba(var(--accent-1-rgb), 0.55);">
+      ⚠ Covers only the imported neighborhoods ({{ indicators.population_coverage.share_pct }} % of the {{ indicators.population_coverage.cbs_population|intcomma }} CBS inhabitants). The stored housing demand uses the CBS figure.
+    </div>
+    {% endif %}
     {% endif %}
   </div>
 
@@ -62,7 +67,7 @@
     {% if indicators.household_size %}
     <div>
       <span id="zone-tag" class="threshold-tag ok">Typical</span>
-      <span style="font-size:10px; color:rgba(var(--accent-1-rgb), 0.45);">CBS {{ indicators.household_size_year }}: {{ indicators.household_size_stored }}</span>
+      <span style="font-size:10px; color:rgba(var(--accent-1-rgb), 0.45);">CBS {{ indicators.household_size_year }}: {{ indicators.household_size_stored }}{% if indicators.household_size_carried %} · carried over to {{ year|unlocalize }} (no household forecast is published){% endif %}</span>
     </div>
     {% else %}
     <div style="font-size:0.8rem; color:rgba(var(--accent-1-rgb), 0.55);">

@@ -12,6 +12,7 @@ from .calculations import chain, property_price
 from .calculations.indicators import (
     calculate_household_size,
     calculate_dwellings,
+    calculate_population_coverage,
     calculate_living_alone,
     calculate_supply_demand_for_unit,
     supply_demand_from_dwellings,
@@ -49,7 +50,7 @@ def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, po
         return None
 
     household = calculate_household_size(adminUnit, year)
-    dwellings = calculate_dwellings(adminUnit)
+    dwellings = calculate_dwellings(adminUnit, year)
     population_baseline = get_population(adminUnit, year)
     if isinstance(adminUnit, (District, Neighborhood)):
         # the CBS stock is per municipality: below the city, count the mapped dwellings
@@ -73,6 +74,7 @@ def _get_adminUnit_data(level, location, year, pop_scenario=DEFAULT_SCENARIO, po
         'population': get_population(adminUnit, year, pop_scenario, pop_growth),
         'population_extrapolated': is_extrapolated(adminUnit, year),
         'population_baseline': population_baseline,
+        'population_coverage': calculate_population_coverage(adminUnit, population_baseline, year),
         'household': household,
         'dwellings': dwellings,
         'living_alone': calculate_living_alone(adminUnit),
@@ -352,10 +354,12 @@ def _build_indicators(data, household_size_override=None, alone_override=None,
         **modelled,
         'population': data.get('population'),
         'population_extrapolated': data.get('population_extrapolated', False),
+        'population_coverage': data.get('population_coverage') or {'partial': False},
         # -- Household size (CBS persons per home; the slider) --
         'household_size': round(size, 2) if size else None,
         'household_size_stored': round(stored_size, 2) if stored_size else None,
         'household_size_year': household.get('year'),
+        'household_size_carried': household.get('carried', False),
         'size_min': chain.SIZE_MIN,
         'size_max': chain.SIZE_MAX,
         'dwellings': dwellings.get('dwellings', 0),

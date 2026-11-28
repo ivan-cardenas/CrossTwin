@@ -420,7 +420,7 @@ HELP = {
     "builtup.accessibility": {
         "title": "Network Accessibility",
         "what": "How well the buildings of the unit reach everyday destinations (shops, health care, schools, transit stops, parks) along the street network, on foot and by bicycle.",
-        "how": "For every building, the network distance to the nearest amenities of each category is measured on the OpenStreetMap walk or bike network (a building's own offset to the street included). Each amenity counts fully within a short walk (400 m; 800 m by bike) and fades to nothing at the cut-off (1.6 km; 3.2 km by bike). Categories are weighted (food, health, transit and parks most), and a second or third shop adds less than the first. The card shows the mean over the unit's buildings. A new amenity can only raise a score.",
+        "how": "For every building, the network distance to the nearest amenities of each category is measured on the OpenStreetMap walk or bike network (a building's own offset to the street included). Reach is measured in travel time, the same for both modes: an amenity counts fully within 5 minutes (400 m on foot; 1.25 km by bike) and fades to nothing at 15 minutes (1.2 km on foot; 3.75 km by bike), because a bike covers more distance in the same time. Categories are weighted (food, health, transit and parks most), and a second or third shop adds less than the first. The card shows the mean over the unit's buildings. A new amenity can only raise a score.",
         "eq": [
             "Value of a distance d = 1 if d ≤ D₀; = exp(−λ (d − D₀)) up to the cut-off; = 0 beyond",
             "Score = 100 × {Σ category weight × value of the category | Σ category weight}",
